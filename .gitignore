@@ -106,3 +106,14 @@ TODO.local.md
 scratch/
 _ui_reference/
 *.zip
+
+# ============================================================================
+# Project docs & notes (internal only, jangan push)
+# ============================================================================
+docs/
+notes/
+*.md
+!README.md
+AI_AGENT_ROLE.md
+CLAUDE.md
+PROJECT_BRIEF.md
