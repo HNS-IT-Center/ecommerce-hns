@@ -1,193 +1,104 @@
-import type { Metadata } from "next"
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
-import { ProductCard } from "@/components/ui/product-card"
-import { getProducts } from "@/lib/api/woocommerce/products"
+import { ShopSidebar } from "@/features/shop/components/shop-sidebar"
 import { getCategories } from "@/lib/api/woocommerce/categories"
+import { getProducts } from "@/lib/api/woocommerce/products"
 import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper"
-import { ShopFilters } from "@/features/shop/components/shop-filters"
-import { ShopPagination } from "@/features/shop/components/shop-pagination"
+import { ProductCard } from "@/components/ui/product-card"
+import { Filter } from "lucide-react"
 
-export const metadata: Metadata = {
+export const metadata = {
   title: "Katalog Produk — HNS IT Center",
-  description: "Temukan laptop, PC components, dan gaming gear terbaik di Batam dengan harga kompetitif dan garansi resmi.",
+  description: "Cari dan temukan laptop, PC, dan komponen terbaik.",
 }
 
-type ShopPageProps = {
-  searchParams: Promise<{
-    category?: string
-    page?: string
-    sort?: string
-    min_price?: string
-    max_price?: string
-    search?: string
-  }>
+// In Next.js 15, searchParams is a Promise
+interface ShopPageProps {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }
-
-const PER_PAGE = 12
 
 export default async function ShopPage({ searchParams }: ShopPageProps) {
-  const params = await searchParams
-  const currentPage = Number(params.page) || 1
-  const categorySlug = params.category
-  const sortParam = params.sort || "date"
-  const searchQuery = params.search
-
-  // Resolve sort param to WooCommerce orderby + order
-  let orderby: "date" | "price" | "popularity" | "rating" = "date"
-  let order: "asc" | "desc" = "desc"
-  switch (sortParam) {
-    case "price-asc":
-      orderby = "price"
-      order = "asc"
-      break
-    case "price-desc":
-      orderby = "price"
-      order = "desc"
-      break
-    case "popularity":
-      orderby = "popularity"
-      order = "desc"
-      break
-    case "rating":
-      orderby = "rating"
-      order = "desc"
-      break
-    default:
-      orderby = "date"
-      order = "desc"
-  }
-
-  // Resolve category slug to category ID
-  let categoryId: number | undefined
-  let allCategories = await getCategories({ perPage: 100 }).catch(() => [])
+  // Await searchParams as required in Next.js 15
+  const resolvedParams = await searchParams
   
+  const categorySlug = typeof resolvedParams.category === "string" ? resolvedParams.category : undefined
+  const onSale = resolvedParams.onSale === "true"
+  const searchQuery = typeof resolvedParams.q === "string" ? resolvedParams.q : undefined
+
+  // Fetch all categories for sidebar
+  const categories = await getCategories({ hideEmpty: true, perPage: 100 })
+  
+  let categoryId: number | undefined = undefined
   if (categorySlug) {
-    const found = allCategories.find((c) => c.slug === categorySlug)
-    if (found) categoryId = found.id
+    const matchedCategory = categories.find(c => c.slug === categorySlug)
+    if (matchedCategory) {
+      categoryId = matchedCategory.id
+    } else {
+      // If category not found in existing list, fetch specifically
+      const specificCats = await getCategories({ slug: categorySlug })
+      if (specificCats.length > 0) {
+        categoryId = specificCats[0].id
+      }
+    }
   }
 
   // Fetch products
   const wooProducts = await getProducts({
     category: categoryId,
-    page: currentPage,
-    perPage: PER_PAGE,
-    orderby,
-    order,
+    onSale,
     search: searchQuery,
-    minPrice: params.min_price ? Number(params.min_price) : undefined,
-    maxPrice: params.max_price ? Number(params.max_price) : undefined,
-  }).catch(() => [])
+    perPage: 24, // Let's show 24 per page
+  })
 
   const products = wooProducts.map(mapWooProductToUI)
-
-  // Estimate total pages (WooCommerce returns total in headers, but since we use fetch we approximate)
-  const totalPages = products.length < PER_PAGE ? currentPage : currentPage + 1
-
-  // Build base path for pagination links
-  const queryParts: string[] = []
-  if (categorySlug) queryParts.push(`category=${categorySlug}`)
-  if (sortParam !== "date") queryParts.push(`sort=${sortParam}`)
-  if (params.min_price) queryParts.push(`min_price=${params.min_price}`)
-  if (params.max_price) queryParts.push(`max_price=${params.max_price}`)
-  if (searchQuery) queryParts.push(`search=${searchQuery}`)
-  const basePath = queryParts.length > 0 ? `/shop?${queryParts.join("&")}` : "/shop"
-
-  // Active category name for breadcrumb
-  const activeCategoryName = categorySlug
-    ? allCategories.find((c) => c.slug === categorySlug)?.name || categorySlug
-    : "Semua Produk"
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <Header />
-      <main className="flex-1">
-        {/* Breadcrumb + Title */}
-        <div className="border-b border-border/50 bg-muted/30">
-          <div className="mx-auto max-w-7xl px-4 py-8 md:px-6">
-            <nav className="mb-2 text-sm text-muted-foreground" aria-label="Breadcrumb">
-              <a href="/" className="hover:text-foreground transition-colors">Beranda</a>
-              <span className="mx-2">/</span>
-              {categorySlug ? (
-                <>
-                  <a href="/shop" className="hover:text-foreground transition-colors">Katalog</a>
-                  <span className="mx-2">/</span>
-                  <span className="text-foreground font-medium">{activeCategoryName}</span>
-                </>
-              ) : (
-                <span className="text-foreground font-medium">Katalog</span>
-              )}
-            </nav>
-            <h1 className="text-3xl font-extrabold tracking-tight md:text-4xl">
-              {searchQuery ? `Hasil pencarian: "${searchQuery}"` : activeCategoryName}
+      <main className="flex-1 bg-muted/20 py-8">
+        <div className="container mx-auto px-4 md:px-6">
+          <div className="mb-8">
+            <h1 className="text-3xl font-extrabold tracking-tight">
+              {searchQuery ? `Hasil Pencarian: "${searchQuery}"` : "Katalog Produk"}
             </h1>
+            <div className="mt-2 text-sm text-muted-foreground">
+              Menampilkan {products.length} produk
+              {categorySlug && ` dalam kategori ${categorySlug}`}
+              {onSale && ` (Promo)`}
+            </div>
           </div>
-        </div>
 
-        {/* Content */}
-        <div className="mx-auto max-w-7xl px-4 py-8 md:px-6">
-          <div className="flex flex-col gap-6 md:flex-row md:gap-10">
-            {/* Sidebar Filters */}
-            <ShopFilters
-              categories={allCategories}
-              currentCategory={categorySlug}
-              currentMinPrice={params.min_price}
-              currentMaxPrice={params.max_price}
-              currentSort={sortParam}
-            />
-
-            {/* Product Grid + Sort */}
-            <div className="flex-1">
-              {/* Top bar: Result count + sort (desktop) */}
-              <div className="mb-6 flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">
-                  Menampilkan {products.length} produk
-                  {currentPage > 1 && ` — Halaman ${currentPage}`}
-                </p>
-                <div className="hidden md:block">
-                  <form method="GET" action="/shop">
-                    {categorySlug && <input type="hidden" name="category" value={categorySlug} />}
-                    {params.min_price && <input type="hidden" name="min_price" value={params.min_price} />}
-                    {params.max_price && <input type="hidden" name="max_price" value={params.max_price} />}
-                    <select
-                      name="sort"
-                      defaultValue={sortParam}
-                      onChange={(e) => (e.target as HTMLSelectElement).form?.submit()}
-                      className="rounded-md border border-border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-brand-green"
-                    >
-                      <option value="date">Paling Baru</option>
-                      <option value="price-asc">Harga: Rendah ke Tinggi</option>
-                      <option value="price-desc">Harga: Tinggi ke Rendah</option>
-                      <option value="popularity">Paling Populer</option>
-                      <option value="rating">Rating Terbaik</option>
-                    </select>
-                  </form>
-                </div>
+          <div className="flex flex-col gap-8 md:flex-row">
+            {/* Sidebar Desktop */}
+            <div className="hidden w-64 shrink-0 md:block">
+              <div className="sticky top-24 rounded-xl border bg-card p-6 shadow-sm">
+                <ShopSidebar categories={categories} />
               </div>
+            </div>
 
-              {/* Grid */}
+            {/* Mobile Filter Button */}
+            <div className="md:hidden">
+              <button className="flex w-full items-center justify-center gap-2 rounded-xl border bg-card p-4 font-semibold shadow-sm">
+                <Filter className="h-5 w-5" />
+                Filter & Kategori
+              </button>
+              {/* Note: In a full implementation, this button would open a drawer or bottom sheet with ShopSidebar */}
+            </div>
+
+            {/* Product Grid */}
+            <div className="flex-1">
               {products.length > 0 ? (
-                <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:gap-6">
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:gap-6">
                   {products.map((product) => (
                     <ProductCard key={product.id} product={product} />
                   ))}
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center py-20 text-center">
-                  <div className="mb-4 text-5xl">🔍</div>
-                  <h3 className="text-lg font-bold">Tidak ada produk ditemukan</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Coba ubah filter atau kata kunci pencarian Anda.
-                  </p>
+                <div className="flex h-64 flex-col items-center justify-center rounded-xl border bg-card border-dashed p-8 text-center">
+                  <p className="text-lg font-medium text-muted-foreground">Tidak ada produk yang ditemukan.</p>
+                  <p className="mt-2 text-sm text-muted-foreground">Coba ubah filter atau kata kunci pencarian Anda.</p>
                 </div>
               )}
-
-              {/* Pagination */}
-              <ShopPagination
-                currentPage={currentPage}
-                totalPages={totalPages}
-                basePath={basePath}
-              />
             </div>
           </div>
         </div>

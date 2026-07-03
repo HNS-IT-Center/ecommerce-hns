@@ -82,6 +82,8 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
             {/* Right: Product Info */}
             <ProductInfo
+              id={product.id}
+              image={product.images?.[0]?.src}
               name={product.name}
               sku={product.sku}
               brand={brandName}

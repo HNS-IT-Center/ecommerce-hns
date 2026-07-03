@@ -7,15 +7,46 @@ function pad(n: number) {
   return n.toString().padStart(2, "0")
 }
 
-export function DealsCountdown() {
-  const [remaining, setRemaining] = useState(5 * 3600 + 22 * 60 + 10)
+interface DealsCountdownProps {
+  endDate?: string | null
+}
+
+export function DealsCountdown({ endDate }: DealsCountdownProps) {
+  const [remaining, setRemaining] = useState<number | null>(null)
 
   useEffect(() => {
+    if (!endDate) return
+
+    const targetDate = new Date(endDate).getTime()
+    
+    const calculateRemaining = () => {
+      const now = new Date().getTime()
+      const diff = Math.floor((targetDate - now) / 1000)
+      return diff > 0 ? diff : 0
+    }
+
+    setRemaining(calculateRemaining())
+
     const id = setInterval(() => {
-      setRemaining((r) => (r <= 0 ? 8 * 3600 : r - 1))
+      setRemaining(calculateRemaining())
     }, 1000)
+    
     return () => clearInterval(id)
-  }, [])
+  }, [endDate])
+
+  // If no endDate provided, or time is up, we hide the timer completely (or could show "Berakhir")
+  if (remaining === null || remaining <= 0) {
+    return (
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
+        <div className="flex items-center gap-3">
+          <Clock className="h-6 w-6 text-sale-red" />
+          <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">
+            Deals of the Day
+          </h2>
+        </div>
+      </div>
+    )
+  }
 
   const h = Math.floor(remaining / 3600)
   const m = Math.floor((remaining % 3600) / 60)
@@ -46,3 +77,4 @@ export function DealsCountdown() {
     </div>
   )
 }
+

@@ -3,7 +3,7 @@ import type { Product as UIProduct } from "@/components/ui/product-card";
 import { getProductBadge } from "@/lib/utils/product";
 
 export function mapWooProductToUI(woo: WooProduct): UIProduct {
-  const imageUrl = woo.images?.[0]?.src ?? "/images/placeholder.jpg";
+  const imageUrl = woo.images?.[0]?.src ?? "/images/placeholder.svg";
 
   const brandAttr = woo.attributes?.find(
     (a) => a.slug === "merk" || a.slug === "brand" || a.slug === "pa_brand",

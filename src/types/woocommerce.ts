@@ -38,6 +38,8 @@ export type Product = {
   regular_price: string;
   sale_price: string;
   on_sale: boolean;
+  date_on_sale_from_gmt: string | null;
+  date_on_sale_to_gmt: string | null;
   stock_status: "instock" | "outofstock" | "onbackorder";
   stock_quantity: number | null;
   categories: Array<{ id: number; name: string; slug: string }>;

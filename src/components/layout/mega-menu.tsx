@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { ChevronRight } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import {
@@ -14,83 +15,134 @@ import {
   navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu"
 
-const categories = [
-  {
-    title: "Laptop & PC",
-    href: "/category/laptop-pc",
-    description: "Laptop gaming, office, dan Desktop PC rakitan.",
-    children: [
-      { title: "Laptop Gaming", href: "/category/laptop-gaming" },
-      { title: "Laptop Office", href: "/category/laptop-office" },
-      { title: "Desktop PC", href: "/category/desktop-pc" },
-    ],
-  },
-  {
-    title: "PC Components",
-    href: "/category/pc-components",
-    description: "VGA, Motherboard, Prosesor, dan komponen rakit PC lainnya.",
-    children: [
-      { title: "Prosesor (CPU)", href: "/category/cpu" },
-      { title: "Motherboard", href: "/category/motherboard" },
-      { title: "VGA / Graphics Card", href: "/category/vga" },
-      { title: "RAM / Memory", href: "/category/ram" },
-    ],
-  },
-  {
-    title: "Gaming Gear",
-    href: "/category/gaming-gear",
-    description: "Mouse, Keyboard, Headset, dan perlengkapan gaming.",
-    children: [
-      { title: "Keyboard Mechanical", href: "/category/keyboard" },
-      { title: "Mouse Gaming", href: "/category/mouse" },
-      { title: "Headset", href: "/category/headset" },
-    ],
-  },
-]
+import type { ProductCategory } from "@/types/woocommerce"
 
-export function MegaMenu() {
+interface MegaMenuProps {
+  categories?: ProductCategory[]
+}
+
+export function MegaMenu({ categories = [] }: MegaMenuProps) {
+  // Build category hierarchy
+  const rootCategories = categories.filter((c) => c.parent === 0)
+  
+  const mappedCategories = rootCategories.map(rootCat => {
+    const children = categories.filter(c => c.parent === rootCat.id)
+    return {
+      id: rootCat.id,
+      title: rootCat.name,
+      href: `/shop?category=${rootCat.slug}`,
+      description: rootCat.description || "Temukan produk terbaik di kategori ini.",
+      children: children.map(child => ({
+        id: child.id,
+        title: child.name,
+        href: `/shop?category=${child.slug}`
+      }))
+    }
+  })
+
+  // State to track which root category is currently hovered
+  // Default to the first category if available
+  const [activeCategoryId, setActiveCategoryId] = React.useState<number | null>(null)
+
+  React.useEffect(() => {
+    if (mappedCategories.length > 0 && activeCategoryId === null) {
+      setActiveCategoryId(mappedCategories[0].id)
+    }
+  }, [mappedCategories, activeCategoryId])
+
+  const activeCategory = mappedCategories.find(c => c.id === activeCategoryId) || mappedCategories[0]
+
   return (
     <NavigationMenu>
       <NavigationMenuList>
         <NavigationMenuItem>
-          <NavigationMenuTrigger className="bg-transparent">Kategori</NavigationMenuTrigger>
+          <NavigationMenuTrigger className="bg-transparent font-bold tracking-wide uppercase text-[13px]">
+            Kategori
+          </NavigationMenuTrigger>
           <NavigationMenuContent>
-            <ul className="grid w-[400px] gap-3 p-4 md:w-[500px] md:grid-cols-2 lg:w-[600px] ">
-              {categories.map((category) => (
-                <li key={category.title} className="row-span-3">
-                  <NavigationMenuLink render={
+            <div className="flex w-[800px] h-[500px] bg-background">
+              {/* Left Sidebar - Root Categories */}
+              <div className="w-1/3 flex flex-col overflow-y-auto border-r border-muted bg-muted/10 p-2 scrollbar-hide">
+                {mappedCategories.map((category) => {
+                  const isActive = category.id === activeCategoryId
+                  return (
                     <Link
-                      className="flex h-full w-full select-none flex-col justify-end rounded-md bg-gradient-to-b from-muted/50 to-muted p-6 no-underline outline-none focus:shadow-md"
+                      key={category.id}
                       href={category.href}
-                    />
-                  }>
-                    <div className="mb-2 mt-4 text-lg font-medium">
-                      {category.title}
+                      onMouseEnter={() => setActiveCategoryId(category.id)}
+                      className={cn(
+                        "flex items-center justify-between rounded-lg px-4 py-3 text-sm font-semibold transition-colors",
+                        isActive
+                          ? "bg-white text-brand-green shadow-sm border border-muted"
+                          : "text-foreground/80 hover:bg-muted hover:text-foreground"
+                      )}
+                    >
+                      <span className="uppercase tracking-wider text-[11px]">{category.title}</span>
+                      <ChevronRight className={cn("h-4 w-4 transition-transform", isActive ? "text-brand-green" : "text-transparent")} />
+                    </Link>
+                  )
+                })}
+              </div>
+
+              {/* Right Content - Subcategories */}
+              <div className="w-2/3 overflow-y-auto p-8">
+                {activeCategory && (
+                  <div className="animate-in fade-in zoom-in-95 duration-200">
+                    <div className="mb-6 border-b border-muted pb-4">
+                      <Link href={activeCategory.href} className="text-xl font-extrabold hover:text-brand-green transition-colors uppercase">
+                        {activeCategory.title}
+                      </Link>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        {activeCategory.description}
+                      </p>
                     </div>
-                    <p className="text-sm leading-tight text-muted-foreground mb-4">
-                      {category.description}
-                    </p>
-                    <div className="flex flex-col gap-2 mt-auto">
-                      {category.children.map((child) => (
-                        <span key={child.title} className="text-sm text-primary hover:underline">
-                          {child.title}
-                        </span>
-                      ))}
+
+                    {activeCategory.children.length > 0 ? (
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                        {activeCategory.children.map((child) => (
+                          <Link
+                            key={child.id}
+                            href={child.href}
+                            className="group flex items-center text-sm font-medium text-foreground/80 transition-colors hover:text-brand-green"
+                          >
+                            <span className="relative">
+                              {child.title}
+                              <span className="absolute -bottom-1 left-0 h-[2px] w-0 bg-brand-green transition-all group-hover:w-full" />
+                            </span>
+                          </Link>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex h-40 items-center justify-center rounded-xl border border-dashed bg-muted/30">
+                        <p className="text-sm text-muted-foreground">Tidak ada sub-kategori.</p>
+                      </div>
+                    )}
+                    
+                    {/* View All Button */}
+                    <div className="mt-8 pt-6">
+                      <Link 
+                        href={activeCategory.href}
+                        className="inline-flex h-9 items-center justify-center rounded-md bg-brand-green px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-brand-green/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      >
+                        Lihat Semua {activeCategory.title}
+                      </Link>
                     </div>
-                  </NavigationMenuLink>
-                </li>
-              ))}
-            </ul>
+                  </div>
+                )}
+              </div>
+            </div>
           </NavigationMenuContent>
         </NavigationMenuItem>
+        
         <NavigationMenuItem>
-          <NavigationMenuLink render={<Link href="/build-pc" className={cn(navigationMenuTriggerStyle(), "bg-transparent")} />}>
+          <NavigationMenuLink render={<Link href="/build-pc" className={cn(navigationMenuTriggerStyle(), "bg-transparent font-bold tracking-wide uppercase text-[13px]")} />}>
             PC Builder
           </NavigationMenuLink>
         </NavigationMenuItem>
+        
         <NavigationMenuItem>
-          <NavigationMenuLink render={<Link href="/shop" className={cn(navigationMenuTriggerStyle(), "bg-transparent")} />}>
-            Promo
+          <NavigationMenuLink render={<Link href="/shop" className={cn(navigationMenuTriggerStyle(), "bg-transparent font-bold tracking-wide uppercase text-[13px]")} />}>
+            Shop
           </NavigationMenuLink>
         </NavigationMenuItem>
       </NavigationMenuList>

@@ -5,7 +5,6 @@ import { TrustBar } from "@/features/home/components/trust-bar"
 import { DealsSection } from "@/features/home/components/deals-section"
 import { NewItemsTabs } from "@/features/home/components/new-items-tabs"
 import { BrandPartners } from "@/features/home/components/brand-partners"
-import { StoreLocations } from "@/features/home/components/store-locations"
 
 export default function HomePage() {
   return (
@@ -17,7 +16,6 @@ export default function HomePage() {
         <DealsSection />
         <NewItemsTabs />
         <BrandPartners />
-        <StoreLocations />
       </main>
       <Footer />
     </div>
