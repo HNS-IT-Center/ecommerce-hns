@@ -2,11 +2,17 @@
 
 import { useCartStore } from "@/store/cart"
 import { formatRupiah } from "@/lib/utils"
+import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
+import { generateOrderMessage } from "@/features/checkout/lib/generate-order-message"
 import { Trash2, Plus, Minus, MessageCircle, ShoppingBag } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
 
-export function CartView() {
+type CartViewProps = {
+  whatsappNumber: string
+}
+
+export function CartView({ whatsappNumber }: CartViewProps) {
   const { items, removeItem, updateQuantity, getTotalPrice } = useCartStore()
 
   if (items.length === 0) {
@@ -30,22 +36,8 @@ export function CartView() {
   }
 
   const handleCheckoutWA = () => {
-    const waNumber = "6281170000000" // Ganti dengan nomor asli toko
-    
-    let message = "Halo HNS IT Center, saya ingin memesan:\n\n"
-    
-    items.forEach((item, index) => {
-      message += `${index + 1}. ${item.name}\n`
-      if (item.sku) message += `   SKU: ${item.sku}\n`
-      message += `   Jumlah: ${item.quantity} x ${formatRupiah(item.price)}\n`
-      message += `   Subtotal: ${formatRupiah(item.price * item.quantity)}\n\n`
-    })
-    
-    message += `*Total Pembayaran: ${formatRupiah(getTotalPrice())}*\n\n`
-    message += "Mohon info ketersediaan dan ongkos kirim. Terima kasih."
-
-    const encodedMessage = encodeURIComponent(message)
-    window.open(`https://wa.me/${waNumber}?text=${encodedMessage}`, "_blank")
+    const message = generateOrderMessage(items, getTotalPrice())
+    window.open(buildWhatsAppUrl(whatsappNumber, message), "_blank")
   }
 
   return (
