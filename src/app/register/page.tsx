@@ -18,7 +18,7 @@ export default function RegisterPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (email && password && name) {
-      // Simulate register + auto login
+      // TODO(SECURITY): auth masih simulasi, lihat src/store/auth.ts
       login(email)
       router.push("/account")
     }

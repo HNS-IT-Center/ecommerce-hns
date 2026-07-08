@@ -19,8 +19,14 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       isLoggedIn: false,
       user: null,
+      // TODO(SECURITY, 2026-07-07): login() ini 100% simulasi client-side.
+      // Tidak menerima/verifikasi password sama sekali (form login/register
+      // membuang password, tidak pernah dikirim ke sini). State hanya disimpan
+      // di localStorage lewat Zustand persist — siapapun bisa isi email apa
+      // saja dan langsung "login" jadi user manapun.
+      // WAJIB diganti ke WooCommerce Customer API sebelum go-live
+      // (keputusan sudah diambil: Opsi A, lihat CONTEXT-HANDOFF.md §3).
       login: (email: string) => {
-        // Simulasi data user
         set({
           isLoggedIn: true,
           user: {

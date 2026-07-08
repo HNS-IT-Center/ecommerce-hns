@@ -17,7 +17,7 @@ export default function LoginPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (email && password) {
-      // Simulate login
+      // TODO(SECURITY): auth masih simulasi, lihat src/store/auth.ts
       login(email)
       router.push("/account")
     }
