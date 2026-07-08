@@ -7,6 +7,7 @@ import { ProductGallery } from "@/features/product/components/product-gallery"
 import { ProductInfo } from "@/features/product/components/product-info"
 import { ProductTabs } from "@/features/product/components/product-tabs"
 import { RelatedProducts } from "@/features/product/components/related-products"
+import { env } from "@/config/env"
 
 type ProductPageProps = {
   params: Promise<{ slug: string }>
@@ -97,6 +98,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
               totalSales={product.total_sales}
               averageRating={product.average_rating}
               ratingCount={product.rating_count}
+              whatsappNumber={env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER}
             />
           </div>
 

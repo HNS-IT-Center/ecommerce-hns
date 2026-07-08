@@ -3,11 +3,16 @@
 import { useState } from "react"
 import { useBuilderStore, BuilderSlotId } from "@/store/builder"
 import { formatRupiah } from "@/lib/utils"
+import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import { Trash2, MessageCircle, Printer, Plus, AlertCircle, ShoppingBag } from "lucide-react"
 import Image from "next/image"
 import { ComponentSelectionModal } from "./component-selection-modal"
 
-export function BuilderView() {
+type BuilderViewProps = {
+  whatsappNumber: string
+}
+
+export function BuilderView({ whatsappNumber }: BuilderViewProps) {
   const { slots, removeItem, getTotalPrice } = useBuilderStore()
   
   // Modal state
@@ -24,20 +29,18 @@ export function BuilderView() {
   }
 
   const handleCheckoutWA = () => {
-    const waNumber = "6281170000000" // Replace with real WA number
     let message = "Halo HNS IT Center, saya ingin merakit PC dengan spesifikasi berikut:\n\n"
-    
+
     Object.values(slots).forEach((slot) => {
       if (slot.selectedItem) {
         message += `- ${slot.title}: ${slot.selectedItem.name} (${formatRupiah(slot.selectedItem.price)})\n`
       }
     })
-    
+
     message += `\n*Estimasi Harga: ${formatRupiah(getTotalPrice())}*\n\n`
     message += "Mohon info ketersediaan barang dan biaya rakit. Terima kasih."
 
-    const encodedMessage = encodeURIComponent(message)
-    window.open(`https://wa.me/${waNumber}?text=${encodedMessage}`, "_blank")
+    window.open(buildWhatsAppUrl(whatsappNumber, message), "_blank")
   }
 
   const slotEntries = Object.values(slots)

@@ -2,6 +2,7 @@
 
 import { ShoppingCart, MessageCircle, Shield, Truck, Check, Lock } from "lucide-react"
 import { formatRupiah } from "@/lib/utils"
+import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import { useCartStore } from "@/store/cart"
 import { useAuthStore } from "@/store/auth"
 import { useEffect, useState } from "react"
@@ -22,7 +23,7 @@ interface ProductInfoProps {
   totalSales: number
   averageRating: string
   ratingCount: number
-  whatsappNumber?: string
+  whatsappNumber: string
 }
 
 export function ProductInfo({
@@ -41,7 +42,7 @@ export function ProductInfo({
   totalSales,
   averageRating,
   ratingCount,
-  whatsappNumber = "6281170000000",
+  whatsappNumber,
 }: ProductInfoProps) {
   const addItem = useCartStore((state) => state.addItem)
   const { isLoggedIn } = useAuthStore()
@@ -72,7 +73,7 @@ export function ProductInfo({
       : 0
 
   const waMessage = `Halo HNS IT Center, saya tertarik dengan produk: ${name} (SKU: ${sku}). Apakah tersedia?`
-  const waUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(waMessage)}`
+  const waUrl = buildWhatsAppUrl(whatsappNumber, waMessage)
 
   return (
     <div className="space-y-6">
