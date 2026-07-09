@@ -1,11 +1,13 @@
 "use client"
 
-import { ShoppingCart, MessageCircle, Shield, Truck, Check, Lock } from "lucide-react"
-import { formatRupiah } from "@/lib/utils"
+import { Shield, Truck, Check, Lock } from "lucide-react"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import { useCartStore } from "@/store/cart"
 import { useAuthStore } from "@/store/auth"
 import { useEffect, useState } from "react"
+import { calculateProductPrice } from "@/features/product/lib/calculate-product-price"
+import { ProductPriceBox } from "./product-price-box"
+import { ProductActions } from "./product-actions"
 
 interface ProductInfoProps {
   id: number
@@ -52,28 +54,33 @@ export function ProductInfo({
     setMounted(true)
   }, [])
 
-  const displayPrice = parseInt(price || "0", 10)
-  const displayRegular = parseInt(regularPrice || price || "0", 10)
-  const displaySale = salePrice ? parseInt(salePrice, 10) : null
-
   const isInStock = stockStatus === "instock"
-
-  // Base final price (without member discount)
-  const baseFinalPrice = onSale && displaySale ? displaySale : displayPrice
-
-  // Simulate Member Price (5% discount from base final price)
   const isMember = mounted && isLoggedIn
-  const memberPrice = Math.floor(baseFinalPrice * 0.95)
-  const finalPrice = isMember ? memberPrice : baseFinalPrice
 
-  // Calculate discount percentage (visual only for normal sale)
-  const discountPercent =
-    onSale && displaySale && displayRegular > 0
-      ? Math.round(((displayRegular - displaySale) / displayRegular) * 100)
-      : 0
+  const {
+    displayPrice,
+    displayRegular,
+    displaySale,
+    baseFinalPrice,
+    memberPrice,
+    finalPrice,
+    discountPercent,
+  } = calculateProductPrice({ price, regularPrice, salePrice, onSale, isMember })
 
   const waMessage = `Halo HNS IT Center, saya tertarik dengan produk: ${name} (SKU: ${sku}). Apakah tersedia?`
   const waUrl = buildWhatsAppUrl(whatsappNumber, waMessage)
+
+  const handleAddToCart = () => {
+    addItem({
+      id: id.toString(),
+      productId: id,
+      name,
+      price: finalPrice,
+      quantity: 1,
+      sku,
+      image,
+    })
+  }
 
   return (
     <div className="space-y-6">
@@ -105,53 +112,17 @@ export function ProductInfo({
         )}
       </div>
 
-      {/* Price Box */}
-      <div className="rounded-xl border border-border bg-muted/30 p-5">
-        {isMember ? (
-          <>
-            <div className="flex items-baseline gap-3">
-              <span className="text-3xl font-extrabold text-sale-red">
-                {formatRupiah(memberPrice)}
-              </span>
-              <span className="flex items-center gap-1 rounded-md bg-brand-green/10 px-2 py-0.5 text-sm font-bold text-brand-green">
-                <Shield className="h-4 w-4" /> Harga Member
-              </span>
-            </div>
-            <div className="mt-1 text-sm text-muted-foreground line-through">
-              {formatRupiah(baseFinalPrice)}
-            </div>
-          </>
-        ) : onSale && displaySale ? (
-          <>
-            <div className="flex items-baseline gap-3">
-              <span className="text-3xl font-extrabold text-sale-red">
-                {formatRupiah(displaySale)}
-              </span>
-              {discountPercent > 0 && (
-                <span className="rounded-md bg-sale-red/10 px-2 py-0.5 text-sm font-bold text-sale-red">
-                  -{discountPercent}%
-                </span>
-              )}
-            </div>
-            <div className="mt-1 text-sm text-muted-foreground line-through">
-              {formatRupiah(displayRegular)}
-            </div>
-          </>
-        ) : (
-          <span className="text-3xl font-extrabold text-foreground">
-            {formatRupiah(displayPrice)}
-          </span>
-        )}
-        
-        {/* Member Price Hint */}
-        {!isMember && mounted && (
-          <div className="mt-3 text-sm">
-            <a href="/register" className="font-semibold text-brand-green hover:underline">
-              Daftar member untuk harga khusus
-            </a>
-          </div>
-        )}
-      </div>
+      <ProductPriceBox
+        isMember={isMember}
+        mounted={mounted}
+        memberPrice={memberPrice}
+        baseFinalPrice={baseFinalPrice}
+        onSale={onSale}
+        displaySale={displaySale}
+        discountPercent={discountPercent}
+        displayRegular={displayRegular}
+        displayPrice={displayPrice}
+      />
 
       {/* Stock Status */}
       <div className="flex items-center gap-2">
@@ -168,36 +139,7 @@ export function ProductInfo({
         )}
       </div>
 
-      {/* CTA Buttons */}
-      <div className="flex flex-col gap-3">
-        <button
-          onClick={() => {
-            addItem({
-              id: id.toString(),
-              productId: id,
-              name,
-              price: finalPrice,
-              quantity: 1,
-              sku,
-              image,
-            })
-          }}
-          disabled={!isInStock}
-          className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-foreground text-background font-bold transition-colors hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <ShoppingCart className="h-5 w-5" />
-          Tambah ke Keranjang
-        </button>
-        <a
-          href={waUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#25D366] font-bold text-white transition-colors hover:bg-[#25D366]/90"
-        >
-          <MessageCircle className="h-5 w-5" />
-          Beli via WhatsApp
-        </a>
-      </div>
+      <ProductActions onAddToCart={handleAddToCart} isInStock={isInStock} waUrl={waUrl} />
 
       {/* Trust Badges */}
       <div className="grid grid-cols-2 gap-3 pt-2">
