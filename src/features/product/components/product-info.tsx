@@ -6,6 +6,7 @@ import { useCartStore } from "@/store/cart"
 import { useAuthStore } from "@/store/auth"
 import { useEffect, useState } from "react"
 import { calculateProductPrice } from "@/features/product/lib/calculate-product-price"
+import { useAddToCartToast } from "@/features/cart/hooks/use-add-to-cart-toast"
 import { ProductPriceBox } from "./product-price-box"
 import { ProductActions } from "./product-actions"
 
@@ -48,6 +49,7 @@ export function ProductInfo({
 }: ProductInfoProps) {
   const addItem = useCartStore((state) => state.addItem)
   const { isLoggedIn } = useAuthStore()
+  const showAddToCartToast = useAddToCartToast()
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -80,6 +82,7 @@ export function ProductInfo({
       sku,
       image,
     })
+    showAddToCartToast(name)
   }
 
   return (

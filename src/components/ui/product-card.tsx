@@ -6,6 +6,7 @@ import { ShoppingCart } from "lucide-react"
 
 import { formatRupiah } from "@/lib/utils"
 import { useCartStore } from "@/store/cart"
+import { useAddToCartToast } from "@/features/cart/hooks/use-add-to-cart-toast"
 
 export interface Product {
   id: string
@@ -28,6 +29,7 @@ interface ProductCardProps {
 
 export function ProductCard({ product }: ProductCardProps) {
   const addItem = useCartStore((state) => state.addItem)
+  const showAddToCartToast = useAddToCartToast()
   const hasMemberPrice = product.member_price != null && product.member_price < product.price
   const isSimpleProduct = product.type === "simple"
 
@@ -46,6 +48,7 @@ export function ProductCard({ product }: ProductCardProps) {
       quantity: 1,
       image: product.image_url,
     })
+    showAddToCartToast(product.name)
   }
 
   return (
