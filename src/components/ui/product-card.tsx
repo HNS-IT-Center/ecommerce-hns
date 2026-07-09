@@ -1,8 +1,11 @@
+"use client"
+
 import Image from "next/image"
 import Link from "next/link"
 import { ShoppingCart } from "lucide-react"
 
 import { formatRupiah } from "@/lib/utils"
+import { useCartStore } from "@/store/cart"
 
 export interface Product {
   id: string
@@ -16,6 +19,7 @@ export interface Product {
   sold: number
   badge?: "Hot" | "Deal" | "New" | null
   stock: number
+  type: "simple" | "variable" | "grouped" | "external"
 }
 
 interface ProductCardProps {
@@ -23,7 +27,26 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product }: ProductCardProps) {
+  const addItem = useCartStore((state) => state.addItem)
   const hasMemberPrice = product.member_price != null && product.member_price < product.price
+  const isSimpleProduct = product.type === "simple"
+
+  const handleAddToCart = (event: React.MouseEvent) => {
+    // Produk bervarian: biarkan klik jatuh ke Link, arahkan ke halaman
+    // produk supaya user pilih varian dulu (hindari order ambigu ke CS).
+    if (!isSimpleProduct) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    addItem({
+      id: product.id,
+      productId: Number(product.id),
+      name: product.name,
+      price: product.price,
+      quantity: 1,
+      image: product.image_url,
+    })
+  }
 
   return (
     <Link
@@ -91,7 +114,11 @@ export function ProductCard({ product }: ProductCardProps) {
             <span className="text-[11px] text-muted-foreground">
               Terjual {product.sold}+
             </span>
-            <button className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-foreground transition-colors group-hover:bg-brand-green group-hover:text-white" aria-label="Add to cart">
+            <button
+              onClick={handleAddToCart}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-foreground transition-colors group-hover:bg-brand-green group-hover:text-white"
+              aria-label={isSimpleProduct ? "Tambah ke keranjang" : "Lihat pilihan varian"}
+            >
               <ShoppingCart className="h-4 w-4" />
             </button>
           </div>

@@ -35,5 +35,6 @@ export function mapWooProductToUI(woo: WooProduct): UIProduct {
     sold: woo.total_sales ?? 0,
     badge: getProductBadge(woo),
     stock: woo.stock_quantity ?? (woo.stock_status === "instock" ? 99 : 0),
+    type: woo.type,
   };
 }

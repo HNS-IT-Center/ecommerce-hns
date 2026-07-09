@@ -21,6 +21,7 @@ const mockProducts: Record<string, Product[]> = {
       sold: 82,
       badge: "Hot",
       stock: 10,
+      type: "simple",
     },
     {
       id: "6",
@@ -33,6 +34,7 @@ const mockProducts: Record<string, Product[]> = {
       image_url: "https://images.unsplash.com/photo-1593642702821-c823b13eb295?auto=format&fit=crop&q=80&w=400",
       sold: 45,
       stock: 5,
+      type: "simple",
     },
     {
       id: "7",
@@ -46,6 +48,7 @@ const mockProducts: Record<string, Product[]> = {
       sold: 120,
       badge: "Deal",
       stock: 15,
+      type: "simple",
     },
     {
       id: "8",
@@ -58,6 +61,7 @@ const mockProducts: Record<string, Product[]> = {
       image_url: "https://images.unsplash.com/photo-1525547719571-a2d4ac8945e2?auto=format&fit=crop&q=80&w=400",
       sold: 60,
       stock: 8,
+      type: "simple",
     },
   ],
   "pc-components": [],
