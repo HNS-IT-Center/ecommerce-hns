@@ -14,6 +14,7 @@ import {
   NavigationMenuTrigger,
   navigationMenuTriggerStyle,
 } from "@/components/ui/navigation-menu"
+import { buildCategoryTree } from "@/lib/utils/category-tree"
 
 import type { ProductCategory } from "@/types/woocommerce"
 
@@ -22,23 +23,8 @@ interface MegaMenuProps {
 }
 
 export function MegaMenu({ categories = [] }: MegaMenuProps) {
-  // Build category hierarchy
-  const rootCategories = categories.filter((c) => c.parent === 0)
-  
-  const mappedCategories = rootCategories.map(rootCat => {
-    const children = categories.filter(c => c.parent === rootCat.id)
-    return {
-      id: rootCat.id,
-      title: rootCat.name,
-      href: `/shop?category=${rootCat.slug}`,
-      description: rootCat.description || "Temukan produk terbaik di kategori ini.",
-      children: children.map(child => ({
-        id: child.id,
-        title: child.name,
-        href: `/shop?category=${child.slug}`
-      }))
-    }
-  })
+  // Build category hierarchy (shared dengan MobileMenu, lihat lib/utils/category-tree.ts)
+  const mappedCategories = buildCategoryTree(categories)
 
   // State to track which root category is currently hovered
   // Default to the first category if available

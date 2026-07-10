@@ -4,8 +4,13 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { cn } from "@/lib/utils"
 
-export function SearchBar() {
+interface SearchBarProps {
+  className?: string
+}
+
+export function SearchBar({ className }: SearchBarProps = {}) {
   const [query, setQuery] = useState("")
   const router = useRouter()
 
@@ -17,7 +22,7 @@ export function SearchBar() {
   }
 
   return (
-    <form onSubmit={handleSearch} className="relative w-full max-w-sm hidden sm:flex">
+    <form onSubmit={handleSearch} className={cn("relative w-full max-w-sm hidden sm:flex", className)}>
       <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
       <Input
         type="search"
