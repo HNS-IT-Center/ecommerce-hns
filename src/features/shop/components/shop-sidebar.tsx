@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ProductCategory } from "@/types/woocommerce"
 import { ChevronDown, ChevronUp } from "lucide-react"
@@ -41,30 +41,28 @@ export function ShopSidebar({ categories }: ShopSidebarProps) {
     router.push(`/shop?${params.toString()}`)
   }
 
+  // Auto-expand the parent of the currently selected child category.
+  // Derived during render, so no effect (and no setState-in-effect) is needed.
+  const activeParentId = currentCategory
+    ? categories.find((c) => c.slug === currentCategory && c.parent !== 0)?.parent
+    : undefined
+
+  // A category is expanded when the user has toggled it; otherwise it falls back
+  // to the auto-expand rule above.
+  const isCategoryExpanded = (catId: number) =>
+    expandedCats[catId] ?? activeParentId === catId
+
   const toggleExpand = (id: number, e: React.MouseEvent) => {
     e.stopPropagation()
     setExpandedCats((prev) => ({
       ...prev,
-      [id]: !prev[id]
+      [id]: !(prev[id] ?? activeParentId === id),
     }))
   }
 
   // Build category hierarchy
   const rootCategories = categories.filter((c) => c.parent === 0)
   const getChildren = (parentId: number) => categories.filter((c) => c.parent === parentId)
-
-  // Auto expand category if its child is selected
-  useEffect(() => {
-    if (currentCategory) {
-      const activeChild = categories.find(c => c.slug === currentCategory)
-      if (activeChild && activeChild.parent !== 0) {
-        setExpandedCats(prev => ({
-          ...prev,
-          [activeChild.parent]: true
-        }))
-      }
-    }
-  }, [currentCategory, categories])
 
   return (
     <div className="space-y-8">
@@ -92,7 +90,7 @@ export function ShopSidebar({ categories }: ShopSidebarProps) {
           {rootCategories.map((cat) => {
             const children = getChildren(cat.id)
             const hasChildren = children.length > 0
-            const isExpanded = expandedCats[cat.id]
+            const isExpanded = isCategoryExpanded(cat.id)
             const isActive = currentCategory === cat.slug || children.some(c => c.slug === currentCategory)
 
             return (

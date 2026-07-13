@@ -19,40 +19,56 @@ interface ComponentSelectionModalProps {
   slot: BuilderSlot
 }
 
+type CompletedFetch = {
+  key: string
+  products: Product[]
+}
+
 export function ComponentSelectionModal({ isOpen, onClose, slot }: ComponentSelectionModalProps) {
-  const [products, setProducts] = useState<Product[]>([])
-  const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState("")
-  
+  const [completed, setCompleted] = useState<CompletedFetch | null>(null)
+
   const selectItem = useBuilderStore((state) => state.selectItem)
 
+  // Kombinasi kategori+pencarian yang identifies hasil fetch saat ini.
+  const fetchKey = `${slot.categorySlug}::${search}`
+
   useEffect(() => {
-    if (isOpen) {
-      fetchProducts()
-    }
-  }, [isOpen, search])
+    if (!isOpen) return
 
-  const fetchProducts = async () => {
-    setLoading(true)
-    try {
-      const url = new URL("/api/products", window.location.origin)
-      url.searchParams.set("categorySlug", slot.categorySlug)
-      if (search) {
-        url.searchParams.set("search", search)
-      }
-      url.searchParams.set("per_page", "20")
+    let isStale = false
 
-      const res = await fetch(url)
-      const data = await res.json()
-      setProducts(data)
-    } catch (error) {
-      console.error("Failed to fetch products", error)
-    } finally {
-      setLoading(false)
+    const url = new URL("/api/products", window.location.origin)
+    url.searchParams.set("categorySlug", slot.categorySlug)
+    if (search) {
+      url.searchParams.set("search", search)
     }
-  }
+    url.searchParams.set("per_page", "20")
+
+    fetch(url)
+      .then((res) => res.json())
+      .then((data) => {
+        if (isStale) return
+        setCompleted({ key: fetchKey, products: data })
+      })
+      .catch((error) => {
+        console.error("Failed to fetch products", error)
+        if (isStale) return
+        setCompleted({ key: fetchKey, products: [] })
+      })
+
+    return () => {
+      isStale = true
+    }
+  }, [isOpen, fetchKey, slot.categorySlug, search])
 
   if (!isOpen) return null
+
+  // "loading" adalah nilai turunan: fetch untuk kombinasi kategori+pencarian
+  // saat ini belum selesai — bukan setState di badan effect. Pola yang sama
+  // dengan use-live-search.ts.
+  const loading = !completed || completed.key !== fetchKey
+  const products = !loading ? completed.products : []
 
   const handleSelect = (product: Product) => {
     const item: BuilderItem = {

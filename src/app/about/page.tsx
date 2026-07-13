@@ -1,7 +1,6 @@
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
-import Image from "next/image"
-import { CheckCircle2, Star, MapPin } from "lucide-react"
+import { Star, MapPin } from "lucide-react"
 
 export const metadata = {
   title: "Tentang Kami — HNS IT Center",

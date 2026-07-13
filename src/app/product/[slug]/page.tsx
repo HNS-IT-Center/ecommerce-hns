@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import Link from "next/link"
 import { notFound } from "next/navigation"
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
@@ -53,18 +54,18 @@ export default async function ProductPage({ params }: ProductPageProps) {
         <div className="border-b border-border/50 bg-muted/30">
           <div className="mx-auto max-w-7xl px-4 py-4 md:px-6">
             <nav className="text-sm text-muted-foreground" aria-label="Breadcrumb">
-              <a href="/" className="hover:text-foreground transition-colors">Beranda</a>
+              <Link href="/" className="hover:text-foreground transition-colors">Beranda</Link>
               <span className="mx-2">/</span>
-              <a href="/shop" className="hover:text-foreground transition-colors">Katalog</a>
+              <Link href="/shop" className="hover:text-foreground transition-colors">Katalog</Link>
               {primaryCategory && (
                 <>
                   <span className="mx-2">/</span>
-                  <a
+                  <Link
                     href={`/shop?category=${primaryCategory.slug}`}
                     className="hover:text-foreground transition-colors"
                   >
                     {categoryName}
-                  </a>
+                  </Link>
                 </>
               )}
               <span className="mx-2">/</span>

@@ -2,7 +2,6 @@ import Link from "next/link"
 import { Search, Home, FileQuestion } from "lucide-react"
 
 import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 

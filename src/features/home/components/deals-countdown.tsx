@@ -1,10 +1,34 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useSyncExternalStore } from "react"
 import { Clock } from "lucide-react"
 
 function pad(n: number) {
   return n.toString().padStart(2, "0")
+}
+
+// --- Shared 1-second clock, exposed as an external store ---
+// getSnapshot must return a stable value between ticks (React compares with
+// Object.is), so we cache the timestamp and only refresh it when the interval
+// fires. Reading "current time" this way avoids a setState inside useEffect.
+let cachedNow = Date.now()
+
+function subscribe(onTick: () => void) {
+  const id = setInterval(() => {
+    cachedNow = Date.now()
+    onTick()
+  }, 1000)
+  return () => clearInterval(id)
+}
+
+function getSnapshot(): number {
+  return cachedNow
+}
+
+// On the server (and the first client render during hydration) we don't know
+// the client's clock yet, so return null and render nothing time-related.
+function getServerSnapshot(): number | null {
+  return null
 }
 
 interface DealsCountdownProps {
@@ -12,27 +36,13 @@ interface DealsCountdownProps {
 }
 
 export function DealsCountdown({ endDate }: DealsCountdownProps) {
-  const [remaining, setRemaining] = useState<number | null>(null)
+  const now = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 
-  useEffect(() => {
-    if (!endDate) return
-
-    const targetDate = new Date(endDate).getTime()
-    
-    const calculateRemaining = () => {
-      const now = new Date().getTime()
-      const diff = Math.floor((targetDate - now) / 1000)
-      return diff > 0 ? diff : 0
-    }
-
-    setRemaining(calculateRemaining())
-
-    const id = setInterval(() => {
-      setRemaining(calculateRemaining())
-    }, 1000)
-    
-    return () => clearInterval(id)
-  }, [endDate])
+  // Derive the remaining seconds during render instead of syncing it via an effect.
+  const remaining =
+    endDate && now !== null
+      ? Math.max(0, Math.floor((new Date(endDate).getTime() - now) / 1000))
+      : null
 
   // If no endDate provided, or time is up, we hide the timer completely (or could show "Berakhir")
   if (remaining === null || remaining <= 0) {
@@ -77,4 +87,3 @@ export function DealsCountdown({ endDate }: DealsCountdownProps) {
     </div>
   )
 }
-

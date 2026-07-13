@@ -4,17 +4,14 @@ import Link from "next/link"
 import { ShoppingCart } from "lucide-react"
 import { useCartStore } from "@/store/cart"
 import { useEffect, useState } from "react"
+import { useIsHydrated } from "@/hooks/use-is-hydrated"
 import { cn } from "@/lib/utils"
 
 export function CartBadge() {
-  const [mounted, setMounted] = useState(false)
+  const mounted = useIsHydrated()
   const totalItems = useCartStore((state) => state.getTotalItems())
   const [prevTotalItems, setPrevTotalItems] = useState(totalItems)
   const [isBumping, setIsBumping] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   // Adjust state during render (bukan di useEffect) saat totalItems berubah —
   // pola resmi React untuk "derive state from a prop/state change" tanpa

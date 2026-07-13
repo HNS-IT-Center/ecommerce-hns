@@ -26,15 +26,11 @@ export function MegaMenu({ categories = [] }: MegaMenuProps) {
   // Build category hierarchy (shared dengan MobileMenu, lihat lib/utils/category-tree.ts)
   const mappedCategories = buildCategoryTree(categories)
 
-  // State to track which root category is currently hovered
-  // Default to the first category if available
-  const [activeCategoryId, setActiveCategoryId] = React.useState<number | null>(null)
-
-  React.useEffect(() => {
-    if (mappedCategories.length > 0 && activeCategoryId === null) {
-      setActiveCategoryId(mappedCategories[0].id)
-    }
-  }, [mappedCategories, activeCategoryId])
+  // State to track which root category the user has hovered.
+  // Stays null until the user hovers one — the first category is the
+  // fallback default, derived at render instead of synced via an effect.
+  const [hoveredCategoryId, setHoveredCategoryId] = React.useState<number | null>(null)
+  const activeCategoryId = hoveredCategoryId ?? mappedCategories[0]?.id ?? null
 
   const activeCategory = mappedCategories.find(c => c.id === activeCategoryId) || mappedCategories[0]
 
@@ -55,7 +51,7 @@ export function MegaMenu({ categories = [] }: MegaMenuProps) {
                     <Link
                       key={category.id}
                       href={category.href}
-                      onMouseEnter={() => setActiveCategoryId(category.id)}
+                      onMouseEnter={() => setHoveredCategoryId(category.id)}
                       className={cn(
                         "flex items-center justify-between rounded-lg px-4 py-3 text-sm font-semibold transition-colors",
                         isActive

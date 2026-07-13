@@ -1,7 +1,5 @@
 import { MapPin } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
-
 const stores = [
   {
     id: "nagoya-gateway",

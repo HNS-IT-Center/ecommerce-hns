@@ -3,15 +3,11 @@
 import Link from "next/link"
 import { User } from "lucide-react"
 import { useAuthStore } from "@/store/auth"
-import { useEffect, useState } from "react"
+import { useIsHydrated } from "@/hooks/use-is-hydrated"
 
 export function UserMenu() {
-  const [mounted, setMounted] = useState(false)
+  const mounted = useIsHydrated()
   const { isLoggedIn, user } = useAuthStore()
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   if (!mounted) {
     return (

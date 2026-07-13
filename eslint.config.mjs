@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Design reference only (Bolt export), not project code — see .gitignore.
+    "_ui_reference/**",
   ]),
 ]);
 

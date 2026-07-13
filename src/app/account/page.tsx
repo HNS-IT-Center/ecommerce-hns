@@ -1,25 +1,26 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { useAuthStore } from "@/store/auth"
+import { useIsHydrated } from "@/hooks/use-is-hydrated"
 import { LogOut, User, Mail, ShieldCheck } from "lucide-react"
 
 export default function AccountPage() {
-  const [mounted, setMounted] = useState(false)
+  const isHydrated = useIsHydrated()
   const { isLoggedIn, user, logout } = useAuthStore()
   const router = useRouter()
 
+  // Redirect to login once we know the real auth state (after hydration).
   useEffect(() => {
-    setMounted(true)
-    if (mounted && !isLoggedIn) {
+    if (isHydrated && !isLoggedIn) {
       router.push("/login")
     }
-  }, [mounted, isLoggedIn, router])
+  }, [isHydrated, isLoggedIn, router])
 
-  if (!mounted || !isLoggedIn || !user) {
+  if (!isHydrated || !isLoggedIn || !user) {
     return null
   }
 

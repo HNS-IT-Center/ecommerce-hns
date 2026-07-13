@@ -1,10 +1,10 @@
 "use client"
 
-import { Shield, Truck, Check, Lock } from "lucide-react"
+import { Shield, Truck, Check } from "lucide-react"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import { useCartStore } from "@/store/cart"
 import { useAuthStore } from "@/store/auth"
-import { useEffect, useState } from "react"
+import { useIsHydrated } from "@/hooks/use-is-hydrated"
 import { calculateProductPrice } from "@/features/product/lib/calculate-product-price"
 import { useAddToCartToast } from "@/features/cart/hooks/use-add-to-cart-toast"
 import { ProductPriceBox } from "./product-price-box"
@@ -50,11 +50,7 @@ export function ProductInfo({
   const addItem = useCartStore((state) => state.addItem)
   const { isLoggedIn } = useAuthStore()
   const showAddToCartToast = useAddToCartToast()
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
+  const mounted = useIsHydrated()
 
   const isInStock = stockStatus === "instock"
   const isMember = mounted && isLoggedIn

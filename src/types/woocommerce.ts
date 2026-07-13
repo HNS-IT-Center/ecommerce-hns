@@ -46,7 +46,7 @@ export type Product = {
   images: Array<ProductImage>;
   attributes: Array<ProductAttribute>;
   variations: number[];
-  meta_data: Array<{ id: number; key: string; value: any }>;
+  meta_data: Array<{ id: number; key: string; value: unknown }>;
   average_rating: string;
   rating_count: number;
   total_sales: number;

@@ -10,7 +10,6 @@ import {
   CarouselItem,
   type CarouselApi,
 } from "@/components/ui/carousel"
-import { Button } from "@/components/ui/button"
 
 const slides = [
   {
@@ -36,17 +35,21 @@ const slides = [
 export function HeroCarousel() {
   const [api, setApi] = React.useState<CarouselApi>()
   const [current, setCurrent] = React.useState(0)
-  const [count, setCount] = React.useState(0)
+  // Number of dots is fixed by our slides, so derive it instead of storing it.
+  const count = slides.length
 
   React.useEffect(() => {
     if (!api) return
 
-    setCount(api.scrollSnapList().length)
-    setCurrent(api.selectedScrollSnap() + 1)
+    // Update on navigation only. Embla fires "select" on user/auto scroll, so we
+    // never need a synchronous setState inside this effect. Dot 0 is active by
+    // default (current starts at 0).
+    const onSelect = () => setCurrent(api.selectedScrollSnap())
+    api.on("select", onSelect)
 
-    api.on("select", () => {
-      setCurrent(api.selectedScrollSnap() + 1)
-    })
+    return () => {
+      api.off("select", onSelect)
+    }
   }, [api])
 
   // Auto-play effect
@@ -119,7 +122,7 @@ export function HeroCarousel() {
               key={i}
               onClick={() => api?.scrollTo(i)}
               className={`h-2 rounded-full transition-all ${
-                current === i + 1 ? "w-6 bg-white" : "w-2 bg-white/50"
+                current === i ? "w-6 bg-white" : "w-2 bg-white/50"
               }`}
               aria-label={`Go to slide ${i + 1}`}
             />

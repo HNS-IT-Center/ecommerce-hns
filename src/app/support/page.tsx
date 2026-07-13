@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
-import { Search, Ticket, ArrowRight, ShieldCheck } from "lucide-react"
+import { Ticket, ArrowRight, ShieldCheck } from "lucide-react"
 
 export default function SupportPage() {
   const [ticketCode, setTicketCode] = useState("")
