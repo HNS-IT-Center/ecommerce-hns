@@ -53,9 +53,9 @@ export function SearchBar({ className }: SearchBarProps = {}) {
     blurTimeoutRef.current = setTimeout(() => setIsFocused(false), 150)
   }
 
-  const goToShopResults = () => {
+  const goToSearchResults = () => {
     if (query.trim()) {
-      router.push(`/shop?q=${encodeURIComponent(query.trim())}`)
+      router.push(`/search?q=${encodeURIComponent(query.trim())}`)
     }
   }
 
@@ -66,7 +66,7 @@ export function SearchBar({ className }: SearchBarProps = {}) {
       closeDropdown()
       return
     }
-    goToShopResults()
+    goToSearchResults()
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {

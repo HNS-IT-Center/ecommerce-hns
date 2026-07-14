@@ -23,7 +23,6 @@ export default async function ShopPage({ searchParams }: ShopPageProps) {
   
   const categorySlug = typeof resolvedParams.category === "string" ? resolvedParams.category : undefined
   const onSale = resolvedParams.onSale === "true"
-  const searchQuery = typeof resolvedParams.q === "string" ? resolvedParams.q : undefined
 
   // Fetch all categories for sidebar
   const categories = await getCategories({ hideEmpty: true, perPage: 100 })
@@ -46,7 +45,6 @@ export default async function ShopPage({ searchParams }: ShopPageProps) {
   const wooProducts = await getProducts({
     category: categoryId,
     onSale,
-    search: searchQuery,
     perPage: 24, // Let's show 24 per page
   })
 
@@ -58,9 +56,7 @@ export default async function ShopPage({ searchParams }: ShopPageProps) {
       <main className="flex-1 bg-muted/20 py-8">
         <div className="container mx-auto px-4 md:px-6">
           <div className="mb-8">
-            <h1 className="text-3xl font-extrabold tracking-tight">
-              {searchQuery ? `Hasil Pencarian: "${searchQuery}"` : "Katalog Produk"}
-            </h1>
+            <h1 className="text-3xl font-extrabold tracking-tight">Katalog Produk</h1>
             <div className="mt-2 text-sm text-muted-foreground">
               Menampilkan {products.length} produk
               {categorySlug && ` dalam kategori ${categorySlug}`}
