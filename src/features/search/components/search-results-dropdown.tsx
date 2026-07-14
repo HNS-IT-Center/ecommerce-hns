@@ -85,7 +85,7 @@ export function SearchResultsDropdown({
                   />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{product.name}</p>
+                  <p className="line-clamp-2 text-sm font-medium">{product.name}</p>
                   <p className="text-sm font-semibold text-sale-red">
                     {formatRupiah(product.price)}
                   </p>
