@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toast } from "@/components/ui/toast";
 import { Toaster } from "@/components/layout/toaster";
+import { FloatingWhatsAppButton } from "@/components/layout/floating-whatsapp-button";
+import { env } from "@/config/env";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,6 +36,7 @@ export default function RootLayout({
           {children}
           <Toaster />
         </Toast>
+        <FloatingWhatsAppButton whatsappNumber={env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER} />
       </body>
     </html>
   );

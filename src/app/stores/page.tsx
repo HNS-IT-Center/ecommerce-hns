@@ -1,34 +1,24 @@
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { MapPin, Clock, MessageCircle, Navigation } from "lucide-react"
+import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
+import { STORES } from "@/lib/constants/stores"
+import { env } from "@/config/env"
 
 export const metadata = {
   title: "Lokasi Toko — HNS IT Center",
   description: "Temukan lokasi toko cabang HNS IT Center di Batam.",
 }
 
-const stores = [
-  {
-    id: "nagoya-gateway",
-    name: "Nagoya Gateway (Pusat)",
-    address: "Komplek Nagoya Gateway, Blk. E No.9, Kp. Seraya, Kec. Batu Ampar, Kota Batam, Kepulauan Riau 29444",
-    hours: "Setiap Hari : 09:00 - 21:00 WIB",
-    mapsUrl: "https://maps.app.goo.gl/xxx", // Replace with real URL
-    waUrl: "https://wa.me/6281170000000",
-    phone: "0811-7000-0000",
-  },
-  {
-    id: "nagoya-hill",
-    name: "Nagoya Hill Mall",
-    address: "Nagoya Hill Mall Lt. Dasar, Lubuk Baja Kota, Kec. Lubuk Baja, Kota Batam, Kepulauan Riau 29444",
-    hours: "Setiap Hari : 10:00 - 21:30 WIB",
-    mapsUrl: "https://maps.app.goo.gl/yyy", // Replace with real URL
-    waUrl: "https://wa.me/6281170000001",
-    phone: "0811-7000-0001",
-  }
-]
-
 export default function StoresPage() {
+  const stores = STORES.map((store) => ({
+    ...store,
+    waUrl: buildWhatsAppUrl(
+      env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER,
+      `Halo HNS IT Center, saya ingin bertanya tentang toko ${store.name}.`
+    ),
+  }))
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <Header />
