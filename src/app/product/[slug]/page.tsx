@@ -1,8 +1,8 @@
 import type { Metadata } from "next"
-import Link from "next/link"
 import { notFound } from "next/navigation"
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
+import { Breadcrumb } from "@/components/seo/breadcrumb"
 import { getProductBySlug } from "@/lib/api/woocommerce/products"
 import { ProductGallery } from "@/features/product/components/product-gallery"
 import { ProductInfo } from "@/features/product/components/product-info"
@@ -50,29 +50,16 @@ export default async function ProductPage({ params }: ProductPageProps) {
     <div className="flex min-h-screen flex-col bg-background">
       <Header />
       <main className="flex-1">
-        {/* Breadcrumb */}
-        <div className="border-b border-border/50 bg-muted/30">
-          <div className="mx-auto max-w-7xl px-4 py-4 md:px-6">
-            <nav className="text-sm text-muted-foreground" aria-label="Breadcrumb">
-              <Link href="/" className="hover:text-foreground transition-colors">Beranda</Link>
-              <span className="mx-2">/</span>
-              <Link href="/shop" className="hover:text-foreground transition-colors">Katalog</Link>
-              {primaryCategory && (
-                <>
-                  <span className="mx-2">/</span>
-                  <Link
-                    href={`/shop?category=${primaryCategory.slug}`}
-                    className="hover:text-foreground transition-colors"
-                  >
-                    {categoryName}
-                  </Link>
-                </>
-              )}
-              <span className="mx-2">/</span>
-              <span className="text-foreground font-medium line-clamp-1">{product.name}</span>
-            </nav>
-          </div>
-        </div>
+        <Breadcrumb
+          items={[
+            { label: "Beranda", href: "/" },
+            { label: "Katalog", href: "/shop" },
+            ...(primaryCategory
+              ? [{ label: categoryName, href: `/category/${primaryCategory.slug}` }]
+              : []),
+            { label: product.name },
+          ]}
+        />
 
         {/* Product Content */}
         <div className="mx-auto max-w-7xl px-4 py-8 md:px-6 md:py-12">

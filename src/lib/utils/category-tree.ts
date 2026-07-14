@@ -14,6 +14,21 @@ export type CategoryTreeNode = {
   children: CategoryTreeChild[];
 };
 
+/**
+ * Collects a category's id plus all descendant ids (recursive), so a parent
+ * category page can include products assigned to its child categories.
+ */
+export function collectCategoryAndDescendantIds(
+  categoryId: number,
+  categories: ProductCategory[]
+): number[] {
+  const children = categories.filter((c) => c.parent === categoryId);
+  return [
+    categoryId,
+    ...children.flatMap((child) => collectCategoryAndDescendantIds(child.id, categories)),
+  ];
+}
+
 export function buildCategoryTree(categories: ProductCategory[]): CategoryTreeNode[] {
   const rootCategories = categories.filter((c) => c.parent === 0);
 
@@ -22,12 +37,12 @@ export function buildCategoryTree(categories: ProductCategory[]): CategoryTreeNo
     return {
       id: rootCat.id,
       title: rootCat.name,
-      href: `/shop?category=${rootCat.slug}`,
+      href: `/category/${rootCat.slug}`,
       description: rootCat.description || "Temukan produk terbaik di kategori ini.",
       children: children.map((child) => ({
         id: child.id,
         title: child.name,
-        href: `/shop?category=${child.slug}`,
+        href: `/category/${child.slug}`,
       })),
     };
   });

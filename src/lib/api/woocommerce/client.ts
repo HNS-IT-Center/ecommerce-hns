@@ -25,6 +25,19 @@ export async function wooFetch<T>(
   path: string,
   options: FetchOptions = {}
 ): Promise<T> {
+  const { data } = await wooFetchWithMeta<T>(path, options);
+  return data;
+}
+
+export type WooListMeta = {
+  total: number;
+  totalPages: number;
+};
+
+export async function wooFetchWithMeta<T>(
+  path: string,
+  options: FetchOptions = {}
+): Promise<{ data: T; meta: WooListMeta }> {
   const url = `${env.WOOCOMMERCE_URL}/wp-json/wc/v3${path}`;
 
   const res = await fetch(url, {
@@ -44,5 +57,11 @@ export async function wooFetch<T>(
     });
   }
 
-  return res.json() as Promise<T>;
+  const data = (await res.json()) as T;
+  const meta: WooListMeta = {
+    total: Number(res.headers.get("x-wp-total") ?? 0),
+    totalPages: Number(res.headers.get("x-wp-totalpages") ?? 0),
+  };
+
+  return { data, meta };
 }

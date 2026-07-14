@@ -7,13 +7,16 @@ import { ChevronDown, ChevronUp } from "lucide-react"
 
 interface ShopSidebarProps {
   categories: ProductCategory[]
+  /** Active category slug when the page itself IS the category (e.g. /category/[slug]),
+   * where there's no `?category=` query param to read from. Falls back to the query param. */
+  activeCategorySlug?: string
 }
 
-export function ShopSidebar({ categories }: ShopSidebarProps) {
+export function ShopSidebar({ categories, activeCategorySlug }: ShopSidebarProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  const currentCategory = searchParams.get("category")
+  const currentCategory = activeCategorySlug ?? searchParams.get("category")
   const isOnSale = searchParams.get("onSale") === "true"
 
   // Track expanded categories

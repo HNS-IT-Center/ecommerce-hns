@@ -1,11 +1,9 @@
-import { wooFetch } from "./client";
+import { wooFetch, wooFetchWithMeta } from "./client";
 import type { Product, GetProductsParams } from "@/types/woocommerce";
 
-export async function getProducts(
-  params: GetProductsParams = {}
-): Promise<Product[]> {
+function buildProductsQuery(params: GetProductsParams): URLSearchParams {
   const query = new URLSearchParams();
-  
+
   if (params.category) query.set("category", String(params.category));
   if (params.perPage) query.set("per_page", String(params.perPage));
   if (params.page) query.set("page", String(params.page));
@@ -22,18 +20,47 @@ export async function getProducts(
   if (params.exclude && params.exclude.length > 0) {
     query.set("exclude", params.exclude.join(","));
   }
-  
+
   query.set("status", "publish");
+  return query;
+}
+
+function productsTags(params: GetProductsParams): string[] {
+  return ["products", params.category ? `category-${params.category}` : "all-products"];
+}
+
+export async function getProducts(
+  params: GetProductsParams = {}
+): Promise<Product[]> {
+  const query = buildProductsQuery(params);
 
   return wooFetch<Product[]>(`/products?${query.toString()}`, {
     next: {
       revalidate: 300,
-      tags: [
-        "products", 
-        params.category ? `category-${params.category}` : "all-products"
-      ],
+      tags: productsTags(params),
     },
   });
+}
+
+export type GetProductsPaginatedResult = {
+  products: Product[];
+  total: number;
+  totalPages: number;
+};
+
+export async function getProductsPaginated(
+  params: GetProductsParams = {}
+): Promise<GetProductsPaginatedResult> {
+  const query = buildProductsQuery(params);
+
+  const { data, meta } = await wooFetchWithMeta<Product[]>(`/products?${query.toString()}`, {
+    next: {
+      revalidate: 300,
+      tags: productsTags(params),
+    },
+  });
+
+  return { products: data, total: meta.total, totalPages: meta.totalPages };
 }
 
 export async function getProductBySlug(slug: string): Promise<Product | null> {
