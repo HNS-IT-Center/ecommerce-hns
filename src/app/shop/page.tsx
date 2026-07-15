@@ -1,11 +1,14 @@
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { ShopSidebar } from "@/features/shop/components/shop-sidebar"
+import { ShopPagination } from "@/features/shop/components/shop-pagination"
 import { getCategories } from "@/lib/api/woocommerce/categories"
-import { getProducts } from "@/lib/api/woocommerce/products"
+import { getProductsPaginated } from "@/lib/api/woocommerce/products"
 import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper"
 import { ProductCard } from "@/components/ui/product-card"
 import { Filter } from "lucide-react"
+
+const PER_PAGE = 24
 
 export const metadata = {
   title: "Katalog Produk — HNS IT Center",
@@ -23,10 +26,12 @@ export default async function ShopPage({ searchParams }: ShopPageProps) {
   
   const categorySlug = typeof resolvedParams.category === "string" ? resolvedParams.category : undefined
   const onSale = resolvedParams.onSale === "true"
+  const requestedPage = Number(resolvedParams.page)
+  const page = requestedPage > 0 ? requestedPage : 1
 
   // Fetch all categories for sidebar
   const categories = await getCategories({ hideEmpty: true, perPage: 100 })
-  
+
   let categoryId: number | undefined = undefined
   if (categorySlug) {
     const matchedCategory = categories.find(c => c.slug === categorySlug)
@@ -42,13 +47,19 @@ export default async function ShopPage({ searchParams }: ShopPageProps) {
   }
 
   // Fetch products
-  const wooProducts = await getProducts({
+  const { products: wooProducts, totalPages } = await getProductsPaginated({
     category: categoryId,
     onSale,
-    perPage: 24, // Let's show 24 per page
+    page,
+    perPage: PER_PAGE,
   })
 
   const products = wooProducts.map(mapWooProductToUI)
+
+  const basePathParams = new URLSearchParams()
+  if (categorySlug) basePathParams.set("category", categorySlug)
+  if (onSale) basePathParams.set("onSale", "true")
+  const basePath = basePathParams.toString() ? `/shop?${basePathParams.toString()}` : "/shop"
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -84,11 +95,14 @@ export default async function ShopPage({ searchParams }: ShopPageProps) {
             {/* Product Grid */}
             <div className="flex-1">
               {products.length > 0 ? (
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:gap-6">
-                  {products.map((product) => (
-                    <ProductCard key={product.id} product={product} />
-                  ))}
-                </div>
+                <>
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:gap-6">
+                    {products.map((product) => (
+                      <ProductCard key={product.id} product={product} />
+                    ))}
+                  </div>
+                  <ShopPagination currentPage={page} totalPages={totalPages} basePath={basePath} />
+                </>
               ) : (
                 <div className="flex h-64 flex-col items-center justify-center rounded-xl border bg-card border-dashed p-8 text-center">
                   <p className="text-lg font-medium text-muted-foreground">Tidak ada produk yang ditemukan.</p>
