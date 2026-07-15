@@ -44,6 +44,7 @@ export function Footer() {
               <li><Link href="/about" className="hover:text-foreground hover:underline">Tentang Kami</Link></li>
               <li><Link href="/stores" className="hover:text-foreground hover:underline">Toko Fisik</Link></li>
               <li><Link href="/contact" className="hover:text-foreground hover:underline">Kontak Kami</Link></li>
+              <li><Link href="/blog" className="hover:text-foreground hover:underline">Blog</Link></li>
             </ul>
           </div>
 
@@ -52,6 +53,11 @@ export function Footer() {
             <h4 className="text-sm font-bold uppercase tracking-wider">Bantuan</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li><Link href="/support" className="hover:text-foreground hover:underline">Pusat Bantuan & Klaim Garansi</Link></li>
+              <li><Link href="/faq" className="hover:text-foreground hover:underline">FAQ</Link></li>
+              <li><Link href="/kebijakan/pengembalian-barang" className="hover:text-foreground hover:underline">Kebijakan Pengembalian Barang</Link></li>
+              <li><Link href="/kebijakan/pengembalian-dana" className="hover:text-foreground hover:underline">Kebijakan Pengembalian Dana</Link></li>
+              <li><Link href="/kebijakan/pembatalan-pesanan" className="hover:text-foreground hover:underline">Kebijakan Pembatalan Pesanan</Link></li>
+              <li><Link href="/kebijakan/pengiriman" className="hover:text-foreground hover:underline">Kebijakan Pengiriman</Link></li>
             </ul>
           </div>
 

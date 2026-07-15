@@ -14,3 +14,11 @@ export function formatRupiah(value: number): string {
   }).format(value);
 }
 
+export function formatDate(isoDate: string): string {
+  return new Intl.DateTimeFormat('id-ID', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(isoDate));
+}
+
