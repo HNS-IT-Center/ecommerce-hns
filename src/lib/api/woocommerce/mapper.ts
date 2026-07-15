@@ -5,10 +5,7 @@ import { getProductBadge } from "@/lib/utils/product";
 export function mapWooProductToUI(woo: WooProduct): UIProduct {
   const imageUrl = woo.images?.[0]?.src ?? "/images/placeholder.svg";
 
-  const brandAttr = woo.attributes?.find(
-    (a) => a.slug === "merk" || a.slug === "brand" || a.slug === "pa_brand",
-  );
-  const brandName = brandAttr?.options?.[0] ?? "";
+  const brandName = woo.brands?.[0]?.name ?? "";
 
   const categoryName = woo.categories?.[0]?.name ?? "";
 

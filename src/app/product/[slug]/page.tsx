@@ -36,11 +36,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
   if (!product) notFound()
 
-  // Extract brand from attributes
-  const brandAttr = product.attributes?.find(
-    (a) => a.slug === "merk" || a.slug === "brand" || a.slug === "pa_brand"
-  )
-  const brandName = brandAttr?.options?.[0] || ""
+  const brandName = product.brands?.[0]?.name || ""
 
   // Primary category
   const primaryCategory = product.categories?.[0]

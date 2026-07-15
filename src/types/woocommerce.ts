@@ -43,6 +43,7 @@ export type Product = {
   stock_status: "instock" | "outofstock" | "onbackorder";
   stock_quantity: number | null;
   categories: Array<{ id: number; name: string; slug: string }>;
+  brands: Array<{ id: number; name: string; slug: string }>;
   images: Array<ProductImage>;
   attributes: Array<ProductAttribute>;
   variations: number[];
