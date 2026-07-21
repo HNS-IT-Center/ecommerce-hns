@@ -20,6 +20,7 @@ interface ProductInfoProps {
   regularPrice: string
   salePrice: string
   onSale: boolean
+  type: "simple" | "variable" | "grouped" | "external"
   image?: string
   stockStatus: string
   stockQuantity: number | null
@@ -39,6 +40,7 @@ export function ProductInfo({
   regularPrice,
   salePrice,
   onSale,
+  type,
   image,
   stockStatus,
   stockQuantity,
@@ -47,6 +49,7 @@ export function ProductInfo({
   ratingCount,
   whatsappNumber,
 }: ProductInfoProps) {
+  const isSimpleProduct = type === "simple"
   const addItem = useCartStore((state) => state.addItem)
   const { isLoggedIn } = useAuthStore()
   const showAddToCartToast = useAddToCartToast()
@@ -138,7 +141,16 @@ export function ProductInfo({
         )}
       </div>
 
-      <ProductActions onAddToCart={handleAddToCart} isInStock={isInStock} waUrl={waUrl} />
+      <ProductActions
+        onAddToCart={handleAddToCart}
+        isInStock={isInStock}
+        waUrl={waUrl}
+        price={finalPrice}
+        isSimpleProduct={isSimpleProduct}
+      />
+      {/* Spacer: ProductActions jadi fixed di mobile, sisakan ruang agar
+          konten di bawahnya (trust badge, tabs, footer) tidak tertutup. */}
+      <div className="h-20 md:hidden" aria-hidden="true" />
 
       {/* Trust Badges */}
       <div className="grid grid-cols-2 gap-3 pt-2">
@@ -148,7 +160,12 @@ export function ProductInfo({
         </div>
         <div className="flex items-center gap-2 rounded-lg border border-border p-3 text-sm">
           <Truck className="h-5 w-5 text-brand-green shrink-0" />
-          <span>Gratis Ongkir Batam</span>
+          <span>
+            Gratis ongkir Batam (syarat berlaku) —{" "}
+            <a href="/kebijakan/pengiriman" className="underline hover:text-brand-green">
+              lihat kebijakan
+            </a>
+          </span>
         </div>
       </div>
     </div>

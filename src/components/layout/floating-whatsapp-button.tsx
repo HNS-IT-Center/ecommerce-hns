@@ -1,11 +1,21 @@
+"use client"
+
+import { usePathname } from "next/navigation"
 import { MessageCircle } from "lucide-react"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
+import { cn } from "@/lib/utils"
 
 interface FloatingWhatsAppButtonProps {
   whatsappNumber: string
 }
 
 export function FloatingWhatsAppButton({ whatsappNumber }: FloatingWhatsAppButtonProps) {
+  const pathname = usePathname()
+  // Halaman produk punya sticky action bar sendiri dengan tombol WhatsApp
+  // (lihat ProductActions) — tombol mengambang ini akan tumpang tindih
+  // dengannya di mobile, jadi disembunyikan khusus di sana.
+  const hasOwnWhatsAppCta = pathname?.startsWith("/product/") ?? false
+
   const waUrl = buildWhatsAppUrl(
     whatsappNumber,
     "Halo HNS IT Center, saya ingin bertanya."
@@ -17,7 +27,10 @@ export function FloatingWhatsAppButton({ whatsappNumber }: FloatingWhatsAppButto
       target="_blank"
       rel="noopener noreferrer"
       aria-label="Chat via WhatsApp"
-      className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg transition-transform hover:scale-105"
+      className={cn(
+        "fixed right-5 z-50 h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg transition-transform hover:scale-105 md:bottom-5 md:flex",
+        hasOwnWhatsAppCta ? "hidden" : "bottom-5 flex"
+      )}
     >
       <MessageCircle className="h-7 w-7 fill-white" />
     </a>

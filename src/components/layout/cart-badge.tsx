@@ -29,8 +29,17 @@ export function CartBadge() {
     return () => clearTimeout(timer)
   }, [isBumping])
 
+  // Server tidak tahu isi localStorage, jadi selalu render 0 barang saat SSR.
+  // Pakai nilai yang sama sampai hydrated supaya aria-label tidak mismatch
+  // (pola yang sama seperti badge angka di bawah).
+  const displayedTotal = mounted ? totalItems : 0
+
   return (
-    <Link href="/cart" className="relative flex items-center p-2 text-muted-foreground hover:text-foreground transition-colors">
+    <Link
+      href="/cart"
+      aria-label={`Keranjang belanja, ${displayedTotal} barang`}
+      className="relative flex items-center p-2 text-muted-foreground hover:text-foreground transition-colors"
+    >
       <ShoppingCart className={cn("h-5 w-5 transition-transform", isBumping && "animate-bounce")} />
       {mounted && totalItems > 0 && (
         <span
@@ -39,7 +48,7 @@ export function CartBadge() {
             isBumping && "scale-125"
           )}
         >
-          {totalItems > 99 ? "99+" : totalItems}
+          <span aria-hidden="true">{totalItems > 99 ? "99+" : totalItems}</span>
         </span>
       )}
     </Link>

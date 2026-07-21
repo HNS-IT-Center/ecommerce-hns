@@ -27,11 +27,15 @@ export function mapWooProductToUI(woo: WooProduct): UIProduct {
     brand: brandName,
     category: categoryName,
     price,
+    regular_price: regularPrice,
+    on_sale: woo.on_sale,
     member_price: memberPrice,
     image_url: imageUrl,
     sold: woo.total_sales ?? 0,
     badge: getProductBadge(woo),
     stock: woo.stock_quantity ?? (woo.stock_status === "instock" ? 99 : 0),
     type: woo.type,
+    average_rating: parseFloat(woo.average_rating || "0"),
+    rating_count: woo.rating_count ?? 0,
   };
 }

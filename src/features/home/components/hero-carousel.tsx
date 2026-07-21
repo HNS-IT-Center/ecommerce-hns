@@ -116,16 +116,20 @@ export function HeroCarousel() {
         </div>
 
         {/* Dots */}
-        <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-2">
+        <div className="absolute bottom-6 left-0 right-0 flex justify-center">
           {Array.from({ length: count }).map((_, i) => (
             <button
               key={i}
               onClick={() => api?.scrollTo(i)}
-              className={`h-2 rounded-full transition-all ${
-                current === i ? "w-6 bg-white" : "w-2 bg-white/50"
-              }`}
+              className="flex h-11 w-11 items-center justify-center"
               aria-label={`Go to slide ${i + 1}`}
-            />
+            >
+              <span
+                className={`h-2 rounded-full transition-all ${
+                  current === i ? "w-6 bg-white" : "w-2 bg-white/50"
+                }`}
+              />
+            </button>
           ))}
         </div>
       </Carousel>

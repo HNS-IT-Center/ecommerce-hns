@@ -7,6 +7,7 @@ import { generateOrderMessage } from "@/features/checkout/lib/generate-order-mes
 import { Trash2, Plus, Minus, MessageCircle, ShoppingBag } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
+import { Button, buttonVariants } from "@/components/ui/button"
 
 type CartViewProps = {
   whatsappNumber: string
@@ -14,6 +15,7 @@ type CartViewProps = {
 
 export function CartView({ whatsappNumber }: CartViewProps) {
   const { items, removeItem, updateQuantity, getTotalPrice } = useCartStore()
+  const totalUnits = items.reduce((sum, item) => sum + item.quantity, 0)
 
   if (items.length === 0) {
     return (
@@ -27,7 +29,7 @@ export function CartView({ whatsappNumber }: CartViewProps) {
         </p>
         <Link
           href="/shop"
-          className="mt-4 inline-flex h-12 items-center justify-center rounded-xl bg-brand-green px-8 font-bold text-primary-foreground transition-colors hover:bg-brand-green/90"
+          className={buttonVariants({ variant: "default", size: "lg", className: "mt-4 px-8" })}
         >
           Mulai Belanja
         </Link>
@@ -126,15 +128,10 @@ export function CartView({ whatsappNumber }: CartViewProps) {
           
           <div className="mt-6 space-y-4">
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Total Harga ({items.length} Barang)</span>
+              <span className="text-muted-foreground">Total Harga ({totalUnits} Barang)</span>
               <span className="font-medium">{formatRupiah(getTotalPrice())}</span>
             </div>
-            
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Diskon Produk</span>
-              <span className="font-medium text-brand-green">-</span>
-            </div>
-            
+
             <div className="my-4 border-t border-dashed" />
             
             <div className="flex justify-between">
@@ -145,13 +142,15 @@ export function CartView({ whatsappNumber }: CartViewProps) {
             </div>
           </div>
 
-          <button
+          <Button
+            variant="whatsapp"
+            size="lg"
             onClick={handleCheckoutWA}
-            className="mt-6 flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-[#25D366] font-bold text-white transition-colors hover:bg-[#25D366]/90 shadow-lg shadow-[#25D366]/20"
+            className="mt-6 h-14 w-full shadow-lg shadow-whatsapp/20"
           >
             <MessageCircle className="h-5 w-5" />
             Checkout via WhatsApp
-          </button>
+          </Button>
           
           <p className="mt-4 text-center text-xs text-muted-foreground">
             Anda akan diarahkan ke WhatsApp untuk menyelesaikan pesanan.

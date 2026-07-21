@@ -9,6 +9,17 @@ export function getProductBadge(product: WooProduct): ProductBadge {
   return null;
 }
 
+export function getBadgeColorClass(badge: "Hot" | "Deal" | "New"): string {
+  switch (badge) {
+    case "Deal":
+      return "bg-sale-red";
+    case "Hot":
+      return "bg-orange-500";
+    case "New":
+      return "bg-blue-500";
+  }
+}
+
 export function getStockStatus(product: WooProduct): "instock" | "lowstock" | "outofstock" {
   if (product.stock_status === "outofstock") return "outofstock";
   if (product.stock_quantity !== null && product.stock_quantity <= 5) return "lowstock";

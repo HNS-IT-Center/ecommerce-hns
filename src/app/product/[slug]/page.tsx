@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { Breadcrumb } from "@/components/seo/breadcrumb"
+import { JsonLd } from "@/components/seo/json-ld"
 import { getProductBySlug } from "@/lib/api/woocommerce/products"
 import { ProductGallery } from "@/features/product/components/product-gallery"
 import { ProductInfo } from "@/features/product/components/product-info"
@@ -42,8 +43,41 @@ export default async function ProductPage({ params }: ProductPageProps) {
   const primaryCategory = product.categories?.[0]
   const categoryName = primaryCategory?.name || "Uncategorized"
 
+  const availabilityMap: Record<string, string> = {
+    instock: "https://schema.org/InStock",
+    outofstock: "https://schema.org/OutOfStock",
+    onbackorder: "https://schema.org/PreOrder",
+  }
+
+  const productJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: product.name,
+    image: product.images?.map((img) => img.src) ?? [],
+    description: product.short_description
+      ? product.short_description.replace(/<[^>]*>/g, "")
+      : undefined,
+    sku: product.sku || undefined,
+    brand: brandName ? { "@type": "Brand", name: brandName } : undefined,
+    offers: {
+      "@type": "Offer",
+      url: `${env.NEXT_PUBLIC_SITE_URL}/product/${product.slug}`,
+      priceCurrency: "IDR",
+      price: product.price,
+      availability: availabilityMap[product.stock_status] ?? "https://schema.org/OutOfStock",
+    },
+    ...(product.rating_count > 0 && {
+      aggregateRating: {
+        "@type": "AggregateRating",
+        ratingValue: product.average_rating,
+        reviewCount: product.rating_count,
+      },
+    }),
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
+      <JsonLd data={productJsonLd} />
       <Header />
       <main className="flex-1">
         <Breadcrumb
@@ -77,6 +111,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
               regularPrice={product.regular_price}
               salePrice={product.sale_price}
               onSale={product.on_sale}
+              type={product.type}
               stockStatus={product.stock_status}
               stockQuantity={product.stock_quantity}
               totalSales={product.total_sales}
