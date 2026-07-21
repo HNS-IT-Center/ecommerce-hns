@@ -3,6 +3,7 @@ import Link from "next/link"
 
 import { formatRupiah } from "@/lib/utils"
 import { cn } from "@/lib/utils"
+import { Skeleton } from "@/components/ui/skeleton"
 import type { Product } from "@/components/ui/product-card"
 import type { LiveSearchStatus } from "@/features/search/hooks/use-live-search"
 
@@ -34,11 +35,11 @@ export function SearchResultsDropdown({
       {status === "loading" && (
         <div className="flex flex-col gap-2 p-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="flex items-center gap-3 animate-pulse">
-              <div className="h-10 w-10 shrink-0 rounded-md bg-muted" />
+            <div key={i} className="flex items-center gap-3">
+              <Skeleton className="h-10 w-10 shrink-0 rounded-md" />
               <div className="flex-1 space-y-1.5">
-                <div className="h-3 w-3/4 rounded bg-muted" />
-                <div className="h-3 w-1/4 rounded bg-muted" />
+                <Skeleton className="h-3 w-3/4" />
+                <Skeleton className="h-3 w-1/4" />
               </div>
             </div>
           ))}
