@@ -1,5 +1,6 @@
 import { wooFetch } from "./client";
 import type { ProductCategory } from "@/types/woocommerce";
+import { decodeHtmlEntities } from "@/lib/utils/html";
 
 type GetCategoriesParams = {
   perPage?: number;
@@ -22,10 +23,19 @@ export async function getCategories(
   if (params.search) query.set("search", params.search);
   if (params.slug) query.set("slug", params.slug);
 
-  return wooFetch<ProductCategory[]>(`/products/categories?${query.toString()}`, {
+  const categories = await wooFetch<ProductCategory[]>(`/products/categories?${query.toString()}`, {
     next: {
       revalidate: 3600,
       tags: ["categories"],
     },
   });
+
+  // WooCommerce mengembalikan nama/deskripsi dengan HTML entity mentah
+  // (mis. "FIT &amp; HEALTH") — decode sekali di sini supaya semua
+  // konsumen (MegaMenu, MobileMenu, ShopSidebar, halaman kategori) beres.
+  return categories.map((category) => ({
+    ...category,
+    name: decodeHtmlEntities(category.name),
+    description: decodeHtmlEntities(category.description),
+  }));
 }

@@ -1,5 +1,18 @@
 import { wooFetch, wooFetchWithMeta } from "./client";
 import type { Product, GetProductsParams } from "@/types/woocommerce";
+import { decodeHtmlEntities } from "@/lib/utils/html";
+
+// WooCommerce mengembalikan nama produk/kategori/brand dengan HTML entity
+// mentah (mis. "FIT &amp; HEALTH") — decode sekali di sini supaya semua
+// konsumen (ProductCard, PDP, breadcrumb) tidak perlu mikirin ini sendiri.
+function decodeProduct(product: Product): Product {
+  return {
+    ...product,
+    name: decodeHtmlEntities(product.name),
+    categories: product.categories?.map((c) => ({ ...c, name: decodeHtmlEntities(c.name) })),
+    brands: product.brands?.map((b) => ({ ...b, name: decodeHtmlEntities(b.name) })),
+  };
+}
 
 function buildProductsQuery(params: GetProductsParams): URLSearchParams {
   const query = new URLSearchParams();
@@ -34,12 +47,14 @@ export async function getProducts(
 ): Promise<Product[]> {
   const query = buildProductsQuery(params);
 
-  return wooFetch<Product[]>(`/products?${query.toString()}`, {
+  const products = await wooFetch<Product[]>(`/products?${query.toString()}`, {
     next: {
       revalidate: 300,
       tags: productsTags(params),
     },
   });
+
+  return products.map(decodeProduct);
 }
 
 export type GetProductsPaginatedResult = {
@@ -60,12 +75,13 @@ export async function getProductsPaginated(
     },
   });
 
-  return { products: data, total: meta.total, totalPages: meta.totalPages };
+  return { products: data.map(decodeProduct), total: meta.total, totalPages: meta.totalPages };
 }
 
 export async function getProductBySlug(slug: string): Promise<Product | null> {
   const products = await wooFetch<Product[]>(`/products?slug=${slug}`, {
     next: { revalidate: 600, tags: [`product-${slug}`] },
   });
-  return products[0] ?? null;
+  const product = products[0];
+  return product ? decodeProduct(product) : null;
 }

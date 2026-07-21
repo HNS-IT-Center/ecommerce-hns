@@ -9,7 +9,7 @@ const NAMED_ENTITIES: Record<string, string> = {
 }
 
 /** Decode WordPress-rendered HTML entities (&#8217;, &amp;, dst) tanpa DOM (Server Component). */
-function decodeHtmlEntities(text: string): string {
+export function decodeHtmlEntities(text: string): string {
   return text.replace(/&(#\d+|#x[0-9a-f]+|[a-z]+);/gi, (match, entity: string) => {
     if (entity[0] === "#") {
       const code = entity[1] === "x" || entity[1] === "X"
