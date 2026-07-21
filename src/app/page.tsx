@@ -15,10 +15,10 @@ export default function HomePage() {
       <main className="flex-1">
         <HeroCarousel />
         <TrustBar />
-        <Suspense fallback={<SectionSkeleton count={4} />}>
+        <Suspense fallback={<SectionSkeleton count={6} />}>
           <DealsSection />
         </Suspense>
-        <Suspense fallback={<SectionSkeleton count={4} />}>
+        <Suspense fallback={<SectionSkeleton count={6} />}>
           <NewItemsTabs />
         </Suspense>
         <BrandPartners />

@@ -11,16 +11,35 @@ type SearchResultsDropdownProps = {
   id: string
   status: LiveSearchStatus
   results: Product[]
+  query: string
   highlightedIndex: number
   onHoverIndex: (index: number) => void
   onSelect: () => void
   getOptionId: (index: number) => string
 }
 
+/** Tebalkan bagian nama produk yang cocok dengan query pencarian. */
+function highlightMatch(text: string, query: string) {
+  const trimmed = query.trim()
+  if (!trimmed) return text
+
+  const index = text.toLowerCase().indexOf(trimmed.toLowerCase())
+  if (index === -1) return text
+
+  return (
+    <>
+      {text.slice(0, index)}
+      <strong className="font-bold">{text.slice(index, index + trimmed.length)}</strong>
+      {text.slice(index + trimmed.length)}
+    </>
+  )
+}
+
 export function SearchResultsDropdown({
   id,
   status,
   results,
+  query,
   highlightedIndex,
   onHoverIndex,
   onSelect,
@@ -86,7 +105,9 @@ export function SearchResultsDropdown({
                   />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="line-clamp-2 text-sm font-medium">{product.name}</p>
+                  <p className="line-clamp-2 text-sm font-medium">
+                    {highlightMatch(product.name, query)}
+                  </p>
                   <p className="text-sm font-semibold text-sale-red">
                     {formatRupiah(product.price)}
                   </p>

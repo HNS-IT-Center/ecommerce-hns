@@ -26,7 +26,7 @@ export async function NewItemsTabs() {
         }
         const wooProducts = await getProducts({
           category: category.id,
-          perPage: 4,
+          perPage: 6,
           orderby: "date",
           order: "desc",
         })

@@ -99,7 +99,7 @@ export function HeroCarousel() {
         <div className="absolute inset-y-0 left-8 md:left-12 flex items-center">
           <button
             onClick={() => api?.scrollPrev()}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-black/20 text-white backdrop-blur-sm transition-colors hover:bg-black/40"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-black/10 text-white backdrop-blur-sm transition-colors hover:bg-black/40 md:bg-black/20"
             aria-label="Previous slide"
           >
             <ChevronLeft className="h-6 w-6" />
@@ -108,7 +108,7 @@ export function HeroCarousel() {
         <div className="absolute inset-y-0 right-8 md:right-12 flex items-center">
           <button
             onClick={() => api?.scrollNext()}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-black/20 text-white backdrop-blur-sm transition-colors hover:bg-black/40"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-black/10 text-white backdrop-blur-sm transition-colors hover:bg-black/40 md:bg-black/20"
             aria-label="Next slide"
           >
             <ChevronRight className="h-6 w-6" />
