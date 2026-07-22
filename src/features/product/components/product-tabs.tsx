@@ -1,15 +1,18 @@
 "use client"
 
 import { useState } from "react"
+import { stripRedundantProductNameHeading } from "@/lib/utils/html"
 
 interface ProductTabsProps {
+  name: string
   description: string
   shortDescription: string
   attributes: Array<{ name: string; options: string[] }>
 }
 
-export function ProductTabs({ description, shortDescription, attributes }: ProductTabsProps) {
+export function ProductTabs({ name, description, shortDescription, attributes }: ProductTabsProps) {
   const [activeTab, setActiveTab] = useState<"desc" | "spec">("desc")
+  const cleanedDescription = stripRedundantProductNameHeading(description, name)
 
   const tabs = [
     { id: "desc" as const, label: "Deskripsi" },
@@ -47,7 +50,7 @@ export function ProductTabs({ description, shortDescription, attributes }: Produ
               />
             )}
             {/* Full description */}
-            <div dangerouslySetInnerHTML={{ __html: description }} />
+            <div dangerouslySetInnerHTML={{ __html: cleanedDescription }} />
           </div>
         )}
 

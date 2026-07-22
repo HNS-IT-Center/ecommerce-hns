@@ -25,3 +25,34 @@ export function decodeHtmlEntities(text: string): string {
 export function stripHtml(html: string): string {
   return decodeHtmlEntities(html.replace(/<[^>]*>/g, "")).trim()
 }
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+/**
+ * Description produk WooCommerce sering mengulang nama produk sebagai heading
+ * di awal (mis. "<h2>Nama Produk</h2><p><strong>NAMA</strong></p>" atau
+ * "<h1>NAMA</h1>"), padahal nama produk sudah tampil besar di atas halaman.
+ * Dipotong HANYA kalau heading itu cocok persis dengan nama produk asli —
+ * supaya tidak salah potong konten yang bukan pengulangan (banyak deskripsi
+ * di toko ini formatnya tidak konsisten satu sama lain).
+ */
+export function stripRedundantProductNameHeading(description: string, productName: string): string {
+  const escapedName = escapeRegExp(productName.trim())
+  let result = description.trim()
+
+  // Fragmen HTML rusak (tag penutup nyasar di awal) dari proses copy-paste.
+  result = result.replace(/^(\s*<\/p>\s*)+/i, "")
+
+  const patterns = [
+    new RegExp(`^<h1>\\s*${escapedName}\\s*<\\/h1>`, "i"),
+    new RegExp(`^<h2>\\s*Nama Produk\\s*<\\/h2>\\s*<p>\\s*<strong>\\s*${escapedName}\\s*<\\/strong>\\s*<\\/p>`, "i"),
+  ]
+
+  for (const pattern of patterns) {
+    result = result.replace(pattern, "")
+  }
+
+  return result.trim()
+}

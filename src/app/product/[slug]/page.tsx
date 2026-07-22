@@ -136,6 +136,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
           {/* Tabs: Description + Specs */}
           <ProductTabs
+            name={product.name}
             description={product.description || ""}
             shortDescription={product.short_description || ""}
             attributes={product.attributes || []}
