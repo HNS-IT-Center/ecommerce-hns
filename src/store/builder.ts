@@ -32,35 +32,44 @@ interface BuilderState {
   getTotalPrice: () => number
 }
 
+// categorySlug di bawah ini diverifikasi langsung ke taxonomy WooCommerce asli
+// (bukan tebakan) — sebelumnya beberapa slug (prosesor/motherboard/ram/vga/ssd/
+// cooler/casing) tidak match kategori manapun, jadi /api/products diam-diam
+// jatuh ke pencarian keyword yang salah sasaran (mis. slot "RAM" nunjukin
+// speaker JBL). WooCommerce toko ini TIDAK punya kategori khusus untuk
+// Processor, RAM, atau VGA — untuk 3 slot itu, categorySlug sengaja diisi
+// kata kunci pencarian ter-presisi (bukan slug kategori beneran), karena
+// /api/products sudah punya fallback: kalau slug tidak match kategori, ia
+// dipakai sebagai keyword pencarian. Lihat PRE-DEPLOY-CHECKLIST.md.
 const initialSlots: Record<BuilderSlotId, BuilderSlot> = {
   cpu: {
     id: "cpu",
     title: "Prosesor (CPU)",
-    categorySlug: "prosesor", 
+    categorySlug: "processor", // tidak ada kategori Processor — fallback ke search "processor"
     selectedItem: null,
   },
   motherboard: {
     id: "motherboard",
     title: "Motherboard",
-    categorySlug: "motherboard",
+    categorySlug: "motherboard-pc",
     selectedItem: null,
   },
   ram: {
     id: "ram",
     title: "RAM (Memory)",
-    categorySlug: "ram",
+    categorySlug: "ram pc", // tidak ada kategori RAM — fallback ke search "ram pc" (tidak sempurna, masih ada noise laptop/casing, tapi jauh lebih relevan dari "ram" sendirian)
     selectedItem: null,
   },
   vga: {
     id: "vga",
     title: "Kartu Grafis (VGA)",
-    categorySlug: "vga",
+    categorySlug: "vga card", // tidak ada kategori VGA — fallback ke search "vga card"
     selectedItem: null,
   },
   storage: {
     id: "storage",
     title: "Penyimpanan (SSD/HDD)",
-    categorySlug: "ssd",
+    categorySlug: "hardisk",
     selectedItem: null,
   },
   psu: {
@@ -72,13 +81,13 @@ const initialSlots: Record<BuilderSlotId, BuilderSlot> = {
   casing: {
     id: "casing",
     title: "Casing",
-    categorySlug: "casing",
+    categorySlug: "casing-pc",
     selectedItem: null,
   },
   cooler: {
     id: "cooler",
     title: "Pendingin (Cooler) - Opsional",
-    categorySlug: "cooler",
+    categorySlug: "liquid-cooling",
     selectedItem: null,
   },
 }
