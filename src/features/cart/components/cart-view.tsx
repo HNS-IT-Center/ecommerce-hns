@@ -76,6 +76,11 @@ export function CartView({ whatsappNumber }: CartViewProps) {
                       <h3 className="font-semibold leading-tight line-clamp-2">
                         {item.name}
                       </h3>
+                      {item.variationLabel && (
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {item.variationLabel}
+                        </p>
+                      )}
                       {item.sku && (
                         <p className="mt-1 text-sm text-muted-foreground">
                           SKU: {item.sku}

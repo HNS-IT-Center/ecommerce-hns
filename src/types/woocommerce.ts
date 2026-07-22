@@ -53,6 +53,25 @@ export type Product = {
   total_sales: number;
 };
 
+export type ProductVariationAttribute = {
+  id: number;
+  name: string;
+  option: string;
+};
+
+export type ProductVariation = {
+  id: number;
+  sku: string;
+  price: string;
+  regular_price: string;
+  sale_price: string;
+  on_sale: boolean;
+  stock_status: "instock" | "outofstock" | "onbackorder";
+  stock_quantity: number | null;
+  attributes: Array<ProductVariationAttribute>;
+  image: ProductImage | null;
+};
+
 export type GetProductsParams = {
   category?: string | number;
   brand?: string; // Custom if using brands taxonomy

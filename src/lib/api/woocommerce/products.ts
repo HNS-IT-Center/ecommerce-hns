@@ -1,5 +1,5 @@
 import { wooFetch, wooFetchWithMeta } from "./client";
-import type { Product, GetProductsParams } from "@/types/woocommerce";
+import type { Product, GetProductsParams, ProductVariation } from "@/types/woocommerce";
 import { decodeHtmlEntities } from "@/lib/utils/html";
 
 // WooCommerce mengembalikan nama produk/kategori/brand dengan HTML entity
@@ -84,4 +84,11 @@ export async function getProductBySlug(slug: string): Promise<Product | null> {
   });
   const product = products[0];
   return product ? decodeProduct(product) : null;
+}
+
+/** Detail per varian (harga/stok/SKU spesifik) untuk produk `type: "variable"`. */
+export async function getProductVariations(productId: number): Promise<ProductVariation[]> {
+  return wooFetch<ProductVariation[]>(`/products/${productId}/variations?per_page=100`, {
+    next: { revalidate: 300, tags: [`product-${productId}-variations`] },
+  });
 }
