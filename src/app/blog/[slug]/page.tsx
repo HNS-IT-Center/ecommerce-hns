@@ -58,7 +58,7 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
           </div>
 
           <div
-            className="prose prose-sm mt-8 max-w-none dark:prose-invert"
+            className="prose prose-sm mt-8 max-w-none"
             dangerouslySetInnerHTML={{ __html: post.content.rendered }}
           />
         </article>

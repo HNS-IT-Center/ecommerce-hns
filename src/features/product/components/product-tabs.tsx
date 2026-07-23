@@ -41,7 +41,7 @@ export function ProductTabs({ name, description, shortDescription, attributes }:
       {/* Tab Content */}
       <div className="py-6">
         {activeTab === "desc" && (
-          <div className="prose prose-sm max-w-none dark:prose-invert">
+          <div className="prose prose-sm max-w-none">
             {/* Short description first */}
             {shortDescription && (
               <div

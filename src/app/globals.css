@@ -117,3 +117,24 @@
   }
 }
 
+/* @tailwindcss/typography punya palet abu-abu sendiri yang tidak terhubung
+   ke token desain kita (--foreground/--muted-foreground/--brand-green) —
+   akibatnya teks deskripsi (produk & kebijakan) terlihat abu pudar padahal
+   heading di sekitarnya nyaris hitam. Timpa variabelnya supaya konsisten. */
+.prose {
+  --tw-prose-body: var(--foreground);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-lead: var(--foreground);
+  --tw-prose-links: var(--brand-green);
+  --tw-prose-bold: var(--foreground);
+  --tw-prose-counters: var(--muted-foreground);
+  --tw-prose-bullets: var(--muted-foreground);
+  --tw-prose-hr: var(--border);
+  --tw-prose-quotes: var(--foreground);
+  --tw-prose-quote-borders: var(--border);
+  --tw-prose-captions: var(--muted-foreground);
+  --tw-prose-code: var(--foreground);
+  --tw-prose-th-borders: var(--border);
+  --tw-prose-td-borders: var(--border);
+}
+

@@ -16,7 +16,7 @@ export function PolicyPageLayout({ title, breadcrumbLabel, children }: PolicyPag
       <main className="flex-1">
         <div className="mx-auto max-w-3xl px-4 py-8 md:px-6 md:py-12">
           <h1 className="text-3xl font-extrabold tracking-tight">{title}</h1>
-          <div className="prose prose-sm mt-6 max-w-none dark:prose-invert">{children}</div>
+          <div className="prose prose-sm mt-6 max-w-none">{children}</div>
         </div>
       </main>
       <Footer />
