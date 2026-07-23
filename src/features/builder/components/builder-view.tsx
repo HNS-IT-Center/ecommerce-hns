@@ -179,6 +179,7 @@ export function BuilderView({ whatsappNumber }: BuilderViewProps) {
 
       {activeSlot && (
         <ComponentSelectionModal
+          key={activeSlot}
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
           slot={slots[activeSlot]}

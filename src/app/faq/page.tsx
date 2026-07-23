@@ -15,7 +15,7 @@ const FAQ_ITEMS = [
   {
     question: "Apakah bisa bayar di tempat (COD)?",
     answer:
-      "[KONFIRMASI: apakah COD tersedia, dan untuk area mana saja]. Untuk pembelian langsung di toko, pembayaran bisa dilakukan tunai atau transfer di tempat.",
+      "COD tersedia untuk area tertentu di Batam — konfirmasikan dengan CS kami via WhatsApp saat pemesanan. Untuk pembelian langsung di toko, pembayaran bisa dilakukan tunai atau transfer di tempat.",
   },
   {
     question: "Metode pembayaran apa saja yang diterima?",
@@ -25,7 +25,7 @@ const FAQ_ITEMS = [
   {
     question: "Apakah produk yang dijual bergaransi?",
     answer:
-      "[KONFIRMASI: berapa lama garansi berlaku dan apakah garansi resmi distributor/toko].",
+      "Ya, produk laptop dan komponen bergaransi resmi hingga 2 tahun (mengikuti ketentuan distributor masing-masing merek). Detail masa garansi per produk dapat ditanyakan ke CS kami sebelum membeli.",
   },
   {
     question: "Bagaimana jika produk yang diterima rusak atau tidak sesuai pesanan?",

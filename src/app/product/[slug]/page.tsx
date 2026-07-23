@@ -4,7 +4,7 @@ import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { Breadcrumb } from "@/components/seo/breadcrumb"
 import { JsonLd } from "@/components/seo/json-ld"
-import { getProductBySlug } from "@/lib/api/woocommerce/products"
+import { getProductBySlug, getProductVariations } from "@/lib/api/woocommerce/products"
 import { ProductGallery } from "@/features/product/components/product-gallery"
 import { ProductInfo } from "@/features/product/components/product-info"
 import { ProductTabs } from "@/features/product/components/product-tabs"
@@ -36,6 +36,17 @@ export default async function ProductPage({ params }: ProductPageProps) {
   const product = await getProductBySlug(slug)
 
   if (!product) notFound()
+
+  // Atribut yang benar-benar dipakai untuk memilih varian (`variation: true`) —
+  // atribut lain (mis. "Motherboard Size") cuma informasi spek, bukan pilihan.
+  const variantAttributes = (product.attributes || [])
+    .filter((attr) => attr.variation)
+    .map((attr) => ({ name: attr.name, options: attr.options }))
+
+  const variations =
+    product.type === "variable" && product.variations.length > 0
+      ? await getProductVariations(product.id)
+      : []
 
   const brandName = product.brands?.[0]?.name || ""
 
@@ -118,11 +129,14 @@ export default async function ProductPage({ params }: ProductPageProps) {
               averageRating={product.average_rating}
               ratingCount={product.rating_count}
               whatsappNumber={env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER}
+              variantAttributes={variantAttributes}
+              variations={variations}
             />
           </div>
 
           {/* Tabs: Description + Specs */}
           <ProductTabs
+            name={product.name}
             description={product.description || ""}
             shortDescription={product.short_description || ""}
             attributes={product.attributes || []}

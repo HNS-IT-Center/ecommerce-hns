@@ -9,34 +9,46 @@ export default function PengembalianDanaPage() {
   return (
     <PolicyPageLayout title="Kebijakan Pengembalian Dana" breadcrumbLabel="Pengembalian Dana">
       <p>
-        Pengembalian dana (refund) diproses setelah pengajuan pengembalian barang
-        disetujui oleh tim kami, mengikuti{" "}
-        <a href="/kebijakan/pengembalian-barang">Kebijakan Pengembalian Barang</a>.
+        Pengembalian dana (refund) diproses setelah pengajuan pengembalian barang atau
+        pembatalan pesanan disetujui oleh tim kami, mengikuti{" "}
+        <a href="/kebijakan/pengembalian-barang">Kebijakan Pengembalian Barang</a> dan{" "}
+        <a href="/kebijakan/pembatalan-pesanan">Kebijakan Pembatalan Pesanan</a>.
       </p>
 
-      <h2>Metode Refund</h2>
+      <h2>Kapan Refund Berlaku</h2>
       <ul>
-        <li>Refund ditransfer ke rekening bank atas nama pembeli.</li>
-        <li>
-          Untuk pembayaran yang belum diproses/dikirim (pesanan dibatalkan sebelum
-          barang berangkat), refund dapat berupa transfer penuh sesuai metode
-          pembayaran awal.
-        </li>
+        <li>Pembatalan pesanan sebelum barang diproses/dikirim.</li>
+        <li>Pengajuan pengembalian barang yang sudah disetujui (cacat sejak awal, salah kirim, kurang kirim, atau non-cacat sesuai ketentuan).</li>
+        <li>Pembayaran ganda atau transfer yang sudah masuk namun pesanan gagal diproses.</li>
       </ul>
 
-      <h2>Waktu Proses</h2>
+      <h2>Nilai Pengembalian</h2>
+      <ul>
+        <li><strong>Kesalahan dari kami</strong> (cacat sejak awal, salah kirim, kurang kirim): nilai barang <em>dan</em> ongkos kirim dikembalikan penuh.</li>
+        <li><strong>Pengembalian non-cacat</strong>: hanya nilai barang yang dikembalikan (ongkos kirim tidak termasuk), dan dapat dikenakan biaya restocking untuk Custom PC Builder sesuai Kebijakan Pengembalian Barang.</li>
+        <li>Voucher atau kode promo yang sudah dipakai tidak dapat dikonversi menjadi uang tunai.</li>
+      </ul>
+
+      <h2>Metode Refund</h2>
       <p>
-        Dana dikembalikan dalam <strong>[KONFIRMASI: berapa hari kerja]</strong> setelah
-        pengajuan disetujui dan barang diterima kembali oleh toko (jika berlaku).
+        Karena pemesanan diproses secara manual melalui WhatsApp (belum ada pembayaran
+        kartu/online), dana dikembalikan lewat <strong>transfer bank</strong> ke rekening
+        atas nama pembeli — rekening yang sama dengan yang digunakan untuk pembayaran,
+        kecuali pembeli menyampaikan rekening pengganti atas nama yang sama.
       </p>
 
-      <h2>Potongan Biaya</h2>
-      <p>
-        <strong>
-          [KONFIRMASI: apakah biaya pengiriman/ongkir awal ikut dikembalikan, atau
-          hanya harga barang]
-        </strong>
-      </p>
+      <h2>Waktu Proses</h2>
+      <ul>
+        <li>Verifikasi dan persetujuan: maksimal <strong>2×24 jam kerja</strong> setelah dokumen/bukti lengkap kami terima.</li>
+        <li>Transfer dana: <strong>3–7 hari kerja</strong> setelah pengajuan disetujui.</li>
+      </ul>
+
+      <h2>Dokumen yang Diperlukan</h2>
+      <ul>
+        <li>Nomor invoice/pesanan dan bukti pembayaran.</li>
+        <li>Untuk pengembalian barang: bukti pengiriman balik dan hasil pemeriksaan tim kami.</li>
+        <li>Untuk pembayaran ganda/gagal: bukti mutasi atau bukti potong dari bank.</li>
+      </ul>
 
       <p>
         Untuk menanyakan status refund, silakan hubungi kami melalui halaman{" "}

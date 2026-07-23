@@ -109,6 +109,7 @@ export function SearchBar({ className }: SearchBarProps = {}) {
           id={listboxId}
           status={status}
           results={results}
+          query={query}
           highlightedIndex={highlightedIndex}
           onHoverIndex={setHighlightedIndex}
           onSelect={closeDropdown}

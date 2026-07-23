@@ -9,6 +9,7 @@ export interface CartItem {
   image?: string
   quantity: number
   sku?: string
+  variationLabel?: string // mis. "Warna: Black" — ditampilkan di bawah nama produk di cart
 }
 
 interface CartState {

@@ -1,5 +1,11 @@
 import { wooFetch, wooFetchWithMeta } from "./client";
-import type { Product, GetProductsParams } from "@/types/woocommerce";
+import type {
+  Product,
+  GetProductsParams,
+  ProductVariation,
+  ProductAttributeTaxonomy,
+  ProductAttributeTerm,
+} from "@/types/woocommerce";
 import { decodeHtmlEntities } from "@/lib/utils/html";
 
 // WooCommerce mengembalikan nama produk/kategori/brand dengan HTML entity
@@ -33,6 +39,8 @@ function buildProductsQuery(params: GetProductsParams): URLSearchParams {
   if (params.exclude && params.exclude.length > 0) {
     query.set("exclude", params.exclude.join(","));
   }
+  if (params.attribute) query.set("attribute", params.attribute);
+  if (params.attributeTerm) query.set("attribute_term", String(params.attributeTerm));
 
   query.set("status", "publish");
   return query;
@@ -84,4 +92,25 @@ export async function getProductBySlug(slug: string): Promise<Product | null> {
   });
   const product = products[0];
   return product ? decodeProduct(product) : null;
+}
+
+/** Detail per varian (harga/stok/SKU spesifik) untuk produk `type: "variable"`. */
+export async function getProductVariations(productId: number): Promise<ProductVariation[]> {
+  return wooFetch<ProductVariation[]>(`/products/${productId}/variations?per_page=100`, {
+    next: { revalidate: 300, tags: [`product-${productId}-variations`] },
+  });
+}
+
+/** Daftar taxonomy atribut global (mis. "Kapasitas Storage" -> slug pa_kapasitas-storage). */
+export async function getProductAttributes(): Promise<ProductAttributeTaxonomy[]> {
+  return wooFetch<ProductAttributeTaxonomy[]>(`/products/attributes`, {
+    next: { revalidate: 3600, tags: ["product-attributes"] },
+  });
+}
+
+/** Term (pilihan nilai) untuk satu taxonomy atribut, mis. "1TB+", "2TB+" untuk Kapasitas Storage. */
+export async function getProductAttributeTerms(attributeId: number): Promise<ProductAttributeTerm[]> {
+  return wooFetch<ProductAttributeTerm[]>(`/products/attributes/${attributeId}/terms?per_page=100`, {
+    next: { revalidate: 3600, tags: [`attribute-${attributeId}-terms`] },
+  });
 }

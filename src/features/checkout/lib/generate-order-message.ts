@@ -6,9 +6,10 @@ export function generateOrderMessage(items: CartItem[], total: number): string {
 
   const itemLines = items
     .map((item, index) => {
+      const variantLine = item.variationLabel ? `\n   Varian: ${item.variationLabel}` : ""
       const skuLine = item.sku ? `\n   SKU: ${item.sku}` : ""
       return (
-        `${index + 1}. ${item.name}${skuLine}\n` +
+        `${index + 1}. ${item.name}${variantLine}${skuLine}\n` +
         `   Jumlah: ${item.quantity} x ${formatRupiah(item.price)}\n` +
         `   Subtotal: ${formatRupiah(item.price * item.quantity)}`
       )
