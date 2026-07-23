@@ -39,3 +39,18 @@ export async function getCategories(
     description: decodeHtmlEntities(category.description),
   }));
 }
+
+/** Ambil SEMUA kategori (paginated di belakang layar) — dipakai form admin produk. */
+export async function getAllCategories(): Promise<ProductCategory[]> {
+  const all: ProductCategory[] = [];
+  let page = 1;
+
+  while (true) {
+    const batch = await getCategories({ perPage: 100, page });
+    all.push(...batch);
+    if (batch.length < 100) break;
+    page += 1;
+  }
+
+  return all;
+}

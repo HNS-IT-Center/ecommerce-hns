@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { wooFetch, wooFetchWithMeta } from "./client";
 import type {
   Product,
@@ -5,6 +6,7 @@ import type {
   ProductVariation,
   ProductAttributeTaxonomy,
   ProductAttributeTerm,
+  ProductInput,
 } from "@/types/woocommerce";
 import { decodeHtmlEntities } from "@/lib/utils/html";
 
@@ -94,6 +96,18 @@ export async function getProductBySlug(slug: string): Promise<Product | null> {
   return product ? decodeProduct(product) : null;
 }
 
+/** Dipakai admin panel — cari produk by ID WooCommerce (dari link daftar produk). */
+export async function getProductById(id: number): Promise<Product | null> {
+  try {
+    const product = await wooFetch<Product>(`/products/${id}`, {
+      next: { revalidate: 600, tags: [`product-id-${id}`] },
+    });
+    return decodeProduct(product);
+  } catch {
+    return null;
+  }
+}
+
 /** Detail per varian (harga/stok/SKU spesifik) untuk produk `type: "variable"`. */
 export async function getProductVariations(productId: number): Promise<ProductVariation[]> {
   return wooFetch<ProductVariation[]>(`/products/${productId}/variations?per_page=100`, {
@@ -113,4 +127,35 @@ export async function getProductAttributeTerms(attributeId: number): Promise<Pro
   return wooFetch<ProductAttributeTerm[]>(`/products/attributes/${attributeId}/terms?per_page=100`, {
     next: { revalidate: 3600, tags: [`attribute-${attributeId}-terms`] },
   });
+}
+
+/** Buat produk baru (dipakai admin panel). Revalidate cache produk setelah sukses. */
+export async function createProduct(input: ProductInput): Promise<Product> {
+  const product = await wooFetch<Product>(`/products`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+
+  revalidateTag("products", { expire: 0 });
+  if (product.categories?.length) {
+    for (const category of product.categories) revalidateTag(`category-${category.id}`, { expire: 0 });
+  }
+
+  return decodeProduct(product);
+}
+
+/** Update produk WooCommerce (dipakai admin panel). Revalidate cache produk setelah sukses. */
+export async function updateProduct(id: number, input: Partial<ProductInput>): Promise<Product> {
+  const product = await wooFetch<Product>(`/products/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+
+  revalidateTag("products", { expire: 0 });
+  revalidateTag(`product-${product.slug}`, { expire: 0 });
+  if (product.categories?.length) {
+    for (const category of product.categories) revalidateTag(`category-${category.id}`, { expire: 0 });
+  }
+
+  return decodeProduct(product);
 }

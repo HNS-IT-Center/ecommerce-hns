@@ -17,6 +17,9 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
+      // Admin panel belum ada proteksi login (lihat PRE-DEPLOY-CHECKLIST.md) —
+      // minimal jangan sampai ke-index/muncul di hasil pencarian.
+      disallow: "/admin",
     },
   };
 }

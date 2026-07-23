@@ -101,3 +101,21 @@ export type ProductAttributeTerm = {
   name: string;
   count: number;
 };
+
+// Payload buat create/update produk lewat admin panel. Cuma field yang
+// benar-benar dipakai form admin — WooCommerce menerima jauh lebih banyak
+// field opsional daripada ini.
+export type ProductInput = {
+  name: string;
+  type?: "simple";
+  status?: "publish" | "draft";
+  description?: string;
+  short_description?: string;
+  regular_price?: string;
+  sale_price?: string;
+  manage_stock?: boolean;
+  stock_quantity?: number;
+  categories?: Array<{ id: number }>;
+  attributes?: Array<{ name: string; options: string[]; visible?: boolean }>;
+  images?: Array<{ id: number }>;
+};
