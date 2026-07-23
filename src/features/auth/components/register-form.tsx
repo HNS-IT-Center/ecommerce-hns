@@ -4,7 +4,8 @@ import { useState, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useAuthStore } from "@/store/auth"
-import { Lock, Mail, User, Phone, ArrowRight } from "lucide-react"
+import { Mail, User, Phone, ArrowRight } from "lucide-react"
+import { PasswordInput } from "./password-input"
 
 export function RegisterForm() {
   const [name, setName] = useState("")
@@ -78,17 +79,7 @@ export function RegisterForm() {
 
           <div>
             <label className="text-sm font-medium text-foreground">Password</label>
-            <div className="relative mt-1">
-              <Lock className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-xl border border-input bg-background py-2.5 pl-10 pr-3 outline-none transition-colors focus:border-brand-green"
-                placeholder="••••••••"
-              />
-            </div>
+            <PasswordInput value={password} onChange={setPassword} />
           </div>
         </div>
 
