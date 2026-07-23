@@ -4,6 +4,8 @@ import { getPrisma, isDatabaseConfigured } from "@/lib/prisma/client"
 import { POLICY_PAGES } from "@/lib/constants/policy-content"
 import { deleteFaqItem } from "./actions"
 
+import type { PolicyPage, FaqItem } from "@prisma/client"
+
 export default async function AdminKebijakanPage() {
   if (!isDatabaseConfigured()) {
     return (
@@ -19,7 +21,7 @@ export default async function AdminKebijakanPage() {
     prisma.policyPage.findMany(),
     prisma.faqItem.findMany({ orderBy: { sortOrder: "asc" } }),
   ])
-  const dbPageMap = new Map(dbPages.map((page) => [page.slug, page]))
+  const dbPageMap = new Map(dbPages.map((page: PolicyPage) => [page.slug, page]))
 
   return (
     <div className="mx-auto max-w-3xl space-y-10">
@@ -70,7 +72,7 @@ export default async function AdminKebijakanPage() {
           {faqItems.length === 0 && (
             <p className="text-sm text-muted-foreground">Belum ada FAQ.</p>
           )}
-          {faqItems.map((item) => (
+          {faqItems.map((item: FaqItem) => (
             <div
               key={item.id}
               className="flex items-start justify-between gap-4 rounded-xl border border-border bg-background p-4"

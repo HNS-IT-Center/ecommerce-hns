@@ -2,6 +2,7 @@ import Link from "next/link"
 import { Plus, Pencil } from "lucide-react"
 import { getPrisma, isDatabaseConfigured } from "@/lib/prisma/client"
 import { deleteStore } from "./actions"
+import type { Store } from "@prisma/client"
 
 export default async function AdminTokoPage() {
   if (!isDatabaseConfigured()) {
@@ -33,7 +34,7 @@ export default async function AdminTokoPage() {
         {stores.length === 0 && (
           <p className="text-sm text-muted-foreground">Belum ada data toko.</p>
         )}
-        {stores.map((store) => (
+        {stores.map((store: Store) => (
           <div
             key={store.id}
             className="flex items-start justify-between gap-4 rounded-xl border border-border bg-background p-4"
