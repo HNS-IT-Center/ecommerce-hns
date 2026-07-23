@@ -18,6 +18,16 @@ const EnvSchema = z.object({
 
   // Image domain WordPress
   NEXT_PUBLIC_IMAGE_DOMAIN: z.string().min(1),
+
+  // Admin panel — WordPress Application Password (upload gambar produk lewat
+  // /wp-json/wp/v2/media). BEDA kredensial dari WOOCOMMERCE_CONSUMER_*.
+  WORDPRESS_APP_USER: z.string().min(1).optional(),
+  WORDPRESS_APP_PASSWORD: z.string().min(1).optional(),
+
+  // Admin panel — database MariaDB (Hostinger) via Prisma. Data toko &
+  // kebijakan/FAQ. Opsional supaya storefront utama tidak fail-fast kalau
+  // admin belum dikonfigurasi.
+  DATABASE_URL: z.string().min(1).optional(),
 });
 
 export const env = EnvSchema.parse({
@@ -29,4 +39,7 @@ export const env = EnvSchema.parse({
   REVALIDATE_SECRET: process.env.REVALIDATE_SECRET,
   NEXT_PUBLIC_WHATSAPP_CS_NUMBER: process.env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER,
   NEXT_PUBLIC_IMAGE_DOMAIN: process.env.NEXT_PUBLIC_IMAGE_DOMAIN,
+  WORDPRESS_APP_USER: process.env.WORDPRESS_APP_USER,
+  WORDPRESS_APP_PASSWORD: process.env.WORDPRESS_APP_PASSWORD,
+  DATABASE_URL: process.env.DATABASE_URL,
 });
