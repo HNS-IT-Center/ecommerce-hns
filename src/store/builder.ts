@@ -33,19 +33,15 @@ interface BuilderState {
 }
 
 // categorySlug di bawah ini diverifikasi langsung ke taxonomy WooCommerce asli
-// (bukan tebakan) — sebelumnya beberapa slug (prosesor/motherboard/ram/vga/ssd/
-// cooler/casing) tidak match kategori manapun, jadi /api/products diam-diam
-// jatuh ke pencarian keyword yang salah sasaran (mis. slot "RAM" nunjukin
-// speaker JBL). WooCommerce toko ini TIDAK punya kategori khusus untuk
-// Processor, RAM, atau VGA — untuk 3 slot itu, categorySlug sengaja diisi
-// kata kunci pencarian ter-presisi (bukan slug kategori beneran), karena
-// /api/products sudah punya fallback: kalau slug tidak match kategori, ia
-// dipakai sebagai keyword pencarian. Lihat PRE-DEPLOY-CHECKLIST.md.
+// via REST API /products/categories (bukan tebakan). Processor, RAM, dan VGA
+// TERNYATA punya kategori sendiri (id 29/24/98) — temuan sesi sebelumnya bahwa
+// kategori ini tidak ada itu salah; yang salah adalah slug tebakannya
+// ("ram pc", "vga card") tidak cocok dengan slug asli WooCommerce.
 const initialSlots: Record<BuilderSlotId, BuilderSlot> = {
   cpu: {
     id: "cpu",
     title: "Prosesor (CPU)",
-    categorySlug: "processor", // tidak ada kategori Processor — fallback ke search "processor"
+    categorySlug: "processor",
     selectedItem: null,
   },
   motherboard: {
@@ -57,13 +53,13 @@ const initialSlots: Record<BuilderSlotId, BuilderSlot> = {
   ram: {
     id: "ram",
     title: "RAM (Memory)",
-    categorySlug: "ram pc", // tidak ada kategori RAM — fallback ke search "ram pc" (tidak sempurna, masih ada noise laptop/casing, tapi jauh lebih relevan dari "ram" sendirian)
+    categorySlug: "memory-pc",
     selectedItem: null,
   },
   vga: {
     id: "vga",
     title: "Kartu Grafis (VGA)",
-    categorySlug: "vga card", // tidak ada kategori VGA — fallback ke search "vga card"
+    categorySlug: "vga-card-graphics-card",
     selectedItem: null,
   },
   storage: {
