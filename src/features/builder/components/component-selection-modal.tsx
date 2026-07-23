@@ -13,6 +13,12 @@ interface Product {
   images: Array<{ src: string }>
 }
 
+interface AttributeTerm {
+  id: number
+  name: string
+  count: number
+}
+
 interface ComponentSelectionModalProps {
   isOpen: boolean
   onClose: () => void
@@ -24,14 +30,26 @@ type CompletedFetch = {
   products: Product[]
 }
 
+type CompletedTermsFetch = {
+  key: string
+  terms: AttributeTerm[]
+}
+
 export function ComponentSelectionModal({ isOpen, onClose, slot }: ComponentSelectionModalProps) {
   const [search, setSearch] = useState("")
+  // null = "Semua" (pakai slot.categorySlug gabungan), selain itu override ke
+  // 1 sub-kategori spesifik (mis. cuma "SSD NVMe").
+  const [typeFilter, setTypeFilter] = useState<string | null>(null)
+  const [capacityTermId, setCapacityTermId] = useState("")
   const [completed, setCompleted] = useState<CompletedFetch | null>(null)
+  const [completedTerms, setCompletedTerms] = useState<CompletedTermsFetch | null>(null)
 
   const selectItem = useBuilderStore((state) => state.selectItem)
 
-  // Kombinasi kategori+pencarian yang identifies hasil fetch saat ini.
-  const fetchKey = `${slot.categorySlug}::${search}`
+  const effectiveCategorySlug = typeFilter ?? slot.categorySlug
+
+  // Kombinasi kategori+pencarian+filter yang identifies hasil fetch saat ini.
+  const fetchKey = `${effectiveCategorySlug}::${search}::${capacityTermId}`
 
   useEffect(() => {
     if (!isOpen) return
@@ -39,9 +57,13 @@ export function ComponentSelectionModal({ isOpen, onClose, slot }: ComponentSele
     let isStale = false
 
     const url = new URL("/api/products", window.location.origin)
-    url.searchParams.set("categorySlug", slot.categorySlug)
+    url.searchParams.set("categorySlug", effectiveCategorySlug)
     if (search) {
       url.searchParams.set("search", search)
+    }
+    if (slot.attributeSlug && capacityTermId) {
+      url.searchParams.set("attribute", slot.attributeSlug)
+      url.searchParams.set("attributeTerm", capacityTermId)
     }
     url.searchParams.set("per_page", "20")
 
@@ -60,7 +82,35 @@ export function ComponentSelectionModal({ isOpen, onClose, slot }: ComponentSele
     return () => {
       isStale = true
     }
-  }, [isOpen, fetchKey, slot.categorySlug, search])
+  }, [isOpen, fetchKey, effectiveCategorySlug, search, capacityTermId, slot.attributeSlug])
+
+  // Daftar term kapasitas (mis. "1TB+", "2TB+") buat isi dropdown filter —
+  // cuma di-fetch kalau slot ini punya attributeSlug.
+  useEffect(() => {
+    if (!isOpen || !slot.attributeSlug) return
+
+    let isStale = false
+    const attributeSlug = slot.attributeSlug
+
+    const url = new URL("/api/attribute-terms", window.location.origin)
+    url.searchParams.set("attributeSlug", attributeSlug)
+
+    fetch(url)
+      .then((res) => res.json())
+      .then((data) => {
+        if (isStale) return
+        setCompletedTerms({ key: attributeSlug, terms: Array.isArray(data) ? data : [] })
+      })
+      .catch((error) => {
+        console.error("Failed to fetch attribute terms", error)
+        if (isStale) return
+        setCompletedTerms({ key: attributeSlug, terms: [] })
+      })
+
+    return () => {
+      isStale = true
+    }
+  }, [isOpen, slot.attributeSlug])
 
   if (!isOpen) return null
 
@@ -69,6 +119,7 @@ export function ComponentSelectionModal({ isOpen, onClose, slot }: ComponentSele
   // dengan use-live-search.ts.
   const loading = !completed || completed.key !== fetchKey
   const products = !loading ? completed.products : []
+  const terms = completedTerms && completedTerms.key === slot.attributeSlug ? completedTerms.terms : []
 
   const handleSelect = (product: Product) => {
     const item: BuilderItem = {
@@ -95,7 +146,7 @@ export function ComponentSelectionModal({ isOpen, onClose, slot }: ComponentSele
           </button>
         </div>
 
-        {/* Search Bar */}
+        {/* Search + Filter */}
         <div className="border-b p-4">
           <div className="relative">
             <Search className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
@@ -107,6 +158,51 @@ export function ComponentSelectionModal({ isOpen, onClose, slot }: ComponentSele
               className="w-full rounded-xl border border-input bg-muted/50 py-3 pl-10 pr-4 outline-none transition-colors focus:border-primary focus:bg-background"
             />
           </div>
+
+          {/* Filter jenis (chip) */}
+          {slot.typeFilters && slot.typeFilters.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                onClick={() => setTypeFilter(null)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  typeFilter === null
+                    ? "border-brand-green bg-brand-green/10 text-brand-green"
+                    : "border-input text-muted-foreground hover:border-brand-green/50"
+                }`}
+              >
+                Semua
+              </button>
+              {slot.typeFilters.map((option) => (
+                <button
+                  key={option.categorySlug}
+                  onClick={() => setTypeFilter(option.categorySlug)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    typeFilter === option.categorySlug
+                      ? "border-brand-green bg-brand-green/10 text-brand-green"
+                      : "border-input text-muted-foreground hover:border-brand-green/50"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Filter kapasitas (dropdown) */}
+          {slot.attributeSlug && terms.length > 0 && (
+            <select
+              value={capacityTermId}
+              onChange={(e) => setCapacityTermId(e.target.value)}
+              className="mt-3 w-full rounded-xl border border-input bg-muted/50 px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:bg-background"
+            >
+              <option value="">Semua Kapasitas</option>
+              {terms.map((term) => (
+                <option key={term.id} value={term.id}>
+                  {term.name}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         {/* Product List */}

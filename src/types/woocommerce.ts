@@ -86,4 +86,18 @@ export type GetProductsParams = {
   featured?: boolean;
   include?: number[];
   exclude?: number[];
+  attribute?: string; // slug taxonomy, mis. "pa_kapasitas-storage"
+  attributeTerm?: string | number;
+};
+
+export type ProductAttributeTaxonomy = {
+  id: number;
+  name: string;
+  slug: string;
+};
+
+export type ProductAttributeTerm = {
+  id: number;
+  name: string;
+  count: number;
 };
