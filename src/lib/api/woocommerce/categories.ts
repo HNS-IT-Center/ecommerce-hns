@@ -1,4 +1,7 @@
-import { wooFetch } from "./client";
+import { unstable_cache } from "next/cache";
+import type { Prisma } from "@prisma/client";
+import { getPrisma } from "@/lib/prisma/client";
+import { prismaCategoryToWoo } from "./db-mapper";
 import type { ProductCategory } from "@/types/woocommerce";
 import { decodeHtmlEntities } from "@/lib/utils/html";
 
@@ -14,25 +17,44 @@ type GetCategoriesParams = {
 export async function getCategories(
   params: GetCategoriesParams = {}
 ): Promise<ProductCategory[]> {
-  const query = new URLSearchParams();
-  
-  if (params.perPage) query.set("per_page", String(params.perPage));
-  if (params.page) query.set("page", String(params.page));
-  if (params.parent !== undefined) query.set("parent", String(params.parent));
-  if (params.hideEmpty) query.set("hide_empty", "true");
-  if (params.search) query.set("search", params.search);
-  if (params.slug) query.set("slug", params.slug);
+  const fetcher = unstable_cache(
+    async () => {
+      const where: Prisma.CategoryWhereInput = {};
 
-  const categories = await wooFetch<ProductCategory[]>(`/products/categories?${query.toString()}`, {
-    next: {
-      revalidate: 3600,
-      tags: ["categories"],
+      if (params.parent !== undefined) {
+        where.parentId = params.parent === 0 ? null : params.parent;
+      }
+      if (params.search) {
+        where.name = { contains: params.search };
+      }
+      if (params.slug) {
+        where.slug = params.slug;
+      }
+      // If hideEmpty is true, we should only fetch categories with products.
+      if (params.hideEmpty) {
+        where.products = { some: {} };
+      }
+
+      const categories = await getPrisma().category.findMany({
+        where,
+        take: params.perPage || 100,
+        skip: params.page && params.perPage ? (params.page - 1) * params.perPage : 0,
+        include: {
+          _count: {
+            select: { products: true }
+          }
+        },
+        orderBy: { name: 'asc' },
+      });
+
+      return categories.map(prismaCategoryToWoo);
     },
-  });
+    [JSON.stringify(params), "getCategories"],
+    { revalidate: 3600, tags: ["categories"] }
+  );
 
-  // WooCommerce mengembalikan nama/deskripsi dengan HTML entity mentah
-  // (mis. "FIT &amp; HEALTH") — decode sekali di sini supaya semua
-  // konsumen (MegaMenu, MobileMenu, ShopSidebar, halaman kategori) beres.
+  const categories = await fetcher();
+
   return categories.map((category) => ({
     ...category,
     name: decodeHtmlEntities(category.name),
