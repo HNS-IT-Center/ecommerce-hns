@@ -22,7 +22,12 @@ const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient }
 // membungkus package `mariadb` asli).
 function createPrismaClient(): PrismaClient {
   // @prisma/adapter-mariadb requires mariadb:// protocol, but Prisma schema uses mysql://
-  const url = (env.DATABASE_URL as string).replace(/^mysql:\/\//, "mariadb://")
+  let url = env.DATABASE_URL as string
+  // Remove any surrounding quotes that might have been accidentally kept by env parsers
+  url = url.replace(/^['"]|['"]$/g, "")
+  // Replace mysql:// with mariadb://
+  url = url.replace(/^mysql:\/\//, "mariadb://")
+  
   const adapter = new PrismaMariaDb(url)
   return new PrismaClient({ adapter })
 }
