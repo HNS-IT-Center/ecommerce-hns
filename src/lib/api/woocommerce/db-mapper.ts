@@ -1,9 +1,35 @@
 import type { Product as WooProduct, ProductCategory as WooCategory, ProductImage, ProductAttribute } from "@/types/woocommerce";
 
 export function prismaProductToWoo(prismaProduct: any): WooProduct {
-  // Determine prices
-  const regularPrice = prismaProduct.regularPrice ? String(prismaProduct.regularPrice) : "0";
-  const salePrice = prismaProduct.salePrice ? String(prismaProduct.salePrice) : "";
+  // Produk VARIABLE (induk) tidak punya harga sendiri di database - harga
+  // nempel di tiap VARIATION (child). Tampilkan "mulai dari" harga variasi
+  // termurah, bukan field harga induk yang memang kosong (lihat diskusi
+  // 2026-07-25 soal parent/child pricing).
+  const variationPrices =
+    prismaProduct.type === "VARIABLE" && prismaProduct.variations
+      ? prismaProduct.variations
+          .map((v: any) => ({
+            regular: v.regularPrice != null ? Number(v.regularPrice) : null,
+            sale: v.salePrice != null ? Number(v.salePrice) : null,
+          }))
+          .filter((p: { regular: number | null }) => p.regular !== null)
+      : [];
+
+  let regularPrice: string;
+  let salePrice: string;
+
+  if (variationPrices.length > 0) {
+    const minRegular = Math.min(...variationPrices.map((p: { regular: number }) => p.regular));
+    const minEffective = Math.min(
+      ...variationPrices.map((p: { regular: number; sale: number | null }) => (p.sale && p.sale > 0 ? p.sale : p.regular))
+    );
+    regularPrice = String(minRegular);
+    salePrice = minEffective < minRegular ? String(minEffective) : "";
+  } else {
+    regularPrice = prismaProduct.regularPrice ? String(prismaProduct.regularPrice) : "0";
+    salePrice = prismaProduct.salePrice ? String(prismaProduct.salePrice) : "";
+  }
+
   const price = salePrice ? salePrice : regularPrice;
   const onSale = Boolean(salePrice);
 

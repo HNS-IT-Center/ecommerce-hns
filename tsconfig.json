@@ -30,5 +30,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "_ui_reference", "notes"]
+  "exclude": ["node_modules", "_ui_reference", "notes", "scripts"]
 }
