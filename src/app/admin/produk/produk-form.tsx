@@ -118,7 +118,7 @@ export function ProdukForm({ categories, productId, defaultValues, defaultImages
         options: [attr.value],
         visible: true,
       })),
-      images: values.imageIds.map((id) => ({ id })),
+      images: images.map((img) => ({ url: img.source_url })),
     }
 
     try {

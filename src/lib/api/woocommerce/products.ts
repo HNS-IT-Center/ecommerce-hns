@@ -1,5 +1,5 @@
 import { revalidateTag, unstable_cache } from "next/cache";
-import type { Prisma } from "@prisma/client";
+import { ProductStatus, ProductType, StockStatus, type Prisma } from "@prisma/client";
 import { getPrisma } from "@/lib/prisma/client";
 import { prismaProductToWoo } from "./db-mapper";
 import type {
@@ -264,14 +264,155 @@ export async function getProductAttributeTerms(attributeId: number): Promise<Pro
   return fetcher();
 }
 
-/** Buat produk baru (dipakai admin panel). Revalidate cache produk setelah sukses. */
-export async function createProduct(input: ProductInput): Promise<Product> {
-  // Not fully implemented for DB write yet, requires more complex mapping
-  // We'll throw or mock for now as requested by "ubah methodenya penarikan produk"
-  throw new Error("createProduct via DB is not fully implemented yet.");
+function slugify(name: string, wooId: number): string {
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)+/g, "") + `-${wooId}`
+  );
 }
 
-/** Update produk WooCommerce (dipakai admin panel). Revalidate cache produk setelah sukses. */
+async function nextWooId(): Promise<number> {
+  const result = await getPrisma().product.aggregate({ _max: { wooId: true } });
+  return (result._max.wooId ?? 0) + 1;
+}
+
+/** Ganti total kategori/gambar/atribut produk sesuai input (form admin selalu kirim daftar lengkap, bukan patch parsial). */
+async function replaceProductRelations(
+  tx: Prisma.TransactionClient,
+  productId: number,
+  input: ProductInput
+) {
+  await tx.productCategory.deleteMany({ where: { productId } });
+  if (input.categories?.length) {
+    await tx.productCategory.createMany({
+      data: input.categories.map((c) => ({ productId, categoryId: c.id })),
+      skipDuplicates: true,
+    });
+  }
+
+  await tx.productImage.deleteMany({ where: { productId } });
+  if (input.images?.length) {
+    await tx.productImage.createMany({
+      data: input.images.map((img, i) => ({
+        productId,
+        url: img.url,
+        position: i,
+        isPrimary: i === 0,
+      })),
+    });
+  }
+
+  // Form admin isi atribut sebagai teks bebas (nama+nilai), bukan pilih dari
+  // master data -> upsert ke Attribute/AttributeValue supaya tetap normalisasi.
+  await tx.productAttribute.deleteMany({ where: { productId } });
+  if (input.attributes?.length) {
+    let position = 0;
+    for (const attr of input.attributes) {
+      const value = attr.options[0];
+      if (!attr.name?.trim() || !value?.trim()) continue;
+
+      const attribute = await tx.attribute.upsert({
+        where: { name: attr.name.trim() },
+        create: { name: attr.name.trim() },
+        update: {},
+      });
+      const attributeValue = await tx.attributeValue.upsert({
+        where: { attributeId_value: { attributeId: attribute.id, value: value.trim() } },
+        create: { attributeId: attribute.id, value: value.trim() },
+        update: {},
+      });
+      await tx.productAttribute.create({
+        data: {
+          productId,
+          attributeId: attribute.id,
+          valueId: attributeValue.id,
+          position: position++,
+        },
+      });
+    }
+  }
+}
+
+async function refetchAsWoo(productId: number): Promise<Product> {
+  const product = await getPrisma().product.findUniqueOrThrow({
+    where: { id: productId },
+    include: productInclude,
+  });
+  return decodeProduct(prismaProductToWoo(product));
+}
+
+/** Buat produk baru (dipakai admin panel). Tulis langsung ke Prisma DB (lihat CLAUDE.md §2.2 — WooCommerce tidak lagi dipakai untuk data produk). Gambar tetap diupload lewat WordPress Media API sebelum sampai sini (lihat lib/api/wordpress/media.ts), di sini cuma menyimpan URL-nya. */
+export async function createProduct(input: ProductInput): Promise<Product> {
+  const prisma = getPrisma();
+  const wooId = await nextWooId();
+  const slug = slugify(input.name, wooId);
+  const stockQty = input.stock_quantity ?? null;
+
+  const created = await prisma.$transaction(async (tx) => {
+    const product = await tx.product.create({
+      data: {
+        wooId,
+        type: ProductType.SIMPLE,
+        status: input.status === "publish" ? ProductStatus.PUBLISHED : ProductStatus.DRAFT,
+        name: input.name,
+        slug,
+        shortDescription: input.short_description || null,
+        description: input.description || null,
+        regularPrice: input.regular_price || null,
+        salePrice: input.sale_price || null,
+        stockQty,
+        stockStatus: (stockQty ?? 0) > 0 ? StockStatus.INSTOCK : StockStatus.OUTOFSTOCK,
+      },
+    });
+    await replaceProductRelations(tx, product.id, input);
+    return product;
+  }, { timeout: 30000 });
+
+  const result = await refetchAsWoo(created.id);
+  revalidateTag("products", "max");
+  revalidateTag("all-products", "max");
+  return result;
+}
+
+/** Update produk (dipakai admin panel). `id` di sini adalah woo_id (konvensi lama, tetap dipakai sebagai identifier publik) - lihat getProductById. */
 export async function updateProduct(id: number, input: Partial<ProductInput>): Promise<Product> {
-  throw new Error("updateProduct via DB is not fully implemented yet.");
+  const prisma = getPrisma();
+  const existing = await prisma.product.findUnique({ where: { wooId: id } });
+  if (!existing) throw new Error(`Produk dengan woo_id=${id} tidak ditemukan`);
+
+  const stockQty = input.stock_quantity;
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const product = await tx.product.update({
+      where: { id: existing.id },
+      data: {
+        ...(input.name !== undefined && { name: input.name, slug: slugify(input.name, existing.wooId) }),
+        ...(input.status !== undefined && {
+          status: input.status === "publish" ? ProductStatus.PUBLISHED : ProductStatus.DRAFT,
+        }),
+        ...(input.short_description !== undefined && { shortDescription: input.short_description || null }),
+        ...(input.description !== undefined && { description: input.description || null }),
+        ...(input.regular_price !== undefined && { regularPrice: input.regular_price || null }),
+        ...(input.sale_price !== undefined && { salePrice: input.sale_price || null }),
+        ...(stockQty !== undefined && {
+          stockQty,
+          stockStatus: stockQty > 0 ? StockStatus.INSTOCK : StockStatus.OUTOFSTOCK,
+        }),
+      },
+    });
+
+    if (input.categories || input.images || input.attributes) {
+      await replaceProductRelations(tx, product.id, input as ProductInput);
+    }
+    return product;
+  }, { timeout: 30000 });
+
+  const result = await refetchAsWoo(updated.id);
+  revalidateTag("products", "max");
+  revalidateTag("all-products", "max");
+  revalidateTag(`product-${existing.slug}`, "max");
+  revalidateTag(`product-id-${id}`, "max");
+  return result;
 }

@@ -117,5 +117,5 @@ export type ProductInput = {
   stock_quantity?: number;
   categories?: Array<{ id: number }>;
   attributes?: Array<{ name: string; options: string[]; visible?: boolean }>;
-  images?: Array<{ id: number }>;
+  images?: Array<{ url: string }>;
 };
