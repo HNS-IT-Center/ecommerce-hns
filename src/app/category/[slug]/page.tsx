@@ -52,11 +52,13 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
 
   // Fetch full category list once: needed for the sidebar tree AND to resolve
   // this category's descendant ids (parent categories include child products).
-  const allCategories = await getCategories({ hideEmpty: true, perPage: 100 })
+  // perPage harus melampaui jumlah kategori: kalau daftarnya terpotong, simpul
+  // yang hilang membuat produk di cabang itu ikut hilang dari halaman induknya.
+  const allCategories = await getCategories({ hideEmpty: true, perPage: 500 })
   const categoryIds = collectCategoryAndDescendantIds(category.id, allCategories)
 
   const { products: wooProducts, totalPages } = await getProductsPaginated({
-    category: categoryIds.join(","),
+    category: categoryIds,
     onSale,
     page,
     perPage: PER_PAGE,

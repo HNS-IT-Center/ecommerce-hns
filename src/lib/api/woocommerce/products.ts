@@ -56,7 +56,12 @@ function buildPrismaWhere(params: GetProductsParams): Prisma.ProductWhereInput {
   }
 
   if (params.category) {
-    if (typeof params.category === 'string') {
+    // Daftar id dipakai halaman kategori induk: satu kategori beserta seluruh
+    // keturunannya. Tanpa cabang ini daftar tersebut jatuh ke pencocokan slug
+    // dan tidak pernah cocok dengan apa pun.
+    if (Array.isArray(params.category)) {
+      where.categories = { some: { categoryId: { in: params.category } } };
+    } else if (typeof params.category === 'string') {
       where.categories = { some: { category: { slug: params.category } } };
     } else {
       where.categories = { some: { categoryId: params.category } };

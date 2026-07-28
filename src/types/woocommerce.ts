@@ -73,7 +73,12 @@ export type ProductVariation = {
 };
 
 export type GetProductsParams = {
-  category?: string | number;
+  /**
+   * `string` = slug kategori tunggal, `number` = id tunggal, `number[]` = satu
+   * kategori beserta keturunannya (halaman kategori induk melistkan produk yang
+   * menempel di anak-anaknya).
+   */
+  category?: string | number | number[];
   brand?: string; // Custom if using brands taxonomy
   perPage?: number;
   page?: number;
