@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { Plus, Trash2, Loader2, X } from "lucide-react"
 import { productFormSchema, type ProductFormValues } from "@/lib/validators/product"
 import type { ProductCategory } from "@/types/woocommerce"
+import { CategoryPicker } from "./category-picker"
 
 type ExistingImage = { id: number; source_url: string }
 
@@ -88,14 +89,6 @@ export function ProdukForm({ categories, productId, defaultValues, defaultImages
     setValue(
       "imageIds",
       newImages.map((img) => img.id)
-    )
-  }
-
-  function toggleCategory(id: number) {
-    const current = selectedCategoryIds ?? []
-    setValue(
-      "categoryIds",
-      current.includes(id) ? current.filter((c) => c !== id) : [...current, id]
     )
   }
 
@@ -212,18 +205,11 @@ export function ProdukForm({ categories, productId, defaultValues, defaultImages
         {errors.categoryIds && (
           <p className="mb-1 text-xs text-destructive">{errors.categoryIds.message}</p>
         )}
-        <div className="max-h-60 space-y-1 overflow-y-auto rounded-xl border border-input p-3">
-          {categories.map((cat) => (
-            <label key={cat.id} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={selectedCategoryIds?.includes(cat.id) ?? false}
-                onChange={() => toggleCategory(cat.id)}
-              />
-              {cat.name}
-            </label>
-          ))}
-        </div>
+        <CategoryPicker
+          categories={categories}
+          value={selectedCategoryIds ?? []}
+          onChange={(ids) => setValue("categoryIds", ids, { shouldValidate: true })}
+        />
       </div>
 
       <div>
