@@ -161,9 +161,9 @@ function DockIcon({
 
   // Handle Framer Motion's style objects efficiently without re-rendering issues
   const motionStyle = {
+    ...commonProps.style,
     width: scale,
     height: scale,
-    ...commonProps.style
   }
 
   if (item.href) {
