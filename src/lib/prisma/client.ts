@@ -28,7 +28,16 @@ function createPrismaClient(): PrismaClient {
   // Replace mysql:// with mariadb://
   url = url.replace(/^mysql:\/\//, "mariadb://")
   
-  const adapter = new PrismaMariaDb(url)
+  const adapter = new PrismaMariaDb(url, {
+    // Protokol biner menandai parameter sebagai utf8mb4_general_ci, sedangkan
+    // semua kolom di DB ini utf8mb4_unicode_ci. Prisma menerjemahkan `contains`
+    // dan `startsWith` jadi LIKE CONCAT('%', ?, '%'), dan CONCAT yang mencampur
+    // dua collation itu menghasilkan utf8mb4_bin dengan coercibility NONE —
+    // MariaDB lalu menolak dengan "Illegal mix of collations", yang bikin
+    // seluruh pencarian produk balas 500. Text protocol mengirim parameter
+    // dengan collation koneksi, jadi cocok dengan kolom.
+    useTextProtocol: true,
+  })
   return new PrismaClient({ adapter })
 }
 
