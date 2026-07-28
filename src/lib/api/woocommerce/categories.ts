@@ -236,6 +236,133 @@ export async function deleteCategory(id: number, acknowledgedProductCount: numbe
 
   await prisma.category.delete({ where: { id } });}
 
+export type MergeCategoryPreview = {
+  sourceId: number;
+  targetId: number;
+  sourceName: string;
+  targetName: string;
+  /** Produk yang akan berpindah kaitan ke kategori tujuan. */
+  productsToMove: number;
+  /** Sudah ada di kedua kategori — kaitannya cukup dirapikan jadi satu. */
+  productsAlreadyInTarget: number;
+  /**
+   * Produk yang masih memegang kaitan ke kategori lain setelah penggabungan.
+   * Bukan kesalahan, tapi PIC berhak tahu bahwa produknya tidak otomatis
+   * bersih dari cabang lamanya.
+   */
+  productsWithOtherCategories: number;
+};
+
+/** Pemeriksaan yang sama dipakai preview dan penyimpanan, supaya tidak bisa berbeda. */
+async function loadMergePair(sourceId: number, targetId: number) {
+  const prisma = getPrisma();
+
+  if (sourceId === targetId) {
+    throw new CategoryOperationError("Kategori tidak bisa digabungkan dengan dirinya sendiri.");
+  }
+
+  const [source, target] = await Promise.all([
+    prisma.category.findUnique({
+      where: { id: sourceId },
+      include: { _count: { select: { children: true } } },
+    }),
+    prisma.category.findUnique({ where: { id: targetId } }),
+  ]);
+
+  if (!source) throw new CategoryOperationError("Kategori asal tidak ditemukan.");
+  if (!target) throw new CategoryOperationError("Kategori tujuan tidak ditemukan.");
+
+  // Sub-kategori tidak ikut terbawa. Menghapus induknya akan menghapus mereka
+  // juga lewat cascade, jadi penggabungan ditolak sampai isinya dipindahkan
+  // lebih dulu — dan sekarang memindahkan sudah bisa dilakukan sendiri.
+  if (source._count.children > 0) {
+    throw new CategoryOperationError(
+      `"${source.name}" masih punya ${source._count.children} sub-kategori. Pindahkan dulu isinya, baru gabungkan.`
+    );
+  }
+
+  return { source, target };
+}
+
+/** Hitung dampak penggabungan tanpa menulis apa pun. */
+export async function previewMergeCategory(
+  sourceId: number,
+  targetId: number
+): Promise<MergeCategoryPreview> {
+  const prisma = getPrisma();
+  const { source, target } = await loadMergePair(sourceId, targetId);
+
+  const [sourceLinks, targetProductIds] = await Promise.all([
+    prisma.productCategory.findMany({ where: { categoryId: sourceId }, select: { productId: true } }),
+    prisma.productCategory
+      .findMany({ where: { categoryId: targetId }, select: { productId: true } })
+      .then((rows) => new Set(rows.map((r) => r.productId))),
+  ]);
+
+  const productIds = sourceLinks.map((l) => l.productId);
+  const alreadyThere = productIds.filter((id) => targetProductIds.has(id));
+
+  const otherLinks = await prisma.productCategory.count({
+    where: { productId: { in: productIds }, categoryId: { notIn: [sourceId, targetId] } },
+  });
+
+  return {
+    sourceId,
+    targetId,
+    sourceName: source.name,
+    targetName: target.name,
+    productsToMove: productIds.length - alreadyThere.length,
+    productsAlreadyInTarget: alreadyThere.length,
+    productsWithOtherCategories: otherLinks,
+  };
+}
+
+/**
+ * Gabungkan dua kategori yang sebenarnya berarti hal yang sama.
+ *
+ * Setiap produk yang menempel di kategori asal dikaitkan ke kategori tujuan,
+ * lalu kategori asal dihapus. Kaitan produk ke kategori LAIN tidak disentuh:
+ * penggabungan hanya menjawab "dua pintu ini menuju ruangan yang sama", bukan
+ * memutuskan di cabang mana lagi produk itu pantas berada. Membereskan sisa
+ * cabang lama adalah pekerjaan terpisah yang butuh penilaian manusia.
+ *
+ * Jumlah produk yang berpindah wajib dikirim balik dari layar konfirmasi, sama
+ * seperti pada penghapusan — angka itu bukti PIC sudah diberi tahu seberapa
+ * besar dampaknya sebelum menyetujui.
+ */
+export async function mergeCategory(
+  sourceId: number,
+  targetId: number,
+  acknowledgedMoveCount: number
+): Promise<void> {
+  const prisma = getPrisma();
+  await loadMergePair(sourceId, targetId);
+
+  const preview = await previewMergeCategory(sourceId, targetId);
+  if (preview.productsToMove !== acknowledgedMoveCount) {
+    throw new CategoryOperationError(
+      `Jumlah produk berubah sejak dampaknya ditampilkan (sekarang ${preview.productsToMove}). Lihat dampaknya sekali lagi sebelum menggabungkan.`
+    );
+  }
+
+  const links = await prisma.productCategory.findMany({
+    where: { categoryId: sourceId },
+    select: { productId: true },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    if (links.length > 0) {
+      await tx.productCategory.createMany({
+        data: links.map((l) => ({ productId: l.productId, categoryId: targetId })),
+        skipDuplicates: true,
+      });
+    }
+
+    // Kaitan produk ke kategori asal ikut terhapus lewat cascade pada relasi.
+    await tx.category.delete({ where: { id: sourceId } });
+  });
+}
+
 /**
  * Pindahkan kategori beserta seluruh isinya ke induk lain (`null` = jadikan
  * kategori utama).

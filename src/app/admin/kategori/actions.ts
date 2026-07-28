@@ -5,13 +5,20 @@ import {
   CategoryOperationError,
   createCategory,
   deleteCategory,
+  mergeCategory,
   moveCategory,
+  previewMergeCategory,
   renameCategory,
+  type MergeCategoryPreview,
 } from "@/lib/api/woocommerce/categories"
 
 export type CategoryActionState = { error: string | null; ok: string | null }
 
 export const EMPTY_STATE: CategoryActionState = { error: null, ok: null }
+
+export type MergePreviewState = { error: string | null; preview: MergeCategoryPreview | null }
+
+export const EMPTY_MERGE_PREVIEW: MergePreviewState = { error: null, preview: null }
 
 /**
  * Pembersihan cache tinggal di sini, bukan di `lib/api`. Lapisan data tidak
@@ -93,6 +100,53 @@ export async function moveCategoryAction(
   }
 
   return run(() => moveCategory(id, parentId), "Kategori dipindahkan.")
+}
+
+/**
+ * Dampak dihitung di server karena hanya server yang tahu kaitan produk —
+ * layar admin cuma memegang jumlah per kategori, bukan produk mana saja yang
+ * sudah ada di kedua sisi.
+ */
+export async function previewMergeCategoryAction(
+  _prev: MergePreviewState,
+  formData: FormData
+): Promise<MergePreviewState> {
+  const sourceId = Number(formData.get("sourceId"))
+  const targetId = Number(formData.get("targetId"))
+
+  if (Number.isNaN(sourceId) || Number.isNaN(targetId)) {
+    return { error: "Kategori tidak valid.", preview: null }
+  }
+
+  try {
+    return { error: null, preview: await previewMergeCategory(sourceId, targetId) }
+  } catch (error) {
+    if (error instanceof CategoryOperationError) {
+      return { error: error.message, preview: null }
+    }
+    throw error
+  }
+}
+
+export async function mergeCategoryAction(
+  _prev: CategoryActionState,
+  formData: FormData
+): Promise<CategoryActionState> {
+  const sourceId = Number(formData.get("sourceId"))
+  const targetId = Number(formData.get("targetId"))
+  const acknowledged = Number(formData.get("acknowledgedMoveCount"))
+
+  if (Number.isNaN(sourceId) || Number.isNaN(targetId)) {
+    return { error: "Kategori tidak valid.", ok: null }
+  }
+  if (Number.isNaN(acknowledged)) {
+    return { error: "Konfirmasi jumlah produk tidak valid.", ok: null }
+  }
+
+  return run(
+    () => mergeCategory(sourceId, targetId, acknowledged),
+    "Kategori digabungkan."
+  )
 }
 
 export async function deleteCategoryAction(

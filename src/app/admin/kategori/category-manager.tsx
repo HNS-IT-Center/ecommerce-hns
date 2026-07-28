@@ -1,14 +1,17 @@
 "use client"
 
 import { useActionState, useMemo, useState } from "react"
-import { ChevronRight, FolderInput, Pencil, Plus, Trash2, TriangleAlert, X } from "lucide-react"
+import { ChevronRight, FolderInput, Merge, Pencil, Plus, Trash2, TriangleAlert, X } from "lucide-react"
 import type { AdminCategory } from "@/lib/api/woocommerce/categories"
 import { collectDescendantIds, planCategoryMove } from "@/lib/utils/category-move"
 import {
+  EMPTY_MERGE_PREVIEW,
   EMPTY_STATE,
   createCategoryAction,
   deleteCategoryAction,
+  mergeCategoryAction,
   moveCategoryAction,
+  previewMergeCategoryAction,
   renameCategoryAction,
 } from "./actions"
 
@@ -53,11 +56,18 @@ export function CategoryManager({ categories }: Props) {
   const [renameState, renameAction, renaming] = useActionState(renameCategoryAction, EMPTY_STATE)
   const [deleteState, deleteAction, deleting] = useActionState(deleteCategoryAction, EMPTY_STATE)
   const [moveState, moveAction, moving] = useActionState(moveCategoryAction, EMPTY_STATE)
+  const [mergeState, mergeAction, merging] = useActionState(mergeCategoryAction, EMPTY_STATE)
+  const [mergePreview, previewAction, previewing] = useActionState(
+    previewMergeCategoryAction,
+    EMPTY_MERGE_PREVIEW
+  )
 
   const [editingId, setEditingId] = useState<number | null>(null)
   const [confirmingId, setConfirmingId] = useState<number | null>(null)
   const [movingId, setMovingId] = useState<number | null>(null)
   const [moveTarget, setMoveTarget] = useState<string>("")
+  const [mergingId, setMergingId] = useState<number | null>(null)
+  const [mergeTarget, setMergeTarget] = useState<string>("")
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
 
   const byId = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories])
@@ -95,6 +105,15 @@ export function CategoryManager({ categories }: Props) {
     setMoveTarget(node.parentId === null ? "" : String(node.parentId))
     setEditingId(null)
     setConfirmingId(null)
+    setMergingId(null)
+  }
+
+  const openMerge = (node: AdminCategory) => {
+    setMergingId(node.id)
+    setMergeTarget("")
+    setEditingId(null)
+    setConfirmingId(null)
+    setMovingId(null)
   }
 
   const toggle = (id: number) =>
@@ -105,14 +124,31 @@ export function CategoryManager({ categories }: Props) {
       return next
     })
 
-  const message = createState.error ?? renameState.error ?? deleteState.error ?? moveState.error
-  const success = createState.ok ?? renameState.ok ?? deleteState.ok ?? moveState.ok
+  const message =
+    createState.error ??
+    renameState.error ??
+    deleteState.error ??
+    moveState.error ??
+    mergeState.error ??
+    mergePreview.error
+  const success =
+    createState.ok ?? renameState.ok ?? deleteState.ok ?? moveState.ok ?? mergeState.ok
 
   function renderNode(node: Node, depth: number) {
     const isEditing = editingId === node.id
     const isConfirming = confirmingId === node.id
     const isMoving = movingId === node.id
+    const isMerging = mergingId === node.id
     const isOpen = !collapsed.has(node.id)
+    // Dampak hanya ditampilkan kalau memang milik kategori & tujuan yang sedang
+    // dipilih, supaya angka dari percobaan sebelumnya tidak ikut dikonfirmasi.
+    const shownPreview =
+      isMerging &&
+      mergePreview.preview &&
+      mergePreview.preview.sourceId === node.id &&
+      String(mergePreview.preview.targetId) === mergeTarget
+        ? mergePreview.preview
+        : null
 
     return (
       <li key={node.id}>
@@ -183,6 +219,14 @@ export function CategoryManager({ categories }: Props) {
                 aria-label={`Pindahkan ${node.name}`}
               >
                 <FolderInput className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => (isMerging ? setMergingId(null) : openMerge(node))}
+                className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label={`Gabungkan ${node.name} ke kategori lain`}
+              >
+                <Merge className="h-3.5 w-3.5" />
               </button>
               <button
                 type="button"
@@ -271,6 +315,105 @@ export function CategoryManager({ categories }: Props) {
                 Batal
               </button>
             </form>
+          </div>
+        )}
+
+        {isMerging && (
+          <div
+            className="my-1 rounded-xl border border-input bg-muted/30 px-3 py-2"
+            style={{ marginInlineStart: `${depth * 1 + 1.5}rem` }}
+          >
+            {node.childCount > 0 ? (
+              <p className="flex items-start gap-2 text-xs text-destructive">
+                <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                Masih punya {node.childCount} sub-kategori. Pindahkan dulu isinya, baru gabungkan.
+              </p>
+            ) : (
+              <>
+                <label className="mb-1 block text-xs font-semibold" htmlFor={`merge-${node.id}`}>
+                  Gabungkan &quot;{node.name}&quot; ke
+                </label>
+                <select
+                  id={`merge-${node.id}`}
+                  value={mergeTarget}
+                  onChange={(e) => setMergeTarget(e.target.value)}
+                  className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                >
+                  <option value="">— pilih kategori tujuan —</option>
+                  {categories
+                    .filter((c) => c.id !== node.id)
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.path}
+                      </option>
+                    ))}
+                </select>
+
+                <form action={previewAction} className="mt-2">
+                  <input type="hidden" name="sourceId" value={node.id} />
+                  <input type="hidden" name="targetId" value={mergeTarget} />
+                  <button
+                    type="submit"
+                    disabled={previewing || mergeTarget === ""}
+                    className="rounded-lg border border-input bg-background px-3 py-1 text-xs font-semibold disabled:opacity-60"
+                  >
+                    Lihat dampak
+                  </button>
+                </form>
+
+                {shownPreview && (
+                  <>
+                    <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                      <p>
+                        <span className="font-semibold text-foreground">
+                          {shownPreview.productsToMove} produk
+                        </span>{" "}
+                        akan dipindahkan ke &quot;{shownPreview.targetName}&quot;.
+                      </p>
+                      {shownPreview.productsAlreadyInTarget > 0 && (
+                        <p>
+                          {shownPreview.productsAlreadyInTarget} produk sudah ada di kedua kategori;
+                          kaitannya cukup dirapikan jadi satu.
+                        </p>
+                      )}
+                      {shownPreview.productsWithOtherCategories > 0 && (
+                        <p>
+                          {shownPreview.productsWithOtherCategories} kaitan ke kategori lain tetap
+                          dibiarkan — penggabungan tidak membereskan cabang lama.
+                        </p>
+                      )}
+                      <p className="text-destructive">
+                        &quot;{shownPreview.sourceName}&quot; dihapus setelah digabungkan.
+                      </p>
+                    </div>
+
+                    <form action={mergeAction} className="mt-2 flex flex-wrap gap-2">
+                      <input type="hidden" name="sourceId" value={shownPreview.sourceId} />
+                      <input type="hidden" name="targetId" value={shownPreview.targetId} />
+                      <input
+                        type="hidden"
+                        name="acknowledgedMoveCount"
+                        value={shownPreview.productsToMove}
+                      />
+                      <button
+                        type="submit"
+                        disabled={merging}
+                        className="rounded-lg bg-primary px-3 py-1 text-xs font-bold text-primary-foreground disabled:opacity-60"
+                      >
+                        Ya, gabungkan
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMergingId(null)}
+                        className="rounded-lg px-3 py-1 text-xs text-muted-foreground hover:bg-muted"
+                      >
+                        Batal
+                      </button>
+                    </form>
+                  </>
+                )}
+              </>
+            )}
           </div>
         )}
 
