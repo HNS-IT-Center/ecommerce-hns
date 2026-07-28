@@ -10,6 +10,7 @@ export interface CartItem {
   quantity: number
   sku?: string
   variationLabel?: string // mis. "Warna: Black" — ditampilkan di bawah nama produk di cart
+  selected?: boolean // Untuk memilih item checkout
 }
 
 interface CartState {
@@ -20,6 +21,9 @@ interface CartState {
   clearCart: () => void
   getTotalPrice: () => number
   getTotalItems: () => number
+  toggleSelect: (id: string) => void
+  toggleSelectAll: (selected: boolean) => void
+  getSelectedTotalPrice: () => number
 }
 
 export const useCartStore = create<CartState>()(
@@ -35,11 +39,12 @@ export const useCartStore = create<CartState>()(
             // Update quantity if item already exists
             const newItems = [...state.items]
             newItems[existingItemIndex].quantity += newItem.quantity
+            newItems[existingItemIndex].selected = true // Select by default when added
             return { items: newItems }
           }
           
           // Add new item if it doesn't exist
-          return { items: [...state.items, newItem] }
+          return { items: [...state.items, { ...newItem, selected: true }] }
         })
       },
       
@@ -67,6 +72,29 @@ export const useCartStore = create<CartState>()(
       
       getTotalItems: () => {
         return get().items.reduce((total, item) => total + item.quantity, 0)
+      },
+
+      toggleSelect: (id) => {
+        set((state) => ({
+          items: state.items.map((item) =>
+            item.id === id ? { ...item, selected: !item.selected } : item
+          ),
+        }))
+      },
+
+      toggleSelectAll: (selected) => {
+        set((state) => ({
+          items: state.items.map((item) => ({ ...item, selected })),
+        }))
+      },
+
+      getSelectedTotalPrice: () => {
+        return get().items.reduce((total, item) => {
+          if (item.selected !== false) {
+            return total + item.price * item.quantity
+          }
+          return total
+        }, 0)
       },
     }),
     {

@@ -16,6 +16,7 @@ type SearchResultsDropdownProps = {
   onHoverIndex: (index: number) => void
   onSelect: () => void
   getOptionId: (index: number) => string
+  className?: string
 }
 
 /** Tebalkan bagian nama produk yang cocok dengan query pencarian. */
@@ -44,12 +45,16 @@ export function SearchResultsDropdown({
   onHoverIndex,
   onSelect,
   getOptionId,
+  className,
 }: SearchResultsDropdownProps) {
   return (
     <div
       id={id}
       role="listbox"
-      className="absolute inset-x-0 top-full z-50 mt-2 max-h-96 overflow-y-auto rounded-xl border bg-popover text-popover-foreground shadow-lg"
+      className={cn(
+        "absolute inset-x-0 top-full z-50 mt-2 max-h-96 overflow-y-auto rounded-xl border bg-popover text-popover-foreground shadow-lg",
+        className
+      )}
     >
       {status === "loading" && (
         <div className="flex flex-col gap-2 p-3">

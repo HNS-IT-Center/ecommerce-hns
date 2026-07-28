@@ -174,7 +174,7 @@ export function ProductInfo({
             {brand}
           </span>
         )}
-        <span className="text-muted-foreground">{categoryName}</span>
+        <span className="text-sale-red font-bold uppercase tracking-wider">{categoryName}</span>
       </div>
 
       {/* Product Name */}

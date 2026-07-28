@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toast } from "@/components/ui/toast";
 import { Toaster } from "@/components/layout/toaster";
 import { FloatingWhatsAppButton } from "@/components/layout/floating-whatsapp-button";
+import { MobileDock } from "@/components/layout/mobile-dock";
 import { JsonLd } from "@/components/seo/json-ld";
 import { env } from "@/config/env";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
@@ -64,7 +65,7 @@ export default function RootLayout({
   return (
     <html
       lang="id"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <JsonLd data={organizationJsonLd} />
@@ -74,6 +75,7 @@ export default function RootLayout({
           <Toaster />
         </Toast>
         <FloatingWhatsAppButton whatsappNumber={env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER} />
+        <MobileDock />
       </body>
     </html>
   );

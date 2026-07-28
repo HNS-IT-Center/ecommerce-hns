@@ -1,11 +1,11 @@
 "use client"
 
-import Link from "next/link"
 import { ShoppingCart } from "lucide-react"
 import { useCartStore } from "@/store/cart"
 import { useEffect, useState } from "react"
 import { useIsHydrated } from "@/hooks/use-is-hydrated"
 import { cn } from "@/lib/utils"
+import { CartSheet } from "./cart-sheet"
 
 export function CartBadge() {
   const mounted = useIsHydrated()
@@ -35,12 +35,12 @@ export function CartBadge() {
   const displayedTotal = mounted ? totalItems : 0
 
   return (
-    <Link
-      href="/cart"
-      aria-label={`Keranjang belanja, ${displayedTotal} barang`}
-      className="relative flex items-center p-2 text-muted-foreground hover:text-foreground transition-colors"
-    >
-      <ShoppingCart className={cn("h-5 w-5 transition-transform", isBumping && "animate-bounce")} />
+    <CartSheet>
+      <div
+        aria-label={`Keranjang belanja, ${displayedTotal} barang`}
+        className="relative flex items-center p-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+      >
+        <ShoppingCart className={cn("h-5 w-5 transition-transform", isBumping && "animate-bounce")} />
       {mounted && totalItems > 0 && (
         <span
           className={cn(
@@ -51,6 +51,7 @@ export function CartBadge() {
           <span aria-hidden="true">{totalItems > 99 ? "99+" : totalItems}</span>
         </span>
       )}
-    </Link>
+      </div>
+    </CartSheet>
   )
 }

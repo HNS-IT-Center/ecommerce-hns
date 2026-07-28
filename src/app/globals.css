@@ -6,7 +6,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-inter);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -47,59 +47,209 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-:root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.52 0.111 161.4);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.65 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
-
 @layer base {
+  :root {
+    --text-50: #eafaf3;
+    --text-100: #d6f5e7;
+    --text-200: #acecce;
+    --text-300: #83e2b6;
+    --text-400: #5ad89d;
+    --text-500: #30cf85;
+    --text-600: #27a56a;
+    --text-700: #1d7c50;
+    --text-800: #135335;
+    --text-900: #0a291b;
+    --text-950: #05150d;
+    
+    --background-50: #fffefe;
+    --background-100: #ebe0e0;
+    --background-200: #d6c2c2;
+    --background-300: #c2a3a3;
+    --background-400: #ad8585;
+    --background-500: #996666;
+    --background-600: #141414;
+    --background-700: #5c3d3d;
+    --background-800: #3d2929;
+    --background-900: #1f1414;
+    --background-950: #0f0a0a;
+    
+    --primary-50: #e9f0fc;
+    --primary-100: #d3e0f8;
+    --primary-200: #a6c2f2;
+    --primary-300: #7aa3eb;
+    --primary-400: #4e85e4;
+    --primary-500: #2166de;
+    --primary-600: #1b52b1;
+    --primary-700: #143d85;
+    --primary-800: #0d2959;
+    --primary-900: #07142c;
+    --primary-950: #030a16;
+    
+    --secondary-50: #e9effc;
+    --secondary-100: #d2e0f9;
+    --secondary-200: #a6c1f2;
+    --secondary-300: #79a1ec;
+    --secondary-400: #4c82e6;
+    --secondary-500: #2063df;
+    --secondary-600: #194fb3;
+    --secondary-700: #133b86;
+    --secondary-800: #0d2859;
+    --secondary-900: #06142d;
+    --secondary-950: #030a16;
+    
+    --accent-50: #fbe9e9;
+    --accent-100: #f8d3d4;
+    --accent-200: #f0a8a9;
+    --accent-300: #e97c7e;
+    --accent-400: #e15153;
+    --accent-500: #da2528;
+    --accent-600: #ae1e20;
+    --accent-700: #831618;
+    --accent-800: #570f10;
+    --accent-900: #2c0708;
+    --accent-950: #160404;
+
+    /* Shadcn UI variable mappings */
+    --background: var(--background-50);
+    --foreground: var(--text-950);
+    --card: var(--background-50);
+    --card-foreground: var(--text-950);
+    --popover: var(--background-50);
+    --popover-foreground: var(--text-950);
+    --primary: var(--primary-500);
+    --primary-foreground: var(--primary-50);
+    --secondary: var(--secondary-100);
+    --secondary-foreground: var(--secondary-900);
+    --muted: var(--background-100);
+    --muted-foreground: var(--background-600);
+    --accent: var(--accent-100);
+    --accent-foreground: var(--accent-900);
+    --destructive: var(--accent-500);
+    --destructive-foreground: var(--accent-50);
+    --border: var(--background-200);
+    --input: var(--background-200);
+    --ring: var(--primary-500);
+    
+    --radius: 0.625rem;
+    --sidebar: var(--background-50);
+    --sidebar-foreground: var(--text-950);
+    --sidebar-primary: var(--primary-500);
+    --sidebar-primary-foreground: var(--primary-50);
+    --sidebar-accent: var(--accent-100);
+    --sidebar-accent-foreground: var(--accent-900);
+    --sidebar-border: var(--background-200);
+    --sidebar-ring: var(--primary-500);
+  }
+  .dark {
+    --text-50: #05150d;
+    --text-100: #0a291b;
+    --text-200: #135335;
+    --text-300: #1d7c50;
+    --text-400: #27a56a;
+    --text-500: #30cf85;
+    --text-600: #5ad89d;
+    --text-700: #83e2b6;
+    --text-800: #acecce;
+    --text-900: #d6f5e7;
+    --text-950: #eafaf3;
+    
+    --background-50: #0f0a0a;
+    --background-100: #1f1414;
+    --background-200: #3d2929;
+    --background-300: #5c3d3d;
+    --background-400: #7a5252;
+    --background-500: #996666;
+    --background-600: #141414;
+    --background-700: #c2a3a3;
+    --background-800: #d6c2c2;
+    --background-900: #ebe0e0;
+    --background-950: #fffefe;
+    
+    --primary-50: #030a16;
+    --primary-100: #07142c;
+    --primary-200: #0d2959;
+    --primary-300: #143d85;
+    --primary-400: #1b52b1;
+    --primary-500: #2166de;
+    --primary-600: #4e85e4;
+    --primary-700: #7aa3eb;
+    --primary-800: #a6c2f2;
+    --primary-900: #d3e0f8;
+    --primary-950: #e9f0fc;
+    
+    --secondary-50: #030a16;
+    --secondary-100: #06142d;
+    --secondary-200: #0d2859;
+    --secondary-300: #133b86;
+    --secondary-400: #194fb3;
+    --secondary-500: #2063df;
+    --secondary-600: #4c82e6;
+    --secondary-700: #79a1ec;
+    --secondary-800: #a6c1f2;
+    --secondary-900: #d2e0f9;
+    --secondary-950: #e9effc;
+    
+    --accent-50: #160404;
+    --accent-100: #2c0708;
+    --accent-200: #570f10;
+    --accent-300: #831618;
+    --accent-400: #ae1e20;
+    --accent-500: #da2528;
+    --accent-600: #e15153;
+    --accent-700: #e97c7e;
+    --accent-800: #f0a8a9;
+    --accent-900: #f8d3d4;
+    --accent-950: #fbe9e9;
+
+    /* Shadcn UI variable mappings for dark mode */
+    --background: var(--background-50);
+    --foreground: var(--text-950);
+    --card: var(--background-50);
+    --card-foreground: var(--text-950);
+    --popover: var(--background-50);
+    --popover-foreground: var(--text-950);
+    --primary: var(--primary-500);
+    --primary-foreground: var(--primary-50);
+    --secondary: var(--secondary-100);
+    --secondary-foreground: var(--secondary-900);
+    --muted: var(--background-100);
+    --muted-foreground: var(--background-600);
+    --accent: var(--accent-100);
+    --accent-foreground: var(--accent-900);
+    --destructive: var(--accent-500);
+    --destructive-foreground: var(--accent-50);
+    --border: var(--background-200);
+    --input: var(--background-200);
+    --ring: var(--primary-500);
+
+    --sidebar: var(--background-50);
+    --sidebar-foreground: var(--text-950);
+    --sidebar-primary: var(--primary-500);
+    --sidebar-primary-foreground: var(--primary-50);
+    --sidebar-accent: var(--accent-100);
+    --sidebar-accent-foreground: var(--accent-900);
+    --sidebar-border: var(--background-200);
+    --sidebar-ring: var(--primary-500);
+  }
+
   * {
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground max-w-full overflow-x-hidden;
   }
   html {
-    @apply font-sans;
+    @apply font-sans max-w-full overflow-x-hidden;
   }
 }
+
 @theme inline {
-  --color-brand-green: #0d7c54;
-  --color-sale-red: #ef4444;
+  --color-brand-green: var(--primary-500);
+  --color-sale-red: var(--accent-500);
   --color-whatsapp: #25d366;
-  --color-success: #059669;
+  --color-success: var(--text-500);
   --color-warning: #d97706;
-  --color-info: #2563eb;
+  --color-info: var(--secondary-500);
 }
 
 
@@ -125,7 +275,7 @@
   --tw-prose-body: var(--foreground);
   --tw-prose-headings: var(--foreground);
   --tw-prose-lead: var(--foreground);
-  --tw-prose-links: var(--brand-green);
+  --tw-prose-links: var(--primary);
   --tw-prose-bold: var(--foreground);
   --tw-prose-counters: var(--muted-foreground);
   --tw-prose-bullets: var(--muted-foreground);
