@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { TriangleAlert, LayoutDashboard, Package, Store, FileText } from "lucide-react"
+import { TriangleAlert, LayoutDashboard, Package, Store, FileText, FolderTree } from "lucide-react"
 
 export const metadata: Metadata = {
   title: "Admin — HNS IT Center",
@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 const NAV_ITEMS = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/produk", label: "Produk", icon: Package },
+  { href: "/admin/kategori", label: "Kategori", icon: FolderTree },
   { href: "/admin/toko", label: "Toko & Lokasi", icon: Store },
   { href: "/admin/kebijakan", label: "Kebijakan & FAQ", icon: FileText },
 ]
