@@ -11,6 +11,7 @@ import type {
   ProductInput,
 } from "@/types/woocommerce";
 import { decodeHtmlEntities } from "@/lib/utils/html";
+import { CategoryOperationError } from "./categories";
 
 // Base include for Prisma queries to fetch all relations needed by the mapper
 const productInclude = {
@@ -287,6 +288,143 @@ function slugify(name: string, wooId: number): string {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-|-$)+/g, "") + `-${wooId}`
   );
+}
+
+// --------------------------------------------------------------- kategori massal
+
+export type BulkCategoryMode = "add" | "remove";
+
+export type BulkAssignPreview = {
+  categoryId: number;
+  categoryName: string;
+  mode: BulkCategoryMode;
+  /** Produk terpilih yang benar-benar ada. */
+  selected: number;
+  /** Yang kaitannya akan berubah — angka inilah yang harus dikonfirmasi. */
+  willChange: number;
+  /** Sudah sesuai sejak awal, tidak disentuh. */
+  alreadyDone: number;
+  /** Terpilih tapi tidak ditemukan lagi (mis. terhapus di tab lain). */
+  missing: number;
+  /**
+   * Khusus mode hapus: produk yang setelah operasi ini tidak punya kategori
+   * sama sekali. Bukan larangan — kadang memang disengaja — tapi produk tanpa
+   * kategori tidak bisa ditemukan lewat penjelajahan, jadi PIC harus tahu.
+   */
+  wouldBeLeftWithoutCategory: number;
+};
+
+/** Pemeriksaan yang sama dipakai preview dan penyimpanan, supaya tidak bisa berbeda. */
+async function resolveBulkTargets(productWooIds: number[], categoryId: number) {
+  const prisma = getPrisma();
+
+  if (productWooIds.length === 0) {
+    throw new CategoryOperationError("Belum ada produk yang dipilih.");
+  }
+
+  const category = await prisma.category.findUnique({ where: { id: categoryId } });
+  if (!category) throw new CategoryOperationError("Kategori tidak ditemukan.");
+
+  const products = await prisma.product.findMany({
+    where: { wooId: { in: productWooIds } },
+    select: { id: true },
+  });
+
+  return { category, productIds: products.map((p) => p.id) };
+}
+
+/**
+ * Hitung dampak penetapan kategori massal TANPA menulis apa pun — dry run.
+ */
+export async function previewBulkAssignCategory(
+  productWooIds: number[],
+  categoryId: number,
+  mode: BulkCategoryMode
+): Promise<BulkAssignPreview> {
+  const prisma = getPrisma();
+  const { category, productIds } = await resolveBulkTargets(productWooIds, categoryId);
+
+  const existing = await prisma.productCategory.findMany({
+    where: { productId: { in: productIds }, categoryId },
+    select: { productId: true },
+  });
+  const alreadyLinked = new Set(existing.map((r) => r.productId));
+
+  const willChange =
+    mode === "add" ? productIds.length - alreadyLinked.size : alreadyLinked.size;
+  const alreadyDone = productIds.length - willChange;
+
+  let wouldBeLeftWithoutCategory = 0;
+  if (mode === "remove" && alreadyLinked.size > 0) {
+    const counts = await prisma.productCategory.groupBy({
+      by: ["productId"],
+      where: { productId: { in: [...alreadyLinked] } },
+      _count: { categoryId: true },
+    });
+    wouldBeLeftWithoutCategory = counts.filter((c) => c._count.categoryId === 1).length;
+  }
+
+  return {
+    categoryId,
+    categoryName: category.name,
+    mode,
+    selected: productIds.length,
+    willChange,
+    alreadyDone,
+    missing: productWooIds.length - productIds.length,
+    wouldBeLeftWithoutCategory,
+  };
+}
+
+/**
+ * Tambahkan atau lepaskan satu kategori pada banyak produk sekaligus.
+ *
+ * Hanya kategori yang disebut yang disentuh — kaitan produk ke kategori lain
+ * dibiarkan apa adanya. Operasi ini sengaja dibuat sesempit itu supaya bisa
+ * disusun bertahap: memindahkan produk antar kategori adalah satu penghapusan
+ * lalu satu penambahan, masing-masing dengan dampaknya sendiri yang terlihat
+ * lebih dulu.
+ *
+ * Jumlah perubahan wajib dikirim balik dari layar konfirmasi. Kalau katalog
+ * bergeser antara melihat dampak dan menyetujuinya, angkanya tidak lagi cocok
+ * dan operasi ditolak — lebih baik gagal daripada menyentuh lebih banyak baris
+ * daripada yang ditunjukkan.
+ *
+ * Seluruh penulisan berada dalam satu transaksi: sebagian produk berubah dan
+ * sebagian tidak adalah keadaan yang paling sulit ditelusuri belakangan.
+ */
+export async function bulkAssignCategory(
+  productWooIds: number[],
+  categoryId: number,
+  mode: BulkCategoryMode,
+  acknowledgedChangeCount: number
+): Promise<void> {
+  const prisma = getPrisma();
+  const { productIds } = await resolveBulkTargets(productWooIds, categoryId);
+
+  const preview = await previewBulkAssignCategory(productWooIds, categoryId, mode);
+  if (preview.willChange !== acknowledgedChangeCount) {
+    throw new CategoryOperationError(
+      `Jumlah produk yang terdampak berubah sejak dampaknya ditampilkan (sekarang ${preview.willChange}). Lihat dampaknya sekali lagi.`
+    );
+  }
+
+  if (preview.willChange === 0) {
+    throw new CategoryOperationError("Tidak ada yang perlu diubah.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    if (mode === "add") {
+      await tx.productCategory.createMany({
+        data: productIds.map((productId) => ({ productId, categoryId })),
+        skipDuplicates: true,
+      });
+    } else {
+      await tx.productCategory.deleteMany({
+        where: { productId: { in: productIds }, categoryId },
+      });
+    }
+  });
 }
 
 async function nextWooId(): Promise<number> {
