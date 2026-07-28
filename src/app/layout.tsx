@@ -5,6 +5,7 @@ import { Toast } from "@/components/ui/toast";
 import { Toaster } from "@/components/layout/toaster";
 import { FloatingWhatsAppButton } from "@/components/layout/floating-whatsapp-button";
 import { MobileDock } from "@/components/layout/mobile-dock";
+import { FlyToCartProvider } from "@/components/providers/fly-to-cart-provider";
 import { JsonLd } from "@/components/seo/json-ld";
 import { env } from "@/config/env";
 
@@ -70,12 +71,14 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <JsonLd data={organizationJsonLd} />
         <JsonLd data={websiteJsonLd} />
-        <Toast limit={1}>
-          {children}
-          <Toaster />
-        </Toast>
-        <FloatingWhatsAppButton whatsappNumber={env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER} />
-        <MobileDock />
+        <FlyToCartProvider>
+          <Toast limit={1}>
+            {children}
+            <Toaster />
+          </Toast>
+          <FloatingWhatsAppButton whatsappNumber={env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER} />
+          <MobileDock />
+        </FlyToCartProvider>
       </body>
     </html>
   );

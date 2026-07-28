@@ -27,8 +27,8 @@ export function MobileDock() {
     {
       label: "PC Build",
       icon: <Monitor className="h-6 w-6" />,
-      href: "/pc-build",
-      isActive: pathname.startsWith("/pc-build"),
+      href: "/build-pc",
+      isActive: pathname.startsWith("/build-pc"),
     },
     {
       label: "Shop",
@@ -39,7 +39,7 @@ export function MobileDock() {
     {
       label: "Cart",
       icon: (
-        <div className="relative flex items-center justify-center">
+        <div id="cart-icon-mobile" className="relative flex items-center justify-center">
           <ShoppingCart className="h-6 w-6" />
           {mounted && totalItems > 0 && (
             <span className="absolute -right-2 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-sale-red text-[10px] font-bold text-white">

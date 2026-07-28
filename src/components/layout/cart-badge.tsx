@@ -38,7 +38,7 @@ export function CartBadge() {
     <CartSheet>
       <div
         aria-label={`Keranjang belanja, ${displayedTotal} barang`}
-        className="relative flex items-center p-2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+        className="cart-target-icon relative flex items-center justify-center h-9 w-9 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
       >
         <ShoppingCart className={cn("h-5 w-5 transition-transform", isBumping && "animate-bounce")} />
       {mounted && totalItems > 0 && (

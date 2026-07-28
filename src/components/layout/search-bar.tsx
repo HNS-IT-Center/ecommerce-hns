@@ -18,6 +18,7 @@ interface SearchBarProps {
 export function SearchBar({ className }: SearchBarProps = {}) {
   const [query, setQuery] = useState("")
   const [isFocused, setIsFocused] = useState(false)
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
   const [isMobile, setIsMobile] = useState(false)
   const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -33,7 +34,7 @@ export function SearchBar({ className }: SearchBarProps = {}) {
   }, [])
 
   useEffect(() => {
-    if (isMobile && isFocused) {
+    if (isMobileSearchOpen) {
       document.body.style.overflow = 'hidden'
     } else {
       document.body.style.overflow = ''
@@ -41,10 +42,10 @@ export function SearchBar({ className }: SearchBarProps = {}) {
     return () => {
       document.body.style.overflow = ''
     }
-  }, [isMobile, isFocused])
+  }, [isMobileSearchOpen])
 
   const { results, status } = useLiveSearch(query)
-  const isOpen = isFocused && query.trim().length >= MIN_QUERY_LENGTH
+  const isOpen = (isFocused || isMobileSearchOpen) && query.trim().length >= MIN_QUERY_LENGTH
 
   // Reset highlight saat query berubah — adjust state selama render (bukan
   // useEffect) supaya tidak menambah instance baru bug setState-in-effect.
@@ -61,6 +62,7 @@ export function SearchBar({ className }: SearchBarProps = {}) {
 
   const closeDropdown = () => {
     setIsFocused(false)
+    setIsMobileSearchOpen(false)
     setHighlightedIndex(-1)
     if (inputRef.current) inputRef.current.blur()
   }
@@ -68,6 +70,7 @@ export function SearchBar({ className }: SearchBarProps = {}) {
   const handleFocus = () => {
     if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current)
     setIsFocused(true)
+    if (isMobile) setIsMobileSearchOpen(true)
   }
 
   const handleBlur = () => {
@@ -110,13 +113,13 @@ export function SearchBar({ className }: SearchBarProps = {}) {
       onSubmit={handleSubmit}
       className={cn(
         "w-full transition-all duration-200",
-        isMobile && isFocused
-          ? "flex flex-col bg-background p-4 min-h-screen"
+        isMobileSearchOpen
+          ? "flex flex-col bg-background p-4 min-h-[100dvh]"
           : "relative"
       )}
     >
       <div className="relative flex items-center gap-2">
-        {isMobile && isFocused && (
+        {isMobileSearchOpen && (
           <button
             type="button"
             onClick={(e) => {
@@ -131,7 +134,7 @@ export function SearchBar({ className }: SearchBarProps = {}) {
         <div className="relative flex-1">
           <Search className={cn(
             "absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4",
-            isMobile && isFocused ? "text-muted-foreground/60" : "text-muted-foreground"
+            isMobileSearchOpen ? "text-muted-foreground/60" : "text-muted-foreground"
           )} />
           <Input
             ref={inputRef}
@@ -150,15 +153,15 @@ export function SearchBar({ className }: SearchBarProps = {}) {
             className={cn(
               "w-full shadow-sm appearance-none pl-9 focus-visible:ring-1 focus-visible:ring-primary transition-all duration-200",
               "bg-background border border-border rounded-lg text-sm",
-              isMobile && isFocused ? "h-11 text-base" : "h-10"
+              isMobileSearchOpen ? "h-11 text-base" : "h-10"
             )}
           />
         </div>
       </div>
       
-      {(isOpen || (isMobile && isFocused)) && (
+      {(isOpen || isMobileSearchOpen) && (
         <div className={cn(
-          isMobile && isFocused ? "flex-1 mt-4 relative" : "relative"
+          isMobileSearchOpen ? "flex-1 mt-4 relative" : "relative"
         )}>
           {query.trim().length >= MIN_QUERY_LENGTH ? (
             <SearchResultsDropdown
@@ -170,10 +173,10 @@ export function SearchBar({ className }: SearchBarProps = {}) {
               onHoverIndex={setHighlightedIndex}
               onSelect={closeDropdown}
               getOptionId={getOptionId}
-              className={isMobile && isFocused ? "static shadow-none border-none mt-0 max-h-none overflow-visible rounded-none" : undefined}
+              className={isMobileSearchOpen ? "static shadow-none border-none mt-0 max-h-none overflow-visible rounded-none" : undefined}
             />
           ) : (
-            isMobile && isFocused && (
+            isMobileSearchOpen && (
               <div className="flex flex-col gap-3 pt-2">
                 <p className="text-xs font-semibold text-muted-foreground">Pencarian Populer</p>
                 <div className="flex flex-col">
@@ -202,9 +205,9 @@ export function SearchBar({ className }: SearchBarProps = {}) {
 
   return (
     <div className={cn("relative w-full max-w-sm", className)}>
-      {isMobile && isFocused ? (
+      {isMobileSearchOpen ? (
         createPortal(
-          <div className="fixed inset-0 z-[100] bg-background overflow-y-auto">
+          <div className="fixed inset-0 z-[100] bg-background overflow-y-auto h-[100dvh]">
             {renderForm()}
           </div>,
           document.body
