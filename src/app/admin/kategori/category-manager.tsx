@@ -1,12 +1,14 @@
 "use client"
 
 import { useActionState, useMemo, useState } from "react"
-import { ChevronRight, Pencil, Plus, Trash2, TriangleAlert, X } from "lucide-react"
+import { ChevronRight, FolderInput, Pencil, Plus, Trash2, TriangleAlert, X } from "lucide-react"
 import type { AdminCategory } from "@/lib/api/woocommerce/categories"
+import { collectDescendantIds, planCategoryMove } from "@/lib/utils/category-move"
 import {
   EMPTY_STATE,
   createCategoryAction,
   deleteCategoryAction,
+  moveCategoryAction,
   renameCategoryAction,
 } from "./actions"
 
@@ -50,10 +52,50 @@ export function CategoryManager({ categories }: Props) {
   const [createState, createAction, creating] = useActionState(createCategoryAction, EMPTY_STATE)
   const [renameState, renameAction, renaming] = useActionState(renameCategoryAction, EMPTY_STATE)
   const [deleteState, deleteAction, deleting] = useActionState(deleteCategoryAction, EMPTY_STATE)
+  const [moveState, moveAction, moving] = useActionState(moveCategoryAction, EMPTY_STATE)
 
   const [editingId, setEditingId] = useState<number | null>(null)
   const [confirmingId, setConfirmingId] = useState<number | null>(null)
+  const [movingId, setMovingId] = useState<number | null>(null)
+  const [moveTarget, setMoveTarget] = useState<string>("")
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
+
+  const byId = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories])
+
+  /**
+   * Preview dihitung dengan fungsi yang sama persis yang dipakai server saat
+   * menyimpan, jadi apa yang dilihat PIC di sini adalah apa yang akan terjadi —
+   * bukan perkiraan yang ditulis terpisah lalu menyimpang diam-diam.
+   */
+  const movePreview = useMemo(() => {
+    if (movingId === null) return null
+    return planCategoryMove(categories, movingId, moveTarget === "" ? null : Number(moveTarget))
+  }, [categories, movingId, moveTarget])
+
+  /** Kategori tujuan yang mustahil dipilih tidak usah ditawarkan sejak awal. */
+  const moveOptions = useMemo(() => {
+    if (movingId === null) return []
+    const excluded = collectDescendantIds(categories, movingId)
+    excluded.add(movingId)
+    return categories.filter((c) => !excluded.has(c.id))
+  }, [categories, movingId])
+
+  /** Produk yang ikut terbawa pindah — tidak satu pun diubah, hanya konteks. */
+  const movingProductCount = useMemo(() => {
+    if (movingId === null) return 0
+    const ids = collectDescendantIds(categories, movingId)
+    ids.add(movingId)
+    let total = 0
+    for (const id of ids) total += byId.get(id)?.productCount ?? 0
+    return total
+  }, [byId, categories, movingId])
+
+  const openMove = (node: AdminCategory) => {
+    setMovingId(node.id)
+    setMoveTarget(node.parentId === null ? "" : String(node.parentId))
+    setEditingId(null)
+    setConfirmingId(null)
+  }
 
   const toggle = (id: number) =>
     setCollapsed((prev) => {
@@ -63,12 +105,13 @@ export function CategoryManager({ categories }: Props) {
       return next
     })
 
-  const message = createState.error ?? renameState.error ?? deleteState.error
-  const success = createState.ok ?? renameState.ok ?? deleteState.ok
+  const message = createState.error ?? renameState.error ?? deleteState.error ?? moveState.error
+  const success = createState.ok ?? renameState.ok ?? deleteState.ok ?? moveState.ok
 
   function renderNode(node: Node, depth: number) {
     const isEditing = editingId === node.id
     const isConfirming = confirmingId === node.id
+    const isMoving = movingId === node.id
     const isOpen = !collapsed.has(node.id)
 
     return (
@@ -126,6 +169,7 @@ export function CategoryManager({ categories }: Props) {
                 onClick={() => {
                   setEditingId(node.id)
                   setConfirmingId(null)
+                  setMovingId(null)
                 }}
                 className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
                 aria-label={`Ganti nama ${node.name}`}
@@ -134,9 +178,18 @@ export function CategoryManager({ categories }: Props) {
               </button>
               <button
                 type="button"
+                onClick={() => (isMoving ? setMovingId(null) : openMove(node))}
+                className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                aria-label={`Pindahkan ${node.name}`}
+              >
+                <FolderInput className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
                 onClick={() => {
                   setConfirmingId(isConfirming ? null : node.id)
                   setEditingId(null)
+                  setMovingId(null)
                 }}
                 className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                 aria-label={`Hapus ${node.name}`}
@@ -146,6 +199,80 @@ export function CategoryManager({ categories }: Props) {
             </>
           )}
         </div>
+
+        {isMoving && (
+          <div
+            className="my-1 rounded-xl border border-input bg-muted/30 px-3 py-2"
+            style={{ marginInlineStart: `${depth * 1 + 1.5}rem` }}
+          >
+            <label className="mb-1 block text-xs font-semibold" htmlFor={`move-${node.id}`}>
+              Pindahkan ke bawah
+            </label>
+            <select
+              id={`move-${node.id}`}
+              value={moveTarget}
+              onChange={(e) => setMoveTarget(e.target.value)}
+              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            >
+              <option value="">— kategori utama —</option>
+              {moveOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.path}
+                </option>
+              ))}
+            </select>
+
+            {movePreview && !movePreview.ok && (
+              <p className="mt-2 flex items-start gap-2 text-xs text-destructive">
+                <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                {movePreview.error}
+              </p>
+            )}
+
+            {movePreview?.ok && (
+              <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                <p>
+                  Jalur baru:{" "}
+                  <span className="break-words font-semibold text-foreground">
+                    {movePreview.plan.target.newPath}
+                  </span>
+                </p>
+                {movePreview.plan.descendants.length > 0 && (
+                  <p>
+                    {movePreview.plan.descendants.length} sub-kategori di bawahnya ikut pindah dan
+                    jalurnya ditulis ulang.
+                  </p>
+                )}
+                {movingProductCount > 0 && (
+                  <p>
+                    {movingProductCount} produk ikut terbawa. Tidak ada produk yang diubah atau
+                    kehilangan kaitan.
+                  </p>
+                )}
+                <p>Alamat halaman kategori tidak berubah, jadi tautan lama tetap hidup.</p>
+              </div>
+            )}
+
+            <form action={moveAction} className="mt-2 flex flex-wrap gap-2">
+              <input type="hidden" name="id" value={node.id} />
+              <input type="hidden" name="parentId" value={moveTarget} />
+              <button
+                type="submit"
+                disabled={moving || !movePreview?.ok}
+                className="rounded-lg bg-primary px-3 py-1 text-xs font-bold text-primary-foreground disabled:opacity-60"
+              >
+                Pindahkan
+              </button>
+              <button
+                type="button"
+                onClick={() => setMovingId(null)}
+                className="rounded-lg px-3 py-1 text-xs text-muted-foreground hover:bg-muted"
+              >
+                Batal
+              </button>
+            </form>
+          </div>
+        )}
 
         {isConfirming && (
           <div

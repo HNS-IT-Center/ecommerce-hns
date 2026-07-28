@@ -5,6 +5,7 @@ import {
   CategoryOperationError,
   createCategory,
   deleteCategory,
+  moveCategory,
   renameCategory,
 } from "@/lib/api/woocommerce/categories"
 
@@ -20,6 +21,11 @@ export const EMPTY_STATE: CategoryActionState = { error: null, ok: null }
  */
 function refresh() {
   revalidateTag("categories", "max")
+  // Memindahkan kategori mengubah isi halaman kategori di storefront tanpa
+  // menyentuh satu produk pun, jadi cache daftar produk ikut dibuang — kalau
+  // tidak, PIC melihat pohon yang sudah rapi sementara pengunjung masih
+  // mendapat susunan lama sampai cache kedaluwarsa sendiri.
+  revalidateTag("products", "max")
   revalidatePath("/admin/kategori")
   revalidatePath("/admin/produk")
 }
@@ -71,6 +77,22 @@ export async function renameCategoryAction(
   if (Number.isNaN(id)) return { error: "Kategori tidak valid.", ok: null }
 
   return run(() => renameCategory(id, name), `Nama diubah jadi "${name.trim()}".`)
+}
+
+export async function moveCategoryAction(
+  _prev: CategoryActionState,
+  formData: FormData
+): Promise<CategoryActionState> {
+  const id = Number(formData.get("id"))
+  const rawParent = String(formData.get("parentId") ?? "")
+  const parentId = rawParent === "" ? null : Number(rawParent)
+
+  if (Number.isNaN(id)) return { error: "Kategori tidak valid.", ok: null }
+  if (parentId !== null && Number.isNaN(parentId)) {
+    return { error: "Kategori tujuan tidak valid.", ok: null }
+  }
+
+  return run(() => moveCategory(id, parentId), "Kategori dipindahkan.")
 }
 
 export async function deleteCategoryAction(

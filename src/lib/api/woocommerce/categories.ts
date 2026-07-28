@@ -4,6 +4,7 @@ import { getPrisma } from "@/lib/prisma/client";
 import { prismaCategoryToWoo } from "./db-mapper";
 import type { ProductCategory } from "@/types/woocommerce";
 import { decodeHtmlEntities } from "@/lib/utils/html";
+import { planCategoryMove } from "@/lib/utils/category-move";
 
 type GetCategoriesParams = {
   perPage?: number;
@@ -234,3 +235,51 @@ export async function deleteCategory(id: number, acknowledgedProductCount: numbe
   }
 
   await prisma.category.delete({ where: { id } });}
+
+/**
+ * Pindahkan kategori beserta seluruh isinya ke induk lain (`null` = jadikan
+ * kategori utama).
+ *
+ * Aturan pemindahan — termasuk penolakan cincin dan penyusunan ulang path —
+ * hidup di `lib/utils/category-move` supaya layar admin bisa memakai fungsi
+ * yang sama untuk preview. Yang di sini adalah pemutus sesungguhnya: preview
+ * dihitung dari data yang mungkin sudah basi di browser PIC, jadi rencananya
+ * disusun ulang dari kondisi database terkini sebelum satu baris pun ditulis.
+ *
+ * Produk tidak disentuh sama sekali. Slug juga tidak — sama seperti pada ganti
+ * nama, alamat halaman kategori tetap hidup supaya tautan yang sudah terindeks
+ * tidak mati hanya karena cabangnya dirapikan.
+ *
+ * Seluruh penulisan berada dalam satu transaksi: kalau satu baris gagal,
+ * tidak ada yang tersimpan. Pohon setengah jadi jauh lebih buruk daripada
+ * pemindahan yang gagal seluruhnya, karena keturunan yang path-nya sudah
+ * ditulis ulang akan menunjuk jalur yang tidak ada.
+ */
+export async function moveCategory(id: number, newParentId: number | null): Promise<void> {
+  const prisma = getPrisma();
+
+  const categories = await prisma.category.findMany({
+    select: { id: true, name: true, path: true, depth: true, parentId: true },
+  });
+
+  const result = planCategoryMove(categories, id, newParentId);
+  if (!result.ok) throw new CategoryOperationError(result.error);
+
+  const { target, descendants } = result.plan;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.category.update({
+      where: { id: target.id },
+      data: { parentId: newParentId, path: target.newPath, depth: target.newDepth },
+    });
+
+    // Keturunan tetap menempel pada induknya masing-masing; yang berubah hanya
+    // jalur dan kedalamannya, karena leluhur di atasnya bergeser.
+    for (const step of descendants) {
+      await tx.category.update({
+        where: { id: step.id },
+        data: { path: step.newPath, depth: step.newDepth },
+      });
+    }
+  });
+}
