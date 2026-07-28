@@ -54,17 +54,15 @@ function FlyElement({ item }: { item: FlyItem }) {
 
   useEffect(() => {
     const cartEls = document.querySelectorAll(".cart-target-icon")
-    let rect: DOMRect | null = null
     
     // Cari elemen yang tidak ter-hide oleh CSS (width > 0)
-    cartEls.forEach(el => {
+    const visibleCart = Array.from(cartEls).find(el => {
       const r = el.getBoundingClientRect()
-      if (r.width > 0 && r.height > 0) {
-        rect = r
-      }
+      return r.width > 0 && r.height > 0
     })
     
-    if (rect) {
+    if (visibleCart) {
+      const rect = visibleCart.getBoundingClientRect()
       // Pusatkan bola di ikon target
       setTarget({
         x: rect.left + rect.width / 2 - 12, // 12 adalah setengah dari ukuran bola (24px)
