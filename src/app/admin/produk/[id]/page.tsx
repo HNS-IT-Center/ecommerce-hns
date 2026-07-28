@@ -33,7 +33,8 @@ export default async function AdminProdukEditPage({ params }: Props) {
             regularPrice: product.regular_price,
             salePrice: product.sale_price,
             stockQuantity: product.stock_quantity ?? 0,
-            status: product.status === "publish" ? "publish" : "draft",
+            status:
+              product.status === "publish" || product.status === "private" ? product.status : "draft",
             categoryIds: product.categories?.map((c) => c.id) ?? [],
             attributes: (product.attributes ?? []).map((attr) => ({
               name: attr.name,

@@ -38,11 +38,22 @@ function decodeProduct(product: Product): Product {
   };
 }
 
+const STATUS_FROM_PARAM = {
+  publish: ProductStatus.PUBLISHED,
+  draft: ProductStatus.DRAFT,
+  private: ProductStatus.PRIVATE,
+} as const;
+
 function buildPrismaWhere(params: GetProductsParams): Prisma.ProductWhereInput {
   const where: Prisma.ProductWhereInput = {
-    status: 'PUBLISHED',
     parentId: null, // Only fetch parent products by default for listing
   };
+
+  // Storefront hanya boleh melihat produk terbit, jadi itu tetap defaultnya.
+  // Admin melewatkan "any" supaya draft & private ikut terbawa.
+  if (params.status !== "any") {
+    where.status = STATUS_FROM_PARAM[params.status ?? "publish"];
+  }
 
   if (params.category) {
     if (typeof params.category === 'string') {
@@ -355,7 +366,7 @@ export async function createProduct(input: ProductInput): Promise<Product> {
       data: {
         wooId,
         type: ProductType.SIMPLE,
-        status: input.status === "publish" ? ProductStatus.PUBLISHED : ProductStatus.DRAFT,
+        status: STATUS_FROM_PARAM[input.status ?? "draft"],
         name: input.name,
         slug,
         shortDescription: input.short_description || null,
@@ -390,7 +401,7 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
       data: {
         ...(input.name !== undefined && { name: input.name, slug: slugify(input.name, existing.wooId) }),
         ...(input.status !== undefined && {
-          status: input.status === "publish" ? ProductStatus.PUBLISHED : ProductStatus.DRAFT,
+          status: STATUS_FROM_PARAM[input.status] ?? ProductStatus.DRAFT,
         }),
         ...(input.short_description !== undefined && { shortDescription: input.short_description || null }),
         ...(input.description !== undefined && { description: input.description || null }),

@@ -7,7 +7,9 @@ export const productFormSchema = z.object({
   regularPrice: z.string().min(1, "Harga wajib diisi"),
   salePrice: z.string().optional(),
   stockQuantity: z.number().int().min(0).optional(),
-  status: z.enum(["publish", "draft"]),
+  // "private" ikut didukung karena admin sekarang menampilkan produk private;
+  // tanpa opsi ini, menyimpan salah satunya diam-diam menurunkannya jadi draft.
+  status: z.enum(["publish", "draft", "private"]),
   categoryIds: z.array(z.number()).min(1, "Pilih minimal 1 kategori"),
   attributes: z.array(z.object({ name: z.string().min(1), value: z.string().min(1) })),
   imageIds: z.array(z.number()),

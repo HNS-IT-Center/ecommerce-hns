@@ -88,6 +88,13 @@ export type GetProductsParams = {
   exclude?: number[];
   attribute?: string; // slug taxonomy, mis. "pa_kapasitas-storage"
   attributeTerm?: string | number;
+  /**
+   * Default (tidak diisi) = hanya produk terbit, perilaku yang dibutuhkan
+   * storefront. Admin memakai "any" supaya draft dan private ikut terlihat —
+   * tanpa itu produk baru, yang defaultnya draft, langsung lenyap dari daftar
+   * begitu dibuat.
+   */
+  status?: "publish" | "draft" | "private" | "any";
 };
 
 export type ProductAttributeTaxonomy = {
@@ -108,7 +115,7 @@ export type ProductAttributeTerm = {
 export type ProductInput = {
   name: string;
   type?: "simple";
-  status?: "publish" | "draft";
+  status?: "publish" | "draft" | "private";
   description?: string;
   short_description?: string;
   regular_price?: string;

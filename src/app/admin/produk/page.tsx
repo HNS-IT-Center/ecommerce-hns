@@ -8,6 +8,12 @@ type Props = {
   searchParams: Promise<{ q?: string; page?: string }>
 }
 
+const STATUS_LABEL: Record<string, string> = {
+  publish: "Publish",
+  draft: "Draft",
+  private: "Private",
+}
+
 export default async function AdminProdukPage({ searchParams }: Props) {
   const { q, page } = await searchParams
   const currentPage = Number(page ?? 1)
@@ -18,6 +24,9 @@ export default async function AdminProdukPage({ searchParams }: Props) {
     perPage: 20,
     orderby: "date",
     order: "desc",
+    // Draft & private wajib ikut tampil: produk baru dibuat sebagai draft, dan
+    // kalau daftar ini menyaringnya, produk itu hilang begitu selesai disimpan.
+    status: "any",
   })
 
   return (
@@ -61,7 +70,7 @@ export default async function AdminProdukPage({ searchParams }: Props) {
             <div className="flex-1 overflow-hidden">
               <h2 className="truncate text-sm font-semibold">{product.name}</h2>
               <p className="text-xs text-muted-foreground">
-                SKU: {product.sku || "-"} · {product.status === "publish" ? "Publish" : "Draft"}
+                SKU: {product.sku || "-"} · {STATUS_LABEL[product.status] ?? product.status}
               </p>
             </div>
             <p className="shrink-0 text-sm font-bold text-sale-red">{formatRupiah(Number(product.price || 0))}</p>

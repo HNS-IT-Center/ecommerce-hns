@@ -153,6 +153,7 @@ export function ProdukForm({ categories, productId, defaultValues, defaultImages
         <select id="status" {...register("status")} className={inputClass}>
           <option value="draft">Draft</option>
           <option value="publish">Publish</option>
+          <option value="private">Private</option>
         </select>
       </div>
 

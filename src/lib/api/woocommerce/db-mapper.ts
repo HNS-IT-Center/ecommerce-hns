@@ -1,5 +1,28 @@
 import type { Product as WooProduct, ProductCategory as WooCategory, ProductImage, ProductAttribute } from "@/types/woocommerce";
 
+/**
+ * Enum Prisma -> nilai status ala WooCommerce.
+ *
+ * Dulu ini `status.toLowerCase()`, dan itu diam-diam salah: PUBLISHED menjadi
+ * "published", sedangkan seluruh kode membandingkannya dengan "publish".
+ * Cast `as` membuat typechecker ikut diam. Akibatnya setiap pemeriksaan
+ * `status === "publish"` selalu gagal — form admin memuat produk terbit dengan
+ * status "draft", lalu menyimpannya benar-benar menurunkannya jadi draft.
+ * Pemetaan eksplisit menutup celah itu sekaligus membuat perbedaan penamaan
+ * kedua sistem terlihat.
+ */
+const STATUS_TO_WOO = {
+  PUBLISHED: "publish",
+  DRAFT: "draft",
+  PRIVATE: "private",
+} as const satisfies Record<string, WooProduct["status"]>;
+
+const STOCK_STATUS_TO_WOO = {
+  INSTOCK: "instock",
+  OUTOFSTOCK: "outofstock",
+  ONBACKORDER: "onbackorder",
+} as const satisfies Record<string, WooProduct["stock_status"]>;
+
 export function prismaProductToWoo(prismaProduct: any): WooProduct {
   // Produk VARIABLE (induk) tidak punya harga sendiri di database - harga
   // nempel di tiap VARIATION (child). Tampilkan "mulai dari" harga variasi
@@ -93,7 +116,7 @@ export function prismaProductToWoo(prismaProduct: any): WooProduct {
     slug: prismaProduct.slug,
     permalink: `https://hnsitcenter.id/product/${prismaProduct.slug}`,
     type: prismaProduct.type.toLowerCase() as "simple" | "variable" | "grouped" | "external",
-    status: prismaProduct.status.toLowerCase() as "publish" | "draft" | "pending" | "private",
+    status: STATUS_TO_WOO[prismaProduct.status as keyof typeof STATUS_TO_WOO] ?? "draft",
     description: prismaProduct.description || "",
     short_description: prismaProduct.shortDescription || "",
     sku: prismaProduct.sku || "",
@@ -103,7 +126,9 @@ export function prismaProductToWoo(prismaProduct: any): WooProduct {
     on_sale: onSale,
     date_on_sale_from_gmt: null,
     date_on_sale_to_gmt: null,
-    stock_status: prismaProduct.stockStatus ? prismaProduct.stockStatus.toLowerCase() as any : "instock",
+    stock_status: prismaProduct.stockStatus
+      ? STOCK_STATUS_TO_WOO[prismaProduct.stockStatus as keyof typeof STOCK_STATUS_TO_WOO] ?? "instock"
+      : "instock",
     stock_quantity: prismaProduct.stockQty,
     categories,
     brands,
