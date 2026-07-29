@@ -38,8 +38,15 @@ next-env.d.ts
 .env.production.local
 .env*.local
 
+# File env TANPA titik di depan (mis. env.download, env.production). Pola
+# ".env*" di atas tidak menangkapnya sama sekali, padahal isinya sama-sama
+# kredensial produksi — password database, secret WooCommerce, kunci R2.
+env
+env.*
+
 # Kecuali template ini yang boleh:
 !.env.example
+!env.example
 
 # ============================================================================
 # Debug logs
