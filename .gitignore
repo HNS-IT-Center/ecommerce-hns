@@ -127,5 +127,10 @@ PROJECT_BRIEF.md
 .claude
 csv/
 
+# Ekspor produk WooCommerce — file kerja lokal berukuran besar (5 MB+), bukan
+# bagian dari aplikasi. Dipakai sekali oleh scripts/import-csv.ts lalu selesai;
+# tidak ada gunanya membebani setiap clone dengannya.
+wc-product-export-*.csv
+
 # Dump rollback yang dibuat script migrasi data — artefak lokal, bukan sumber.
 scripts/backup-*.json
