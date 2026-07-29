@@ -1,6 +1,7 @@
 import { getProducts } from "@/lib/api/woocommerce/products"
 import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper"
 import { NewItemsTabsClient } from "./new-items-tabs-client"
+import type { Product } from "@/components/ui/product-card"
 
 export const TABS = [
   { id: "untukmu", label: "Untukmu", isRandom: true },
@@ -14,7 +15,7 @@ export const TABS = [
 ]
 
 export async function NewItemsTabs() {
-  let initialProducts = []
+  let initialProducts: Product[] = []
 
   try {
     // Fetch initial 30 products for "Untukmu" (default)
