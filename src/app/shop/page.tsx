@@ -5,6 +5,7 @@ import { ShopPagination } from "@/features/shop/components/shop-pagination"
 import { getCategories } from "@/lib/api/woocommerce/categories"
 import { getProductsPaginated } from "@/lib/api/woocommerce/products"
 import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper"
+import { collectCategoryAndDescendantIds } from "@/lib/utils/category-tree"
 import { ProductCard } from "@/components/ui/product-card"
 import { Filter } from "lucide-react"
 
@@ -29,26 +30,30 @@ export default async function ShopPage({ searchParams }: ShopPageProps) {
   const requestedPage = Number(resolvedParams.page)
   const page = requestedPage > 0 ? requestedPage : 1
 
-  // Fetch all categories for sidebar
-  const categories = await getCategories({ hideEmpty: true, perPage: 100 })
+  // perPage harus melampaui jumlah kategori: daftar yang terpotong membuat
+  // sidebar kehilangan simpul terakhir, dan keturunan yang hilang dari daftar
+  // ikut hilang dari hasil filter di bawah.
+  const categories = await getCategories({ hideEmpty: true, perPage: 500 })
 
-  let categoryId: number | undefined = undefined
+  // Memfilter kategori induk harus ikut memuat isi anak-anaknya — sama seperti
+  // halaman /category/[slug]. Keduanya memakai helper yang sama supaya tidak
+  // pernah lagi menjawab pertanyaan yang sama dengan cara berbeda: sebelum ini
+  // /shop hanya mencocokkan satu kategori, sehingga 65 produk yang tidak
+  // menyimpan kaitan ke induknya tidak pernah muncul di halaman induk itu.
+  let categoryIds: number[] | undefined = undefined
   if (categorySlug) {
-    const matchedCategory = categories.find(c => c.slug === categorySlug)
+    const matchedCategory =
+      categories.find((c) => c.slug === categorySlug) ??
+      (await getCategories({ slug: categorySlug }))[0]
+
     if (matchedCategory) {
-      categoryId = matchedCategory.id
-    } else {
-      // If category not found in existing list, fetch specifically
-      const specificCats = await getCategories({ slug: categorySlug })
-      if (specificCats.length > 0) {
-        categoryId = specificCats[0].id
-      }
+      categoryIds = collectCategoryAndDescendantIds(matchedCategory.id, categories)
     }
   }
 
   // Fetch products
   const { products: wooProducts, totalPages } = await getProductsPaginated({
-    category: categoryId,
+    category: categoryIds,
     onSale,
     page,
     perPage: PER_PAGE,
