@@ -1,8 +1,8 @@
 import Link from "next/link"
-import Image from "next/image"
 import { Plus } from "lucide-react"
 import { getProductsPaginated } from "@/lib/api/woocommerce/products"
-import { formatRupiah } from "@/lib/utils"
+import { getCategoriesForAdmin } from "@/lib/api/woocommerce/categories"
+import { ProductBulkList } from "./product-bulk-list"
 
 type Props = {
   searchParams: Promise<{ q?: string; page?: string }>
@@ -18,16 +18,28 @@ export default async function AdminProdukPage({ searchParams }: Props) {
   const { q, page } = await searchParams
   const currentPage = Number(page ?? 1)
 
-  const { products, totalPages } = await getProductsPaginated({
-    search: q,
-    page: currentPage,
-    perPage: 20,
-    orderby: "date",
-    order: "desc",
-    // Draft & private wajib ikut tampil: produk baru dibuat sebagai draft, dan
-    // kalau daftar ini menyaringnya, produk itu hilang begitu selesai disimpan.
-    status: "any",
-  })
+  const [{ products, totalPages }, categories] = await Promise.all([
+    getProductsPaginated({
+      search: q,
+      page: currentPage,
+      perPage: 20,
+      orderby: "date",
+      order: "desc",
+      // Draft & private wajib ikut tampil: produk baru dibuat sebagai draft, dan
+      // kalau daftar ini menyaringnya, produk itu hilang begitu selesai disimpan.
+      status: "any",
+    }),
+    getCategoriesForAdmin(),
+  ])
+
+  const rows = products.map((product) => ({
+    id: product.id,
+    name: product.name,
+    sku: product.sku ?? "",
+    status: product.status,
+    price: Number(product.price || 0),
+    image: product.images?.[0]?.src ?? null,
+  }))
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -52,30 +64,12 @@ export default async function AdminProdukPage({ searchParams }: Props) {
         />
       </form>
 
-      <div className="mt-6 space-y-2">
-        {products.length === 0 && (
-          <p className="text-sm text-muted-foreground">Tidak ada produk ditemukan.</p>
-        )}
-        {products.map((product) => (
-          <Link
-            key={product.id}
-            href={`/admin/produk/${product.id}`}
-            className="flex items-center gap-4 rounded-xl border border-border bg-background p-3 transition-colors hover:border-primary"
-          >
-            <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-muted">
-              {product.images?.[0]?.src && (
-                <Image src={product.images[0].src} alt={product.name} fill className="object-cover" />
-              )}
-            </div>
-            <div className="flex-1 overflow-hidden">
-              <h2 className="truncate text-sm font-semibold">{product.name}</h2>
-              <p className="text-xs text-muted-foreground">
-                SKU: {product.sku || "-"} · {STATUS_LABEL[product.status] ?? product.status}
-              </p>
-            </div>
-            <p className="shrink-0 text-sm font-bold text-sale-red">{formatRupiah(Number(product.price || 0))}</p>
-          </Link>
-        ))}
+      <div className="mt-6">
+        <ProductBulkList
+          products={rows}
+          categories={categories.map((c) => ({ id: c.id, path: c.path }))}
+          statusLabel={STATUS_LABEL}
+        />
       </div>
 
       {totalPages > 1 && (

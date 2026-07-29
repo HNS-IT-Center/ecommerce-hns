@@ -42,7 +42,8 @@ export type Product = {
   date_on_sale_to_gmt: string | null;
   stock_status: "instock" | "outofstock" | "onbackorder";
   stock_quantity: number | null;
-  categories: Array<{ id: number; name: string; slug: string }>;
+  /** `primary` menandai kategori utama — jalur yang dipakai breadcrumb & URL kanonik. */
+  categories: Array<{ id: number; name: string; slug: string; primary?: boolean }>;
   brands: Array<{ id: number; name: string; slug: string }>;
   images: Array<ProductImage>;
   attributes: Array<ProductAttribute>;
@@ -73,7 +74,12 @@ export type ProductVariation = {
 };
 
 export type GetProductsParams = {
-  category?: string | number;
+  /**
+   * `string` = slug kategori tunggal, `number` = id tunggal, `number[]` = satu
+   * kategori beserta keturunannya (halaman kategori induk melistkan produk yang
+   * menempel di anak-anaknya).
+   */
+  category?: string | number | number[];
   brand?: string; // Custom if using brands taxonomy
   perPage?: number;
   page?: number;

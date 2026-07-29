@@ -168,6 +168,17 @@ model ProductCategory {
   productId  Int @map("product_id")
   categoryId Int @map("category_id")
 
+  // Kategori utama produk: satu jalur yang dianggap "rumah" sebenarnya.
+  // Dipakai untuk breadcrumb, URL kanonik, dan laporan per kategori — tiga hal
+  // yang tidak punya jawaban selama produk bisa berada di beberapa cabang tanpa
+  // ada yang ditandai utama.
+  //
+  // Tidak ada constraint database yang membatasi satu primary per produk:
+  // MariaDB tidak punya partial unique index, jadi aturan itu ditegakkan di
+  // lapisan aplikasi (`setPrimaryCategory` membersihkan tanda lama dalam satu
+  // transaksi sebelum menandai yang baru).
+  isPrimary Boolean @default(false) @map("is_primary")
+
   product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 

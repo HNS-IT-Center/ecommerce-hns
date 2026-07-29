@@ -225,9 +225,27 @@ export function CategoryPicker({ categories, value, onChange }: CategoryPickerPr
     )
   }
 
-  const selectedHasChildren =
-    selectedId !== null &&
-    categories.some((category) => category.parent === selectedId)
+  /**
+   * Sub-kategori dari yang sedang dipilih.
+   *
+   * Sebelumnya di sini ada peringatan kuning setiap kali kategori terpilih
+   * masih punya anak. Itu keliru: picker tidak tahu apa-apa soal produknya,
+   * jadi ia menuduh staff salah padahal sering kali tidak. "UPS" anaknya cuma
+   * "BATERAI UPS", "PC ALL IN ONE" cuma "KEBUTUHAN CASHIER", "TABLET &
+   * SMARTPHONE" cuma "CHARGER PHONE" — untuk unit UPS, PC AIO, dan tablet,
+   * induknya memang rumah yang benar. Dari 111 produk yang ditandai "dangkal",
+   * sekitar 22 sebenarnya sudah tepat. Peringatan yang salah sesering itu
+   * hanya mengajari staff mengabaikannya.
+   *
+   * Menampilkan daftar anaknya jauh lebih berguna: staff langsung melihat
+   * apakah ada yang lebih cocok, dan bisa memilihnya dengan satu ketukan.
+   */
+  const childrenOfSelected = useMemo(() => {
+    if (selectedId === null) return []
+    return categories
+      .filter((category) => category.parent === selectedId)
+      .sort((a, b) => a.name.localeCompare(b.name, "id"))
+  }, [selectedId, categories])
 
   return (
     <div className="space-y-2">
@@ -250,12 +268,25 @@ export function CategoryPicker({ categories, value, onChange }: CategoryPickerPr
         </p>
       )}
 
-      {selectedHasChildren && (
-        <p className="flex items-start gap-2 rounded-xl bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-500">
-          <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          Kategori ini masih punya sub-kategori. Pilih yang lebih spesifik kalau ada yang cocok
-          supaya produk gampang ditemukan customer.
-        </p>
+      {childrenOfSelected.length > 0 && (
+        <div className="rounded-xl border border-input bg-muted/20 px-3 py-2">
+          <p className="text-xs text-muted-foreground">
+            Ada sub-kategori di bawahnya. Pilih salah satu kalau lebih cocok:
+          </p>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {childrenOfSelected.map((child) => (
+              <button
+                key={child.id}
+                type="button"
+                onClick={() => selectCategory(child.id)}
+                className="rounded-lg border border-input bg-background px-2 py-1 text-xs transition-colors hover:border-primary hover:bg-muted"
+              >
+                {child.name}
+                <span className="ms-1.5 tabular-nums text-muted-foreground">{child.count}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
       {conflictingPaths.length > 0 && (

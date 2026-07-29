@@ -11,6 +11,7 @@ import type {
   ProductInput,
 } from "@/types/woocommerce";
 import { decodeHtmlEntities } from "@/lib/utils/html";
+import { CategoryOperationError } from "./categories";
 
 // Base include for Prisma queries to fetch all relations needed by the mapper
 const productInclude = {
@@ -56,7 +57,12 @@ function buildPrismaWhere(params: GetProductsParams): Prisma.ProductWhereInput {
   }
 
   if (params.category) {
-    if (typeof params.category === 'string') {
+    // Daftar id dipakai halaman kategori induk: satu kategori beserta seluruh
+    // keturunannya. Tanpa cabang ini daftar tersebut jatuh ke pencocokan slug
+    // dan tidak pernah cocok dengan apa pun.
+    if (Array.isArray(params.category)) {
+      where.categories = { some: { categoryId: { in: params.category } } };
+    } else if (typeof params.category === 'string') {
       where.categories = { some: { category: { slug: params.category } } };
     } else {
       where.categories = { some: { categoryId: params.category } };
@@ -284,6 +290,199 @@ function slugify(name: string, wooId: number): string {
   );
 }
 
+// --------------------------------------------------------------- kategori utama
+
+/**
+ * Tetapkan kategori utama sebuah produk.
+ *
+ * Produk bisa menempel di beberapa kategori, tapi hanya satu yang menjawab
+ * "di rak mana barang ini sebenarnya" — itu yang dipakai breadcrumb, URL
+ * kanonik, dan laporan per kategori. Tanpa penanda ini ketiganya harus menebak,
+ * dan tebakan yang berbeda-beda antar halaman jauh lebih membingungkan
+ * daripada satu jawaban yang konsisten.
+ *
+ * MariaDB tidak punya partial unique index, jadi "hanya satu utama per produk"
+ * tidak bisa dititipkan ke database. Aturan itu ditegakkan di sini: penanda
+ * lama dibersihkan dan yang baru dipasang dalam satu transaksi, supaya tidak
+ * pernah ada saat di mana sebuah produk punya dua kategori utama.
+ */
+export async function setPrimaryCategory(
+  productWooId: number,
+  categoryId: number
+): Promise<void> {
+  const prisma = getPrisma();
+
+  const product = await prisma.product.findUnique({
+    where: { wooId: productWooId },
+    select: { id: true },
+  });
+  if (!product) throw new CategoryOperationError("Produk tidak ditemukan.");
+
+  const link = await prisma.productCategory.findUnique({
+    where: { productId_categoryId: { productId: product.id, categoryId } },
+  });
+  if (!link) {
+    throw new CategoryOperationError(
+      "Produk ini tidak terdaftar di kategori tersebut. Tambahkan kategorinya lebih dulu."
+    );
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.productCategory.updateMany({
+      where: { productId: product.id, isPrimary: true },
+      data: { isPrimary: false },
+    });
+    await tx.productCategory.update({
+      where: { productId_categoryId: { productId: product.id, categoryId } },
+      data: { isPrimary: true },
+    });
+  });
+}
+
+// --------------------------------------------------------------- kategori massal
+
+export type BulkCategoryMode = "add" | "remove";
+
+export type BulkAssignPreview = {
+  categoryId: number;
+  categoryName: string;
+  mode: BulkCategoryMode;
+  /** Produk terpilih yang benar-benar ada. */
+  selected: number;
+  /** Yang kaitannya akan berubah — angka inilah yang harus dikonfirmasi. */
+  willChange: number;
+  /** Sudah sesuai sejak awal, tidak disentuh. */
+  alreadyDone: number;
+  /** Terpilih tapi tidak ditemukan lagi (mis. terhapus di tab lain). */
+  missing: number;
+  /**
+   * Khusus mode hapus: produk yang setelah operasi ini tidak punya kategori
+   * sama sekali. Bukan larangan — kadang memang disengaja — tapi produk tanpa
+   * kategori tidak bisa ditemukan lewat penjelajahan, jadi PIC harus tahu.
+   */
+  wouldBeLeftWithoutCategory: number;
+  /**
+   * Khusus mode hapus: produk yang kategori ini justru kategori UTAMA-nya.
+   * Melepasnya berarti produk kehilangan jalur yang dipakai breadcrumb dan URL
+   * kanonik, jadi harus ditetapkan ulang setelahnya.
+   */
+  primaryBeingRemoved: number;
+};
+
+/** Pemeriksaan yang sama dipakai preview dan penyimpanan, supaya tidak bisa berbeda. */
+async function resolveBulkTargets(productWooIds: number[], categoryId: number) {
+  const prisma = getPrisma();
+
+  if (productWooIds.length === 0) {
+    throw new CategoryOperationError("Belum ada produk yang dipilih.");
+  }
+
+  const category = await prisma.category.findUnique({ where: { id: categoryId } });
+  if (!category) throw new CategoryOperationError("Kategori tidak ditemukan.");
+
+  const products = await prisma.product.findMany({
+    where: { wooId: { in: productWooIds } },
+    select: { id: true },
+  });
+
+  return { category, productIds: products.map((p) => p.id) };
+}
+
+/**
+ * Hitung dampak penetapan kategori massal TANPA menulis apa pun — dry run.
+ */
+export async function previewBulkAssignCategory(
+  productWooIds: number[],
+  categoryId: number,
+  mode: BulkCategoryMode
+): Promise<BulkAssignPreview> {
+  const prisma = getPrisma();
+  const { category, productIds } = await resolveBulkTargets(productWooIds, categoryId);
+
+  const existing = await prisma.productCategory.findMany({
+    where: { productId: { in: productIds }, categoryId },
+    select: { productId: true, isPrimary: true },
+  });
+  const alreadyLinked = new Set(existing.map((r) => r.productId));
+
+  const willChange =
+    mode === "add" ? productIds.length - alreadyLinked.size : alreadyLinked.size;
+  const alreadyDone = productIds.length - willChange;
+
+  let wouldBeLeftWithoutCategory = 0;
+  if (mode === "remove" && alreadyLinked.size > 0) {
+    const counts = await prisma.productCategory.groupBy({
+      by: ["productId"],
+      where: { productId: { in: [...alreadyLinked] } },
+      _count: { categoryId: true },
+    });
+    wouldBeLeftWithoutCategory = counts.filter((c) => c._count.categoryId === 1).length;
+  }
+
+  return {
+    categoryId,
+    categoryName: category.name,
+    mode,
+    selected: productIds.length,
+    willChange,
+    alreadyDone,
+    missing: productWooIds.length - productIds.length,
+    wouldBeLeftWithoutCategory,
+    primaryBeingRemoved: mode === "remove" ? existing.filter((r) => r.isPrimary).length : 0,
+  };
+}
+
+/**
+ * Tambahkan atau lepaskan satu kategori pada banyak produk sekaligus.
+ *
+ * Hanya kategori yang disebut yang disentuh — kaitan produk ke kategori lain
+ * dibiarkan apa adanya. Operasi ini sengaja dibuat sesempit itu supaya bisa
+ * disusun bertahap: memindahkan produk antar kategori adalah satu penghapusan
+ * lalu satu penambahan, masing-masing dengan dampaknya sendiri yang terlihat
+ * lebih dulu.
+ *
+ * Jumlah perubahan wajib dikirim balik dari layar konfirmasi. Kalau katalog
+ * bergeser antara melihat dampak dan menyetujuinya, angkanya tidak lagi cocok
+ * dan operasi ditolak — lebih baik gagal daripada menyentuh lebih banyak baris
+ * daripada yang ditunjukkan.
+ *
+ * Seluruh penulisan berada dalam satu transaksi: sebagian produk berubah dan
+ * sebagian tidak adalah keadaan yang paling sulit ditelusuri belakangan.
+ */
+export async function bulkAssignCategory(
+  productWooIds: number[],
+  categoryId: number,
+  mode: BulkCategoryMode,
+  acknowledgedChangeCount: number
+): Promise<void> {
+  const prisma = getPrisma();
+  const { productIds } = await resolveBulkTargets(productWooIds, categoryId);
+
+  const preview = await previewBulkAssignCategory(productWooIds, categoryId, mode);
+  if (preview.willChange !== acknowledgedChangeCount) {
+    throw new CategoryOperationError(
+      `Jumlah produk yang terdampak berubah sejak dampaknya ditampilkan (sekarang ${preview.willChange}). Lihat dampaknya sekali lagi.`
+    );
+  }
+
+  if (preview.willChange === 0) {
+    throw new CategoryOperationError("Tidak ada yang perlu diubah.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    if (mode === "add") {
+      await tx.productCategory.createMany({
+        data: productIds.map((productId) => ({ productId, categoryId })),
+        skipDuplicates: true,
+      });
+    } else {
+      await tx.productCategory.deleteMany({
+        where: { productId: { in: productIds }, categoryId },
+      });
+    }
+  });
+}
+
 async function nextWooId(): Promise<number> {
   const result = await getPrisma().product.aggregate({ _max: { wooId: true } });
   return (result._max.wooId ?? 0) + 1;
@@ -297,8 +496,27 @@ async function replaceProductRelations(
 ) {
   await tx.productCategory.deleteMany({ where: { productId } });
   if (input.categories?.length) {
+    const ids = input.categories.map((c) => c.id);
+
+    // Kategori utama = yang paling dalam di antara yang dipilih. Pemilih
+    // kategori mengirim satu jalur utuh (daun beserta seluruh leluhurnya),
+    // jadi yang terdalam adalah daun yang benar-benar dipilih staff — tidak
+    // perlu pertanyaan tambahan di form untuk sesuatu yang sudah tersirat.
+    const rows = await tx.category.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, depth: true },
+    });
+    const deepest = rows.reduce<{ id: number; depth: number } | null>(
+      (best, row) => (best === null || row.depth > best.depth ? row : best),
+      null
+    );
+
     await tx.productCategory.createMany({
-      data: input.categories.map((c) => ({ productId, categoryId: c.id })),
+      data: ids.map((categoryId) => ({
+        productId,
+        categoryId,
+        isPrimary: categoryId === deepest?.id,
+      })),
       skipDuplicates: true,
     });
   }

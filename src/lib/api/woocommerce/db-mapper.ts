@@ -62,6 +62,9 @@ export function prismaProductToWoo(prismaProduct: any): WooProduct {
         id: pc.category.id,
         name: pc.category.name,
         slug: pc.category.slug,
+        // Penanda kategori utama ikut dibawa supaya breadcrumb dan URL kanonik
+        // punya satu jalur yang jelas saat produk berada di beberapa cabang.
+        primary: Boolean(pc.isPrimary),
       }))
     : [];
 
