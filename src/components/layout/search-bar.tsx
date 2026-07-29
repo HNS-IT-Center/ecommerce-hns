@@ -33,19 +33,31 @@ export function SearchBar({ className }: SearchBarProps = {}) {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
+  const isOpen = (isFocused || isMobileSearchOpen) && query.trim().length >= MIN_QUERY_LENGTH
+
   useEffect(() => {
-    if (isMobileSearchOpen) {
+    if (isMobileSearchOpen || isOpen) {
       document.body.style.overflow = 'hidden'
+      document.documentElement.style.overflow = 'hidden'
     } else {
       document.body.style.overflow = ''
+      document.documentElement.style.overflow = ''
     }
+
+    if (isMobileSearchOpen) {
+      // Delay focus slightly to ensure portal is rendered and transition has started
+      setTimeout(() => inputRef.current?.focus(), 50)
+    } else if (isMobile && inputRef.current) {
+      inputRef.current.blur()
+    }
+
     return () => {
       document.body.style.overflow = ''
+      document.documentElement.style.overflow = ''
     }
-  }, [isMobileSearchOpen])
+  }, [isMobileSearchOpen, isOpen, isMobile])
 
   const { results, status } = useLiveSearch(query)
-  const isOpen = (isFocused || isMobileSearchOpen) && query.trim().length >= MIN_QUERY_LENGTH
 
   // Reset highlight saat query berubah — adjust state selama render (bukan
   // useEffect) supaya tidak menambah instance baru bug setState-in-effect.
@@ -204,17 +216,26 @@ export function SearchBar({ className }: SearchBarProps = {}) {
   )
 
   return (
-    <div className={cn("relative w-full max-w-sm", className)}>
-      {isMobileSearchOpen ? (
-        createPortal(
-          <div className="fixed inset-0 z-[100] bg-background overflow-y-auto h-[100dvh]">
-            {renderForm()}
-          </div>,
-          document.body
-        )
-      ) : (
-        renderForm()
+    <>
+      {isOpen && !isMobileSearchOpen && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="fixed top-16 inset-x-0 bottom-0 z-40 bg-black/60 backdrop-blur-sm" 
+          onClick={closeDropdown}
+        />,
+        document.body
       )}
-    </div>
+      <div className={cn("relative w-full z-50", className)}>
+        {isMobileSearchOpen ? (
+          createPortal(
+            <div className="fixed inset-0 z-[100] bg-background overflow-y-auto h-[100dvh] overscroll-none">
+              {renderForm()}
+            </div>,
+            document.body
+          )
+        ) : (
+          renderForm()
+        )}
+      </div>
+    </>
   )
 }

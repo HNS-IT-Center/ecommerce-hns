@@ -13,7 +13,7 @@ import { getBadgeColorClass } from "@/lib/utils/product"
 import { useCartStore } from "@/store/cart"
 import { Rating } from "@/components/ui/rating"
 import { useFlyToCart } from "@/components/providers/fly-to-cart-provider"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 
 export interface Product {
   id: string
@@ -52,9 +52,13 @@ export function ProductCard({ product }: ProductCardProps) {
     ? Math.round((1 - product.price / product.regular_price!) * 100)
     : 0
 
-  const productUrl = typeof window !== 'undefined' 
-    ? `${window.location.origin}/product/${product.slug}`
-    : `${process.env.NEXT_PUBLIC_SITE_URL || 'https://hnsitcenter.id'}/product/${product.slug}`
+  const [origin, setOrigin] = useState("")
+
+  useEffect(() => {
+    setOrigin(window.location.origin)
+  }, [])
+
+  const productUrl = `${origin || 'https://hnsitcenter.id'}/product/${product.slug}`
 
   const waMessage = `${productUrl}
 

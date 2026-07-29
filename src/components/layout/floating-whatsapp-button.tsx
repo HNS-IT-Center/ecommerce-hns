@@ -1,7 +1,7 @@
 "use client"
 
 import { usePathname } from "next/navigation"
-import { MessageCircle } from "lucide-react"
+import WhatsappIcon from "@/components/icons/whatsapp-icon"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import { cn } from "@/lib/utils"
 
@@ -29,10 +29,10 @@ export function FloatingWhatsAppButton({ whatsappNumber }: FloatingWhatsAppButto
       aria-label="Chat via WhatsApp"
       className={cn(
         "fixed right-5 z-50 h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg transition-transform hover:scale-105 md:bottom-5 md:flex",
-        hasOwnWhatsAppCta ? "hidden" : "bottom-5 flex"
+        hasOwnWhatsAppCta ? "hidden" : "bottom-24 flex"
       )}
     >
-      <MessageCircle className="h-7 w-7 fill-white" />
+      <WhatsappIcon size={28} color="white" />
     </a>
   )
 }

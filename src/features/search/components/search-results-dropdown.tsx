@@ -51,6 +51,7 @@ export function SearchResultsDropdown({
     <div
       id={id}
       role="listbox"
+      onMouseLeave={() => onHoverIndex(-1)}
       className={cn(
         "absolute inset-x-0 top-full z-50 mt-2 max-h-96 overflow-y-auto rounded-xl border bg-popover text-popover-foreground shadow-lg",
         className
@@ -120,6 +121,15 @@ export function SearchResultsDropdown({
               </Link>
             </li>
           ))}
+          <li className="sticky bottom-0 z-10 bg-popover border-t">
+            <Link 
+              href={`/search?q=${encodeURIComponent(query.trim())}`}
+              onClick={onSelect}
+              className="flex w-full items-center justify-center p-3 text-sm font-semibold text-sale-red hover:bg-muted/50 transition-colors"
+            >
+              Lihat semua hasil untuk "{query}"
+            </Link>
+          </li>
         </ul>
       )}
     </div>

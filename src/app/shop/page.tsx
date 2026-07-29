@@ -9,7 +9,7 @@ import { collectCategoryAndDescendantIds } from "@/lib/utils/category-tree"
 import { ProductCard } from "@/components/ui/product-card"
 import { Filter } from "lucide-react"
 
-const PER_PAGE = 24
+const PER_PAGE = 30
 
 export const metadata = {
   title: "Katalog Produk — HNS IT Center",
@@ -101,7 +101,7 @@ export default async function ShopPage({ searchParams }: ShopPageProps) {
             <div className="flex-1">
               {products.length > 0 ? (
                 <>
-                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:gap-6">
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5 xl:gap-6">
                     {products.map((product) => (
                       <ProductCard key={product.id} product={product} />
                     ))}

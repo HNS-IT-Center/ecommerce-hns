@@ -12,7 +12,7 @@ import { getProductsPaginated } from "@/lib/api/woocommerce/products"
 import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper"
 import { collectCategoryAndDescendantIds } from "@/lib/utils/category-tree"
 
-const PER_PAGE = 24
+const PER_PAGE = 30
 
 type CategoryPageProps = {
   params: Promise<{ slug: string }>
@@ -108,7 +108,7 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
             <div className="flex-1">
               {products.length > 0 ? (
                 <>
-                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:gap-6">
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5 xl:gap-6">
                     {products.map((product) => (
                       <ProductCard key={product.id} product={product} />
                     ))}

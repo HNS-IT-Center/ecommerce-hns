@@ -10,7 +10,8 @@ import RosetteDiscountIcon from "@/components/icons/discount-icon"
 type Tab = {
   id: string
   label: string
-  categorySlug?: string
+  categorySlug?: string | string[]
+  excludeCategorySlugs?: string[]
   isRandom?: boolean
   onSale?: boolean
 }
@@ -69,6 +70,7 @@ export function NewItemsTabsClient({ tabs, initialProducts }: NewItemsTabsClient
       perPage: 30,
       page: pageToFetch,
       category: tab.categorySlug,
+      excludeCategory: tab.excludeCategorySlugs,
       onSale: tab.onSale,
     })
 

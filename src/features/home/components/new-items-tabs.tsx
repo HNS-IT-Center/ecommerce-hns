@@ -9,9 +9,14 @@ export const TABS = [
   { id: "promo", label: "Promo", isRandom: true },
   { id: "laptop", label: "Laptop", categorySlug: "laptop" },
   { id: "komponen-pc", label: "Komponen PC", categorySlug: "komponen-pc-nb" },
-  { id: "gaming-gear", label: "Gaming Gear", categorySlug: "aksessories-komputer" },
-  { id: "printer", label: "Printer", categorySlug: "printer" },
-  { id: "charger-cable", label: "Charger & Cable", categorySlug: "cables-charger" },
+  { 
+    id: "gaming-gear", 
+    label: "Gaming Gear", 
+    categorySlug: "aksessories-komputer",
+    excludeCategorySlugs: ["furniture", "printer-proyektor", "kabel-converter", "powerbank-charger", "card-reader"]
+  },
+  { id: "printer", label: "Printer", categorySlug: "printer-proyektor" },
+  { id: "charger-cable", label: "Charger & Cable", categorySlug: ["kabel-converter", "powerbank-charger", "card-reader"] },
 ]
 
 export async function NewItemsTabs() {
