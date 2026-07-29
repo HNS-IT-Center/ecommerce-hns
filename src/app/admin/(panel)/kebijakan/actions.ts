@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { getPrisma } from "@/lib/prisma/client"
+import { requireAuth } from "@/lib/auth"
 
 function revalidatePolicyPages() {
   revalidatePath("/admin/kebijakan")
@@ -14,6 +15,7 @@ function revalidatePolicyPages() {
 }
 
 export async function updatePolicyPage(formData: FormData) {
+  await requireAuth()
   const slug = String(formData.get("slug") ?? "")
   const title = String(formData.get("title") ?? "").trim()
   const content = String(formData.get("content") ?? "").trim()
@@ -38,6 +40,7 @@ function readFaqInput(formData: FormData) {
 }
 
 export async function createFaqItem(formData: FormData) {
+  await requireAuth()
   const input = readFaqInput(formData)
   const prisma = getPrisma()
   await prisma.faqItem.create({ data: input })
@@ -46,6 +49,7 @@ export async function createFaqItem(formData: FormData) {
 }
 
 export async function updateFaqItem(formData: FormData) {
+  await requireAuth()
   const id = String(formData.get("id") ?? "")
   const input = readFaqInput(formData)
   const prisma = getPrisma()
@@ -55,6 +59,7 @@ export async function updateFaqItem(formData: FormData) {
 }
 
 export async function deleteFaqItem(formData: FormData) {
+  await requireAuth()
   const id = String(formData.get("id") ?? "")
   const prisma = getPrisma()
   await prisma.faqItem.delete({ where: { id } })

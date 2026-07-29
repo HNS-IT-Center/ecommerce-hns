@@ -1,6 +1,7 @@
 "use server"
 
 import { revalidatePath, revalidateTag } from "next/cache"
+import { UnauthorizedError, requireAuth } from "@/lib/auth"
 import {
   CategoryOperationError,
   createCategory,
@@ -42,17 +43,23 @@ function refresh() {
  * masih menempel) dikembalikan sebagai teks untuk ditampilkan di layar. Sisanya
  * dibiarkan naik supaya tidak ada kegagalan tak terduga yang menyamar jadi
  * pesan ramah.
+ *
+ * Pemeriksaan sesi ikut di sini, bukan diulang di tiap aksi. Proxy sudah
+ * menjaga navigasi halaman, tapi server action punya alamatnya sendiri dan bisa
+ * di-POST langsung tanpa pernah membuka satu halaman pun — jadi setiap aksi
+ * tetap harus bertanya sendiri.
  */
 async function run(
   fn: () => Promise<void>,
   ok: string
 ): Promise<CategoryActionState> {
   try {
+    await requireAuth()
     await fn()
     refresh()
     return { error: null, ok }
   } catch (error) {
-    if (error instanceof CategoryOperationError) {
+    if (error instanceof UnauthorizedError || error instanceof CategoryOperationError) {
       return { error: error.message, ok: null }
     }
     throw error
@@ -119,9 +126,12 @@ export async function previewMergeCategoryAction(
   }
 
   try {
+    // Preview pun dijaga: ia membaca jumlah produk per kategori, dan itu
+    // gambaran isi katalog yang tidak perlu terbuka bagi siapa saja.
+    await requireAuth()
     return { error: null, preview: await previewMergeCategory(sourceId, targetId) }
   } catch (error) {
-    if (error instanceof CategoryOperationError) {
+    if (error instanceof UnauthorizedError || error instanceof CategoryOperationError) {
       return { error: error.message, preview: null }
     }
     throw error

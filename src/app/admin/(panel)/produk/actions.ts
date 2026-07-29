@@ -1,6 +1,7 @@
 "use server"
 
 import { revalidatePath, revalidateTag } from "next/cache"
+import { UnauthorizedError, requireAuth } from "@/lib/auth"
 import { CategoryOperationError } from "@/lib/api/woocommerce/categories"
 import {
   bulkAssignCategory,
@@ -53,9 +54,12 @@ export async function previewBulkCategoryAction(
   if (!mode) return { error: "Jenis perubahan tidak valid.", preview: null }
 
   try {
+    await requireAuth()
     return { error: null, preview: await previewBulkAssignCategory(ids, categoryId, mode) }
   } catch (error) {
-    if (error instanceof CategoryOperationError) return { error: error.message, preview: null }
+    if (error instanceof UnauthorizedError || error instanceof CategoryOperationError) {
+      return { error: error.message, preview: null }
+    }
     throw error
   }
 }
@@ -75,6 +79,7 @@ export async function applyBulkCategoryAction(
   }
 
   try {
+    await requireAuth()
     await bulkAssignCategory(ids, categoryId, mode, acknowledged)
     refresh()
     return {
@@ -85,7 +90,9 @@ export async function applyBulkCategoryAction(
           : `Kategori dilepas dari ${acknowledged} produk.`,
     }
   } catch (error) {
-    if (error instanceof CategoryOperationError) return { error: error.message, ok: null }
+    if (error instanceof UnauthorizedError || error instanceof CategoryOperationError) {
+      return { error: error.message, ok: null }
+    }
     throw error
   }
 }

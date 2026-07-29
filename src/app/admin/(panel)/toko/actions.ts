@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { getPrisma } from "@/lib/prisma/client"
+import { requireAuth } from "@/lib/auth"
 
 function readStoreInput(formData: FormData) {
   return {
@@ -23,6 +24,7 @@ function revalidateStorePages() {
 }
 
 export async function createStore(formData: FormData) {
+  await requireAuth()
   const input = readStoreInput(formData)
   const prisma = getPrisma()
   await prisma.store.create({ data: input })
@@ -31,6 +33,7 @@ export async function createStore(formData: FormData) {
 }
 
 export async function updateStore(formData: FormData) {
+  await requireAuth()
   const { id, ...data } = readStoreInput(formData)
   const prisma = getPrisma()
   await prisma.store.update({
@@ -42,6 +45,7 @@ export async function updateStore(formData: FormData) {
 }
 
 export async function deleteStore(formData: FormData) {
+  await requireAuth()
   const id = String(formData.get("id") ?? "")
   const prisma = getPrisma()
   await prisma.store.delete({ where: { id } })
