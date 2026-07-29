@@ -56,12 +56,13 @@ const PENEMPATAN: Array<[number, string, string]> = [
   [16309, "AKSESSORIES KOMPUTER > KABEL / CONVERTER > KABEL DISPLAYPORT", "VENTION DisplayPort to HDMI"],
   [24517, "AKSESSORIES KOMPUTER > KABEL / CONVERTER", "UGREEN Type-C to SATA"],
   [24122, "AKSESSORIES KOMPUTER > KABEL / CONVERTER", "UGREEN Type-C to Type-C — belum ada kategori USB-C <-> USB-C"],
+
+  // Ditetapkan PIC menyusul, setelah sisanya selesai.
+  [32283, "KOMPONEN PC / NB > CASING PC > ACC CASING", "ARGB LED STRIP — aksesori casing"],
 ]
 
 /** Tidak diputuskan — jangan dipaksakan. */
-const PERLU_PIC: Array<[number, string]> = [
-  [32283, "ARGB LED STRIP ARMAGGEDDON TESSARAXX 20CM — tidak tercakup keputusan"],
-]
+const PERLU_PIC: Array<[number, string]> = []
 
 console.log(`${tag} Kategorikan produk terbit yang belum punya rumah\n`)
 
