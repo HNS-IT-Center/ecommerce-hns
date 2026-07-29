@@ -28,6 +28,11 @@ const EnvSchema = z.object({
   // kebijakan/FAQ. Opsional supaya storefront utama tidak fail-fast kalau
   // admin belum dikonfigurasi.
   DATABASE_URL: z.string().min(1).optional(),
+
+  // Admin panel — kunci penanda tangan cookie sesi. Opsional di skema ini
+  // supaya storefront tetap jalan tanpanya; `lib/auth/session.ts` menjaganya
+  // sendiri dan melempar dengan pesan jelas saat sesi benar-benar dibutuhkan.
+  AUTH_SECRET: z.string().min(32).optional(),
 });
 
 export const env = EnvSchema.parse({
@@ -42,4 +47,5 @@ export const env = EnvSchema.parse({
   WORDPRESS_APP_USER: process.env.WORDPRESS_APP_USER,
   WORDPRESS_APP_PASSWORD: process.env.WORDPRESS_APP_PASSWORD,
   DATABASE_URL: process.env.DATABASE_URL,
+  AUTH_SECRET: process.env.AUTH_SECRET,
 });
