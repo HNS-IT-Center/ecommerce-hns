@@ -11,6 +11,11 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "hnsitcenter.id",
       },
+      {
+        protocol: 'https',
+        hostname: 'media.hnsitcenter.com',
+        pathname: '/**',
+      },
     ],
   },
 };
