@@ -8,8 +8,9 @@ import { ShoppingCart, ArrowRight } from "lucide-react"
 import { formatRupiah } from "@/lib/utils"
 import { getBadgeColorClass } from "@/lib/utils/product"
 import { useCartStore } from "@/store/cart"
-import { useAddToCartToast } from "@/features/cart/hooks/use-add-to-cart-toast"
 import { Rating } from "@/components/ui/rating"
+import { useFlyToCart } from "@/components/providers/fly-to-cart-provider"
+import { useState } from "react"
 
 export interface Product {
   id: string
@@ -37,7 +38,9 @@ interface ProductCardProps {
 export function ProductCard({ product }: ProductCardProps) {
   const router = useRouter()
   const addItem = useCartStore((state) => state.addItem)
-  const showAddToCartToast = useAddToCartToast()
+  const { flyToCart } = useFlyToCart()
+  const [isAdding, setIsAdding] = useState(false)
+
   const hasMemberPrice = product.member_price != null && product.member_price < product.price
   const isSimpleProduct = product.type === "simple"
   const hasDiscount =
@@ -47,10 +50,8 @@ export function ProductCard({ product }: ProductCardProps) {
     : 0
 
   const handleAddToCart = (event: React.MouseEvent) => {
-    // Tombol ini sekarang sibling dari overlay Link (bukan bersarang di
-    // dalamnya, lihat I-12), jadi klik tidak lagi "jatuh" ke Link secara
-    // alami — produk bervarian perlu navigasi eksplisit supaya user pilih
-    // varian dulu (hindari order ambigu ke CS).
+    if (isAdding) return
+
     if (!isSimpleProduct) {
       router.push(`/product/${product.slug}`)
       return
@@ -58,15 +59,21 @@ export function ProductCard({ product }: ProductCardProps) {
 
     event.preventDefault()
     event.stopPropagation()
-    addItem({
-      id: product.id,
-      productId: Number(product.id),
-      name: product.name,
-      price: product.price,
-      quantity: 1,
-      image: product.image_url,
-    })
-    showAddToCartToast(product.name)
+    setIsAdding(true)
+    
+    flyToCart(event.clientX, event.clientY, product.image_url)
+    
+    setTimeout(() => {
+      addItem({
+        id: product.id,
+        productId: Number(product.id),
+        name: product.name,
+        price: product.price,
+        quantity: 1,
+        image: product.image_url,
+      })
+      setIsAdding(false)
+    }, 800)
   }
 
   return (
@@ -164,8 +171,9 @@ export function ProductCard({ product }: ProductCardProps) {
             </span>
             <button
               onClick={handleAddToCart}
+              disabled={isAdding}
               title={isSimpleProduct ? "Tambah ke keranjang" : "Pilih varian"}
-              className="relative z-20 flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-foreground transition-colors group-hover:bg-brand-green group-hover:text-white"
+              className="relative z-20 flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-foreground transition-colors group-hover:bg-brand-green group-hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label={isSimpleProduct ? "Tambah ke keranjang" : "Lihat pilihan varian"}
             >
               {isSimpleProduct ? (

@@ -3,7 +3,7 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { formatRupiah } from "@/lib/utils"
 
 type ProductActionsProps = {
-  onAddToCart: () => void
+  onAddToCart: (e: React.MouseEvent) => void
   canAddToCart: boolean
   showCartButton: boolean
   addToCartHint?: string

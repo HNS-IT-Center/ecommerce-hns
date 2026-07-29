@@ -7,8 +7,8 @@ import { useCartStore } from "@/store/cart"
 import { useAuthStore } from "@/store/auth"
 import { useIsHydrated } from "@/hooks/use-is-hydrated"
 import { calculateProductPrice } from "@/features/product/lib/calculate-product-price"
-import { useAddToCartToast } from "@/features/cart/hooks/use-add-to-cart-toast"
 import type { ProductVariation } from "@/types/woocommerce"
+import { useFlyToCart } from "@/components/providers/fly-to-cart-provider"
 import { ProductPriceBox } from "./product-price-box"
 import { ProductActions } from "./product-actions"
 import { ProductVariantSelector, type VariantAttribute } from "./product-variant-selector"
@@ -61,10 +61,11 @@ export function ProductInfo({
 
   const addItem = useCartStore((state) => state.addItem)
   const { isLoggedIn } = useAuthStore()
-  const showAddToCartToast = useAddToCartToast()
   const mounted = useIsHydrated()
+  const { flyToCart } = useFlyToCart()
 
   const [selected, setSelected] = useState<Record<string, string>>({})
+  const [isAdding, setIsAdding] = useState(false)
 
   const isMember = mounted && isLoggedIn
 
@@ -135,34 +136,46 @@ export function ProductInfo({
     setSelected((prev) => ({ ...prev, [attributeName]: option }))
   }
 
-  const handleAddToCart = () => {
+  const handleAddToCart = (e: React.MouseEvent) => {
+    if (isAdding) return
+
     if (type === "variable") {
       if (!resolvedVariation) return
+      setIsAdding(true)
+      flyToCart(e.clientX, e.clientY, effectiveImage)
       const variantLabel = variantAttributes.map((a) => selected[a.name]).join(", ")
+      
+      setTimeout(() => {
+        addItem({
+          id: `${id}_${resolvedVariation.id}`,
+          productId: id,
+          name,
+          price: finalPrice,
+          quantity: 1,
+          sku: effectiveSku,
+          image: effectiveImage,
+          variationLabel: variantLabel,
+        })
+        setIsAdding(false)
+      }, 800)
+      return
+    }
+
+    setIsAdding(true)
+    flyToCart(e.clientX, e.clientY, image)
+    
+    setTimeout(() => {
       addItem({
-        id: `${id}_${resolvedVariation.id}`,
+        id: id.toString(),
         productId: id,
         name,
         price: finalPrice,
         quantity: 1,
-        sku: effectiveSku,
-        image: effectiveImage,
-        variationLabel: variantLabel,
+        sku,
+        image,
       })
-      showAddToCartToast(name)
-      return
-    }
-
-    addItem({
-      id: id.toString(),
-      productId: id,
-      name,
-      price: finalPrice,
-      quantity: 1,
-      sku,
-      image,
-    })
-    showAddToCartToast(name)
+      setIsAdding(false)
+    }, 800)
   }
 
   return (
@@ -174,7 +187,7 @@ export function ProductInfo({
             {brand}
           </span>
         )}
-        <span className="text-muted-foreground">{categoryName}</span>
+        <span className="text-sale-red font-bold uppercase tracking-wider">{categoryName}</span>
       </div>
 
       {/* Product Name */}
@@ -248,7 +261,7 @@ export function ProductInfo({
 
       <ProductActions
         onAddToCart={handleAddToCart}
-        canAddToCart={canAddToCart}
+        canAddToCart={canAddToCart && !isAdding}
         showCartButton={showCartButton}
         addToCartHint={addToCartHint}
         waUrl={waUrl}
