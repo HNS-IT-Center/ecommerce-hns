@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { TriangleAlert, LayoutDashboard, Package, Store, FileText, FolderTree } from "lucide-react"
+import { LayoutDashboard, Package, Store, FileText, FolderTree } from "lucide-react"
+import { getCurrentUser } from "@/lib/auth"
 
 export const metadata: Metadata = {
   title: "Admin — HNS IT Center",
@@ -15,14 +16,17 @@ const NAV_ITEMS = [
   { href: "/admin/kebijakan", label: "Kebijakan & FAQ", icon: FileText },
 ]
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  const user = await getCurrentUser()
+
+  // Halaman masuk ikut berada di bawah /admin supaya alamatnya mudah ditebak,
+  // tapi ia tidak boleh dibingkai sidebar yang seluruh tautannya justru
+  // terkunci. Selama belum ada sesi, layout menyingkir dan membiarkan
+  // halamannya tampil apa adanya.
+  if (!user) return <>{children}</>
+
   return (
     <div className="flex min-h-screen flex-col bg-muted/30">
-      <div className="flex items-center gap-2 bg-destructive px-4 py-2 text-sm font-semibold text-white">
-        <TriangleAlert className="h-4 w-4 shrink-0" />
-        Admin panel ini belum ada proteksi login — jangan deploy ke domain publik sebelum autentikasi dibangun.
-      </div>
-
       <div className="flex flex-1">
         <aside className="hidden w-56 shrink-0 border-r border-border bg-background md:block">
           <nav className="flex flex-col gap-1 p-4">
