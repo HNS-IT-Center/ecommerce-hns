@@ -96,7 +96,7 @@ export function HeroCarousel() {
         </CarouselContent>
 
         {/* Custom Navigation */}
-        <div className="absolute inset-y-0 left-8 md:left-12 flex items-center">
+        <div className="absolute inset-y-0 left-8 md:left-12 hidden sm:flex items-center">
           <button
             onClick={() => api?.scrollPrev()}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-black/10 text-white backdrop-blur-sm transition-colors hover:bg-black/40 md:bg-black/20"
@@ -105,7 +105,7 @@ export function HeroCarousel() {
             <ChevronLeft className="h-6 w-6" />
           </button>
         </div>
-        <div className="absolute inset-y-0 right-8 md:right-12 flex items-center">
+        <div className="absolute inset-y-0 right-8 md:right-12 hidden sm:flex items-center">
           <button
             onClick={() => api?.scrollNext()}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-black/10 text-white backdrop-blur-sm transition-colors hover:bg-black/40 md:bg-black/20"
