@@ -347,14 +347,26 @@ export async function mergeCategory(
 
   const links = await prisma.productCategory.findMany({
     where: { categoryId: sourceId },
-    select: { productId: true },
+    select: { productId: true, isPrimary: true },
   });
+
+  // Produk yang kategori asalnya adalah kategori UTAMA-nya harus tetap punya
+  // kategori utama sesudah penggabungan — kalau tidak, breadcrumb dan URL
+  // kanoniknya kehilangan acuan hanya karena dua kategori kembar dirapikan.
+  const primaryHolders = links.filter((l) => l.isPrimary).map((l) => l.productId);
 
   await prisma.$transaction(async (tx) => {
     if (links.length > 0) {
       await tx.productCategory.createMany({
         data: links.map((l) => ({ productId: l.productId, categoryId: targetId })),
         skipDuplicates: true,
+      });
+    }
+
+    if (primaryHolders.length > 0) {
+      await tx.productCategory.updateMany({
+        where: { productId: { in: primaryHolders }, categoryId: targetId },
+        data: { isPrimary: true },
       });
     }
 

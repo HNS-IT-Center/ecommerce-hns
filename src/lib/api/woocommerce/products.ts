@@ -290,6 +290,55 @@ function slugify(name: string, wooId: number): string {
   );
 }
 
+// --------------------------------------------------------------- kategori utama
+
+/**
+ * Tetapkan kategori utama sebuah produk.
+ *
+ * Produk bisa menempel di beberapa kategori, tapi hanya satu yang menjawab
+ * "di rak mana barang ini sebenarnya" — itu yang dipakai breadcrumb, URL
+ * kanonik, dan laporan per kategori. Tanpa penanda ini ketiganya harus menebak,
+ * dan tebakan yang berbeda-beda antar halaman jauh lebih membingungkan
+ * daripada satu jawaban yang konsisten.
+ *
+ * MariaDB tidak punya partial unique index, jadi "hanya satu utama per produk"
+ * tidak bisa dititipkan ke database. Aturan itu ditegakkan di sini: penanda
+ * lama dibersihkan dan yang baru dipasang dalam satu transaksi, supaya tidak
+ * pernah ada saat di mana sebuah produk punya dua kategori utama.
+ */
+export async function setPrimaryCategory(
+  productWooId: number,
+  categoryId: number
+): Promise<void> {
+  const prisma = getPrisma();
+
+  const product = await prisma.product.findUnique({
+    where: { wooId: productWooId },
+    select: { id: true },
+  });
+  if (!product) throw new CategoryOperationError("Produk tidak ditemukan.");
+
+  const link = await prisma.productCategory.findUnique({
+    where: { productId_categoryId: { productId: product.id, categoryId } },
+  });
+  if (!link) {
+    throw new CategoryOperationError(
+      "Produk ini tidak terdaftar di kategori tersebut. Tambahkan kategorinya lebih dulu."
+    );
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.productCategory.updateMany({
+      where: { productId: product.id, isPrimary: true },
+      data: { isPrimary: false },
+    });
+    await tx.productCategory.update({
+      where: { productId_categoryId: { productId: product.id, categoryId } },
+      data: { isPrimary: true },
+    });
+  });
+}
+
 // --------------------------------------------------------------- kategori massal
 
 export type BulkCategoryMode = "add" | "remove";
@@ -312,6 +361,12 @@ export type BulkAssignPreview = {
    * kategori tidak bisa ditemukan lewat penjelajahan, jadi PIC harus tahu.
    */
   wouldBeLeftWithoutCategory: number;
+  /**
+   * Khusus mode hapus: produk yang kategori ini justru kategori UTAMA-nya.
+   * Melepasnya berarti produk kehilangan jalur yang dipakai breadcrumb dan URL
+   * kanonik, jadi harus ditetapkan ulang setelahnya.
+   */
+  primaryBeingRemoved: number;
 };
 
 /** Pemeriksaan yang sama dipakai preview dan penyimpanan, supaya tidak bisa berbeda. */
@@ -346,7 +401,7 @@ export async function previewBulkAssignCategory(
 
   const existing = await prisma.productCategory.findMany({
     where: { productId: { in: productIds }, categoryId },
-    select: { productId: true },
+    select: { productId: true, isPrimary: true },
   });
   const alreadyLinked = new Set(existing.map((r) => r.productId));
 
@@ -373,6 +428,7 @@ export async function previewBulkAssignCategory(
     alreadyDone,
     missing: productWooIds.length - productIds.length,
     wouldBeLeftWithoutCategory,
+    primaryBeingRemoved: mode === "remove" ? existing.filter((r) => r.isPrimary).length : 0,
   };
 }
 
@@ -440,8 +496,27 @@ async function replaceProductRelations(
 ) {
   await tx.productCategory.deleteMany({ where: { productId } });
   if (input.categories?.length) {
+    const ids = input.categories.map((c) => c.id);
+
+    // Kategori utama = yang paling dalam di antara yang dipilih. Pemilih
+    // kategori mengirim satu jalur utuh (daun beserta seluruh leluhurnya),
+    // jadi yang terdalam adalah daun yang benar-benar dipilih staff — tidak
+    // perlu pertanyaan tambahan di form untuk sesuatu yang sudah tersirat.
+    const rows = await tx.category.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, depth: true },
+    });
+    const deepest = rows.reduce<{ id: number; depth: number } | null>(
+      (best, row) => (best === null || row.depth > best.depth ? row : best),
+      null
+    );
+
     await tx.productCategory.createMany({
-      data: input.categories.map((c) => ({ productId, categoryId: c.id })),
+      data: ids.map((categoryId) => ({
+        productId,
+        categoryId,
+        isPrimary: categoryId === deepest?.id,
+      })),
       skipDuplicates: true,
     });
   }
