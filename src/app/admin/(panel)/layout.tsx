@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
+import { redirect } from "next/navigation"
 import { LayoutDashboard, Package, Store, FileText, FolderTree } from "lucide-react"
 import { getCurrentUser } from "@/lib/auth"
 
@@ -19,11 +20,22 @@ const NAV_ITEMS = [
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser()
 
-  // Halaman masuk ikut berada di bawah /admin supaya alamatnya mudah ditebak,
-  // tapi ia tidak boleh dibingkai sidebar yang seluruh tautannya justru
-  // terkunci. Selama belum ada sesi, layout menyingkir dan membiarkan
-  // halamannya tampil apa adanya.
-  if (!user) return <>{children}</>
+  /**
+   * Penjaga kedua, di belakang middleware.
+   *
+   * Middleware berjalan di Edge dan hanya bisa memeriksa tanda tangan cookie —
+   * ia tidak punya akses database, jadi ia tidak tahu apakah akunnya masih ada.
+   * Cookie milik akun yang sudah dihapus akan tetap lolos di sana sampai
+   * kedaluwarsa sendiri. Di sinilah pertanyaan itu dijawab: `getCurrentUser`
+   * membaca ulang tabel User, dan kalau barisnya sudah tidak ada, sesi ikut
+   * kehilangan artinya seketika.
+   *
+   * Halaman masuk sengaja berada DI LUAR route group ini. Kalau ia ikut
+   * dibingkai layout, pengalihan di bawah akan memanggil dirinya sendiri tanpa
+   * henti — dan halaman login yang terkunci di belakang login adalah cara
+   * paling rapi untuk mengunci diri sendiri di luar rumah.
+   */
+  if (!user) redirect("/admin/login")
 
   return (
     <div className="flex min-h-screen flex-col bg-muted/30">
