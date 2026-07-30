@@ -371,3 +371,14 @@ model ImportQuarantine {
 
   @@map("import_quarantine")
 }
+
+// --------------------------------------------------------------------------- setting
+
+// Digunakan untuk menyimpan konfigurasi global situs (misal: PC Builder steps)
+model Setting {
+  key       String   @id @db.VarChar(100)
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
