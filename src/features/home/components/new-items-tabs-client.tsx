@@ -1,82 +1,214 @@
 "use client"
 
-import { useState } from "react"
-import Link from "next/link"
-import { ArrowRight } from "lucide-react"
-
+import { useState, useEffect, useCallback, useRef } from "react"
+import { useInView } from "react-intersection-observer"
 import { ProductCard, type Product } from "@/components/ui/product-card"
+import { fetchProductsAction } from "@/actions/products"
+import { Loader2, ArrowRight } from "lucide-react"
+import RosetteDiscountIcon from "@/components/icons/discount-icon"
+import LikeIcon from "@/components/icons/like-icon"
+import Link from "next/link"
 
 type Tab = {
   id: string
   label: string
+  categorySlug?: string | string[]
+  excludeCategorySlugs?: string[]
+  isRandom?: boolean
+  onSale?: boolean
 }
 
 type NewItemsTabsClientProps = {
   tabs: Tab[]
-  productsByTab: Record<string, Product[]>
+  initialProducts: Product[]
 }
 
-export function NewItemsTabsClient({ tabs, productsByTab }: NewItemsTabsClientProps) {
-  const [activeTab, setActiveTab] = useState(tabs[0]?.id ?? "")
+type TabState = {
+  products: Product[]
+  page: number
+  displayLimit: number
+  hasMore: boolean
+  isLoading: boolean
+}
 
-  const products = productsByTab[activeTab] ?? []
+export function NewItemsTabsClient({ tabs, initialProducts }: NewItemsTabsClientProps) {
+  const sectionRef = useRef<HTMLElement>(null)
+  const [activeTab, setActiveTab] = useState(tabs[0].id)
+  const [tabStates, setTabStates] = useState<Record<string, TabState>>({
+    [tabs[0].id]: {
+      products: initialProducts,
+      page: 1,
+      displayLimit: 18,
+      hasMore: initialProducts.length === 30,
+      isLoading: false
+    }
+  })
+
+  const currentTabState = tabStates[activeTab] || {
+    products: [],
+    page: 1,
+    displayLimit: 18,
+    hasMore: true,
+    isLoading: false
+  }
+
+  const { ref: observerRef, inView } = useInView({
+    rootMargin: "200px",
+  })
+
+  const loadMoreData = useCallback(async (tabId: string, pageToFetch: number) => {
+    setTabStates(prev => ({
+      ...prev,
+      [tabId]: { ...(prev[tabId] || { products: [], page: 1, displayLimit: 18, hasMore: true }), isLoading: true }
+    }))
+
+    const tab = tabs.find(t => t.id === tabId)
+    if (!tab) return
+
+    let fetchedProducts: Product[] = []
+    
+    // Call server action
+    fetchedProducts = await fetchProductsAction({
+      perPage: 30,
+      page: pageToFetch,
+      category: tab.categorySlug,
+      excludeCategory: tab.excludeCategorySlugs,
+      onSale: tab.onSale,
+    })
+
+    if (tab.isRandom && pageToFetch === 1) {
+       fetchedProducts.sort(() => Math.random() - 0.5)
+    }
+
+    setTabStates(prev => {
+      const existing = prev[tabId] || { products: [], page: 1, displayLimit: 18 }
+      const newProducts = pageToFetch === 1 ? fetchedProducts : [...existing.products, ...fetchedProducts]
+      return {
+        ...prev,
+        [tabId]: {
+          products: newProducts,
+          page: pageToFetch,
+          displayLimit: pageToFetch === 1 ? 18 : existing.displayLimit + 18,
+          hasMore: fetchedProducts.length === 30,
+          isLoading: false
+        }
+      }
+    })
+  }, [tabs])
+
+  // Initial load for a tab if it hasn't been loaded yet
+  useEffect(() => {
+    if (!tabStates[activeTab]) {
+      loadMoreData(activeTab, 1)
+    }
+  }, [activeTab, tabStates, loadMoreData])
+
+  // Handle infinite scroll trigger
+  useEffect(() => {
+    if (inView && !currentTabState.isLoading && currentTabState.products.length > currentTabState.displayLimit) {
+      setTabStates(prev => ({
+        ...prev,
+        [activeTab]: {
+          ...prev[activeTab],
+          displayLimit: prev[activeTab].displayLimit + 12
+        }
+      }))
+    }
+  }, [inView, activeTab, currentTabState.isLoading, currentTabState.products.length, currentTabState.displayLimit])
+
+  const handleManualLoadMore = () => {
+    if (currentTabState.hasMore && !currentTabState.isLoading) {
+      loadMoreData(activeTab, currentTabState.page + 1)
+    }
+  }
+
+  const handleTabClick = (tabId: string) => {
+    setActiveTab(tabId)
+    if (sectionRef.current) {
+       const y = sectionRef.current.getBoundingClientRect().top + window.scrollY - 64;
+       window.scrollTo({ top: y, behavior: 'smooth' });
+    }
+  }
+
+  const displayedProducts = currentTabState.products.slice(0, currentTabState.displayLimit)
+  const isShowMoreBtnVisible = currentTabState.displayLimit % 30 === 0 && currentTabState.hasMore
 
   return (
-    <section className="mx-auto w-full max-w-7xl px-4 md:px-6 py-12">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4">
-        <div className="flex items-center gap-4">
-          <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">
-            Produk Terbaru
-          </h2>
-          <div className="hidden sm:flex items-center gap-2 bg-muted p-1 rounded-full">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-1.5 text-sm font-medium rounded-full transition-colors ${
-                  activeTab === tab.id
-                    ? "bg-sale-red text-white"
-                    : "text-muted-foreground hover:text-foreground hover:bg-background/50"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <Link
-          href="/shop"
-          className="text-sm font-semibold text-sale-red hover:text-sale-red/80 flex items-center gap-1 transition-colors"
-        >
-          Lihat semua <ArrowRight className="h-4 w-4" />
-        </Link>
+    <section ref={sectionRef} className="w-full flex flex-col relative pb-12 pt-8">
+      <div className="max-w-7xl mx-auto px-4 md:px-6 w-full mb-4 flex items-center justify-between">
+        <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">
+          Produk Pilihan
+        </h2>
       </div>
 
-      {/* Mobile tabs scrollable */}
-      <div className="flex sm:hidden overflow-x-auto pb-4 mb-4 gap-2 scrollbar-hide">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`whitespace-nowrap px-4 py-1.5 text-sm font-medium rounded-full transition-colors ${
-              activeTab === tab.id
-                ? "bg-sale-red text-white"
-                : "bg-muted text-muted-foreground"
-            }`}
+      {/* Sticky Full-Width Tabs */}
+      <div className="sticky top-[64px] z-[45] w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border/50 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 overflow-x-auto scrollbar-hide flex gap-2 md:gap-4 items-center">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => handleTabClick(tab.id)}
+              className={`whitespace-nowrap px-4 py-2 text-sm font-semibold rounded-xl transition-all cursor-pointer select-none flex items-center gap-1.5 ${
+                activeTab === tab.id
+                  ? "bg-sale-red text-white shadow-md shadow-sale-red/20"
+                  : tab.id === "best-deals"
+                  ? "bg-black text-white hover:bg-sale-red/10 hover:text-sale-red"
+                  : "bg-muted text-muted-foreground hover:bg-sale-red/10 hover:text-sale-red"
+              }`}
+            >
+              {tab.id === "best-deals" && <RosetteDiscountIcon size={16} />}
+              {tab.id === "untukmu" && <LikeIcon className="w-4 h-4" />}
+              {tab.label}
+            </button>
+          ))}
+          <Link
+            href="/shop"
+            className="whitespace-nowrap px-4 py-2 text-sm font-semibold rounded-xl transition-all cursor-pointer select-none flex items-center gap-1.5 bg-muted text-muted-foreground hover:bg-sale-red/10 hover:text-sale-red"
           >
-            {tab.label}
-          </button>
-        ))}
+            Lainnya <ArrowRight size={16} />
+          </Link>
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6 lg:gap-6">
-        {products.map((product) => (
-          <ProductCard key={product.id} product={product} />
-        ))}
-        {products.length === 0 && (
-          <div className="col-span-full py-12 text-center text-muted-foreground">
-            Belum ada produk di kategori ini.
-          </div>
+      <div className="mx-auto w-full max-w-7xl px-4 md:px-6 pt-8">
+        {currentTabState.isLoading && currentTabState.page === 1 ? (
+           <div className="w-full py-20 flex justify-center items-center">
+             <Loader2 className="h-8 w-8 animate-spin text-sale-red" />
+           </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3 md:gap-4 md:grid-cols-4 lg:grid-cols-6 lg:gap-6">
+              {displayedProducts.map((product) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
+            </div>
+
+            {displayedProducts.length === 0 && !currentTabState.isLoading && (
+              <div className="w-full py-12 text-center text-muted-foreground">
+                Belum ada produk di kategori ini.
+              </div>
+            )}
+
+            {/* Infinite Scroll Trigger */}
+            {!isShowMoreBtnVisible && currentTabState.products.length > currentTabState.displayLimit && (
+               <div ref={observerRef} className="h-20 w-full flex items-center justify-center">
+                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground opacity-50" />
+               </div>
+            )}
+
+            {/* Manual Load More Button */}
+            {isShowMoreBtnVisible && (
+              <div className="w-full flex justify-center pt-10">
+                <button
+                  onClick={handleManualLoadMore}
+                  disabled={currentTabState.isLoading}
+                  className="px-8 py-3 bg-white border border-sale-red text-sale-red font-bold rounded-full hover:bg-sale-red hover:text-white transition-colors cursor-pointer flex items-center justify-center min-w-[240px]"
+                >
+                  {currentTabState.isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Muat Lebih Banyak"}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </section>

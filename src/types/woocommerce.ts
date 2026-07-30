@@ -79,8 +79,9 @@ export type GetProductsParams = {
    * kategori beserta keturunannya (halaman kategori induk melistkan produk yang
    * menempel di anak-anaknya).
    */
-  category?: string | number | number[];
-  brand?: string; // Custom if using brands taxonomy
+  category?: string | number | number[] | string[];
+  excludeCategory?: string | string[];
+  brand?: string | string[]; // Custom if using brands taxonomy
   perPage?: number;
   page?: number;
   orderby?: "date" | "id" | "include" | "title" | "slug" | "price" | "popularity" | "rating";

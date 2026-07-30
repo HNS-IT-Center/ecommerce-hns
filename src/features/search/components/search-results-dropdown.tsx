@@ -21,17 +21,22 @@ type SearchResultsDropdownProps = {
 
 /** Tebalkan bagian nama produk yang cocok dengan query pencarian. */
 function highlightMatch(text: string, query: string) {
-  const trimmed = query.trim()
-  if (!trimmed) return text
+  const terms = query.trim().split(/\s+/).filter(Boolean)
+  if (terms.length === 0) return <>{text}</>
 
-  const index = text.toLowerCase().indexOf(trimmed.toLowerCase())
-  if (index === -1) return text
+  const escapedTerms = terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const regex = new RegExp(`(${escapedTerms.join('|')})`, 'gi')
+  const parts = text.split(regex)
 
   return (
     <>
-      {text.slice(0, index)}
-      <strong className="font-bold">{text.slice(index, index + trimmed.length)}</strong>
-      {text.slice(index + trimmed.length)}
+      {parts.map((part, i) => {
+        const isMatch = terms.some(t => t.toLowerCase() === part.toLowerCase())
+        if (isMatch) {
+          return <strong key={i} className="font-bold text-foreground">{part}</strong>
+        }
+        return <span key={i}>{part}</span>
+      })}
     </>
   )
 }
@@ -51,6 +56,7 @@ export function SearchResultsDropdown({
     <div
       id={id}
       role="listbox"
+      onMouseLeave={() => onHoverIndex(-1)}
       className={cn(
         "absolute inset-x-0 top-full z-50 mt-2 max-h-96 overflow-y-auto rounded-xl border bg-popover text-popover-foreground shadow-lg",
         className
@@ -120,6 +126,15 @@ export function SearchResultsDropdown({
               </Link>
             </li>
           ))}
+          <li className="sticky bottom-0 z-10 bg-popover border-t">
+            <Link 
+              href={`/search?q=${encodeURIComponent(query.trim())}`}
+              onClick={onSelect}
+              className="flex w-full items-center justify-center p-3 text-sm font-semibold text-sale-red hover:bg-muted/50 transition-colors"
+            >
+              Lihat semua hasil untuk "{query}"
+            </Link>
+          </li>
         </ul>
       )}
     </div>

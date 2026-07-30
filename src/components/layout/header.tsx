@@ -12,8 +12,9 @@ export async function Header() {
   const categories = await getCategories({ hideEmpty: true, perPage: 100 })
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto flex h-16 items-center px-4 md:px-6">
+    <>
+      <header className="fixed top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container mx-auto flex h-16 items-center px-4 md:px-6">
         {/* Mobile Layout (< md): Search - Download - Cart */}
         <div className="flex w-full items-center gap-2 md:hidden">
           <div className="flex-1">
@@ -64,5 +65,8 @@ export async function Header() {
         </div>
       </div>
     </header>
+    {/* Spacer to prevent content from jumping under the fixed header */}
+    <div className="h-16 w-full" />
+  </>
   )
 }

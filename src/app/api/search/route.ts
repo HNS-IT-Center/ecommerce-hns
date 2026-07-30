@@ -3,7 +3,7 @@ import { getProducts } from "@/lib/api/woocommerce/products"
 import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper"
 
 const MIN_QUERY_LENGTH = 2
-const RESULT_LIMIT = 6
+const RESULT_LIMIT = 15
 
 export async function GET(request: NextRequest) {
   const q = request.nextUrl.searchParams.get("q")?.trim() ?? ""

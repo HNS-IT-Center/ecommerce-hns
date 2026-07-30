@@ -15,7 +15,7 @@ export function ShopPageSkeleton() {
           <div className="flex flex-col gap-8 md:flex-row">
             {/* Sidebar Desktop */}
             <div className="hidden w-64 shrink-0 md:block">
-              <div className="space-y-3 rounded-xl border bg-card p-6 shadow-sm">
+              <div className="space-y-3 pr-4">
                 {Array.from({ length: 8 }).map((_, i) => (
                   <Skeleton key={i} className="h-4 w-full" />
                 ))}
@@ -25,8 +25,8 @@ export function ShopPageSkeleton() {
             {/* Product Grid */}
             <div className="flex-1">
               <ProductGridSkeleton
-                count={12}
-                className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:gap-6"
+                count={15}
+                className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 xl:gap-6"
               />
             </div>
           </div>

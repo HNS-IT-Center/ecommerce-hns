@@ -10,7 +10,7 @@ import { getCategories } from "@/lib/api/woocommerce/categories"
 import { getProductsPaginated } from "@/lib/api/woocommerce/products"
 import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper"
 
-const PER_PAGE = 24
+const PER_PAGE = 30
 
 type SearchPageProps = {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
@@ -88,7 +88,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
             <div className="flex-1">
               {products.length > 0 ? (
                 <>
-                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:gap-6">
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5 xl:gap-6">
                     {products.map((product) => (
                       <ProductCard key={product.id} product={product} />
                     ))}

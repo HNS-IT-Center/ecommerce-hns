@@ -1,7 +1,8 @@
 "use client"
 
-import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from "react"
+import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
+import { CheckCircle2, X } from "lucide-react"
 
 type FlyItem = {
   id: string
@@ -12,6 +13,7 @@ type FlyItem = {
 
 type FlyToCartContextType = {
   flyToCart: (x: number, y: number, image?: string) => void
+  showCartToast: () => void
 }
 
 const FlyToCartContext = createContext<FlyToCartContextType | null>(null)
@@ -29,13 +31,55 @@ export function FlyToCartProvider({ children }: { children: ReactNode }) {
     }, 800)
   }, [])
 
+  const [toastVisible, setToastVisible] = useState(false)
+  const [toastCount, setToastCount] = useState(0)
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
+
+  const showCartToast = useCallback(() => {
+    setToastVisible(true)
+    setToastCount((prev) => prev + 1)
+    
+    if (timerRef.current) clearTimeout(timerRef.current)
+    
+    timerRef.current = setTimeout(() => {
+      setToastVisible(false)
+      setTimeout(() => setToastCount(0), 500)
+    }, 3000)
+  }, [])
+
   return (
-    <FlyToCartContext.Provider value={{ flyToCart }}>
+    <FlyToCartContext.Provider value={{ flyToCart, showCartToast }}>
       {children}
       <AnimatePresence>
         {items.map((item) => (
           <FlyElement key={item.id} item={item} />
         ))}
+      </AnimatePresence>
+      <AnimatePresence>
+        {toastVisible && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, x: 20 }}
+            animate={{ opacity: 1, y: 0, x: 0 }}
+            exit={{ opacity: 0, y: -20, x: 20 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="fixed top-20 md:top-24 right-4 z-[9999] flex items-center gap-3 rounded-lg bg-card p-4 shadow-xl border border-border"
+          >
+            <CheckCircle2 className="h-5 w-5 text-success" />
+            <span className="text-sm font-medium text-foreground">
+              Successfully add to cart {toastCount > 1 ? `(${toastCount})` : ""}
+            </span>
+            <button
+              onClick={() => {
+                setToastVisible(false)
+                if (timerRef.current) clearTimeout(timerRef.current)
+                setTimeout(() => setToastCount(0), 500)
+              }}
+              className="ml-2 rounded-full p-1 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </motion.div>
+        )}
       </AnimatePresence>
     </FlyToCartContext.Provider>
   )

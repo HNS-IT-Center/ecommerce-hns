@@ -61,7 +61,13 @@ function buildPrismaWhere(params: GetProductsParams): Prisma.ProductWhereInput {
     // keturunannya. Tanpa cabang ini daftar tersebut jatuh ke pencocokan slug
     // dan tidak pernah cocok dengan apa pun.
     if (Array.isArray(params.category)) {
-      where.categories = { some: { categoryId: { in: params.category } } };
+      if (params.category.length > 0) {
+        if (typeof params.category[0] === 'number') {
+          where.categories = { some: { categoryId: { in: params.category as number[] } } };
+        } else {
+          where.categories = { some: { category: { slug: { in: params.category as string[] } } } };
+        }
+      }
     } else if (typeof params.category === 'string') {
       where.categories = { some: { category: { slug: params.category } } };
     } else {
@@ -69,8 +75,34 @@ function buildPrismaWhere(params: GetProductsParams): Prisma.ProductWhereInput {
     }
   }
 
+  if (params.excludeCategory) {
+    const excludes = Array.isArray(params.excludeCategory) ? params.excludeCategory : [params.excludeCategory];
+    // If where.categories doesn't exist, initialize it
+    where.categories = where.categories || {};
+    // Ensure we don't match any of the excluded category slugs
+    where.categories.none = { category: { slug: { in: excludes } } };
+  }
+
+  if (params.brand) {
+    if (Array.isArray(params.brand)) {
+      if (params.brand.length > 0) {
+        where.brand = { slug: { in: params.brand } };
+      }
+    } else {
+      where.brand = { slug: params.brand };
+    }
+  }
+
   if (params.search) {
-    where.name = { contains: params.search };
+    const searchTerms = params.search.trim().split(/\s+/).filter(Boolean);
+    if (searchTerms.length > 0) {
+      where.AND = [
+        ...(where.AND ? (Array.isArray(where.AND) ? where.AND : [where.AND]) : []),
+        ...searchTerms.map(term => ({
+          name: { contains: term }
+        }))
+      ];
+    }
   }
 
   if (params.onSale) {
