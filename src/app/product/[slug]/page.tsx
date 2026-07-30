@@ -96,7 +96,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
             { label: "Beranda", href: "/" },
             { label: "Katalog", href: "/shop" },
             ...(primaryCategory
-              ? [{ label: categoryName, href: `/category/${primaryCategory.slug}` }]
+              ? [{ label: categoryName, href: `/shop?category=${primaryCategory.slug}` }]
               : []),
             { label: product.name },
           ]}

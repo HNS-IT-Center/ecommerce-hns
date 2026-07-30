@@ -37,12 +37,12 @@ export function buildCategoryTree(categories: ProductCategory[]): CategoryTreeNo
     return {
       id: rootCat.id,
       title: rootCat.name,
-      href: `/category/${rootCat.slug}`,
+      href: `/shop?category=${rootCat.slug}`,
       description: rootCat.description || "Temukan produk terbaik di kategori ini.",
       children: children.map((child) => ({
         id: child.id,
         title: child.name,
-        href: `/category/${child.slug}`,
+        href: `/shop?category=${child.slug}`,
       })),
     };
   });
