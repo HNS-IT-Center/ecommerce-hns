@@ -37,6 +37,16 @@ model User {
   id           String  @id @default(uuid())
   email        String  @unique @db.VarChar(191)
   name         String  @db.VarChar(191)
+
+  /// Cara masuk kedua, di samping email. Disimpan huruf kecil, tidak boleh
+  /// mengandung '@' — larangan itu yang membuat pemilahan "ini email atau
+  /// username" tidak pernah ambigu, dan mencegah seseorang mendaftarkan
+  /// username berbentuk email milik orang lain.
+  ///
+  /// NULL berarti akun ini hanya bisa masuk lewat email. MySQL memperlakukan
+  /// NULL sebagai nilai yang selalu berbeda, jadi indeks unik di bawah tetap
+  /// mengizinkan banyak baris tanpa username.
+  username String? @unique @db.VarChar(191)
   // scrypt: "salt:hash" heksadesimal, dihitung dengan crypto bawaan Node.
   passwordHash String  @map("password_hash") @db.VarChar(255)
   image        String? @db.VarChar(1000)

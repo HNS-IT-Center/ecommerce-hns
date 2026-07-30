@@ -23,13 +23,24 @@ export function LoginForm({ callbackUrl }: { callbackUrl: string }) {
       <input type="hidden" name="callbackUrl" value={callbackUrl} />
 
       <div>
-        <label className="mb-1 block text-sm font-semibold" htmlFor="email">
-          Email
+        <label className="mb-1 block text-sm font-semibold" htmlFor="identifier">
+          Email atau Username
         </label>
+        {/*
+          `type="text"`, BUKAN `type="email"`. Dengan `type="email"` peramban
+          menolak sendiri apa pun yang tidak mengandung '@' — jadi username
+          seperti `admin` tidak akan pernah sampai ke server, dan orangnya hanya
+          melihat gelembung "masukkan alamat email" tanpa tahu apa yang salah.
+
+          `autoComplete="username"` tetap dipakai apa adanya: itu memang nilai
+          standar untuk kolom identitas di formulir masuk, terlepas dari
+          isinya email atau bukan, dan pengelola password bergantung padanya
+          untuk memasangkan kolom ini dengan kolom password di bawah.
+        */}
         <input
-          id="email"
-          name="email"
-          type="email"
+          id="identifier"
+          name="identifier"
+          type="text"
           autoComplete="username"
           required
           autoFocus
