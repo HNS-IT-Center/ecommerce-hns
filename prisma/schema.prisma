@@ -41,6 +41,21 @@ model User {
   passwordHash String  @map("password_hash") @db.VarChar(255)
   image        String? @db.VarChar(1000)
 
+  /// Penanda pencabutan sesi. Token sesi bersifat stateless — tidak ada tabel
+  /// sesi yang bisa dihapus barisnya — jadi pencabutan dilakukan lewat
+  /// perbandingan waktu: token yang diterbitkan SEBELUM waktu di sini dianggap
+  /// mati, walau tanda tangannya masih sah dan belum kedaluwarsa. Tanpa kolom
+  /// ini, mengganti password tidak memutus sesi di perangkat lain sama sekali.
+  ///
+  /// Selalu disimpan dibulatkan ke detik utuh, karena `iat` di dalam token juga
+  /// berpresisi detik. Kalau kolom ini menyimpan milidetik, token yang baru
+  /// diterbitkan pada detik yang sama bisa terbaca "lebih tua" dan langsung
+  /// mati sendiri.
+  ///
+  /// NULL berarti password belum pernah diganti sejak kolom ini ada — tidak ada
+  /// sesi yang perlu dicabut.
+  passwordChangedAt DateTime? @map("password_changed_at")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

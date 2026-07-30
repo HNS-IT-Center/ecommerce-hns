@@ -59,9 +59,33 @@ export async function getCurrentUser(): Promise<AdminUser | null> {
 
   const user = await getPrisma().user.findUnique({
     where: { id: session.sub },
-    select: { id: true, email: true, name: true, image: true },
+    select: { id: true, email: true, name: true, image: true, passwordChangedAt: true },
   })
-  return user
+  if (!user) return null
+
+  /**
+   * Pencabutan sesi.
+   *
+   * Token yang diterbitkan sebelum password terakhir diganti dianggap mati,
+   * walau tanda tangannya sah dan belum kedaluwarsa. Ini yang membuat "ganti
+   * password" benar-benar menutup pintu di perangkat lain — tanpa ini, cookie
+   * yang sudah beredar tetap berlaku sampai tujuh hari, dan orang yang
+   * mengganti passwordnya justru mengira dirinya sudah aman.
+   *
+   * Perbandingan memakai `<` dan keduanya berpresisi detik (kolomnya ditulis
+   * dibulatkan). Token yang terbit pada detik yang sama dengan pergantian
+   * dianggap masih hidup — itu memang yang diinginkan, karena sesi baru milik
+   * si pengganti password diterbitkan tepat pada detik itu dan tidak boleh
+   * membunuh dirinya sendiri.
+   */
+  if (user.passwordChangedAt && session.iat * 1000 < user.passwordChangedAt.getTime()) {
+    return null
+  }
+
+  // Dibentuk ulang secara eksplisit, bukan disebar dengan spread: `AdminUser`
+  // adalah yang dilihat seluruh panel, dan `passwordChangedAt` tidak ada
+  // urusannya di sana.
+  return { id: user.id, email: user.email, name: user.name, image: user.image }
 }
 
 /** Sama seperti `getCurrentUser`, tapi melempar kalau tidak ada sesi. */

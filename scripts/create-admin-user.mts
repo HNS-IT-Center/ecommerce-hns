@@ -18,10 +18,8 @@ config({ path: ".env.local", quiet: true })
 
 import { createInterface } from "node:readline"
 
-const { hashPassword } = await import("../src/lib/auth/password")
+const { hashPassword, MIN_PASSWORD_LENGTH } = await import("../src/lib/auth/password")
 const { getPrisma } = await import("../src/lib/prisma/client")
-
-const PANJANG_MINIMAL = 10
 
 function tanya(pertanyaan: string, sembunyikan = false): Promise<string> {
   return new Promise((resolve) => {
@@ -68,8 +66,8 @@ try {
   )
 
   const password = await tanya("Password baru      : ", true)
-  if (password.length < PANJANG_MINIMAL) {
-    console.error(`\nPassword minimal ${PANJANG_MINIMAL} karakter. Dibatalkan.`)
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    console.error(`\nPassword minimal ${MIN_PASSWORD_LENGTH} karakter. Dibatalkan.`)
     process.exit(1)
   }
 

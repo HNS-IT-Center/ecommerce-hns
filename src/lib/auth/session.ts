@@ -25,6 +25,20 @@ export type SessionPayload = {
   /** id user */
   sub: string
   email: string
+  /**
+   * Waktu terbit, epoch detik.
+   *
+   * Ada supaya sesi bisa DICABUT, bukan sekadar kedaluwarsa. Token ini tidak
+   * punya baris di database yang bisa dihapus, jadi satu-satunya cara memutus
+   * sesi lebih awal adalah membandingkan waktu terbitnya dengan penanda di
+   * tabel User (`passwordChangedAt`): yang terbit lebih dulu dianggap mati.
+   * Tanpa `iat`, mengganti password tidak berpengaruh apa pun pada sesi yang
+   * sudah berjalan di perangkat lain.
+   *
+   * Perbandingannya dilakukan di `lib/auth/index.ts`, bukan di sini — berkas ini
+   * tidak boleh menyentuh database supaya tetap bisa dipakai di Edge.
+   */
+  iat: number
   /** epoch detik */
   exp: number
 }
@@ -75,12 +89,14 @@ async function key(): Promise<CryptoKey> {
 
 /** Tanda tangani payload jadi token siap simpan di cookie. */
 export async function signSession(
-  payload: Omit<SessionPayload, "exp">,
+  payload: Omit<SessionPayload, "iat" | "exp">,
   maxAgeSeconds: number = SESSION_MAX_AGE_SECONDS
 ): Promise<string> {
+  const now = Math.floor(Date.now() / 1000)
   const full: SessionPayload = {
     ...payload,
-    exp: Math.floor(Date.now() / 1000) + maxAgeSeconds,
+    iat: now,
+    exp: now + maxAgeSeconds,
   }
   const body = toBase64Url(encoder.encode(JSON.stringify(full)))
   const sig = await crypto.subtle.sign("HMAC", await key(), encoder.encode(body))
@@ -109,6 +125,12 @@ export async function verifySession(token: string | undefined): Promise<SessionP
   try {
     const payload = JSON.parse(new TextDecoder().decode(fromBase64Url(body))) as SessionPayload
     if (typeof payload.sub !== "string" || typeof payload.exp !== "number") return null
+    // Token tanpa `iat` adalah token dari versi sebelum pencabutan sesi ada, dan
+    // ia justru yang paling tidak boleh dipercaya: tidak ada cara menilai apakah
+    // ia terbit sebelum atau sesudah password terakhir diganti, jadi satu-satunya
+    // jawaban yang aman adalah menolaknya. Efeknya sekali saja — token seperti itu
+    // habis begitu semua orang masuk ulang.
+    if (typeof payload.iat !== "number") return null
     if (payload.exp * 1000 < Date.now()) return null
     return payload
   } catch {

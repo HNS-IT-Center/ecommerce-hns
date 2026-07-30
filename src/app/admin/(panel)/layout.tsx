@@ -3,6 +3,7 @@ import Link from "next/link"
 import { redirect } from "next/navigation"
 import { LayoutDashboard, Package, Store, FileText, FolderTree } from "lucide-react"
 import { getCurrentUser } from "@/lib/auth"
+import { PanelHeader } from "./panel-header"
 
 export const metadata: Metadata = {
   title: "Admin — HNS IT Center",
@@ -39,6 +40,15 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div className="flex min-h-screen flex-col bg-muted/30">
+      {/*
+        `user` diteruskan dari sini, tidak dibaca ulang di dalam header.
+        `getCurrentUser` menyentuh database setiap kali dipanggil, dan layout
+        sudah memanggilnya barusan untuk penjagaan di atas — memanggil lagi
+        hanya untuk menampilkan nama berarti dua query untuk satu pertanyaan
+        yang sama.
+      */}
+      <PanelHeader user={user} />
+
       <div className="flex flex-1">
         <aside className="hidden w-56 shrink-0 border-r border-border bg-background md:block">
           <nav className="flex flex-col gap-1 p-4">

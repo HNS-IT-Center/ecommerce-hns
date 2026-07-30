@@ -20,6 +20,20 @@ const KEY_LENGTH = 64
 const SALT_LENGTH = 16
 
 /**
+ * Panjang minimal password admin.
+ *
+ * Tinggal di sini, bukan di masing-masing pemakai, supaya script pembuat akun
+ * dan halaman ganti password tidak bisa menerapkan dua ambang yang berbeda —
+ * kalau berbeda, yang paling longgar-lah yang sebenarnya berlaku, dan yang
+ * ketat hanya jadi hiasan.
+ *
+ * Panjang saja yang diwajibkan, tanpa syarat "harus ada huruf besar dan angka".
+ * Aturan komposisi semacam itu terbukti mendorong orang membuat pola yang mudah
+ * ditebak mesin justru karena harus mudah diingat manusia.
+ */
+export const MIN_PASSWORD_LENGTH = 10
+
+/**
  * Hasilnya berbentuk `salt:hash`, keduanya heksadesimal — total 161 karakter,
  * muat di kolom `password_hash` VARCHAR(255).
  *
