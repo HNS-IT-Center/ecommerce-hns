@@ -37,5 +37,6 @@ export function mapWooProductToUI(woo: WooProduct): UIProduct {
     type: woo.type,
     average_rating: parseFloat(woo.average_rating || "0"),
     rating_count: woo.rating_count ?? 0,
+    images: woo.images?.map(img => ({ src: img.src, alt: img.alt || woo.name })) || [],
   };
 }

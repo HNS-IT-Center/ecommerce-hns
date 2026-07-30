@@ -4,8 +4,10 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { useInView } from "react-intersection-observer"
 import { ProductCard, type Product } from "@/components/ui/product-card"
 import { fetchProductsAction } from "@/actions/products"
-import { Loader2 } from "lucide-react"
+import { Loader2, ArrowRight } from "lucide-react"
 import RosetteDiscountIcon from "@/components/icons/discount-icon"
+import LikeIcon from "@/components/icons/like-icon"
+import Link from "next/link"
 
 type Tab = {
   id: string
@@ -140,7 +142,7 @@ export function NewItemsTabsClient({ tabs, initialProducts }: NewItemsTabsClient
       </div>
 
       {/* Sticky Full-Width Tabs */}
-      <div className="sticky top-[64px] z-40 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border/50 shadow-sm">
+      <div className="sticky top-[64px] z-[45] w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border/50 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 overflow-x-auto scrollbar-hide flex gap-2 md:gap-4 items-center">
           {tabs.map((tab) => (
             <button
@@ -155,9 +157,16 @@ export function NewItemsTabsClient({ tabs, initialProducts }: NewItemsTabsClient
               }`}
             >
               {tab.id === "best-deals" && <RosetteDiscountIcon size={16} />}
+              {tab.id === "untukmu" && <LikeIcon className="w-4 h-4" />}
               {tab.label}
             </button>
           ))}
+          <Link
+            href="/shop"
+            className="whitespace-nowrap px-4 py-2 text-sm font-semibold rounded-xl transition-all cursor-pointer select-none flex items-center gap-1.5 bg-muted text-muted-foreground hover:bg-sale-red/10 hover:text-sale-red"
+          >
+            Lainnya <ArrowRight size={16} />
+          </Link>
         </div>
       </div>
 

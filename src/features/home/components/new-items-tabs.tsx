@@ -13,10 +13,10 @@ export const TABS = [
     id: "gaming-gear", 
     label: "Gaming Gear", 
     categorySlug: "aksessories-komputer",
-    excludeCategorySlugs: ["furniture", "printer-proyektor", "kabel-converter", "powerbank-charger", "card-reader"]
+    excludeCategorySlugs: ["furniture", "printer-proyektor", "kabel-converter", "powerbank-charger"]
   },
   { id: "printer", label: "Printer", categorySlug: "printer-proyektor" },
-  { id: "charger-cable", label: "Charger & Cable", categorySlug: ["kabel-converter", "powerbank-charger", "card-reader"] },
+  { id: "charger-cable", label: "Charger & Cables", categorySlug: ["kabel-converter", "powerbank-charger"] },
 ]
 
 export async function NewItemsTabs() {

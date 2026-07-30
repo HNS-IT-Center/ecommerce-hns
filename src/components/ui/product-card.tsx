@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { ArrowRight, ShoppingCart, Percent } from "lucide-react"
 import WhatsappIcon from "@/components/icons/whatsapp-icon"
 import FlameIcon from "@/components/icons/fire-icon"
+import EyeIcon from "@/components/icons/eye-icon"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 
 import { formatRupiah } from "@/lib/utils"
@@ -14,6 +15,7 @@ import { useCartStore } from "@/store/cart"
 import { Rating } from "@/components/ui/rating"
 import { useFlyToCart } from "@/components/providers/fly-to-cart-provider"
 import { useState, useEffect } from "react"
+import { QuickViewModal } from "@/components/ui/quick-view-modal"
 
 export interface Product {
   id: string
@@ -32,6 +34,7 @@ export interface Product {
   type: "simple" | "variable" | "grouped" | "external"
   average_rating?: number
   rating_count?: number
+  images?: { src: string; alt: string }[]
 }
 
 interface ProductCardProps {
@@ -43,6 +46,7 @@ export function ProductCard({ product }: ProductCardProps) {
   const addItem = useCartStore((state) => state.addItem)
   const { flyToCart, showCartToast } = useFlyToCart()
   const [isAdding, setIsAdding] = useState(false)
+  const [isQuickViewOpen, setIsQuickViewOpen] = useState(false)
 
   const hasMemberPrice = product.member_price != null && product.member_price < product.price
   const isSimpleProduct = product.type === "simple"
@@ -91,8 +95,15 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
       showCartToast()
     }, 800)
   }
+  
+  const handleQuickView = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsQuickViewOpen(true)
+  }
 
   return (
+    <>
     <div className="group relative flex flex-col rounded-xl bg-card shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-lg">
       <Link
         href={`/product/${product.slug}`}
@@ -103,7 +114,7 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
 
       {/* Folded Discount Badge */}
       {hasDiscount && (
-        <div className="absolute -left-1.5 top-3 z-20 drop-shadow-sm">
+        <div className="absolute -left-1.5 top-3 z-[40] drop-shadow-sm pointer-events-none">
           <div className="rounded-r-md rounded-tl-md bg-red-500 px-2 py-0.5 text-xs font-bold text-white tracking-wide">
             {discountPercent}%
           </div>
@@ -116,7 +127,7 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
 
       {/* Hot Badge Folded (when not on sale) */}
       {!hasDiscount && product.badge === "Hot" && (
-        <div className="absolute -left-1.5 top-3 z-20 drop-shadow-sm">
+        <div className="absolute -left-1.5 top-3 z-[40] drop-shadow-sm pointer-events-none">
           <div className="flex items-center gap-0.5 rounded-r-md rounded-tl-md bg-orange-500 px-1.5 py-0.5 text-xs font-bold text-white tracking-wide">
             <FlameIcon size={14} className="text-white" />
             HOT
@@ -129,7 +140,7 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
       )}
 
       {/* Image Container */}
-      <div className="relative aspect-square w-full overflow-hidden bg-secondary/50 rounded-t-xl">
+      <div className="relative aspect-square w-full overflow-hidden bg-secondary/50 rounded-t-xl group/image">
         <Image
           src={product.image_url}
           alt={product.name}
@@ -137,13 +148,34 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
           sizes="(max-width: 768px) 50vw, 25vw"
           className="object-contain transition-transform duration-500 group-hover:scale-105"
         />
+
+        {/* Quick View Hover State (Desktop) */}
+        <div className="absolute inset-0 z-20 hidden md:flex items-center justify-center opacity-0 transition-opacity duration-300 group-hover/image:opacity-100 group-hover/image:bg-background/40 group-hover/image:backdrop-blur-sm pointer-events-none">
+          <button 
+            onClick={handleQuickView}
+            className="flex flex-col items-center justify-center text-foreground hover:text-brand-green transition-colors pointer-events-auto"
+            title="Quickview"
+          >
+            <div className="rounded-full bg-background/80 p-3 shadow-lg mb-1">
+              <EyeIcon size={24} />
+            </div>
+            <span className="text-[10px] font-bold bg-background/80 px-2 py-0.5 rounded shadow-sm">Quickview</span>
+          </button>
+        </div>
+
+        {/* Quick View Button (Mobile) */}
+        <button 
+          onClick={handleQuickView}
+          className="absolute top-2 right-2 z-[40] flex md:hidden h-8 w-8 items-center justify-center rounded-full bg-cyan-100 text-white shadow-sm hover:bg-blue-300 pointer-events-auto dark:bg-blue-900/80 dark:text-white dark:hover:bg-blue-800"
+          title="Quickview"
+        >
+          <EyeIcon size={18} />
+        </button>
         
-
-
         {/* Regular Badge */}
         {!hasDiscount && product.badge && product.badge !== "Hot" && (
           <span
-            className={`absolute left-2 top-2 z-10 rounded-md px-2 py-1 text-[10px] font-bold tracking-wider text-white uppercase shadow-sm ${getBadgeColorClass(product.badge)}`}
+            className={`absolute left-2 top-2 z-[40] rounded-md px-2 py-1 text-[10px] font-bold tracking-wider text-white uppercase shadow-sm ${getBadgeColorClass(product.badge)} pointer-events-none`}
           >
             {product.badge}
           </span>
@@ -151,7 +183,7 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
         
         {/* Out of Stock Overlay */}
         {product.stock === 0 && (
-          <div className="absolute inset-0 bg-background/60 backdrop-blur-[2px] flex items-center justify-center z-20">
+          <div className="absolute inset-0 bg-background/60 backdrop-blur-[2px] flex items-center justify-center z-10 pointer-events-none">
             <span className="rounded-full bg-foreground px-3 py-1 text-xs font-bold text-background shadow-sm">
               HABIS
             </span>
@@ -161,10 +193,6 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
 
       {/* Content */}
       <div className="flex flex-1 flex-col p-3 rounded-b-xl">
-        {/* Brand */}
-        <span className="mb-1 text-[10px] font-bold uppercase tracking-wider text-primary">
-          {product.brand}
-        </span>
         
         {/* Product Name */}
         <h3 className="line-clamp-2 text-xs font-medium leading-snug text-foreground transition-colors group-hover:text-brand-green">
@@ -239,5 +267,12 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
         </div>
       </div>
     </div>
+    
+    <QuickViewModal 
+      product={product} 
+      isOpen={isQuickViewOpen} 
+      onClose={() => setIsQuickViewOpen(false)} 
+    />
+    </>
   )
 }

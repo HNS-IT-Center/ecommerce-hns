@@ -91,7 +91,7 @@ export default async function CategoryPage({ params, searchParams }: CategoryPag
             {/* Sidebar Desktop */}
             <div className="hidden w-64 shrink-0 md:block">
               <div className="sticky top-24 rounded-xl border bg-card p-6 shadow-sm">
-                <ShopSidebar categories={allCategories} activeCategorySlug={slug} />
+                <ShopSidebar categories={allCategories} />
               </div>
             </div>
 

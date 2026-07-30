@@ -81,7 +81,7 @@ export type GetProductsParams = {
    */
   category?: string | number | number[] | string[];
   excludeCategory?: string | string[];
-  brand?: string; // Custom if using brands taxonomy
+  brand?: string | string[]; // Custom if using brands taxonomy
   perPage?: number;
   page?: number;
   orderby?: "date" | "id" | "include" | "title" | "slug" | "price" | "popularity" | "rating";

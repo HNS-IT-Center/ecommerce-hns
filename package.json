@@ -14,6 +14,7 @@
     "@hookform/resolvers": "^5.4.0",
     "@prisma/adapter-mariadb": "^7.9.0",
     "@prisma/client": "^7.9.0",
+    "@radix-ui/react-visually-hidden": "^1.2.11",
     "@tanstack/react-query": "^5.101.2",
     "@tanstack/react-query-devtools": "^5.101.2",
     "class-variance-authority": "^0.7.1",

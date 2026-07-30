@@ -61,20 +61,20 @@ export function MobileDock() {
 
   return (
     <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-border shadow-[0_-4px_10px_rgba(0,0,0,0.05)] pb-safe">
-      <div className="flex h-16 w-full items-center justify-around px-2">
+      <div className="flex h-[60px] w-full items-center justify-around px-2">
         {items.map((item, i) => (
           <Link 
             key={i} 
             href={item.href}
-            className="group relative flex flex-col items-center justify-center w-16 h-full"
+            className="group relative flex flex-col items-center justify-center h-full flex-1"
           >
             {/* The Icon Box */}
             <div 
               className={cn(
-                "absolute flex items-center justify-center w-12 h-12 rounded-2xl transition-all duration-300",
+                "flex items-center justify-center mb-0.5 transition-all duration-300",
                 item.isActive 
-                  ? "bg-primary text-primary-foreground -translate-y-6 shadow-lg" 
-                  : "bg-muted/50 text-muted-foreground top-1 group-hover:bg-muted"
+                  ? "text-brand-green" 
+                  : "text-muted-foreground group-hover:text-foreground"
               )}
             >
               {item.icon}
@@ -83,8 +83,8 @@ export function MobileDock() {
             {/* The Text Label */}
             <span 
               className={cn(
-                "absolute bottom-1 text-[10px] font-medium transition-all duration-300",
-                item.isActive ? "text-primary opacity-100" : "text-muted-foreground opacity-100"
+                "text-[10px] transition-all duration-300",
+                item.isActive ? "text-brand-green font-bold" : "text-muted-foreground font-medium group-hover:text-foreground"
               )}
             >
               {item.label}

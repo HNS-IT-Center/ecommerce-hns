@@ -1,169 +1,387 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { ProductCategory } from "@/types/woocommerce"
-import { ChevronDown, ChevronUp } from "lucide-react"
+import { ChevronDown, ChevronRight, Search } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import type { Brand } from "@/lib/api/woocommerce/brands"
 
 interface ShopSidebarProps {
   categories: ProductCategory[]
-  /** Active category slug when the page itself IS the category (e.g. /category/[slug]),
-   * where there's no `?category=` query param to read from. Falls back to the query param. */
-  activeCategorySlug?: string
+  brands?: Brand[]
+  maxPriceLimit?: number
+  isMobile?: boolean
 }
 
-export function ShopSidebar({ categories, activeCategorySlug }: ShopSidebarProps) {
+export function ShopSidebar({ categories, brands = [], maxPriceLimit = 100000000, isMobile }: ShopSidebarProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  const currentCategory = activeCategorySlug ?? searchParams.get("category")
+  const currentCategories = searchParams.getAll("category")
+  const currentBrands = searchParams.getAll("brand")
   const isOnSale = searchParams.get("onSale") === "true"
 
-  // Track expanded categories
+  const [categorySearch, setCategorySearch] = useState("")
+  const [brandSearch, setBrandSearch] = useState("")
+  
+  const initialMin = Number(searchParams.get("minPrice")) || 0
+  const initialMax = Number(searchParams.get("maxPrice")) || maxPriceLimit
+  const [localPriceRange, setLocalPriceRange] = useState([initialMin, initialMax])
+
   const [expandedCats, setExpandedCats] = useState<Record<number, boolean>>({})
 
-  const handleCategoryChange = (slug: string | null) => {
+  // Independent custom accordion states (all true by default)
+  const [openSections, setOpenSections] = useState({
+    category: true,
+    brand: true,
+    price: true,
+    other: true
+  })
+
+  const toggleSection = (section: keyof typeof openSections) => {
+    setOpenSections(prev => ({ ...prev, [section]: !prev[section] }))
+  }
+
+  // Auto-expand the parent of the currently selected child categories.
+  const currentCategoriesStr = currentCategories.join(",")
+  useEffect(() => {
+    const parentIdsToExpand: Record<number, boolean> = {}
+    currentCategories.forEach(slug => {
+      const cat = categories.find(c => c.slug === slug)
+      if (cat && cat.parent !== 0) {
+        parentIdsToExpand[cat.parent] = true
+      }
+    })
+    setExpandedCats(prev => {
+      let hasChanges = false
+      const next = { ...prev }
+      for (const id in parentIdsToExpand) {
+        if (!next[id]) {
+          next[id] = true
+          hasChanges = true
+        }
+      }
+      return hasChanges ? next : prev
+    })
+  }, [categories, currentCategoriesStr])
+
+  const handleCategoryChange = (slug: string, checked: boolean) => {
     const params = new URLSearchParams(searchParams.toString())
-    if (slug) {
-      params.set("category", slug)
+    params.delete("page")
+    if (checked) {
+      if (!currentCategories.includes(slug)) params.append("category", slug)
     } else {
       params.delete("category")
+      currentCategories.forEach(c => {
+        if (c !== slug) params.append("category", c)
+      })
     }
+    router.push(`/shop?${params.toString()}`, { scroll: false })
+  }
+
+  const handleBrandChange = (slug: string, checked: boolean) => {
+    const params = new URLSearchParams(searchParams.toString())
     params.delete("page")
-    router.push(`/shop?${params.toString()}`)
+    if (checked) {
+      if (!currentBrands.includes(slug)) params.append("brand", slug)
+    } else {
+      params.delete("brand")
+      currentBrands.forEach(b => {
+        if (b !== slug) params.append("brand", b)
+      })
+    }
+    router.push(`/shop?${params.toString()}`, { scroll: false })
   }
 
   const handleOnSaleChange = (checked: boolean) => {
     const params = new URLSearchParams(searchParams.toString())
-    if (checked) {
-      params.set("onSale", "true")
-    } else {
-      params.delete("onSale")
-    }
     params.delete("page")
-    router.push(`/shop?${params.toString()}`)
+    if (checked) params.set("onSale", "true")
+    else params.delete("onSale")
+    router.push(`/shop?${params.toString()}`, { scroll: false })
   }
 
-  // Auto-expand the parent of the currently selected child category.
-  // Derived during render, so no effect (and no setState-in-effect) is needed.
-  const activeParentId = currentCategory
-    ? categories.find((c) => c.slug === currentCategory && c.parent !== 0)?.parent
-    : undefined
-
-  // A category is expanded when the user has toggled it; otherwise it falls back
-  // to the auto-expand rule above.
-  const isCategoryExpanded = (catId: number) =>
-    expandedCats[catId] ?? activeParentId === catId
-
-  const toggleExpand = (id: number, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setExpandedCats((prev) => ({
-      ...prev,
-      [id]: !(prev[id] ?? activeParentId === id),
-    }))
+  const handlePriceCommit = () => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete("page")
+    if (localPriceRange[0] > 0) params.set("minPrice", localPriceRange[0].toString())
+    else params.delete("minPrice")
+    
+    if (localPriceRange[1] < maxPriceLimit) params.set("maxPrice", localPriceRange[1].toString())
+    else params.delete("maxPrice")
+    
+    router.push(`/shop?${params.toString()}`, { scroll: false })
   }
 
-  // Build category hierarchy
-  const rootCategories = categories.filter((c) => c.parent === 0)
-  const getChildren = (parentId: number) => categories.filter((c) => c.parent === parentId)
+  // Reset local state if external URL changes
+  useEffect(() => {
+    const currentMin = Number(searchParams.get("minPrice")) || 0
+    const currentMax = Number(searchParams.get("maxPrice")) || maxPriceLimit
+    if (currentMin !== localPriceRange[0] || currentMax !== localPriceRange[1]) {
+      setLocalPriceRange([currentMin, currentMax])
+    }
+  }, [searchParams, maxPriceLimit])
+
+  const clearFilters = () => {
+    router.push("/shop", { scroll: false })
+  }
+
+  const toggleExpand = (id: number) => {
+    setExpandedCats(prev => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  const filteredBrands = brands.filter(b => b.name.toLowerCase().includes(brandSearch.toLowerCase()))
+  
+  const rootCategories = categories.filter(c => c.parent === 0)
+  const getChildren = (parentId: number) => categories.filter(c => c.parent === parentId)
+
+  const isCatVisible = (cat: ProductCategory) => {
+    if (!categorySearch) return true
+    const searchLow = categorySearch.toLowerCase()
+    if (cat.name.toLowerCase().includes(searchLow)) return true
+    const children = getChildren(cat.id)
+    return children.some(child => child.name.toLowerCase().includes(searchLow))
+  }
+
+  const formatIDR = (val: number) => {
+    return new Intl.NumberFormat('id-ID').format(val)
+  }
+  
+  const parseIDR = (val: string) => {
+    const numbers = val.replace(/[^0-9]/g, "")
+    return numbers ? parseInt(numbers, 10) : 0
+  }
 
   return (
-    <div className="space-y-8">
-      {/* Kategori Filter */}
-      <div>
-        <div className="mb-4 flex items-center gap-4">
-          <h3 className="text-sm font-bold tracking-wider text-muted-foreground uppercase whitespace-nowrap">
-            Filter Product
-          </h3>
-          <div className="h-px w-full bg-border" />
-        </div>
-        
-        <ul className="flex flex-col">
-          <li className="border-b border-muted/50 py-3">
-            <button
-              onClick={() => handleCategoryChange(null)}
-              className={`text-sm text-left w-full uppercase transition-colors hover:text-brand-green ${
-                !currentCategory ? "font-bold text-brand-green" : "font-medium text-foreground/80"
-              }`}
-            >
-              SEMUA KATEGORI
-            </button>
-          </li>
-          
-          {rootCategories.map((cat) => {
-            const children = getChildren(cat.id)
-            const hasChildren = children.length > 0
-            const isExpanded = isCategoryExpanded(cat.id)
-            const isActive = currentCategory === cat.slug || children.some(c => c.slug === currentCategory)
+    <div className="flex flex-col pb-10">
+      <div className="flex items-center justify-between mb-4 border-b border-border pb-4">
+        {isMobile && <h2 className="text-xl font-bold">Filters</h2>}
+        <button 
+          onClick={clearFilters}
+          className={`text-sm font-semibold text-sale-red hover:underline transition-all ${!isMobile ? 'ml-auto' : ''}`}
+        >
+          Hapus Filter
+        </button>
+      </div>
 
-            return (
-              <li key={cat.id} className="border-b border-muted/50 flex flex-col">
-                <div 
-                  className={`flex items-center justify-between py-3 cursor-pointer group transition-colors ${
-                    isActive ? "text-brand-green" : "text-foreground/80 hover:text-brand-green"
-                  }`}
-                  onClick={() => handleCategoryChange(cat.slug)}
-                >
-                  <span className={`text-sm uppercase ${isActive ? 'font-bold' : 'font-medium'}`}>
-                    {cat.name}
-                  </span>
-                  
-                  {hasChildren && (
-                    <button 
-                      onClick={(e) => toggleExpand(cat.id, e)}
-                      className="p-1 rounded-md hover:bg-muted text-muted-foreground transition-all"
-                    >
-                      {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    </button>
+      <div className="flex flex-col w-full">
+        {/* Kategori Filter */}
+        <div className="border-b border-border pb-6 mb-6">
+          <button 
+            onClick={() => toggleSection("category")}
+            className="flex w-full items-center justify-between group py-1 mb-2"
+          >
+            <h3 className="text-base font-bold text-foreground group-hover:text-brand-green transition-colors">Kategori</h3>
+            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${openSections.category ? 'rotate-180' : ''}`} />
+          </button>
+          
+          {openSections.category && (
+            <div className="pt-2 animate-in fade-in slide-in-from-top-1">
+              <div className="relative mb-3">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input 
+                  placeholder="Cari kategori..." 
+                  value={categorySearch}
+                  onChange={e => setCategorySearch(e.target.value)}
+                  className="pl-9 h-9" 
+                />
+              </div>
+
+              <div className="flex flex-col max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                {rootCategories.filter(isCatVisible).map(cat => {
+                  const children = getChildren(cat.id)
+                  const hasChildren = children.length > 0
+                  const forceExpand = categorySearch && children.some(child => child.name.toLowerCase().includes(categorySearch.toLowerCase()))
+                  const isExpanded = expandedCats[cat.id] || forceExpand
+
+                  return (
+                    <div key={cat.id} className="flex flex-col mb-1 pb-1">
+                      <div className="flex items-center justify-between py-1.5 group">
+                        <div className="flex items-center space-x-2">
+                          <Checkbox 
+                            id={`cat-${cat.id}`} 
+                            checked={currentCategories.includes(cat.slug)}
+                            onCheckedChange={(checked) => handleCategoryChange(cat.slug, !!checked)}
+                          />
+                          <label 
+                            htmlFor={`cat-${cat.id}`}
+                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer text-foreground/90 hover:text-brand-green transition-colors"
+                          >
+                            {cat.name}
+                          </label>
+                        </div>
+                        
+                        {hasChildren && (
+                          <button 
+                            onClick={() => toggleExpand(cat.id)}
+                            className="p-1 rounded-md hover:bg-muted text-muted-foreground transition-all"
+                          >
+                            {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                          </button>
+                        )}
+                      </div>
+                      
+                      {hasChildren && isExpanded && (
+                        <div className="ml-6 flex flex-col space-y-2 mt-1 mb-2">
+                          {children.filter(child => !categorySearch || child.name.toLowerCase().includes(categorySearch.toLowerCase())).map(child => (
+                            <div key={child.id} className="flex items-center space-x-2 py-1">
+                              <Checkbox 
+                                id={`cat-${child.id}`} 
+                                checked={currentCategories.includes(child.slug)}
+                                onCheckedChange={(checked) => handleCategoryChange(child.slug, !!checked)}
+                              />
+                              <label 
+                                htmlFor={`cat-${child.id}`}
+                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer text-muted-foreground hover:text-brand-green transition-colors"
+                              >
+                                {child.name}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Brand Filter */}
+        {brands.length > 0 && (
+          <div className="border-b border-border pb-6 mb-6">
+            <button 
+              onClick={() => toggleSection("brand")}
+              className="flex w-full items-center justify-between group py-1 mb-2"
+            >
+              <h3 className="text-base font-bold text-foreground group-hover:text-brand-green transition-colors">Merek</h3>
+              <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${openSections.brand ? 'rotate-180' : ''}`} />
+            </button>
+            
+            {openSections.brand && (
+              <div className="pt-2 animate-in fade-in slide-in-from-top-1">
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input 
+                    placeholder="Cari merek..." 
+                    value={brandSearch}
+                    onChange={e => setBrandSearch(e.target.value)}
+                    className="pl-9 h-9" 
+                  />
+                </div>
+
+                <div className="flex flex-col max-h-[250px] overflow-y-auto pr-2 space-y-3 custom-scrollbar">
+                  {filteredBrands.map(brand => (
+                    <div key={brand.id} className="flex items-center space-x-2">
+                      <Checkbox 
+                        id={`brand-${brand.id}`} 
+                        checked={currentBrands.includes(brand.slug)}
+                        onCheckedChange={(checked) => handleBrandChange(brand.slug, !!checked)}
+                      />
+                      <label 
+                        htmlFor={`brand-${brand.id}`}
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer text-foreground/90 hover:text-brand-green transition-colors"
+                      >
+                        {brand.name}
+                      </label>
+                    </div>
+                  ))}
+                  {filteredBrands.length === 0 && (
+                    <p className="text-sm text-muted-foreground italic">Merek tidak ditemukan.</p>
                   )}
                 </div>
-                
-                {/* Render children if expanded */}
-                {hasChildren && isExpanded && (
-                  <ul className="pb-3 flex flex-col space-y-2">
-                    {children.map((child) => {
-                      const isChildActive = currentCategory === child.slug
-                      return (
-                        <li key={child.id}>
-                          <button
-                            onClick={() => handleCategoryChange(child.slug)}
-                            className={`w-full text-left px-4 text-xs uppercase transition-colors ${
-                              isChildActive 
-                                ? "font-bold text-brand-green" 
-                                : "text-muted-foreground hover:text-foreground"
-                            }`}
-                          >
-                            {child.name}
-                          </button>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                )}
-              </li>
-            )
-          })}
-        </ul>
-      </div>
+              </div>
+            )}
+          </div>
+        )}
 
-      {/* Promo Filter */}
-      <div>
-        <div className="mb-4 flex items-center gap-4">
-          <h3 className="text-sm font-bold tracking-wider text-muted-foreground uppercase whitespace-nowrap">
-            Promo Spesial
-          </h3>
-          <div className="h-px w-full bg-border" />
+        {/* Harga Filter */}
+        <div className="border-b border-border pb-6 mb-6">
+          <button 
+            onClick={() => toggleSection("price")}
+            className="flex w-full items-center justify-between group py-1 mb-2"
+          >
+            <h3 className="text-base font-bold text-foreground group-hover:text-brand-green transition-colors">Harga</h3>
+            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${openSections.price ? 'rotate-180' : ''}`} />
+          </button>
+          
+          {openSections.price && (
+            <div className="pt-2 flex flex-col gap-3 animate-in fade-in slide-in-from-top-1">
+              <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">Rp</span>
+                  <Input 
+                    className="pl-10 h-10 bg-background" 
+                    value={localPriceRange[0] === 0 ? "" : formatIDR(localPriceRange[0])}
+                    onBlur={handlePriceCommit}
+                    onKeyDown={(e) => e.key === 'Enter' && handlePriceCommit()}
+                    onChange={(e) => {
+                      const val = parseIDR(e.target.value)
+                      setLocalPriceRange([val, localPriceRange[1]])
+                    }}
+                    placeholder="Harga Minimum"
+                  />
+              </div>
+              <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">Rp</span>
+                  <Input 
+                    className="pl-10 h-10 bg-background" 
+                    value={localPriceRange[1] === maxPriceLimit ? "" : formatIDR(localPriceRange[1])}
+                    onBlur={handlePriceCommit}
+                    onKeyDown={(e) => e.key === 'Enter' && handlePriceCommit()}
+                    onChange={(e) => {
+                      const val = parseIDR(e.target.value)
+                      setLocalPriceRange([localPriceRange[0], val])
+                    }}
+                    placeholder="Harga Maksimum"
+                  />
+              </div>
+            </div>
+          )}
         </div>
-        <label className="flex items-center gap-3 cursor-pointer group p-3 border rounded-lg hover:border-brand-green transition-colors">
-          <input
-            type="checkbox"
-            checked={isOnSale}
-            onChange={(e) => handleOnSaleChange(e.target.checked)}
-            className="h-4 w-4 rounded border-gray-300 text-brand-green focus:ring-brand-green"
-          />
-          <span className="text-sm font-bold text-sale-red group-hover:text-red-600">Hanya Tampilkan Promo</span>
-        </label>
+
+        {/* Promo Filter */}
+        <div className="pb-6 mb-6">
+          <button 
+            onClick={() => toggleSection("other")}
+            className="flex w-full items-center justify-between group py-1 mb-2"
+          >
+            <h3 className="text-base font-bold text-foreground group-hover:text-brand-green transition-colors">Lainnya</h3>
+            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${openSections.other ? 'rotate-180' : ''}`} />
+          </button>
+          
+          {openSections.other && (
+            <div className="pt-2 animate-in fade-in slide-in-from-top-1">
+              <div className="flex items-center space-x-2 group">
+                <Checkbox 
+                  id="onSale" 
+                  checked={isOnSale}
+                  onCheckedChange={(checked) => handleOnSaleChange(!!checked)}
+                />
+                <label 
+                  htmlFor="onSale"
+                  className="text-sm font-bold text-sale-red group-hover:text-red-600 leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                >
+                  Hanya Tampilkan Promo
+                </label>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
+      
+      {isMobile && (
+        <div className="mt-2">
+            <button 
+              onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))}
+              className="w-full bg-brand-green text-white font-bold py-3 rounded-lg hover:bg-brand-green/90 transition-colors shadow-md"
+            >
+              Terapkan Filter
+            </button>
+        </div>
+      )}
     </div>
   )
 }

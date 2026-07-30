@@ -83,8 +83,26 @@ function buildPrismaWhere(params: GetProductsParams): Prisma.ProductWhereInput {
     where.categories.none = { category: { slug: { in: excludes } } };
   }
 
+  if (params.brand) {
+    if (Array.isArray(params.brand)) {
+      if (params.brand.length > 0) {
+        where.brand = { slug: { in: params.brand } };
+      }
+    } else {
+      where.brand = { slug: params.brand };
+    }
+  }
+
   if (params.search) {
-    where.name = { contains: params.search };
+    const searchTerms = params.search.trim().split(/\s+/).filter(Boolean);
+    if (searchTerms.length > 0) {
+      where.AND = [
+        ...(where.AND ? (Array.isArray(where.AND) ? where.AND : [where.AND]) : []),
+        ...searchTerms.map(term => ({
+          name: { contains: term }
+        }))
+      ];
+    }
   }
 
   if (params.onSale) {
