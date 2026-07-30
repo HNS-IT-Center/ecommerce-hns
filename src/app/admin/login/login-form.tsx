@@ -2,7 +2,8 @@
 
 import { useActionState } from "react"
 import { Loader2, TriangleAlert } from "lucide-react"
-import { EMPTY_LOGIN_STATE, loginAction } from "./actions"
+import { loginAction } from "./actions"
+import { EMPTY_LOGIN_STATE } from "./state"
 
 const inputClass =
   "w-full rounded-xl border border-input bg-muted/50 px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:bg-background"

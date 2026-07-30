@@ -5,8 +5,6 @@ import { ChevronRight, FolderInput, Merge, Pencil, Plus, Trash2, TriangleAlert, 
 import type { AdminCategory } from "@/lib/api/woocommerce/categories"
 import { collectDescendantIds, planCategoryMove } from "@/lib/utils/category-move"
 import {
-  EMPTY_MERGE_PREVIEW,
-  EMPTY_STATE,
   createCategoryAction,
   deleteCategoryAction,
   mergeCategoryAction,
@@ -14,6 +12,7 @@ import {
   previewMergeCategoryAction,
   renameCategoryAction,
 } from "./actions"
+import { EMPTY_MERGE_PREVIEW, EMPTY_STATE } from "./state"
 
 /**
  * Layar kelola kategori untuk PIC.

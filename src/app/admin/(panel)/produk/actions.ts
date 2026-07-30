@@ -6,15 +6,9 @@ import { CategoryOperationError } from "@/lib/api/woocommerce/categories"
 import {
   bulkAssignCategory,
   previewBulkAssignCategory,
-  type BulkAssignPreview,
   type BulkCategoryMode,
 } from "@/lib/api/woocommerce/products"
-
-export type BulkPreviewState = { error: string | null; preview: BulkAssignPreview | null }
-export type BulkApplyState = { error: string | null; ok: string | null }
-
-export const EMPTY_BULK_PREVIEW: BulkPreviewState = { error: null, preview: null }
-export const EMPTY_BULK_APPLY: BulkApplyState = { error: null, ok: null }
+import type { BulkApplyState, BulkPreviewState } from "./state"
 
 /**
  * Pembersihan cache tinggal di sini, bukan di `lib/api` — lapisan data tidak

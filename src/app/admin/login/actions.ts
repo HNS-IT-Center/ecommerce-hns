@@ -4,10 +4,7 @@ import { redirect } from "next/navigation"
 import { getPrisma } from "@/lib/prisma/client"
 import { createSession, destroySession } from "@/lib/auth"
 import { verifyPassword } from "@/lib/auth/password"
-
-export type LoginState = { error: string | null }
-
-export const EMPTY_LOGIN_STATE: LoginState = { error: null }
+import type { LoginState } from "./state"
 
 /**
  * Pesan gagal sengaja SAMA untuk email yang tidak terdaftar dan password yang

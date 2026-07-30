@@ -5,12 +5,8 @@ import Link from "next/link"
 import Image from "next/image"
 import { TriangleAlert } from "lucide-react"
 import { formatRupiah } from "@/lib/utils"
-import {
-  EMPTY_BULK_APPLY,
-  EMPTY_BULK_PREVIEW,
-  applyBulkCategoryAction,
-  previewBulkCategoryAction,
-} from "./actions"
+import { applyBulkCategoryAction, previewBulkCategoryAction } from "./actions"
+import { EMPTY_BULK_APPLY, EMPTY_BULK_PREVIEW } from "./state"
 
 /**
  * Daftar produk dengan penetapan kategori massal.

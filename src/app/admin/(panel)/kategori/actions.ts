@@ -10,16 +10,8 @@ import {
   moveCategory,
   previewMergeCategory,
   renameCategory,
-  type MergeCategoryPreview,
 } from "@/lib/api/woocommerce/categories"
-
-export type CategoryActionState = { error: string | null; ok: string | null }
-
-export const EMPTY_STATE: CategoryActionState = { error: null, ok: null }
-
-export type MergePreviewState = { error: string | null; preview: MergeCategoryPreview | null }
-
-export const EMPTY_MERGE_PREVIEW: MergePreviewState = { error: null, preview: null }
+import type { CategoryActionState, MergePreviewState } from "./state"
 
 /**
  * Pembersihan cache tinggal di sini, bukan di `lib/api`. Lapisan data tidak
