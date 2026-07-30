@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { getPrisma } from "@/lib/prisma/client"
 import { requireAuth } from "@/lib/auth"
+import { softDeleteFaqItem } from "@/lib/api/policy"
 
 function revalidatePolicyPages() {
   revalidatePath("/admin/kebijakan")
@@ -58,10 +59,16 @@ export async function updateFaqItem(formData: FormData) {
   redirect("/admin/kebijakan")
 }
 
+/**
+ * Menandai FAQ terhapus, bukan melenyapkan barisnya. Identitas penghapus
+ * diambil dari `requireAuth()`, bukan dari formulir — lihat catatan yang sama
+ * pada `deleteStore`.
+ */
 export async function deleteFaqItem(formData: FormData) {
-  await requireAuth()
+  const user = await requireAuth()
   const id = String(formData.get("id") ?? "")
-  const prisma = getPrisma()
-  await prisma.faqItem.delete({ where: { id } })
+  if (!id) return
+
+  await softDeleteFaqItem(id, user.id)
   revalidatePolicyPages()
 }

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation"
-import { getPrisma } from "@/lib/prisma/client"
+import { getStore } from "@/lib/api/stores"
 import { StoreForm } from "../store-form"
 
 type Props = {
@@ -8,8 +8,9 @@ type Props = {
 
 export default async function AdminTokoEditPage({ params }: Props) {
   const { id } = await params
-  const prisma = getPrisma()
-  const store = await prisma.store.findUnique({ where: { id } })
+  // `getStore` menyaring `deletedAt`, jadi toko yang sudah dihapus tidak bisa
+  // dibuka lewat URL langsung dan dihidupkan kembali dengan menekan Simpan.
+  const store = await getStore(id)
 
   if (!store) notFound()
 

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation"
-import { getPrisma } from "@/lib/prisma/client"
+import { getFaqItem } from "@/lib/api/policy"
 import { FaqForm } from "../faq-form"
 
 type Props = {
@@ -8,8 +8,9 @@ type Props = {
 
 export default async function AdminFaqEditPage({ params }: Props) {
   const { id } = await params
-  const prisma = getPrisma()
-  const item = await prisma.faqItem.findUnique({ where: { id } })
+  // Lihat catatan di halaman sunting toko — saringan `deletedAt` mencegah baris
+  // yang sudah dihapus dibuka lalu dihidupkan lagi lewat Simpan.
+  const item = await getFaqItem(id)
 
   if (!item) notFound()
 
