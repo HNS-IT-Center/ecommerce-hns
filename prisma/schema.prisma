@@ -18,6 +18,60 @@ datasource db {
   provider = "mysql"
 }
 
+// --------------------------------------------------------------------------- admin
+
+/**
+ * Pengguna admin panel.
+ *
+ * Sengaja BUKAN tabel Auth.js. Panel ini dipakai segelintir PIC internal, tidak
+ * ada pendaftaran mandiri, dan akun dibuat manual lewat script — jadi provider
+ * OAuth beserta tabel Account/Session-nya adalah mesin yang tidak terpakai.
+ *
+ * `email` adalah kunci sambungan antar cara login. Kalau nanti Google atau SSO
+ * ditambahkan, identitas yang mereka buktikan dicocokkan ke baris ini; tabel
+ * inilah yang memutuskan siapa boleh masuk, bukan providernya. Saat itu tiba,
+ * tabel Account (userId + provider + providerAccountId) menyusul — belum
+ * dibuat sekarang karena dengan satu provider ia kolom kosong.
+ */
+model User {
+  id           String  @id @default(uuid())
+  email        String  @unique @db.VarChar(191)
+  name         String  @db.VarChar(191)
+
+  /// Cara masuk kedua, di samping email. Disimpan huruf kecil, tidak boleh
+  /// mengandung '@' — larangan itu yang membuat pemilahan "ini email atau
+  /// username" tidak pernah ambigu, dan mencegah seseorang mendaftarkan
+  /// username berbentuk email milik orang lain.
+  ///
+  /// NULL berarti akun ini hanya bisa masuk lewat email. MySQL memperlakukan
+  /// NULL sebagai nilai yang selalu berbeda, jadi indeks unik di bawah tetap
+  /// mengizinkan banyak baris tanpa username.
+  username String? @unique @db.VarChar(191)
+  // scrypt: "salt:hash" heksadesimal, dihitung dengan crypto bawaan Node.
+  passwordHash String  @map("password_hash") @db.VarChar(255)
+  image        String? @db.VarChar(1000)
+
+  /// Penanda pencabutan sesi. Token sesi bersifat stateless — tidak ada tabel
+  /// sesi yang bisa dihapus barisnya — jadi pencabutan dilakukan lewat
+  /// perbandingan waktu: token yang diterbitkan SEBELUM waktu di sini dianggap
+  /// mati, walau tanda tangannya masih sah dan belum kedaluwarsa. Tanpa kolom
+  /// ini, mengganti password tidak memutus sesi di perangkat lain sama sekali.
+  ///
+  /// Selalu disimpan dibulatkan ke detik utuh, karena `iat` di dalam token juga
+  /// berpresisi detik. Kalau kolom ini menyimpan milidetik, token yang baru
+  /// diterbitkan pada detik yang sama bisa terbaca "lebih tua" dan langsung
+  /// mati sendiri.
+  ///
+  /// NULL berarti password belum pernah diganti sejak kolom ini ada — tidak ada
+  /// sesi yang perlu dicabut.
+  passwordChangedAt DateTime? @map("password_changed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
 model Store {
   id        String @id
   name      String
@@ -27,6 +81,17 @@ model Store {
   phone     String
   sortOrder Int    @default(0) @map("sort_order")
 
+  // Penghapusan menyisakan jejak, bukan melenyapkan baris. Tombol hapus di
+  // layar toko sebelumnya langsung memanggil delete() tanpa konfirmasi apa pun.
+  //
+  // `deletedBy` sengaja bukan relasi ke User: ia jejak audit, bukan sasaran
+  // query relasional. Kalau akun pelakunya suatu saat dihapus, foreign key
+  // dengan SetNull justru akan menghapus keterangan siapa yang menghapus —
+  // persis informasi yang ingin disimpan.
+  deletedAt DateTime? @map("deleted_at")
+  deletedBy String?   @map("deleted_by") @db.VarChar(191)
+
+  @@index([deletedAt])
   @@map("stores")
 }
 
@@ -45,6 +110,11 @@ model FaqItem {
   answer    String @db.Text
   sortOrder Int    @default(0) @map("sort_order")
 
+  // Lihat catatan pada Store — alasan dan bentuknya sama.
+  deletedAt DateTime? @map("deleted_at")
+  deletedBy String?   @map("deleted_by") @db.VarChar(191)
+
+  @@index([deletedAt])
   @@map("faq_items")
 }
 
