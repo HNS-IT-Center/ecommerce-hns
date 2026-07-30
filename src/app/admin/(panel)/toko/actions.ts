@@ -2,10 +2,15 @@
 
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
-import { getPrisma } from "@/lib/prisma/client"
 import { requireAuth } from "@/lib/auth"
+import {
+  createStore as createStoreRow,
+  softDeleteStore,
+  updateStore as updateStoreRow,
+  type StoreInput,
+} from "@/lib/api/stores"
 
-function readStoreInput(formData: FormData) {
+function readStoreInput(formData: FormData): StoreInput {
   return {
     id: String(formData.get("id") ?? "").trim(),
     name: String(formData.get("name") ?? "").trim(),
@@ -25,29 +30,30 @@ function revalidateStorePages() {
 
 export async function createStore(formData: FormData) {
   await requireAuth()
-  const input = readStoreInput(formData)
-  const prisma = getPrisma()
-  await prisma.store.create({ data: input })
+  await createStoreRow(readStoreInput(formData))
   revalidateStorePages()
   redirect("/admin/toko")
 }
 
 export async function updateStore(formData: FormData) {
   await requireAuth()
-  const { id, ...data } = readStoreInput(formData)
-  const prisma = getPrisma()
-  await prisma.store.update({
-    where: { id },
-    data,
-  })
+  await updateStoreRow(readStoreInput(formData))
   revalidateStorePages()
   redirect("/admin/toko")
 }
 
+/**
+ * Menandai toko terhapus, bukan melenyapkan barisnya.
+ *
+ * Identitas penghapus diambil dari `requireAuth()`, BUKAN dari formulir. Nilai
+ * apa pun yang datang dari formulir bisa diganti pengirimnya, dan jejak audit
+ * yang bisa dipalsukan oleh pelakunya sendiri tidak ada gunanya sebagai jejak.
+ */
 export async function deleteStore(formData: FormData) {
-  await requireAuth()
+  const user = await requireAuth()
   const id = String(formData.get("id") ?? "")
-  const prisma = getPrisma()
-  await prisma.store.delete({ where: { id } })
+  if (!id) return
+
+  await softDeleteStore(id, user.id)
   revalidateStorePages()
 }

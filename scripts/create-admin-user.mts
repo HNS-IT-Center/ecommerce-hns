@@ -11,11 +11,12 @@
  * pun yang menemukannya bisa memberi dirinya akses.
  *
  * Pakai:
- *   npx tsx scripts/create-admin-user.mts <email> [nama] [--username <username>]
+ *   npx tsx scripts/create-admin-user.mts <email> [nama] --username <username>
  *
- * Username bersifat opsional. Tanpa itu akun tetap bisa masuk lewat email —
- * kolomnya nullable justru supaya menambahkan cara masuk kedua tidak pernah
- * menjadi syarat.
+ * Username WAJIB untuk akun baru: setiap akun admin punya dua identitas masuk,
+ * email dan username, dan keduanya bisa dipakai. Untuk akun yang sudah ada,
+ * `--username` boleh dihilangkan — menjalankan skrip ini hanya untuk mengganti
+ * password tidak seharusnya memaksa mengulang username yang sudah terpasang.
  */
 import { config } from "dotenv"
 config({ path: ".env.local", quiet: true })
@@ -54,7 +55,8 @@ if (posisiUsername !== -1) argv.splice(posisiUsername, 2)
 const email = argv[0]?.trim().toLowerCase()
 const nama = argv.slice(1).join(" ").trim()
 
-const PEMAKAIAN = "Pakai: npx tsx scripts/create-admin-user.mts <email> [nama] [--username <username>]"
+const PEMAKAIAN =
+  "Pakai: npx tsx scripts/create-admin-user.mts <email> [nama] --username <username>"
 
 if (!email || !email.includes("@")) {
   console.error(PEMAKAIAN)
@@ -64,6 +66,11 @@ if (!email || !email.includes("@")) {
 // Username divalidasi SEBELUM password diminta. Menanyakan password dua kali
 // lalu berhenti karena usernamenya cacat memboroskan pekerjaan orang tanpa
 // alasan — dan yang cacat sudah bisa diketahui sejak sekarang.
+//
+// Untuk akun BARU username wajib: kolomnya NOT NULL, dan setiap akun memang
+// harus punya dua identitas masuk. Untuk akun yang SUDAH ADA ia opsional —
+// menjalankan skrip ini hanya untuk mengganti password tidak boleh memaksa
+// pemiliknya mengulang username yang sudah terpasang.
 if (username !== null) {
   if (!username) {
     console.error(`--username butuh nilai.\n${PEMAKAIAN}`)
@@ -95,6 +102,16 @@ try {
       ? `Akun "${email}" sudah ada — passwordnya akan DIGANTI.`
       : `Membuat akun baru untuk "${email}".`
   )
+
+  // Akun baru TIDAK BISA dibuat tanpa username — kolomnya NOT NULL. Ditolak di
+  // sini dengan penjelasan, bukan dibiarkan gagal sebagai galat batasan database
+  // setelah password diketik dua kali.
+  if (!sudahAda && !username) {
+    console.error(
+      `\nAkun baru wajib punya username — ia identitas masuk kedua di samping email.\n${PEMAKAIAN}`
+    )
+    process.exit(1)
+  }
 
   // Bentrokan username diperiksa lebih dulu, bukan diserahkan ke indeks unik di
   // database. Kalau dibiarkan, kegagalannya baru muncul SETELAH password
@@ -131,7 +148,9 @@ try {
     // yang sudah terpasang — dan pemiliknya baru sadar saat cara masuk yang
     // biasa ia pakai tiba-tiba tidak dikenali.
     update: { passwordHash, name: namaFinal, ...(username ? { username } : {}) },
-    create: { email, name: namaFinal, passwordHash, username },
+    // `username` sudah dipastikan ada di atas untuk akun baru; penegasan non-null
+    // di sini hanya menjelaskan itu kepada pembaca tipe.
+    create: { email, name: namaFinal, passwordHash, username: username! },
     select: { id: true, email: true, name: true, username: true, createdAt: true },
   })
 

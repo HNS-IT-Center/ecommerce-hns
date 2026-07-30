@@ -2,9 +2,10 @@ import Link from "next/link"
 import { Pencil, Plus } from "lucide-react"
 import { getPrisma, isDatabaseConfigured } from "@/lib/prisma/client"
 import { POLICY_PAGES } from "@/lib/constants/policy-content"
-import { deleteFaqItem } from "./actions"
+import { getAdminFaqItems } from "@/lib/api/policy"
+import { FaqList } from "./faq-list"
 
-import type { PolicyPage, FaqItem } from "@prisma/client"
+import type { PolicyPage } from "@prisma/client"
 
 export default async function AdminKebijakanPage() {
   if (!isDatabaseConfigured()) {
@@ -16,10 +17,13 @@ export default async function AdminKebijakanPage() {
     )
   }
 
+  // FAQ lewat `lib/api/policy` supaya saringan `deletedAt` hanya ada di satu
+  // tempat. Halaman kebijakan masih dibaca langsung — ia tidak punya soft
+  // delete, jadi tidak ada saringan yang bisa terlewat.
   const prisma = getPrisma()
   const [dbPages, faqItems] = await Promise.all([
     prisma.policyPage.findMany(),
-    prisma.faqItem.findMany({ orderBy: { sortOrder: "asc" } }),
+    getAdminFaqItems(),
   ])
   const dbPageMap = new Map(dbPages.map((page: PolicyPage) => [page.slug, page]))
 
@@ -68,39 +72,8 @@ export default async function AdminKebijakanPage() {
             Tambah FAQ
           </Link>
         </div>
-        <div className="mt-4 space-y-2">
-          {faqItems.length === 0 && (
-            <p className="text-sm text-muted-foreground">Belum ada FAQ.</p>
-          )}
-          {faqItems.map((item: FaqItem) => (
-            <div
-              key={item.id}
-              className="flex items-start justify-between gap-4 rounded-xl border border-border bg-background p-4"
-            >
-              <div>
-                <h3 className="font-semibold">{item.question}</h3>
-                <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{item.answer}</p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Link
-                  href={`/admin/kebijakan/faq/${item.id}`}
-                  className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  aria-label="Edit FAQ"
-                >
-                  <Pencil className="h-4 w-4" />
-                </Link>
-                <form action={deleteFaqItem}>
-                  <input type="hidden" name="id" value={item.id} />
-                  <button
-                    type="submit"
-                    className="rounded-lg px-3 py-1.5 text-sm font-semibold text-destructive hover:bg-destructive/10"
-                  >
-                    Hapus
-                  </button>
-                </form>
-              </div>
-            </div>
-          ))}
+        <div className="mt-4">
+          <FaqList items={faqItems} />
         </div>
       </section>
     </div>

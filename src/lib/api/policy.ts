@@ -1,5 +1,6 @@
 import { getPrisma, isDatabaseConfigured } from "@/lib/prisma/client"
 import { POLICY_PAGES, FAQ_ITEMS, type PolicyPageContent, type FaqItemContent } from "@/lib/constants/policy-content"
+import type { FaqItem } from "@prisma/client"
 
 // Halaman kebijakan/FAQ ini konten publik yang harus SELALU tampil benar buat
 // pengunjung asli — kalau database belum dikonfigurasi (belum ada
@@ -28,11 +29,66 @@ export async function getFaqItems(): Promise<FaqItemContent[]> {
 
   try {
     const prisma = getPrisma()
-    const items = await prisma.faqItem.findMany({ orderBy: { sortOrder: "asc" } })
-    if (items.length === 0) return FAQ_ITEMS
-    return items
+    const items = await prisma.faqItem.findMany({
+      where: { deletedAt: null },
+      orderBy: { sortOrder: "asc" },
+    })
+    if (items.length > 0) return items
+
+    /**
+     * Nol hasil punya DUA sebab yang sangat berbeda, dan fallback hanya benar
+     * untuk salah satunya.
+     *
+     * Kalau tabelnya memang masih kosong (database baru, belum pernah diisi),
+     * menampilkan konten default adalah yang diinginkan — itu maksud fallback
+     * sejak awal.
+     *
+     * Tapi kalau barisnya ADA dan semuanya sudah dihapus staff, fallback
+     * berubah menjadi kesalahan serius: FAQ yang sengaja dihapus akan muncul
+     * kembali di halaman publik. Staff menekan Hapus, melihatnya hilang dari
+     * panel, lalu pelanggan tetap membacanya — dan tidak ada apa pun di admin
+     * yang bisa menjelaskan kenapa.
+     *
+     * Hitungan tambahan ini hanya dijalankan pada kasus nol, jadi jalur normal
+     * tetap satu query.
+     */
+    const totalTermasukTerhapus = await prisma.faqItem.count()
+    return totalTermasukTerhapus === 0 ? FAQ_ITEMS : []
   } catch (error) {
     console.error("getFaqItems() gagal, pakai fallback:", error)
     return FAQ_ITEMS
   }
+}
+
+/**
+ * FAQ untuk panel admin.
+ *
+ * Terpisah dari `getFaqItems` karena keduanya menjawab pertanyaan yang berbeda:
+ * yang itu "apa yang harus dibaca pelanggan" dan karenanya punya fallback ke
+ * konten default; yang ini "apa yang sesungguhnya ada di tabel". Panel admin
+ * tidak boleh pernah menampilkan konten fallback — kalau iya, staff akan
+ * mencoba menyunting baris yang tidak ada.
+ */
+export async function getAdminFaqItems(): Promise<FaqItem[]> {
+  return getPrisma().faqItem.findMany({
+    where: { deletedAt: null },
+    orderBy: { sortOrder: "asc" },
+  })
+}
+
+/** Satu FAQ yang belum dihapus, atau null. Lihat catatan di `getStore`. */
+export async function getFaqItem(id: string): Promise<FaqItem | null> {
+  return getPrisma().faqItem.findFirst({ where: { id, deletedAt: null } })
+}
+
+/**
+ * Tandai terhapus, JANGAN hapus barisnya. Alasan dan bentuknya sama seperti
+ * `softDeleteStore` di `lib/api/stores.ts`.
+ */
+export async function softDeleteFaqItem(id: string, deletedBy: string): Promise<number> {
+  const { count } = await getPrisma().faqItem.updateMany({
+    where: { id, deletedAt: null },
+    data: { deletedAt: new Date(), deletedBy },
+  })
+  return count
 }

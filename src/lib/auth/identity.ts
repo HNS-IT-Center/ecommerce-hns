@@ -79,9 +79,10 @@ export type IdentityLookup = {
 /**
  * Cari akun dari email ATAU username. `null` kalau tidak ada.
  *
- * Keduanya kolom unik, jadi tidak ada dua baris yang bisa cocok sekaligus —
- * dan karena username tidak boleh mengandung `@`, sebuah masukan tidak pernah
- * bisa menjadi email milik satu orang sekaligus username milik orang lain.
+ * Keduanya kolom unik DAN wajib, jadi setiap akun selalu bisa ditemukan lewat
+ * dua jalur, dan tidak ada dua baris yang bisa cocok sekaligus — karena username
+ * tidak boleh mengandung `@`, sebuah masukan tidak pernah bisa menjadi email
+ * milik satu orang sekaligus username milik orang lain.
  */
 export async function findUserByIdentifier(raw: string): Promise<IdentityLookup | null> {
   const identifier = normalizeIdentifier(raw)
