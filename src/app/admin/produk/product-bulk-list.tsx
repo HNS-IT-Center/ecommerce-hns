@@ -236,7 +236,7 @@ export function ProductBulkList({ products, categories, statusLabel }: Props) {
             <Link href={`/admin/produk/${product.id}`} className="flex flex-1 items-center gap-4 overflow-hidden">
               <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-muted">
                 {product.image && (
-                  <Image src={product.image} alt={product.name} fill className="object-cover" />
+                  <Image src={product.image} alt={product.name} fill sizes="56px" className="object-cover" />
                 )}
               </div>
               <div className="flex-1 overflow-hidden">
