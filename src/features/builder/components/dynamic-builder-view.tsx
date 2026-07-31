@@ -7,9 +7,10 @@ import { formatRupiah } from "@/lib/utils"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import { fetchBuilderProducts } from "../actions"
 import { ProductCardBuilder } from "./product-card-builder"
-import { Check, Edit2, Lock, MessageCircle, Printer, Search, X, Loader2 } from "lucide-react"
+import { Check, Edit2, MessageCircle, Printer, Search, X, Loader2, AlertTriangle } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { useToastManager } from "@/components/ui/toast"
 
 type DynamicBuilderViewProps = {
   stepsConfig: PcBuilderStepConfig[]
@@ -24,22 +25,36 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
 
   const [products, setProducts] = useState<BuilderProduct[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [search, setSearch] = useState("")
-  // Optional: add a debounce for search if needed
+  const [debouncedSearch, setDebouncedSearch] = useState("")
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(false)
+  const [sortMode, setSortMode] = useState<"default" | "name_asc" | "name_desc" | "price_asc" | "price_desc">("default")
+  const toastManager = useToastManager()
 
   useEffect(() => {
-    if (stepsConfig && stepsConfig.length > 0) {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search)
+      setPage(1)
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [search])
+
+  useEffect(() => {
+    if (stepsConfig && stepsConfig.length > 0 && steps.length === 0) {
       setSteps(stepsConfig)
     }
-  }, [stepsConfig, setSteps])
+  }, [stepsConfig, setSteps, steps.length])
 
   const activeStep = steps.find(s => s.id === activeStepId)
   const activeStepIndex = steps.findIndex(s => s.id === activeStepId)
 
-  // Determine dependencies
+  // Determine dependencies (bidirectional)
   const requiredAttributeValueIds = useMemo(() => {
     const req: number[] = []
     if (activeStep) {
+      // 1. Forward dependencies (activeStep depends on other steps)
       activeStep.dependSteps?.forEach(depStepId => {
         const selectedProd = selections[depStepId]
         if (selectedProd) {
@@ -50,46 +65,86 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
           })
         }
       })
+
+      // 2. Reverse dependencies (other steps depend on activeStep)
+      steps.forEach(otherStep => {
+        if (otherStep.id !== activeStep.id && otherStep.dependSteps?.includes(activeStep.id)) {
+          const selectedProd = selections[otherStep.id]
+          if (selectedProd) {
+            selectedProd.attributes.forEach(attr => {
+              if (otherStep.dependAttributes?.includes(attr.attributeId)) {
+                req.push(attr.valueId)
+              }
+            })
+          }
+        }
+      })
     }
     return req
-  }, [activeStep, selections])
+  }, [activeStep, selections, steps])
+
+  // Stable string for required attributes
+  const reqAttrIdsStr = requiredAttributeValueIds.join(",");
 
   // Fetch products when active step or search changes
   useEffect(() => {
     if (!activeStep) return
 
     let isMounted = true
-    setLoading(true)
-
-    // Check if dependencies are met
-    const hasUnmetDependencies = activeStep.dependSteps?.some(depId => !selections[depId])
-    if (hasUnmetDependencies) {
-      setProducts([])
-      setLoading(false)
-      return
-    }
+    if (page === 1) setLoading(true)
+    else setLoadingMore(true)
 
     fetchBuilderProducts({
       categoryIds: activeStep.categoryIds || [],
       requiredAttributeValueIds,
-      searchQuery: search,
-      limit: 20
+      searchQuery: debouncedSearch,
+      limit: 20,
+      page,
+      sort: sortMode
     }).then(data => {
       if (isMounted) {
-        setProducts(data)
+        if (page === 1) {
+          setProducts(data.products)
+        } else {
+          setProducts(prev => [...prev, ...data.products])
+        }
+        setHasMore(data.hasMore)
         setLoading(false)
+        setLoadingMore(false)
       }
     }).catch(e => {
       console.error(e)
-      if (isMounted) setLoading(false)
+      if (isMounted) {
+        setLoading(false)
+        setLoadingMore(false)
+      }
     })
 
     return () => { isMounted = false }
-  }, [activeStep, search, requiredAttributeValueIds, selections])
+  }, [activeStep?.id, debouncedSearch, reqAttrIdsStr, page, sortMode])
 
-  const handlePrint = () => window.print()
+  useEffect(() => {
+    setPage(1)
+  }, [activeStepId, sortMode])
+
+  const validateRequiredSteps = () => {
+    const missingSteps = steps.filter(s => s.isRequired && !selections[s.id])
+    if (missingSteps.length > 0) {
+      toastManager.add({ 
+        title: "Lengkapi Komponen", 
+        description: `Silakan pilih komponen untuk: ${missingSteps.map(s => s.name).join(", ")}` 
+      })
+      return false
+    }
+    return true
+  }
+
+  const handlePrint = () => {
+    if (validateRequiredSteps()) window.print()
+  }
 
   const handleCheckoutWA = () => {
+    if (!validateRequiredSteps()) return
     let message = "Halo HNS IT Center, saya ingin merakit PC dengan spesifikasi berikut:\n\n"
     steps.forEach((step) => {
       const selected = selections[step.id]
@@ -117,34 +172,30 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
             {steps.map((step, index) => {
               const isSelected = !!selections[step.id]
               const isActive = activeStepId === step.id
-              // Check if dependencies are met
-              const isLocked = step.dependSteps?.some(depId => !selections[depId])
 
-              let btnClass = "w-full text-left px-4 py-3 rounded-xl border flex flex-col transition-all "
+              let btnClass = "w-full text-left px-4 py-3 rounded-xl border flex flex-col transition-all cursor-pointer "
               if (isActive) btnClass += "bg-blue-50 border-blue-200 shadow-sm dark:bg-blue-900/20 dark:border-blue-800 "
               else if (isSelected) btnClass += "bg-brand-green/5 border-brand-green/20 hover:bg-brand-green/10 "
-              else if (isLocked) btnClass += "bg-muted/30 border-dashed border-border/50 opacity-60 cursor-not-allowed "
               else btnClass += "bg-background border-border/50 hover:bg-accent hover:border-accent-foreground/20 "
 
               return (
                 <button
                   key={step.id}
-                  onClick={() => !isLocked && setActiveStep(step.id)}
-                  disabled={isLocked}
+                  onClick={() => setActiveStep(step.id)}
                   className={btnClass}
                 >
                   <div className="flex items-center gap-3">
                     <div className={`flex items-center justify-center h-6 w-6 rounded-full text-xs font-bold shrink-0 ${
                       isSelected ? "bg-brand-green text-white" : isActive ? "bg-blue-600 text-white" : "bg-muted-foreground/20 text-muted-foreground"
                     }`}>
-                      {isSelected ? <Check className="w-3.5 h-3.5" strokeWidth={3} /> : isLocked ? <Lock className="w-3 h-3" /> : (index + 1)}
+                      {isSelected ? <Check className="w-3.5 h-3.5" strokeWidth={3} /> : (index + 1)}
                     </div>
                     <div>
-                      <div className={`font-semibold text-sm ${isActive ? "text-blue-700 dark:text-blue-400" : isSelected ? "text-brand-green" : ""}`}>
-                        {step.name}
+                      <div className={`font-semibold text-sm flex items-center gap-1 ${isActive ? "text-blue-700 dark:text-blue-400" : isSelected ? "text-brand-green" : ""}`}>
+                        {step.name} {step.isRequired && <span className="text-red-500" title="Required">*</span>}
                       </div>
                       <div className="text-[10px] text-muted-foreground mt-0.5">
-                        {isSelected ? "Terpilih" : isLocked ? "Menunggu komponen lain" : "Pilih komponen"}
+                        {isSelected ? "Terpilih" : "Pilih komponen"}
                       </div>
                     </div>
                   </div>
@@ -177,12 +228,26 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
                 className="pl-9 h-10 rounded-xl bg-card border-border/50"
               />
             </div>
-            {/* Mock filters for UI parity */}
-            <button className="px-4 h-10 bg-black text-white rounded-xl text-xs font-bold dark:bg-white dark:text-black">
-              Filter by Brand
+            {/* Sort toggles */}
+            <button 
+              onClick={() => {
+                if (sortMode === "name_asc") setSortMode("name_desc")
+                else if (sortMode === "name_desc") setSortMode("default")
+                else setSortMode("name_asc")
+              }}
+              className="px-4 h-10 bg-black text-white rounded-xl text-xs font-bold dark:bg-white dark:text-black hover:opacity-80 transition-opacity whitespace-nowrap"
+            >
+              Filter by Brand {sortMode === "name_asc" ? "(A-Z)" : sortMode === "name_desc" ? "(Z-A)" : ""}
             </button>
-            <button className="px-4 h-10 bg-black text-white rounded-xl text-xs font-bold dark:bg-white dark:text-black">
-              Filter by Price
+            <button 
+              onClick={() => {
+                if (sortMode === "price_asc") setSortMode("price_desc")
+                else if (sortMode === "price_desc") setSortMode("default")
+                else setSortMode("price_asc")
+              }}
+              className="px-4 h-10 bg-black text-white rounded-xl text-xs font-bold dark:bg-white dark:text-black hover:opacity-80 transition-opacity whitespace-nowrap"
+            >
+              Filter by Price {sortMode === "price_asc" ? "(Low to High)" : sortMode === "price_desc" ? "(High to Low)" : ""}
             </button>
           </div>
         )}
@@ -190,14 +255,6 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
         {loading ? (
           <div className="flex items-center justify-center py-32">
             <Loader2 className="w-10 h-10 animate-spin text-muted-foreground/30" />
-          </div>
-        ) : activeStep?.dependSteps?.some(depId => !selections[depId]) ? (
-          <div className="text-center py-20 bg-card rounded-2xl border border-dashed border-border/50">
-            <Lock className="w-12 h-12 mx-auto text-muted-foreground/20 mb-4" />
-            <h3 className="text-lg font-bold">Kunci Otomatis</h3>
-            <p className="text-muted-foreground mt-2 max-w-sm mx-auto">
-              Anda harus memilih komponen sebelumnya terlebih dahulu agar kami dapat memfilter kompatibilitasnya.
-            </p>
           </div>
         ) : products.length === 0 ? (
           <div className="text-center py-20 bg-card rounded-2xl border border-dashed border-border/50">
@@ -207,15 +264,31 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 print:hidden">
-            {products.map(product => (
-              <ProductCardBuilder 
-                key={product.id}
-                product={product}
-                isSelected={selections[activeStep!.id]?.id === product.id}
-                onSelect={() => selectProduct(activeStep!.id, product)}
-              />
-            ))}
+          <div className="space-y-6 print:hidden">
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+              {products.map(product => (
+                <ProductCardBuilder 
+                  key={product.id}
+                  product={product}
+                  isSelected={selections[activeStep!.id]?.id === product.id}
+                  onSelect={() => selectProduct(activeStep!.id, product)}
+                  dependAttributes={activeStep!.dependAttributes || []}
+                />
+              ))}
+            </div>
+            {hasMore && (
+              <div className="flex justify-center mt-6">
+                <Button 
+                  variant="outline" 
+                  className="rounded-xl px-8 h-12 font-bold hover:bg-accent"
+                  onClick={() => setPage(p => p + 1)}
+                  disabled={loadingMore}
+                >
+                  {loadingMore && <Loader2 className="w-5 h-5 animate-spin mr-2" />}
+                  Load More
+                </Button>
+              </div>
+            )}
           </div>
         )}
         

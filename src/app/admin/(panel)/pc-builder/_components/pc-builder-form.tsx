@@ -51,6 +51,22 @@ export function PcBuilderForm({ initialSteps, categories, attributes }: PcBuilde
     setSteps(cleanedSteps)
   }
 
+  const moveStep = (index: number, direction: 'up' | 'down') => {
+    if (direction === 'up' && index > 0) {
+      const newSteps = [...steps]
+      const temp = newSteps[index]
+      newSteps[index] = newSteps[index - 1]
+      newSteps[index - 1] = temp
+      setSteps(newSteps)
+    } else if (direction === 'down' && index < steps.length - 1) {
+      const newSteps = [...steps]
+      const temp = newSteps[index]
+      newSteps[index] = newSteps[index + 1]
+      newSteps[index + 1] = temp
+      setSteps(newSteps)
+    }
+  }
+
   const handleSave = async () => {
     setIsSaving(true)
     try {
@@ -67,31 +83,36 @@ export function PcBuilderForm({ initialSteps, categories, attributes }: PcBuilde
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center bg-card p-4 rounded-lg border shadow-sm sticky top-24 z-10">
-        <div>
-          <h3 className="font-semibold text-lg">Steps Configuration</h3>
-          <p className="text-sm text-muted-foreground">Drag to reorder. Configure dependencies for each step.</p>
+      <motion.div 
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-background/80 backdrop-blur-xl p-5 rounded-2xl border border-white/20 shadow-lg sticky top-20 z-20 overflow-hidden"
+      >
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-purple-500/5 to-transparent pointer-events-none" />
+        <div className="relative z-10 mb-4 sm:mb-0">
+          <h3 className="font-extrabold text-2xl bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-600">Steps Configuration</h3>
+          <p className="text-sm text-muted-foreground font-medium">Drag to reorder or use arrows. Configure dependencies for each step.</p>
         </div>
-        <div className="flex space-x-3">
-          <Button onClick={addStep} variant="outline" className="gap-2">
+        <div className="flex space-x-3 relative z-10 w-full sm:w-auto">
+          <Button onClick={addStep} variant="outline" className="gap-2 flex-1 sm:flex-none rounded-xl border-border/50 hover:bg-accent shadow-sm">
             <Plus className="w-4 h-4" /> Add Step
           </Button>
-          <Button onClick={handleSave} disabled={isSaving} className="gap-2">
+          <Button onClick={handleSave} disabled={isSaving} className="gap-2 flex-1 sm:flex-none rounded-xl shadow-md shadow-primary/20">
             {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             Save Changes
           </Button>
         </div>
-      </div>
+      </motion.div>
 
       <div className="pt-2 pb-20">
         {steps.length === 0 ? (
-          <div className="text-center py-20 bg-muted/20 border-2 border-dashed rounded-lg">
-            <h3 className="text-lg font-medium text-muted-foreground">No steps configured yet</h3>
+          <div className="text-center py-20 bg-muted/20 border-2 border-dashed rounded-2xl">
+            <h3 className="text-lg font-bold text-muted-foreground">No steps configured yet</h3>
             <p className="text-sm text-muted-foreground/70 mt-1 mb-6">Create your first step to start building the PC Builder flow.</p>
-            <Button onClick={addStep}><Plus className="w-4 h-4 mr-2" /> Create First Step</Button>
+            <Button onClick={addStep} className="rounded-xl shadow-md"><Plus className="w-4 h-4 mr-2" /> Create First Step</Button>
           </div>
         ) : (
-          <Reorder.Group axis="y" values={steps} onReorder={setSteps} className="space-y-4">
+          <Reorder.Group values={steps} onReorder={setSteps} className="grid grid-cols-1 2xl:grid-cols-2 gap-5 items-start">
             <AnimatePresence initial={false}>
               {steps.map((step, index) => (
                 <StepCard
@@ -101,8 +122,11 @@ export function PcBuilderForm({ initialSteps, categories, attributes }: PcBuilde
                   allSteps={steps}
                   updateStep={updateStep}
                   removeStep={removeStep}
+                  moveStep={moveStep}
                   categories={categories}
                   attributes={attributes}
+                  isFirst={index === 0}
+                  isLast={index === steps.length - 1}
                 />
               ))}
             </AnimatePresence>

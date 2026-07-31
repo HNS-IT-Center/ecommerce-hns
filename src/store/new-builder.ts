@@ -5,7 +5,13 @@ export type BuilderProduct = {
   id: number
   name: string
   price: number
+  regularPrice?: number
+  salePrice?: number
   image?: string
+  slug: string
+  sold: number
+  stock: number
+  type: string
   attributes: { attributeId: number, attributeName: string, valueId: number, valueName: string }[]
 }
 
