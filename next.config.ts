@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Tanpa ini Next menelusuri direktori induk untuk menebak workspace root, dan
+  // lockfile nyasar di luar repo (mis. di home directory) bisa terpilih. Dipatok
+  // ke folder project supaya file tracing tidak ikut menyeret isi luar repo.
+  turbopack: {
+    root: __dirname,
+  },
   images: {
     remotePatterns: [
       {
