@@ -13,17 +13,17 @@ git clone <repo-url> hns-web
 cd hns-web
 
 # 2. Install dependency
-pnpm install
+npm install
 
 # 3. Setup environment
 cp .env.example .env.local
 # Isi minimal 8 variabel WAJIB (lihat docs/07-environment-variables.md bagian 2.1)
 
 # 4. Validasi env
-pnpm env:check
+npm run env:check
 
 # 5. Jalankan development server
-pnpm dev
+npm run dev
 ```
 
 Buka [http://localhost:3000](http://localhost:3000).
@@ -33,7 +33,7 @@ Buka [http://localhost:3000](http://localhost:3000).
 ## Prasyarat
 
 - **Node.js 20+** (LTS)
-- **pnpm 9+** — install: `npm install -g pnpm`
+- **npm 10+** — sudah ikut terpasang bersama Node.js
 - **Git**
 - Akses ke wp-admin HNS IT Center (untuk generate WooCommerce API key)
 
@@ -51,7 +51,7 @@ Buka [http://localhost:3000](http://localhost:3000).
 | Server State (client) | TanStack Query |
 | Form | React Hook Form + Zod |
 | Data Source | WooCommerce REST API v3 |
-| Package Manager | pnpm |
+| Package Manager | npm (`package-lock.json`) |
 | Testing | Vitest + Playwright |
 
 Detail lengkap & alasan pemilihan → [`CLAUDE.md`](./CLAUDE.md) bagian 4.
@@ -79,16 +79,19 @@ Detail penuh → [`docs/02-architecture.md`](./docs/02-architecture.md).
 
 | Command | Fungsi |
 |---|---|
-| `pnpm dev` | Development server |
-| `pnpm build` | Production build |
-| `pnpm start` | Jalankan production build |
-| `pnpm lint` | ESLint check |
-| `pnpm typecheck` | TypeScript check |
-| `pnpm format` | Format kode dengan Prettier |
-| `pnpm test` | Unit + integration test (Vitest) |
-| `pnpm test:watch` | Vitest dalam watch mode |
-| `pnpm test:e2e` | E2E test (Playwright) |
-| `pnpm env:check` | Validasi env vars |
+| `npm run dev` | Development server |
+| `npm run build` | Production build |
+| `npm start` | Jalankan production build |
+| `npm run lint` | ESLint check |
+| `npx tsc --noEmit` | TypeScript check |
+| `npm run format` | Format kode dengan Prettier |
+| `npm test` | Unit + integration test (Vitest) |
+| `npm run test:watch` | Vitest dalam watch mode |
+| `npm run test:e2e` | E2E test (Playwright) |
+| `npm run env:check` | Validasi env vars |
+
+> **Catatan:** per 2026-07-31, script yang benar-benar ada di `package.json` baru `dev`, `build`, `start`, `lint`, dan `postinstall`.
+> `format`, `test`, `test:watch`, `test:e2e`, dan `env:check` belum diimplementasi — Prettier, Vitest, dan Playwright belum terpasang.
 
 ---
 
@@ -116,9 +119,9 @@ File [`CLAUDE.md`](./CLAUDE.md) adalah entry point wajib. Semua agent HARUS memb
 
 Sebelum push, pastikan:
 
-- [ ] `pnpm typecheck` lulus
-- [ ] `pnpm lint` lulus
-- [ ] `pnpm test` lulus
+- [ ] `npx tsc --noEmit` lulus
+- [ ] `npm run lint` lulus
+- [ ] `npm test` lulus (setelah Vitest terpasang)
 - [ ] Tidak ada `console.log`, `any`, atau credential di kode
 - [ ] Commit message ikut Conventional Commits (`feat:`, `fix:`, `chore:`, ...)
 
