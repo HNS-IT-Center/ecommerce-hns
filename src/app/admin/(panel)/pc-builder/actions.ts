@@ -1,6 +1,6 @@
 "use server"
 
-import { revalidatePath } from "next"
+import { revalidatePath } from "next/cache"
 import { getPrisma } from "@/lib/prisma/client"
 import { z } from "zod"
 
