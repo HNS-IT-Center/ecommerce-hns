@@ -72,7 +72,8 @@ export function PcBuilderForm({ initialSteps, categories, attributes }: PcBuilde
     try {
       // Re-assign order based on array position before saving
       const orderedSteps = steps.map((s, i) => ({ ...s, order: i }))
-      await savePcBuilderConfig(orderedSteps)
+      const serializedSteps = JSON.parse(JSON.stringify(orderedSteps))
+      await savePcBuilderConfig(serializedSteps)
       toastManager.add({ title: "Success", description: "Configuration saved successfully!" })
     } catch (error) {
       toastManager.add({ title: "Error", description: "Failed to save configuration." })

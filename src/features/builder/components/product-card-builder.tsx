@@ -1,8 +1,8 @@
 "use client"
 
-import Image from "next/image"
 import Link from "next/link"
-import { Check, EyeIcon } from "lucide-react"
+import Image from "next/image"
+import { Check } from "lucide-react"
 import { formatRupiah } from "@/lib/utils"
 import { BuilderProduct } from "@/store/new-builder"
 import { Button } from "@/components/ui/button"
@@ -12,14 +12,14 @@ interface ProductCardBuilderProps {
   product: BuilderProduct
   isSelected: boolean
   onSelect: () => void
-  dependAttributes: number[]
+  displayAttributeIds: number[]
 }
 
-export function ProductCardBuilder({ product, isSelected, onSelect, dependAttributes }: ProductCardBuilderProps) {
-  // Show only attributes that are required by the builder configuration
-  const displayAttributes = product.attributes.filter(attr => dependAttributes.includes(attr.attributeId))
+export function ProductCardBuilder({ product, isSelected, onSelect, displayAttributeIds }: ProductCardBuilderProps) {
+  // Show only attributes that are required by the builder configuration across all steps
+  const displayAttributes = product.attributes.filter(attr => displayAttributeIds.includes(attr.attributeId))
 
-  const hasDiscount = product.regularPrice && product.salePrice && product.regularPrice > product.salePrice
+  const hasDiscount = Boolean(product.regularPrice && product.salePrice && product.regularPrice > product.salePrice)
   const discountPercent = hasDiscount
     ? Math.round((1 - product.salePrice! / product.regularPrice!) * 100)
     : 0
@@ -40,7 +40,7 @@ export function ProductCardBuilder({ product, isSelected, onSelect, dependAttrib
       )}
 
       {/* Image Container */}
-      <div className="relative aspect-square w-full overflow-hidden bg-secondary/50 rounded-t-xl group/image">
+      <Link href={`/product/${product.slug}`} target="_blank" className="relative aspect-square w-full overflow-hidden bg-secondary/50 rounded-t-xl group/image block">
         <Image
           src={product.image || "/placeholder.jpg"}
           alt={product.name}
@@ -57,7 +57,7 @@ export function ProductCardBuilder({ product, isSelected, onSelect, dependAttrib
             </span>
           </div>
         )}
-      </div>
+      </Link>
 
       {/* Content */}
       <div className="flex flex-1 flex-col p-3 rounded-b-xl">
@@ -65,7 +65,7 @@ export function ProductCardBuilder({ product, isSelected, onSelect, dependAttrib
         {displayAttributes.length > 0 && (
           <div className="mb-1.5 flex flex-wrap gap-1">
             {displayAttributes.map((attr, idx) => (
-              <Badge key={idx} variant="secondary" className="text-[9px] px-1.5 py-0 font-medium bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 dark:bg-blue-900/30 dark:text-blue-400">
+              <Badge key={idx} variant="secondary" className="text-[8px] px-1.5 py-0 font-medium bg-red-600 text-white hover:bg-red-700">
                 {attr.valueName}
               </Badge>
             ))}
@@ -73,9 +73,11 @@ export function ProductCardBuilder({ product, isSelected, onSelect, dependAttrib
         )}
 
         {/* Product Name */}
-        <h3 className="line-clamp-2 text-xs font-medium leading-snug text-foreground transition-colors group-hover:text-brand-green">
-          {product.name}
-        </h3>
+        <Link href={`/product/${product.slug}`} target="_blank">
+          <h3 className="line-clamp-2 text-xs font-medium leading-snug text-foreground transition-colors group-hover:text-brand-green">
+            {product.name}
+          </h3>
+        </Link>
 
         <div className="mt-auto pt-3">
           {/* Price + Discount */}
@@ -102,12 +104,12 @@ export function ProductCardBuilder({ product, isSelected, onSelect, dependAttrib
           {/* Footer of Card: Sold count and Button */}
           <div className="mt-2 flex items-center justify-between pt-2">
             <span className="text-[10px] text-muted-foreground">
-              {product.sold > 0 ? `Terjual ${product.sold}+` : ""}
+              {product.sold > 0 ? `Dilihat ${product.sold}+` : ""}
             </span>
             <Button 
               size="sm"
               onClick={onSelect}
-              className={`h-7 px-3 text-[10px] font-bold rounded-full transition-all duration-300 ${
+              className={`h-7 px-3 text-[10px] font-bold rounded-full transition-all duration-300 cursor-pointer ${
                 isSelected 
                   ? "bg-brand-green hover:bg-brand-green/90 text-white shadow-md shadow-brand-green/20" 
                   : "bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-600/20"

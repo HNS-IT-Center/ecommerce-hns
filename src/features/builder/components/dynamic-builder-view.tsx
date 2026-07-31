@@ -7,7 +7,7 @@ import { formatRupiah } from "@/lib/utils"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import { fetchBuilderProducts } from "../actions"
 import { ProductCardBuilder } from "./product-card-builder"
-import { Check, Edit2, MessageCircle, Printer, Search, X, Loader2, AlertTriangle } from "lucide-react"
+import { Check, Edit2, MessageCircle, Printer, Search, X, Loader2, AlertTriangle, RotateCcw, SortAsc } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useToastManager } from "@/components/ui/toast"
@@ -20,7 +20,7 @@ type DynamicBuilderViewProps = {
 export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuilderViewProps) {
   const { 
     steps, setSteps, selections, activeStepId, setActiveStep, 
-    selectProduct, removeProduct, budget, setBudget, getTotalPrice 
+    selectProduct, removeProduct, budget, setBudget, getTotalPrice, clearSelections
   } = useNewBuilderStore()
 
   const [products, setProducts] = useState<BuilderProduct[]>([])
@@ -86,6 +86,15 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
   // Stable string for required attributes
   const reqAttrIdsStr = requiredAttributeValueIds.join(",");
 
+  const configuredAttributeIds = useMemo(() => {
+    const ids = new Set<number>()
+    steps.forEach(s => {
+      s.dependAttributes?.forEach(id => ids.add(id))
+    })
+    return Array.from(ids)
+  }, [steps])
+  const configuredAttrIdsStr = configuredAttributeIds.join(",")
+
   // Fetch products when active step or search changes
   useEffect(() => {
     if (!activeStep) return
@@ -97,6 +106,7 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
     fetchBuilderProducts({
       categoryIds: activeStep.categoryIds || [],
       requiredAttributeValueIds,
+      configuredAttributeIds,
       searchQuery: debouncedSearch,
       limit: 20,
       page,
@@ -121,7 +131,7 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
     })
 
     return () => { isMounted = false }
-  }, [activeStep?.id, debouncedSearch, reqAttrIdsStr, page, sortMode])
+  }, [activeStep?.id, debouncedSearch, reqAttrIdsStr, configuredAttrIdsStr, page, sortMode])
 
   useEffect(() => {
     setPage(1)
@@ -167,7 +177,20 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
       {/* LEFT SIDEBAR: Steps Progress */}
       <div className="w-full lg:w-64 shrink-0 print:hidden">
         <div className="sticky top-24 bg-card rounded-2xl p-5 shadow-sm border border-border/50">
-          <h2 className="font-bold text-lg mb-6">Build Progress</h2>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="font-bold text-lg">Build Progress</h2>
+            <button 
+              onClick={() => {
+                if (window.confirm("Apakah Anda yakin ingin mereset semua pilihan komponen rakitan PC ini?")) {
+                  clearSelections();
+                }
+              }}
+              className="text-xs text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 px-2 py-1 rounded-md transition-colors cursor-pointer flex items-center gap-1"
+            >
+              <RotateCcw className="w-3 h-3" />
+              Reset
+            </button>
+          </div>
           <div className="space-y-3">
             {steps.map((step, index) => {
               const isSelected = !!selections[step.id]
@@ -237,7 +260,7 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
               }}
               className="px-4 h-10 bg-black text-white rounded-xl text-xs font-bold dark:bg-white dark:text-black hover:opacity-80 transition-opacity whitespace-nowrap"
             >
-              Filter by Brand {sortMode === "name_asc" ? "(A-Z)" : sortMode === "name_desc" ? "(Z-A)" : ""}
+              Sort by Alphabet {sortMode === "name_asc" ? "(A-Z)" : sortMode === "name_desc" ? "(Z-A)" : ""}
             </button>
             <button 
               onClick={() => {
@@ -247,7 +270,7 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
               }}
               className="px-4 h-10 bg-black text-white rounded-xl text-xs font-bold dark:bg-white dark:text-black hover:opacity-80 transition-opacity whitespace-nowrap"
             >
-              Filter by Price {sortMode === "price_asc" ? "(Low to High)" : sortMode === "price_desc" ? "(High to Low)" : ""}
+              Sort by Price {sortMode === "price_asc" ? "(Low to High)" : sortMode === "price_desc" ? "(High to Low)" : ""}
             </button>
           </div>
         )}
@@ -272,7 +295,7 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
                   product={product}
                   isSelected={selections[activeStep!.id]?.id === product.id}
                   onSelect={() => selectProduct(activeStep!.id, product)}
-                  dependAttributes={activeStep!.dependAttributes || []}
+                  displayAttributeIds={configuredAttributeIds}
                 />
               ))}
             </div>

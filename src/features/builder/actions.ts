@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client"
 export async function fetchBuilderProducts({
   categoryIds,
   requiredAttributeValueIds,
+  configuredAttributeIds = [],
   searchQuery = "",
   limit = 20,
   page = 1,
@@ -14,6 +15,7 @@ export async function fetchBuilderProducts({
 }: {
   categoryIds: number[]
   requiredAttributeValueIds: number[]
+  configuredAttributeIds?: number[]
   searchQuery?: string
   limit?: number
   page?: number
@@ -24,6 +26,11 @@ export async function fetchBuilderProducts({
   // Base where clause
   const where: Prisma.ProductWhereInput = {
     status: "PUBLISHED",
+    type: "SIMPLE",
+    OR: [
+      { regularPrice: { gt: 0 } },
+      { salePrice: { gt: 0 } }
+    ]
   }
 
   // Filter by categories if specified
@@ -64,25 +71,36 @@ export async function fetchBuilderProducts({
 
   // Text search
   if (searchQuery) {
-    where.OR = [
-      { name: { contains: searchQuery } },
-      {
+    const searchTerms = searchQuery.trim().split(/\s+/).filter(Boolean)
+    if (searchTerms.length > 0) {
+      const nameConditions = searchTerms.map(term => ({ name: { contains: term } }))
+      const attrConditions = searchTerms.map(term => ({
         attributes: {
           some: {
             value: {
-              value: { contains: searchQuery }
+              value: { contains: term }
             }
           }
         }
-      }
-    ]
+      }))
+
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : (where.AND ? [where.AND] : [])),
+        {
+          OR: [
+            { AND: nameConditions },
+            { AND: attrConditions }
+          ]
+        }
+      ]
+    }
   }
 
   const orderBy: Prisma.ProductOrderByWithRelationInput[] = []
   if (sort === "name_asc") orderBy.push({ name: "asc" })
   if (sort === "name_desc") orderBy.push({ name: "desc" })
-  if (sort === "price_asc") orderBy.push({ salePrice: "asc" }, { regularPrice: "asc" })
-  if (sort === "price_desc") orderBy.push({ salePrice: "desc" }, { regularPrice: "desc" })
+  if (sort === "price_asc") orderBy.push({ regularPrice: "asc" })
+  if (sort === "price_desc") orderBy.push({ regularPrice: "desc" })
   if (sort === "default") orderBy.push({ viewCount: "desc" }) // default sorting
 
   const skip = (page - 1) * limit
@@ -108,7 +126,13 @@ export async function fetchBuilderProducts({
         take: 1,
         select: { url: true }
       },
-      attributes: {
+      attributes: configuredAttributeIds.length > 0 ? {
+        where: { attributeId: { in: configuredAttributeIds } },
+        select: {
+          attribute: { select: { id: true, name: true } },
+          value: { select: { id: true, value: true } }
+        }
+      } : {
         select: {
           attribute: { select: { id: true, name: true } },
           value: { select: { id: true, value: true } }

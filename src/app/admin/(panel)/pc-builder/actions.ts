@@ -1,6 +1,6 @@
 "use server"
 
-import { revalidatePath } from "next"
+import { revalidatePath } from "next/cache"
 import { getPrisma } from "@/lib/prisma/client"
 import { z } from "zod"
 
@@ -35,19 +35,24 @@ export async function getPcBuilderConfig(): Promise<PcBuilderStepConfig[]> {
 }
 
 export async function savePcBuilderConfig(steps: PcBuilderStepConfig[]) {
-  const prisma = getPrisma()
-  
-  // Ensure we are saving a pure JSON object, removing any unexpected types
-  const safeSteps = JSON.parse(JSON.stringify(steps))
+  try {
+    const prisma = getPrisma()
+    
+    // Ensure we are saving a pure JSON object, removing any unexpected types
+    const safeSteps = JSON.parse(JSON.stringify(steps))
 
-  await prisma.setting.upsert({
-    where: { key: PC_BUILDER_SETTING_KEY },
-    update: { value: safeSteps },
-    create: { key: PC_BUILDER_SETTING_KEY, value: safeSteps },
-  })
+    await prisma.setting.upsert({
+      where: { key: PC_BUILDER_SETTING_KEY },
+      update: { value: safeSteps },
+      create: { key: PC_BUILDER_SETTING_KEY, value: safeSteps },
+    })
 
-  revalidatePath("/admin/pc-builder")
-  return { success: true }
+    revalidatePath("/admin/pc-builder")
+    return { success: true }
+  } catch (error) {
+    console.error("Error saving PC Builder Config:", error)
+    throw error
+  }
 }
 
 export async function getPcBuilderOptions() {

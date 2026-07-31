@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import { persist } from "zustand/middleware"
 import { PcBuilderStepConfig } from "@/app/admin/(panel)/pc-builder/actions"
 
 export type BuilderProduct = {
@@ -27,10 +28,13 @@ interface NewBuilderState {
   setActiveStep: (stepId: string) => void
   setBudget: (budget: string) => void
   getTotalPrice: () => number
+  clearSelections: () => void
   reset: () => void
 }
 
-export const useNewBuilderStore = create<NewBuilderState>((set, get) => ({
+export const useNewBuilderStore = create<NewBuilderState>()(
+  persist(
+    (set, get) => ({
   steps: [],
   selections: {},
   activeStepId: null,
@@ -85,6 +89,8 @@ export const useNewBuilderStore = create<NewBuilderState>((set, get) => ({
     return Object.values(selections).reduce((total, product) => total + (product?.price || 0), 0)
   },
 
+  clearSelections: () => set({ selections: {} }),
+
   reset: () => {
     set((state) => ({
       selections: {},
@@ -92,4 +98,10 @@ export const useNewBuilderStore = create<NewBuilderState>((set, get) => ({
       budget: ""
     }))
   }
-}))
+    }),
+    {
+      name: "pc-builder-storage",
+      partialize: (state) => ({ selections: state.selections, budget: state.budget }),
+    }
+  )
+)
