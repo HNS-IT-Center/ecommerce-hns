@@ -50,8 +50,12 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
   const brandName = product.brands?.[0]?.name || ""
 
-  // Primary category
-  const primaryCategory = product.categories?.[0]
+  // Kategori utama dicari lewat penandanya, bukan lewat posisi. Query sudah
+  // mengurutkan penanda ini ke depan, tapi pencarian eksplisit membuat maksudnya
+  // terbaca dan tetap benar kalau produk datang dari query lain. Produk tanpa
+  // penanda jatuh ke elemen pertama, sama seperti perilaku sebelumnya.
+  const primaryCategory =
+    product.categories?.find((c) => c.primary) ?? product.categories?.[0]
   const categoryName = primaryCategory?.name || "Uncategorized"
 
   const availabilityMap: Record<string, string> = {

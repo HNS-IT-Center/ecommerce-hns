@@ -16,7 +16,12 @@ import { CategoryOperationError } from "./categories";
 // Base include for Prisma queries to fetch all relations needed by the mapper
 const productInclude = {
   brand: true,
-  categories: { include: { category: true } },
+  // Kategori bertanda utama ditarik ke depan supaya konsumen yang mengambil
+  // elemen pertama (breadcrumb, label kategori, produk terkait) mendapat jalur
+  // yang memang dipilih, bukan urutan bawaan DB. Sengaja tanpa tiebreaker:
+  // menambah urutan kedua akan mengubah kategori yang tampil untuk 2.861 produk
+  // yang belum punya penanda, dan itu di luar cakupan perubahan ini.
+  categories: { include: { category: true }, orderBy: { isPrimary: 'desc' as const } },
   tags: { include: { tag: true } },
   images: { orderBy: { position: 'asc' as const } },
   attributes: {
