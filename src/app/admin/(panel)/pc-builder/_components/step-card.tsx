@@ -122,6 +122,14 @@ export function StepCard({ step, index, updateStep, removeStep, moveStep, catego
                   />
                   <label htmlFor={`req-${step.id}`} className="text-sm font-semibold cursor-pointer">Required</label>
                 </div>
+                <div className="flex items-center space-x-2 px-2 border-l border-border/30 pl-3">
+                  <Checkbox 
+                    id={`mul-${step.id}`} 
+                    checked={step.allowMultiple || false}
+                    onCheckedChange={(c) => updateStep(index, { allowMultiple: c === true })}
+                  />
+                  <label htmlFor={`mul-${step.id}`} className="text-sm font-semibold cursor-pointer">Allow Multiple</label>
+                </div>
                 <div className="h-6 w-px bg-border/30"></div>
                 <Button 
                   variant="ghost" 

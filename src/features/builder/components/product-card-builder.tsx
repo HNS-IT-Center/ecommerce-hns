@@ -1,8 +1,7 @@
 "use client"
 
-import Link from "next/link"
 import Image from "next/image"
-import { Check } from "lucide-react"
+import { Minus, Plus } from "lucide-react"
 import { formatRupiah } from "@/lib/utils"
 import { BuilderProduct } from "@/store/new-builder"
 import { Button } from "@/components/ui/button"
@@ -10,12 +9,13 @@ import { Badge } from "@/components/ui/badge"
 
 interface ProductCardBuilderProps {
   product: BuilderProduct
-  isSelected: boolean
+  quantity: number
   onSelect: () => void
+  onUpdateQuantity: (quantity: number) => void
   displayAttributeIds: number[]
 }
 
-export function ProductCardBuilder({ product, isSelected, onSelect, displayAttributeIds }: ProductCardBuilderProps) {
+export function ProductCardBuilder({ product, quantity, onSelect, onUpdateQuantity, displayAttributeIds }: ProductCardBuilderProps) {
   // Show only attributes that are required by the builder configuration across all steps
   const displayAttributes = product.attributes.filter(attr => displayAttributeIds.includes(attr.attributeId))
 
@@ -23,6 +23,8 @@ export function ProductCardBuilder({ product, isSelected, onSelect, displayAttri
   const discountPercent = hasDiscount
     ? Math.round((1 - product.salePrice! / product.regularPrice!) * 100)
     : 0
+    
+  const isSelected = quantity > 0
 
   return (
     <div className={`group relative flex flex-col rounded-xl bg-card shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${isSelected ? 'ring-2 ring-brand-green' : ''}`}>
@@ -40,7 +42,12 @@ export function ProductCardBuilder({ product, isSelected, onSelect, displayAttri
       )}
 
       {/* Image Container */}
-      <Link href={`/product/${product.slug}`} target="_blank" className="relative aspect-square w-full overflow-hidden bg-secondary/50 rounded-t-xl group/image block">
+      <button 
+        type="button" 
+        onClick={product.stock > 0 ? onSelect : undefined} 
+        className="relative aspect-square w-full overflow-hidden bg-secondary/50 rounded-t-xl group/image block text-left"
+        disabled={product.stock === 0}
+      >
         <Image
           src={product.image || "/placeholder.jpg"}
           alt={product.name}
@@ -57,7 +64,7 @@ export function ProductCardBuilder({ product, isSelected, onSelect, displayAttri
             </span>
           </div>
         )}
-      </Link>
+      </button>
 
       {/* Content */}
       <div className="flex flex-1 flex-col p-3 rounded-b-xl">
@@ -73,11 +80,16 @@ export function ProductCardBuilder({ product, isSelected, onSelect, displayAttri
         )}
 
         {/* Product Name */}
-        <Link href={`/product/${product.slug}`} target="_blank">
+        <button 
+          type="button" 
+          onClick={product.stock > 0 ? onSelect : undefined} 
+          className="text-left"
+          disabled={product.stock === 0}
+        >
           <h3 className="line-clamp-2 text-xs font-medium leading-snug text-foreground transition-colors group-hover:text-brand-green">
             {product.name}
           </h3>
-        </Link>
+        </button>
 
         <div className="mt-auto pt-3">
           {/* Price + Discount */}
@@ -101,32 +113,43 @@ export function ProductCardBuilder({ product, isSelected, onSelect, displayAttri
             </div>
           )}
 
-          {/* Footer of Card: Sold count and Button */}
-          <div className="mt-2 flex items-center justify-between pt-2">
-            <span className="text-[10px] text-muted-foreground">
-              {product.sold > 0 ? `Dilihat ${product.sold}+` : ""}
-            </span>
-            <Button 
-              size="sm"
-              onClick={onSelect}
-              className={`h-7 px-3 text-[10px] font-bold rounded-full transition-all duration-300 cursor-pointer ${
-                isSelected 
-                  ? "bg-brand-green hover:bg-brand-green/90 text-white shadow-md shadow-brand-green/20" 
-                  : "bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-600/20"
-              }`}
-            >
-              {isSelected ? (
-                <>
-                  <Check className="mr-1 h-3 w-3" />
-                  Selected
-                </>
-              ) : (
-                "Select"
-              )}
-            </Button>
+          {/* Footer of Card: Button or Quantity Control */}
+          <div className="mt-3 flex items-center justify-end">
+            {isSelected ? (
+              <div className="flex items-center gap-2 bg-muted/30 p-1 rounded-full border border-border/50 shadow-sm">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-6 w-6 rounded-full bg-background hover:bg-red-100 hover:text-red-600 shadow-sm"
+                  onClick={() => onUpdateQuantity(quantity - 1)}
+                >
+                  <Minus className="h-3 w-3" />
+                </Button>
+                <span className="text-xs font-bold w-4 text-center">{quantity}</span>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-6 w-6 rounded-full bg-background hover:bg-brand-green/20 hover:text-brand-green shadow-sm"
+                  onClick={() => onUpdateQuantity(quantity + 1)}
+                  disabled={quantity >= product.stock}
+                >
+                  <Plus className="h-3 w-3" />
+                </Button>
+              </div>
+            ) : (
+              <Button 
+                size="sm"
+                onClick={onSelect}
+                disabled={product.stock === 0}
+                className="h-7 px-4 text-[10px] font-bold rounded-full transition-all duration-300 cursor-pointer bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-600/20"
+              >
+                Select
+              </Button>
+            )}
           </div>
         </div>
       </div>
     </div>
   )
 }
+

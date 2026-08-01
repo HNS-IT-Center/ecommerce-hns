@@ -12,6 +12,7 @@ export type PcBuilderStepConfig = {
   dependSteps: string[]
   dependAttributes: number[]
   isRequired?: boolean
+  allowMultiple?: boolean
 }
 
 const PC_BUILDER_SETTING_KEY = "PC_BUILDER_CONFIG"
@@ -48,6 +49,7 @@ export async function savePcBuilderConfig(steps: PcBuilderStepConfig[]) {
     })
 
     revalidatePath("/admin/pc-builder")
+    revalidatePath("/build-pc")
     return { success: true }
   } catch (error) {
     console.error("Error saving PC Builder Config:", error)

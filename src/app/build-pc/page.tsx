@@ -14,7 +14,7 @@ export default async function BuildPcPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <div className="print:hidden">
+      <div className="hidden md:block print:hidden">
         <Header />
       </div>
       <main className="flex-1 bg-muted/20 print:bg-white print:m-0 print:p-0">

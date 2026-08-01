@@ -12,10 +12,11 @@ export function MobileDock() {
   const mounted = useIsHydrated()
   const totalItems = useCartStore((state) => state.getTotalItems())
   
-  // Hide dock if on desktop
+  // Hide dock if on desktop or on /build-pc where we have custom mobile UI
   const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768
+  const isBuildPc = pathname?.startsWith("/build-pc") || false
 
-  if (isDesktop) return null
+  if (isDesktop || isBuildPc) return null
 
   const items = [
     {

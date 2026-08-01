@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { motion, Reorder, AnimatePresence } from "framer-motion"
-import { Plus, Save, Loader2 } from "lucide-react"
+import { Plus, Save, Loader2, CheckCircle2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PcBuilderStepConfig, savePcBuilderConfig } from "../actions"
 import { StepCard } from "./step-card"
@@ -17,6 +17,7 @@ interface PcBuilderFormProps {
 export function PcBuilderForm({ initialSteps, categories, attributes }: PcBuilderFormProps) {
   const [steps, setSteps] = React.useState<PcBuilderStepConfig[]>(initialSteps || [])
   const [isSaving, setIsSaving] = React.useState(false)
+  const [showSuccessToast, setShowSuccessToast] = React.useState(false)
   const toastManager = useToastManager()
 
   const addStep = () => {
@@ -74,7 +75,8 @@ export function PcBuilderForm({ initialSteps, categories, attributes }: PcBuilde
       const orderedSteps = steps.map((s, i) => ({ ...s, order: i }))
       const serializedSteps = JSON.parse(JSON.stringify(orderedSteps))
       await savePcBuilderConfig(serializedSteps)
-      toastManager.add({ title: "Success", description: "Configuration saved successfully!" })
+      setShowSuccessToast(true)
+      setTimeout(() => setShowSuccessToast(false), 3000)
     } catch (error) {
       toastManager.add({ title: "Error", description: "Failed to save configuration." })
     } finally {
@@ -134,6 +136,29 @@ export function PcBuilderForm({ initialSteps, categories, attributes }: PcBuilde
           </Reorder.Group>
         )}
       </div>
+      
+      <AnimatePresence>
+        {showSuccessToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, x: 20 }}
+            animate={{ opacity: 1, y: 0, x: 0 }}
+            exit={{ opacity: 0, y: -20, x: 20 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="fixed top-20 md:top-24 right-4 z-[9999] flex items-center gap-3 rounded-lg bg-card p-4 shadow-xl border border-border"
+          >
+            <CheckCircle2 className="h-5 w-5 text-success" />
+            <span className="text-sm font-medium text-foreground">
+              Configuration saved successfully
+            </span>
+            <button
+              onClick={() => setShowSuccessToast(false)}
+              className="ml-2 rounded-full p-1 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

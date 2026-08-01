@@ -11,10 +11,10 @@ interface FloatingWhatsAppButtonProps {
 
 export function FloatingWhatsAppButton({ whatsappNumber }: FloatingWhatsAppButtonProps) {
   const pathname = usePathname()
-  // Halaman produk punya sticky action bar sendiri dengan tombol WhatsApp
   // (lihat ProductActions) — tombol mengambang ini akan tumpang tindih
   // dengannya di mobile, jadi disembunyikan khusus di sana.
-  const hasOwnWhatsAppCta = pathname?.startsWith("/product/") ?? false
+  // We also hide it on /build-pc on mobile because it has its own floating UI.
+  const hasOwnWhatsAppCta = pathname?.startsWith("/product/") || pathname?.startsWith("/build-pc") || false
 
   const waUrl = buildWhatsAppUrl(
     whatsappNumber,
