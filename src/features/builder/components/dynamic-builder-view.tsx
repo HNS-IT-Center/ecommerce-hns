@@ -551,7 +551,7 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
                           description: `${activeStep?.name} berhasil dipilih`,
                           variant: "success",
                           duration: 2000
-                        })
+                        } as any)
                       }}
                       onUpdateQuantity={(q) => updateQuantity(activeStep!.id, product.id, q)}
                       displayAttributeIds={configuredAttributeIds}
