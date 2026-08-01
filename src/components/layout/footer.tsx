@@ -1,4 +1,5 @@
 import Link from "next/link"
+import Image from "next/image"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import { env } from "@/config/env"
 
@@ -9,17 +10,20 @@ export function Footer() {
   )
 
   return (
-    <footer className="border-t bg-muted/20">
+    <footer className="border-t bg-muted/20 print:hidden">
       <div className="container mx-auto px-4 md:px-6 py-12 md:py-16">
         <div className="grid gap-8 md:grid-cols-4 lg:gap-12">
           
           {/* Col 1 */}
           <div className="space-y-4">
-            <Link href="/" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-brand-green text-primary-foreground font-bold">
-                H
-              </div>
-              <span className="font-bold text-lg">HNS IT Center</span>
+            <Link href="/" className="flex items-center shrink-0">
+              <Image 
+                src="/images/Logo HNS IT Center.png" 
+                alt="HNS IT Center Logo" 
+                width={160} 
+                height={40} 
+                className="h-10 w-auto object-contain"
+              />
             </Link>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Pusat IT & Gaming terpercaya di Batam. Harga terbaik, garansi resmi, teknisi berpengalaman.
