@@ -6,6 +6,7 @@ import { CategoryOperationError } from "@/lib/api/woocommerce/categories"
 import {
   bulkAssignCategory,
   previewBulkAssignCategory,
+  deleteProduct,
   type BulkCategoryMode,
 } from "@/lib/api/woocommerce/products"
 import type { BulkApplyState, BulkPreviewState } from "./state"
@@ -88,5 +89,22 @@ export async function applyBulkCategoryAction(
       return { error: error.message, ok: null }
     }
     throw error
+  }
+}
+
+export async function deleteProductAction(id: number) {
+  try {
+    await requireAuth()
+    await deleteProduct(id)
+    refresh()
+    return { error: null }
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return { error: error.message }
+    }
+    if (error instanceof Error) {
+      return { error: error.message }
+    }
+    return { error: "Terjadi kesalahan saat menghapus produk." }
   }
 }

@@ -129,6 +129,7 @@ function buildPrismaOrderBy(params: GetProductsParams): Prisma.ProductOrderByWit
     case 'price': return { regularPrice: orderDir };
     case 'popularity': return { viewCount: orderDir };
     case 'title': return { name: orderDir };
+    case 'sku': return { sku: orderDir };
     default: return { id: orderDir };
   }
 }
@@ -520,78 +521,83 @@ async function nextWooId(): Promise<number> {
   return (result._max.wooId ?? 0) + 1;
 }
 
-/** Ganti total kategori/gambar/atribut produk sesuai input (form admin selalu kirim daftar lengkap, bukan patch parsial). */
 async function replaceProductRelations(
   tx: Prisma.TransactionClient,
   productId: number,
-  input: ProductInput
+  input: Partial<ProductInput>
 ) {
-  await tx.productCategory.deleteMany({ where: { productId } });
-  if (input.categories?.length) {
-    const ids = input.categories.map((c) => c.id);
+  if (input.categories !== undefined) {
+    await tx.productCategory.deleteMany({ where: { productId } });
+    if (input.categories.length) {
+      const ids = input.categories.map((c) => c.id);
 
-    // Kategori utama = yang paling dalam di antara yang dipilih. Pemilih
-    // kategori mengirim satu jalur utuh (daun beserta seluruh leluhurnya),
-    // jadi yang terdalam adalah daun yang benar-benar dipilih staff — tidak
-    // perlu pertanyaan tambahan di form untuk sesuatu yang sudah tersirat.
-    const rows = await tx.category.findMany({
-      where: { id: { in: ids } },
-      select: { id: true, depth: true },
-    });
-    const deepest = rows.reduce<{ id: number; depth: number } | null>(
-      (best, row) => (best === null || row.depth > best.depth ? row : best),
-      null
-    );
-
-    await tx.productCategory.createMany({
-      data: ids.map((categoryId) => ({
-        productId,
-        categoryId,
-        isPrimary: categoryId === deepest?.id,
-      })),
-      skipDuplicates: true,
-    });
-  }
-
-  await tx.productImage.deleteMany({ where: { productId } });
-  if (input.images?.length) {
-    await tx.productImage.createMany({
-      data: input.images.map((img, i) => ({
-        productId,
-        url: img.url,
-        position: i,
-        isPrimary: i === 0,
-      })),
-    });
-  }
-
-  // Form admin isi atribut sebagai teks bebas (nama+nilai), bukan pilih dari
-  // master data -> upsert ke Attribute/AttributeValue supaya tetap normalisasi.
-  await tx.productAttribute.deleteMany({ where: { productId } });
-  if (input.attributes?.length) {
-    let position = 0;
-    for (const attr of input.attributes) {
-      const value = attr.options[0];
-      if (!attr.name?.trim() || !value?.trim()) continue;
-
-      const attribute = await tx.attribute.upsert({
-        where: { name: attr.name.trim() },
-        create: { name: attr.name.trim() },
-        update: {},
+      // Kategori utama = yang paling dalam di antara yang dipilih. Pemilih
+      // kategori mengirim satu jalur utuh (daun beserta seluruh leluhurnya),
+      // jadi yang terdalam adalah daun yang benar-benar dipilih staff — tidak
+      // perlu pertanyaan tambahan di form untuk sesuatu yang sudah tersirat.
+      const rows = await tx.category.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, depth: true },
       });
-      const attributeValue = await tx.attributeValue.upsert({
-        where: { attributeId_value: { attributeId: attribute.id, value: value.trim() } },
-        create: { attributeId: attribute.id, value: value.trim() },
-        update: {},
-      });
-      await tx.productAttribute.create({
-        data: {
+      const deepest = rows.reduce<{ id: number; depth: number } | null>(
+        (best, row) => (best === null || row.depth > best.depth ? row : best),
+        null
+      );
+
+      await tx.productCategory.createMany({
+        data: ids.map((categoryId) => ({
           productId,
-          attributeId: attribute.id,
-          valueId: attributeValue.id,
-          position: position++,
-        },
+          categoryId,
+          isPrimary: categoryId === deepest?.id,
+        })),
+        skipDuplicates: true,
       });
+    }
+  }
+
+  if (input.images !== undefined) {
+    await tx.productImage.deleteMany({ where: { productId } });
+    if (input.images.length) {
+      await tx.productImage.createMany({
+        data: input.images.map((img, i) => ({
+          productId,
+          url: img.url,
+          position: i,
+          isPrimary: i === 0,
+        })),
+      });
+    }
+  }
+
+  if (input.attributes !== undefined) {
+    // Form admin isi atribut sebagai teks bebas (nama+nilai), bukan pilih dari
+    // master data -> upsert ke Attribute/AttributeValue supaya tetap normalisasi.
+    await tx.productAttribute.deleteMany({ where: { productId } });
+    if (input.attributes.length) {
+      let position = 0;
+      for (const attr of input.attributes) {
+        const value = attr.options[0];
+        if (!attr.name?.trim() || !value?.trim()) continue;
+
+        const attribute = await tx.attribute.upsert({
+          where: { name: attr.name.trim() },
+          create: { name: attr.name.trim() },
+          update: {},
+        });
+        const attributeValue = await tx.attributeValue.upsert({
+          where: { attributeId_value: { attributeId: attribute.id, value: value.trim() } },
+          create: { attributeId: attribute.id, value: value.trim() },
+          update: {},
+        });
+        await tx.productAttribute.create({
+          data: {
+            productId,
+            attributeId: attribute.id,
+            valueId: attributeValue.id,
+            position: position++,
+          },
+        });
+      }
     }
   }
 }
@@ -632,8 +638,8 @@ export async function createProduct(input: ProductInput): Promise<Product> {
   }, { timeout: 30000 });
 
   const result = await refetchAsWoo(created.id);
-  revalidateTag("products", "max");
-  revalidateTag("all-products", "max");
+  revalidateTag("products");
+  revalidateTag("all-products");
   return result;
 }
 
@@ -671,9 +677,43 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
   }, { timeout: 30000 });
 
   const result = await refetchAsWoo(updated.id);
-  revalidateTag("products", "max");
-  revalidateTag("all-products", "max");
-  revalidateTag(`product-${existing.slug}`, "max");
-  revalidateTag(`product-id-${id}`, "max");
+  revalidateTag("products");
+  revalidateTag("all-products");
+  revalidateTag(`product-${existing.slug}`);
+    revalidateTag(`product-id-${id}`);
   return result;
 }
+
+/** Hapus produk beserta relasinya (dipakai admin panel). */
+export async function deleteProduct(id: number): Promise<void> {
+  const prisma = getPrisma();
+  
+  const product = await prisma.product.findUnique({
+    where: { wooId: id }
+  });
+  
+  if (!product) {
+    throw new Error(`Produk dengan woo_id=${id} tidak ditemukan`);
+  }
+
+  // Use transaction to ensure everything is deleted cleanly
+  await prisma.$transaction(async (tx) => {
+    // Relasi akan terhapus otomatis jika onDelete: Cascade diset di schema Prisma.
+    // Tapi untuk amannya, kita hapus manual relasinya dulu.
+    await tx.productCategory.deleteMany({ where: { productId: product.id } });
+    await tx.productImage.deleteMany({ where: { productId: product.id } });
+    await tx.productAttribute.deleteMany({ where: { productId: product.id } });
+    
+    // Hapus variasi jika ini adalah produk variabel
+    await tx.product.deleteMany({ where: { parentId: product.id } });
+    
+    // Hapus produk utama
+    await tx.product.delete({ where: { id: product.id } });
+  });
+
+  revalidateTag("products");
+  revalidateTag("all-products");
+  revalidateTag(`product-${product.slug}`);
+  revalidateTag(`product-id-${id}`);
+}
+

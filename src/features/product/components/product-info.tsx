@@ -12,6 +12,7 @@ import { useFlyToCart } from "@/components/providers/fly-to-cart-provider"
 import { ProductPriceBox } from "./product-price-box"
 import { ProductActions } from "./product-actions"
 import { ProductVariantSelector, type VariantAttribute } from "./product-variant-selector"
+import { QRCodeCanvas } from "qrcode.react"
 
 interface ProductInfoProps {
   id: number
@@ -33,6 +34,7 @@ interface ProductInfoProps {
   whatsappNumber: string
   variantAttributes: VariantAttribute[]
   variations: ProductVariation[]
+  siteUrl: string
 }
 
 export function ProductInfo({
@@ -55,6 +57,7 @@ export function ProductInfo({
   whatsappNumber,
   variantAttributes,
   variations,
+  siteUrl,
 }: ProductInfoProps) {
   const isSimpleProduct = type === "simple"
   const hasVariants = type === "variable" && variantAttributes.length > 0 && variations.length > 0
@@ -286,6 +289,24 @@ export function ProductInfo({
               lihat kebijakan
             </a>
           </span>
+        </div>
+      </div>
+
+      {/* QR Code */}
+      <div className="mt-4 flex items-center justify-between rounded-lg border border-border bg-muted/20 p-4">
+        <div className="space-y-1">
+          <p className="text-sm font-semibold text-primary">Scan QR Produk</p>
+          <p className="text-xs text-muted-foreground max-w-[200px]">
+            Buka halaman ini kapan saja dari smartphone Anda.
+          </p>
+        </div>
+        <div className="rounded-md bg-white p-1.5 shadow-sm">
+          <QRCodeCanvas
+            value={`${siteUrl}/p/${id}`}
+            size={350}
+            level="L"
+            style={{ width: 64, height: 64 }}
+          />
         </div>
       </div>
     </div>

@@ -2,10 +2,10 @@ import Link from "next/link"
 import { Plus } from "lucide-react"
 import { getProductsPaginated } from "@/lib/api/woocommerce/products"
 import { getCategoriesForAdmin } from "@/lib/api/woocommerce/categories"
-import { ProductBulkList } from "./product-bulk-list"
+import { ProductDataTable } from "./product-data-table"
 
 type Props = {
-  searchParams: Promise<{ q?: string; page?: string }>
+  searchParams: Promise<{ q?: string; page?: string; sort?: string; order?: string }>
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -15,16 +15,18 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 export default async function AdminProdukPage({ searchParams }: Props) {
-  const { q, page } = await searchParams
+  const { q, page, sort, order } = await searchParams
   const currentPage = Number(page ?? 1)
+  const currentSort = (sort === "title" || sort === "sku" || sort === "price" || sort === "date") ? sort : "date"
+  const currentOrder = (order === "asc" || order === "desc") ? order : "desc"
 
   const [{ products, totalPages }, categories] = await Promise.all([
     getProductsPaginated({
       search: q,
       page: currentPage,
-      perPage: 20,
-      orderby: "date",
-      order: "desc",
+      perPage: 25, // Updated to 25 per user request
+      orderby: currentSort,
+      order: currentOrder,
       // Draft & private wajib ikut tampil: produk baru dibuat sebagai draft, dan
       // kalau daftar ini menyaringnya, produk itu hilang begitu selesai disimpan.
       status: "any",
@@ -39,10 +41,15 @@ export default async function AdminProdukPage({ searchParams }: Props) {
     status: product.status,
     price: Number(product.price || 0),
     image: product.images?.[0]?.src ?? null,
+    stockStatus: product.stock_status,
+    categories: product.categories?.map(c => ({ id: c.id, name: c.name })) || [],
+    brands: product.brands?.map(b => ({ name: b.name })) || [],
+    dateCreated: product.date_created,
+    rawProduct: product // Passed for QuickEditModal
   }))
 
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="mx-auto max-w-[1400px]">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Produk</h1>
         <Link
@@ -54,20 +61,11 @@ export default async function AdminProdukPage({ searchParams }: Props) {
         </Link>
       </div>
 
-      <form className="mt-4">
-        <input
-          type="text"
-          name="q"
-          defaultValue={q}
-          placeholder="Cari produk..."
-          className="w-full rounded-xl border border-input bg-muted/50 px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:bg-background"
-        />
-      </form>
-
       <div className="mt-6">
-        <ProductBulkList
+        <ProductDataTable
           products={rows}
           categories={categories.map((c) => ({ id: c.id, path: c.path }))}
+          rawCategories={categories}
           statusLabel={STATUS_LABEL}
         />
       </div>
@@ -76,7 +74,7 @@ export default async function AdminProdukPage({ searchParams }: Props) {
         <div className="mt-6 flex items-center justify-center gap-2 text-sm">
           {currentPage > 1 && (
             <Link
-              href={`/admin/produk?${new URLSearchParams({ ...(q ? { q } : {}), page: String(currentPage - 1) })}`}
+              href={`/admin/produk?${new URLSearchParams({ ...(q ? { q } : {}), ...(sort ? { sort } : {}), ...(order ? { order } : {}), page: String(currentPage - 1) })}`}
               className="rounded-lg border border-input px-3 py-1.5 hover:bg-muted"
             >
               Sebelumnya
@@ -87,7 +85,7 @@ export default async function AdminProdukPage({ searchParams }: Props) {
           </span>
           {currentPage < totalPages && (
             <Link
-              href={`/admin/produk?${new URLSearchParams({ ...(q ? { q } : {}), page: String(currentPage + 1) })}`}
+              href={`/admin/produk?${new URLSearchParams({ ...(q ? { q } : {}), ...(sort ? { sort } : {}), ...(order ? { order } : {}), page: String(currentPage + 1) })}`}
               className="rounded-lg border border-input px-3 py-1.5 hover:bg-muted"
             >
               Berikutnya

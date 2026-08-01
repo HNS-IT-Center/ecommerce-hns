@@ -4,10 +4,11 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useForm, useFieldArray } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { Plus, Trash2, Loader2, X } from "lucide-react"
+import { Plus, Trash2, Loader2, X, QrCode, Download } from "lucide-react"
 import { productFormSchema, type ProductFormValues } from "@/lib/validators/product"
 import type { ProductCategory } from "@/types/woocommerce"
 import { UnsavedChangesGuard } from "@/components/admin/unsaved-changes-guard"
+import { QRCodeCanvas } from "qrcode.react"
 import { CategoryPicker } from "./category-picker"
 
 type ExistingImage = { id: number; source_url: string }
@@ -28,6 +29,7 @@ export function ProdukForm({ categories, productId, defaultValues, defaultImages
   const isEdit = Boolean(productId)
   const [images, setImages] = useState<ExistingImage[]>(defaultImages ?? [])
   const [uploading, setUploading] = useState(false)
+  const [isFormatting, setIsFormatting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   const {
@@ -138,6 +140,53 @@ export function ProdukForm({ categories, productId, defaultValues, defaultImages
     }
   }
 
+  async function handleFormatSpecs() {
+    const currentDescription = watch("description")
+    if (!currentDescription || currentDescription.trim() === "") {
+      alert("Silakan masukkan teks spesifikasi ke dalam kotak deskripsi terlebih dahulu.")
+      return
+    }
+
+    setIsFormatting(true)
+    setSubmitError(null)
+
+    try {
+      const res = await fetch("/api/admin/format-specs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: currentDescription }),
+      })
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || "Gagal merapikan spesifikasi")
+      }
+
+      // Gunakan shouldDirty agar peringatan form berubah ikut aktif
+      setValue("description", data.html, { shouldDirty: true, shouldValidate: true })
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Gagal merapikan spesifikasi")
+    } finally {
+      setIsFormatting(false)
+    }
+  }
+
+  function downloadQRCode() {
+    const canvas = document.getElementById("product-qr-code") as HTMLCanvasElement
+    if (!canvas) return
+    const pngUrl = canvas.toDataURL("image/png")
+    const downloadLink = document.createElement("a")
+    downloadLink.href = pngUrl
+    downloadLink.download = `qr-produk-${productId}.png`
+    document.body.appendChild(downloadLink)
+    downloadLink.click()
+    document.body.removeChild(downloadLink)
+  }
+
+  // URL untuk QR code. Jika belum disetel di .env, kita pakai origin window (walau berisiko kalau didownload di localhost)
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== "undefined" ? window.location.origin : "")
+  const qrLink = `${siteUrl}/p/${productId}`
+
   // `isDirty` dari react-hook-form dipakai di sini, bukan pengamatan DOM milik
   // UnsavedChangesGuard: ia tahu bedanya "diubah" dengan "diubah lalu
   // dikembalikan ke nilai semula", jadi tidak memperingatkan tanpa sebab.
@@ -152,6 +201,45 @@ export function ProdukForm({ categories, productId, defaultValues, defaultImages
         {submitError && (
           <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             {submitError}
+          </div>
+        )}
+
+        {isEdit && productId && (
+          <div className="rounded-xl border border-border p-4 bg-muted/20">
+            <div className="flex items-start gap-4">
+              <div className="rounded-lg bg-white p-2 shrink-0">
+                <QRCodeCanvas 
+                  id="product-qr-code" 
+                  value={qrLink} 
+                  size={350} 
+                  level="H" 
+                  marginSize={1}
+                  style={{ width: 120, height: 120 }}
+                />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-primary">
+                  <QrCode className="h-5 w-5" />
+                  <h3 className="font-semibold text-lg">QR Code Produk</h3>
+                </div>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  QR Code ini berisi tautan pintar ke produk ini. Jika Anda mengubah nama atau URL produk di masa depan, QR Code ini <strong>tetap akan berfungsi</strong> karena menggunakan ID permanen.
+                </p>
+                <div className="pt-2 flex items-center gap-3">
+                  <button 
+                    type="button" 
+                    onClick={downloadQRCode}
+                    className="flex items-center gap-2 rounded-lg bg-primary/10 px-4 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/20"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download QR Code
+                  </button>
+                  <code className="text-xs px-2 py-1 bg-muted rounded truncate max-w-[200px]" title={qrLink}>
+                    {qrLink}
+                  </code>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -182,10 +270,25 @@ export function ProdukForm({ categories, productId, defaultValues, defaultImages
         </div>
 
         <div>
-          <label className={labelClass} htmlFor="description">
-            Deskripsi Lengkap
-          </label>
-          <textarea id="description" {...register("description")} rows={6} className={inputClass} />
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-sm font-semibold" htmlFor="description">
+              Deskripsi Lengkap (Spesifikasi)
+            </label>
+            <button
+              type="button"
+              onClick={handleFormatSpecs}
+              disabled={isFormatting}
+              className="flex items-center gap-1.5 rounded-md bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-700 transition-colors hover:bg-purple-200 disabled:opacity-50"
+            >
+              {isFormatting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <span className="text-sm leading-none">✨</span>
+              )}
+              Rapikan dengan AI
+            </button>
+          </div>
+          <textarea id="description" {...register("description")} rows={8} className={inputClass} placeholder="Paste spesifikasi berantakan di sini, lalu klik Rapikan dengan AI..." />
         </div>
 
         <div className="grid grid-cols-2 gap-4">
