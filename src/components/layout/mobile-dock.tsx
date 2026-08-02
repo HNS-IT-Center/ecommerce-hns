@@ -12,10 +12,11 @@ export function MobileDock() {
   const mounted = useIsHydrated()
   const totalItems = useCartStore((state) => state.getTotalItems())
   
-  // Hide dock if on desktop
+  // Hide dock if on desktop or admin routes
   const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768
+  const isAdmin = pathname.startsWith('/admin')
 
-  if (isDesktop) return null
+  if (isDesktop || isAdmin) return null
 
   const items = [
     {

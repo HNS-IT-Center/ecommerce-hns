@@ -127,7 +127,9 @@ export type ProductInput = {
   short_description?: string;
   regular_price?: string;
   sale_price?: string;
+  date_on_sale_to_gmt?: string;
   manage_stock?: boolean;
+  stock_status?: "instock" | "outofstock" | "onbackorder";
   stock_quantity?: number;
   categories?: Array<{ id: number }>;
   attributes?: Array<{ name: string; options: string[]; visible?: boolean }>;

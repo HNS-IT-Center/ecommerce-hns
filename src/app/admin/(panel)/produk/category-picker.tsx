@@ -1,22 +1,8 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { ChevronRight, CornerDownRight, Search, TriangleAlert, X } from "lucide-react"
+import { ChevronRight, Search, CheckSquare, Square, X } from "lucide-react"
 import type { ProductCategory } from "@/types/woocommerce"
-
-/**
- * Pemilih kategori berbentuk pohon.
- *
- * Menggantikan daftar 133 checkbox datar yang sebelumnya hanya menampilkan nama
- * kategori tanpa jalur induknya. Daftar datar itu membuat staff tidak bisa
- * membedakan "AMD" (prosesor) dari "AMD / ATI RADEON" (VGA), atau tahu bahwa
- * "MID TOWER" itu anak dari "CASING PC" — akibatnya mereka mencentang kategori
- * payung saja. Hasilnya di data: 140 produk berhenti di kategori level 1 dan 49
- * produk berhenti di level 2 padahal kategorinya punya anak.
- *
- * Aturan pemilihan: staff memilih SATU kategori paling spesifik, induknya ikut
- * otomatis. Satu produk = satu jalur kategori (keputusan 2026-07-27).
- */
 
 type CategoryNode = {
   id: number
@@ -34,12 +20,10 @@ type CategoryPickerProps = {
 const MAX_DEPTH_GUARD = 20
 const MAX_SEARCH_RESULTS = 50
 
-/** Rantai induk dari akar sampai tepat di atas `id` (tidak termasuk `id`). */
 function ancestorsOf(id: number, byId: Map<number, ProductCategory>): number[] {
   const chain: number[] = []
   let current = byId.get(id)?.parent ?? 0
 
-  // Pembatas iterasi supaya data induk yang melingkar tidak bikin loop tak henti.
   for (let guard = 0; current && guard < MAX_DEPTH_GUARD; guard += 1) {
     chain.unshift(current)
     current = byId.get(current)?.parent ?? 0
@@ -48,12 +32,25 @@ function ancestorsOf(id: number, byId: Map<number, ProductCategory>): number[] {
   return chain
 }
 
-/** Jalur lengkap sebagai teks, mis. "KOMPONEN PC / NB › MOTHERBOARD › MOTHERBOARD AMD". */
+function descendantsOf(id: number, treeNodes: Map<number, CategoryNode>): number[] {
+  const descendants: number[] = []
+  const node = treeNodes.get(id)
+  if (!node) return descendants
+  
+  const stack = [...node.children]
+  while (stack.length > 0) {
+    const curr = stack.pop()!
+    descendants.push(curr.id)
+    stack.push(...curr.children)
+  }
+  return descendants
+}
+
 function pathLabelOf(id: number, byId: Map<number, ProductCategory>): string {
   return [...ancestorsOf(id, byId), id].map((cid) => byId.get(cid)?.name ?? "?").join(" › ")
 }
 
-function buildTree(categories: ProductCategory[]): CategoryNode[] {
+function buildTree(categories: ProductCategory[]): { roots: CategoryNode[], nodes: Map<number, CategoryNode> } {
   const nodes = new Map<number, CategoryNode>()
   for (const category of categories) {
     nodes.set(category.id, {
@@ -80,7 +77,7 @@ function buildTree(categories: ProductCategory[]): CategoryNode[] {
   }
   sortRecursively(roots)
 
-  return roots
+  return { roots, nodes }
 }
 
 export function CategoryPicker({ categories, value, onChange }: CategoryPickerProps) {
@@ -90,48 +87,14 @@ export function CategoryPicker({ categories, value, onChange }: CategoryPickerPr
     () => new Map(categories.map((category) => [category.id, category])),
     [categories]
   )
-  const tree = useMemo(() => buildTree(categories), [categories])
-
-  // Kategori terpilih = yang paling dalam. Induknya memang ikut tersimpan di
-  // `value`, tapi yang ditampilkan ke staff cukup yang paling spesifik.
-  const selectedId = useMemo(() => {
-    let deepest: number | null = null
-    let deepestLevel = -1
-
-    for (const id of value) {
-      const level = ancestorsOf(id, byId).length
-      if (level > deepestLevel) {
-        deepestLevel = level
-        deepest = id
-      }
-    }
-
-    return deepest
-  }, [value, byId])
-
-  // Produk lama bisa punya kategori dari beberapa pohon sekaligus (mis. TP-LINK
-  // ada di AKSESSORIES KOMPUTER dan NETWORK TOOLS). Itu ditampilkan sebagai
-  // peringatan supaya staff memilih satu, bukan diam-diam dibuang.
-  const conflictingPaths = useMemo(() => {
-    const deepestPerRoot = new Map<number, number>()
-
-    for (const id of value) {
-      const chain = [...ancestorsOf(id, byId), id]
-      const root = chain[0]
-      const incumbent = deepestPerRoot.get(root)
-      const incumbentLength =
-        incumbent === undefined ? -1 : ancestorsOf(incumbent, byId).length + 1
-
-      if (chain.length > incumbentLength) deepestPerRoot.set(root, id)
-    }
-
-    return deepestPerRoot.size > 1 ? [...deepestPerRoot.values()] : []
-  }, [value, byId])
+  
+  const { roots: tree, nodes: treeNodes } = useMemo(() => buildTree(categories), [categories])
 
   const [expanded, setExpanded] = useState<Set<number>>(() => {
-    // Buka otomatis jalur kategori yang sedang terpilih supaya langsung kelihatan.
     const initial = new Set<number>()
-    for (const id of value) for (const ancestor of ancestorsOf(id, byId)) initial.add(ancestor)
+    for (const id of value) {
+      for (const ancestor of ancestorsOf(id, byId)) initial.add(ancestor)
+    }
     return initial
   })
 
@@ -143,27 +106,39 @@ export function CategoryPicker({ categories, value, onChange }: CategoryPickerPr
       .filter((category) => pathLabelOf(category.id, byId).toLowerCase().includes(trimmed))
       .sort((a, b) => pathLabelOf(a.id, byId).localeCompare(pathLabelOf(b.id, byId), "id"))
 
-    // Daftar dipotong supaya kata kunci pendek (mis. "PC") tidak merender ratusan
-    // baris. Jumlah aslinya tetap dibawa supaya staff tahu ada sisa yang belum
-    // tampil — kalau tidak, mereka bisa salah simpul kategorinya tidak ada.
     return { items: matches.slice(0, MAX_SEARCH_RESULTS), total: matches.length }
   }, [query, categories, byId])
 
-  function selectCategory(id: number) {
-    const ancestors = ancestorsOf(id, byId)
+  const selectedSet = useMemo(() => new Set(value), [value])
 
-    // Induk ikut disimpan supaya halaman kategori level atas tetap bisa
-    // menampilkan seluruh produk di bawahnya tanpa query rekursif.
-    onChange([...ancestors, id])
-
-    // Buka jalurnya di pohon: kalau pilihan dibuat lewat kotak cari, staff yang
-    // menghapus kata kuncinya harus tetap melihat kategori yang barusan dipilih.
-    // Node terpilih ikut dibuka supaya sub-kategorinya (kalau ada) langsung
-    // terlihat — itu pasangan dari peringatan "pilih yang lebih spesifik".
-    setExpanded((previous) => new Set([...previous, ...ancestors, id]))
+  function toggleCategory(id: number) {
+    const next = new Set(value)
+    
+    if (next.has(id)) {
+      next.delete(id)
+      for (const childId of descendantsOf(id, treeNodes)) {
+        next.delete(childId)
+      }
+    } else {
+      next.add(id)
+      for (const ancId of ancestorsOf(id, byId)) {
+        next.add(ancId)
+      }
+    }
+    
+    onChange(Array.from(next))
+    
+    if (query) {
+      setExpanded((prev) => {
+        const nextExp = new Set(prev)
+        for (const anc of ancestorsOf(id, byId)) nextExp.add(anc)
+        return nextExp
+      })
+    }
   }
 
-  function toggleExpanded(id: number) {
+  function toggleExpanded(id: number, e: React.MouseEvent) {
+    e.stopPropagation()
     setExpanded((previous) => {
       const next = new Set(previous)
       if (next.has(id)) next.delete(id)
@@ -172,10 +147,14 @@ export function CategoryPicker({ categories, value, onChange }: CategoryPickerPr
     })
   }
 
+  const selectedLeaves = useMemo(() => {
+    return value.filter(id => !value.some(otherId => byId.get(otherId)?.parent === id))
+  }, [value, byId])
+
   function renderNode(node: CategoryNode, depth: number) {
     const hasChildren = node.children.length > 0
     const isExpanded = expanded.has(node.id)
-    const isSelected = selectedId === node.id
+    const isSelected = selectedSet.has(node.id)
 
     return (
       <li key={node.id}>
@@ -186,10 +165,8 @@ export function CategoryPicker({ categories, value, onChange }: CategoryPickerPr
           {hasChildren ? (
             <button
               type="button"
-              onClick={() => toggleExpanded(node.id)}
+              onClick={(e) => toggleExpanded(node.id, e)}
               className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted"
-              aria-label={isExpanded ? `Tutup ${node.name}` : `Buka ${node.name}`}
-              aria-expanded={isExpanded}
             >
               <ChevronRight
                 className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-90" : ""}`}
@@ -201,18 +178,18 @@ export function CategoryPicker({ categories, value, onChange }: CategoryPickerPr
 
           <button
             type="button"
-            onClick={() => selectCategory(node.id)}
-            aria-pressed={isSelected}
-            className={`flex min-h-9 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-start text-sm transition-colors ${
-              isSelected ? "bg-primary font-semibold text-primary-foreground" : "hover:bg-muted"
-            }`}
+            onClick={() => toggleCategory(node.id)}
+            className={`flex min-h-9 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-start text-sm transition-colors hover:bg-muted`}
           >
-            <span className="flex-1 break-words">{node.name}</span>
-            <span
-              className={`shrink-0 text-xs tabular-nums ${
-                isSelected ? "text-primary-foreground/70" : "text-muted-foreground"
-              }`}
-            >
+            {isSelected ? (
+              <CheckSquare className="h-4 w-4 text-primary shrink-0" />
+            ) : (
+              <Square className="h-4 w-4 text-muted-foreground shrink-0" />
+            )}
+            <span className={`flex-1 break-words ${isSelected ? "font-semibold text-primary" : "text-foreground"}`}>
+              {node.name}
+            </span>
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
               {node.count}
             </span>
           </button>
@@ -225,83 +202,30 @@ export function CategoryPicker({ categories, value, onChange }: CategoryPickerPr
     )
   }
 
-  /**
-   * Sub-kategori dari yang sedang dipilih.
-   *
-   * Sebelumnya di sini ada peringatan kuning setiap kali kategori terpilih
-   * masih punya anak. Itu keliru: picker tidak tahu apa-apa soal produknya,
-   * jadi ia menuduh staff salah padahal sering kali tidak. "UPS" anaknya cuma
-   * "BATERAI UPS", "PC ALL IN ONE" cuma "KEBUTUHAN CASHIER", "TABLET &
-   * SMARTPHONE" cuma "CHARGER PHONE" — untuk unit UPS, PC AIO, dan tablet,
-   * induknya memang rumah yang benar. Dari 111 produk yang ditandai "dangkal",
-   * sekitar 22 sebenarnya sudah tepat. Peringatan yang salah sesering itu
-   * hanya mengajari staff mengabaikannya.
-   *
-   * Menampilkan daftar anaknya jauh lebih berguna: staff langsung melihat
-   * apakah ada yang lebih cocok, dan bisa memilihnya dengan satu ketukan.
-   */
-  const childrenOfSelected = useMemo(() => {
-    if (selectedId === null) return []
-    return categories
-      .filter((category) => category.parent === selectedId)
-      .sort((a, b) => a.name.localeCompare(b.name, "id"))
-  }, [selectedId, categories])
-
   return (
     <div className="space-y-2">
-      {selectedId !== null ? (
-        <div className="flex flex-wrap items-start gap-2 rounded-xl border border-input bg-muted/40 px-3 py-2">
-          <CornerDownRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-          <p className="flex-1 break-words text-sm font-medium">{pathLabelOf(selectedId, byId)}</p>
-          <button
-            type="button"
-            onClick={() => onChange([])}
-            className="shrink-0 rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label="Hapus pilihan kategori"
-          >
-            <X className="h-4 w-4" />
-          </button>
+      {selectedLeaves.length > 0 ? (
+        <div className="flex flex-col gap-2 rounded-xl border border-input bg-muted/20 px-3 py-2">
+          <p className="text-xs font-semibold text-muted-foreground">Kategori Terpilih:</p>
+          <div className="flex flex-wrap gap-2">
+            {selectedLeaves.map(id => (
+              <div key={id} className="flex items-center gap-1 rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary">
+                <span>{pathLabelOf(id, byId)}</span>
+                <button
+                  type="button"
+                  onClick={() => toggleCategory(id)}
+                  className="rounded-sm hover:bg-primary/20"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       ) : (
         <p className="rounded-xl border border-dashed border-input px-3 py-2 text-sm text-muted-foreground">
           Belum ada kategori dipilih.
         </p>
-      )}
-
-      {childrenOfSelected.length > 0 && (
-        <div className="rounded-xl border border-input bg-muted/20 px-3 py-2">
-          <p className="text-xs text-muted-foreground">
-            Ada sub-kategori di bawahnya. Pilih salah satu kalau lebih cocok:
-          </p>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {childrenOfSelected.map((child) => (
-              <button
-                key={child.id}
-                type="button"
-                onClick={() => selectCategory(child.id)}
-                className="rounded-lg border border-input bg-background px-2 py-1 text-xs transition-colors hover:border-primary hover:bg-muted"
-              >
-                {child.name}
-                <span className="ms-1.5 tabular-nums text-muted-foreground">{child.count}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {conflictingPaths.length > 0 && (
-        <div className="rounded-xl bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          <p className="flex items-start gap-2 font-semibold">
-            <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            Produk ini terdaftar di beberapa kategori yang berbeda pohon:
-          </p>
-          <ul className="mt-1 list-inside list-disc space-y-0.5 ps-5">
-            {conflictingPaths.map((id) => (
-              <li key={id}>{pathLabelOf(id, byId)}</li>
-            ))}
-          </ul>
-          <p className="mt-1 ps-5">Pilih satu yang paling tepat — pilihan lain akan dilepas.</p>
-        </div>
       )}
 
       <div className="relative">
@@ -319,31 +243,30 @@ export function CategoryPicker({ categories, value, onChange }: CategoryPickerPr
         {searchResults ? (
           searchResults.items.length > 0 ? (
             <ul className="space-y-0.5">
-              {searchResults.items.map((category) => (
-                <li key={category.id}>
-                  <button
-                    type="button"
-                    onClick={() => selectCategory(category.id)}
-                    aria-pressed={selectedId === category.id}
-                    className={`flex min-h-9 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-start text-sm transition-colors ${
-                      selectedId === category.id
-                        ? "bg-primary font-semibold text-primary-foreground"
-                        : "hover:bg-muted"
-                    }`}
-                  >
-                    <span className="flex-1 break-words">{pathLabelOf(category.id, byId)}</span>
-                    <span
-                      className={`shrink-0 text-xs tabular-nums ${
-                        selectedId === category.id
-                          ? "text-primary-foreground/70"
-                          : "text-muted-foreground"
-                      }`}
+              {searchResults.items.map((category) => {
+                const isSelected = selectedSet.has(category.id)
+                return (
+                  <li key={category.id}>
+                    <button
+                      type="button"
+                      onClick={() => toggleCategory(category.id)}
+                      className="flex min-h-9 w-full items-center gap-2 rounded-lg px-2 py-1.5 text-start text-sm transition-colors hover:bg-muted"
                     >
-                      {category.count}
-                    </span>
-                  </button>
-                </li>
-              ))}
+                      {isSelected ? (
+                        <CheckSquare className="h-4 w-4 text-primary shrink-0" />
+                      ) : (
+                        <Square className="h-4 w-4 text-muted-foreground shrink-0" />
+                      )}
+                      <span className={`flex-1 break-words ${isSelected ? "font-semibold text-primary" : ""}`}>
+                        {pathLabelOf(category.id, byId)}
+                      </span>
+                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                        {category.count}
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
               {searchResults.total > searchResults.items.length && (
                 <li className="px-2 py-2 text-xs text-muted-foreground">
                   Menampilkan {searchResults.items.length} dari {searchResults.total} kategori yang

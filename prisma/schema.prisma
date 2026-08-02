@@ -381,3 +381,21 @@ model Setting {
 
   @@map("settings")
 }
+
+// --------------------------------------------------------------------------- logs
+
+model ProductLog {
+  id            Int      @id @default(autoincrement())
+  userName      String   @db.VarChar(191) // "System" atau nama Admin
+  productId     Int      @map("product_id")
+  productName   String   @map("product_name") @db.VarChar(500)
+  action        String   @db.VarChar(100) // e.g., "UPDATE_PRICE", "QUICK_EDIT", "DELETE"
+  fieldAffected String   @map("field_affected") @db.VarChar(100) // e.g., "regular_price", "multiple"
+  oldValue      String?  @map("old_value") @db.Text
+  newValue      String?  @map("new_value") @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([productId])
+  @@index([createdAt])
+  @@map("product_logs")
+}
