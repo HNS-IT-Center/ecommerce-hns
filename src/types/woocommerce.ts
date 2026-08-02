@@ -86,7 +86,7 @@ export type GetProductsParams = {
   brand?: string | string[]; // Custom if using brands taxonomy
   perPage?: number;
   page?: number;
-  orderby?: "date" | "id" | "include" | "title" | "slug" | "price" | "popularity" | "rating";
+  orderby?: "date" | "id" | "include" | "title" | "slug" | "price" | "popularity" | "rating" | "sku";
   order?: "asc" | "desc";
   search?: string;
   minPrice?: number;

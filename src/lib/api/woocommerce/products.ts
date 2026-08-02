@@ -638,8 +638,8 @@ export async function createProduct(input: ProductInput): Promise<Product> {
   }, { timeout: 30000 });
 
   const result = await refetchAsWoo(created.id);
-  revalidateTag("products");
-  revalidateTag("all-products");
+  revalidateTag("products", "max");
+  revalidateTag("all-products", "max");
   return result;
 }
 
@@ -677,10 +677,12 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
   }, { timeout: 30000 });
 
   const result = await refetchAsWoo(updated.id);
-  revalidateTag("products");
-  revalidateTag("all-products");
-  revalidateTag(`product-${existing.slug}`);
-    revalidateTag(`product-id-${id}`);
+  revalidateTag("products", "max");
+  revalidateTag("all-products", "max");
+  revalidateTag(`product-${existing.slug}`, "max");
+  if (id) {
+    revalidateTag(`product-id-${id}`, "max");
+  }
   return result;
 }
 
@@ -711,9 +713,9 @@ export async function deleteProduct(id: number): Promise<void> {
     await tx.product.delete({ where: { id: product.id } });
   });
 
-  revalidateTag("products");
-  revalidateTag("all-products");
-  revalidateTag(`product-${product.slug}`);
-  revalidateTag(`product-id-${id}`);
+  revalidateTag("products", "max");
+  revalidateTag("all-products", "max");
+  revalidateTag(`product-${product.slug}`, "max");
+  revalidateTag(`product-id-${id}`, "max");
 }
 
