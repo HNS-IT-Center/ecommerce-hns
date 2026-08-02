@@ -102,6 +102,7 @@ export type GetProductsParams = {
    * begitu dibuat.
    */
   status?: "publish" | "draft" | "private" | "any";
+  stock_status?: "instock" | "outofstock" | "onbackorder";
 };
 
 export type ProductAttributeTaxonomy = {
