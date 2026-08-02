@@ -14,8 +14,8 @@ export default async function AdminProdukPage({ searchParams }: Props) {
   const currentSort = (sort === "title" || sort === "sku" || sort === "price" || sort === "date") ? sort : "date"
   const currentOrder = (order === "asc" || order === "desc") ? order : "desc"
 
-  let apiStatus = "any"
-  let apiStockStatus = undefined
+  let apiStatus: "publish" | "draft" | "private" | "any" = "any"
+  let apiStockStatus: "instock" | "outofstock" | "onbackorder" | undefined = undefined
 
   if (status_filter === "publish" || status_filter === "draft" || status_filter === "private") {
     apiStatus = status_filter
