@@ -47,6 +47,8 @@ export function ProdukForm({ categories, productId, defaultValues, defaultImages
       shortDescription: "",
       regularPrice: "",
       salePrice: "",
+      manageStock: false,
+      stockStatus: "instock",
       stockQuantity: 0,
       status: "draft",
       categoryIds: [],

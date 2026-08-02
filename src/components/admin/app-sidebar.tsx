@@ -47,7 +47,7 @@ export function AppSidebar() {
   const { open, toggleSidebar } = useSidebar()
 
   return (
-    <TooltipProvider delayDuration={0}>
+    <TooltipProvider delay={0}>
       <Sidebar
         collapsible="icon"
         style={{ "--sidebar-width-icon": "4.5rem" } as React.CSSProperties}

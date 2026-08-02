@@ -34,6 +34,8 @@ export type Product = {
   description: string;
   short_description: string;
   sku: string;
+  date_created: string;
+  date_modified: string;
   price: string;
   regular_price: string;
   sale_price: string;

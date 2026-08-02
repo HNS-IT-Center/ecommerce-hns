@@ -67,7 +67,17 @@ export default async function AdminProdukPage({ searchParams }: Props) {
         <ProductDataTable
           products={rows}
           categories={categories.map((c) => ({ id: c.id, path: c.path }))}
-          rawCategories={categories}
+          rawCategories={categories.map(c => ({
+            id: c.id,
+            name: c.name,
+            slug: c.slug,
+            parent: c.parentId || 0,
+            description: "",
+            display: "default",
+            image: null,
+            menu_order: 0,
+            count: c.productCount,
+          }))}
         />
       </div>
 
