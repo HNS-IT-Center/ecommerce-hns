@@ -10,7 +10,7 @@ import { formatRupiah } from "@/lib/utils"
 import { parseRupiah } from "@/lib/utils"
 import { deleteProductAction, updateProductPriceAction, bulkUpdateProductStatusAction } from "./actions"
 import { QuickEditModal } from "./quick-edit-modal"
-import type { ProductCategory } from "@/types/woocommerce"
+import type { Product, ProductCategory, ProductAttributeTaxonomy } from "@/types/woocommerce"
 
 // Shadcn UI Tooltips
 import {
@@ -43,13 +43,15 @@ export type BulkProductRow = {
   categories: { id: number; name: string }[]
   brands: { name: string }[]
   dateCreated: string | Date
-  rawProduct: any
+  /** Produk WooCommerce apa adanya — dipakai Quick Edit untuk mengisi form. */
+  rawProduct: Product
 }
 
 type Props = {
   products: BulkProductRow[]
   categories: { id: number; path: string }[]
   rawCategories: ProductCategory[] // For QuickEditModal
+  attributeOptions: ProductAttributeTaxonomy[] // For QuickEditModal
 }
 
 function SortIcon({ field, currentSort, currentOrder }: { field: string, currentSort: string, currentOrder: string }) {
@@ -58,7 +60,7 @@ function SortIcon({ field, currentSort, currentOrder }: { field: string, current
   return <ChevronDown className="h-4 w-4 text-red-500" />
 }
 
-export function ProductDataTable({ products, categories, rawCategories }: Props) {
+export function ProductDataTable({ products, categories, rawCategories, attributeOptions }: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -75,8 +77,16 @@ export function ProductDataTable({ products, categories, rawCategories }: Props)
 
   // Inline Price Edit
   const [editingPriceId, setEditingPriceId] = useState<number | null>(null)
-  const [editingPriceValue, setEditingPriceValue] = useState("")
-  const [confirmPriceProduct, setConfirmPriceProduct] = useState<{id: number, name: string, oldPrice: number, newPrice: number} | null>(null)
+  const [editingRegular, setEditingRegular] = useState("")
+  const [editingSale, setEditingSale] = useState("")
+  const [confirmPriceProduct, setConfirmPriceProduct] = useState<{
+    id: number, 
+    name: string, 
+    oldRegular: number, 
+    oldSale: number, 
+    newRegular: number, 
+    newSale: number | null
+  } | null>(null)
 
   // Selection
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -130,16 +140,19 @@ export function ProductDataTable({ products, categories, rawCategories }: Props)
     })
   }
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!deleteProduct) return
     setIsDeleting(true)
-    const res = await deleteProductAction(deleteProduct.id)
-    setIsDeleting(false)
-    if (!res.error) {
-      setDeleteProduct(null)
-    } else {
-      alert(res.error)
-    }
+    startTransition(async () => {
+      const res = await deleteProductAction(deleteProduct.id)
+      setIsDeleting(false)
+      if (!res.error) {
+        setDeleteProduct(null)
+        router.refresh()
+      } else {
+        alert(res.error)
+      }
+    })
   }
 
   const toggle = (id: number) =>
@@ -156,19 +169,22 @@ export function ProductDataTable({ products, categories, rawCategories }: Props)
 
   const ids = Array.from(selected).join(",")
 
-  const handleBulkAction = async () => {
+  const handleBulkAction = () => {
     if (!bulkActionType || selected.size === 0) return
     setIsBulkUpdating(true)
     const idsToUpdate = Array.from(selected)
-    const res = await bulkUpdateProductStatusAction(idsToUpdate, bulkActionType)
-    setIsBulkUpdating(false)
-    if (!res.error) {
-      setConfirmBulkAction(false)
-      setSelected(new Set())
-      setBulkActionType("")
-    } else {
-      alert(res.error)
-    }
+    startTransition(async () => {
+      const res = await bulkUpdateProductStatusAction(idsToUpdate, bulkActionType)
+      setIsBulkUpdating(false)
+      if (!res.error) {
+        setConfirmBulkAction(false)
+        setSelected(new Set())
+        setBulkActionType("")
+        router.refresh()
+      } else {
+        alert(res.error)
+      }
+    })
   }
 
   return (
@@ -361,52 +377,82 @@ export function ProductDataTable({ products, categories, rawCategories }: Props)
                 </td>
                 <td className="px-4 py-3 align-middle font-semibold text-foreground text-xs">
                   {editingPriceId === product.id ? (
-                    <div className="flex flex-col gap-1">
-                      <input 
-                        type="text" 
-                        autoFocus
-                        value={editingPriceValue}
-                        onChange={(e) => setEditingPriceValue(formatRupiah(parseRupiah(e.target.value)).replace('Rp', '').trim())}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            setConfirmPriceProduct({
-                              id: product.id, 
-                              name: product.name,
-                              oldPrice: product.price,
-                              newPrice: parseRupiah(editingPriceValue)
-                            })
+                    <div className="flex flex-col gap-1.5 w-[140px]">
+                      <div className="flex flex-col gap-0.5">
+                        <label className="text-[9px] text-muted-foreground uppercase">Normal</label>
+                        <input 
+                          type="text" 
+                          autoFocus
+                          value={editingRegular}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/[^0-9]/g, '')
+                            setEditingRegular(raw === "" ? "" : formatRupiah(parseInt(raw)).replace('Rp', '').trim())
+                          }}
+                          className="w-full rounded border px-2 py-1 text-xs font-normal bg-background text-foreground"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <label className="text-[9px] text-muted-foreground uppercase">Obral</label>
+                        <input 
+                          type="text" 
+                          value={editingSale}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/[^0-9]/g, '')
+                            setEditingSale(raw === "" ? "" : formatRupiah(parseInt(raw)).replace('Rp', '').trim())
+                          }}
+                          className="w-full rounded border px-2 py-1 text-xs font-normal bg-background text-foreground"
+                        />
+                      </div>
+                      <div className="flex gap-1 mt-1">
+                        <button 
+                          className="flex-1 bg-primary text-primary-foreground text-[10px] py-1 rounded hover:bg-primary/90"
+                          onClick={() => {
+                            const parsedReg = parseRupiah(editingRegular)
+                            const parsedSale = editingSale.trim() ? parseRupiah(editingSale) : null
+                            if (parsedReg !== Number(product.rawProduct?.regular_price || 0) || parsedSale !== (product.rawProduct?.sale_price ? Number(product.rawProduct.sale_price) : null)) {
+                              setConfirmPriceProduct({
+                                id: product.id, 
+                                name: product.name,
+                                oldRegular: Number(product.rawProduct?.regular_price || 0),
+                                oldSale: Number(product.rawProduct?.sale_price || 0),
+                                newRegular: parsedReg,
+                                newSale: parsedSale
+                              })
+                            }
                             setEditingPriceId(null)
-                          } else if (e.key === 'Escape') {
-                            setEditingPriceId(null)
-                          }
-                        }}
-                        onBlur={() => {
-                           const parsed = parseRupiah(editingPriceValue)
-                           if (parsed !== product.price) {
-                             setConfirmPriceProduct({
-                               id: product.id, 
-                               name: product.name,
-                               oldPrice: product.price,
-                               newPrice: parsed
-                             })
-                           }
-                           setEditingPriceId(null)
-                        }}
-                        className="w-full rounded border px-2 py-1 text-xs font-normal bg-background text-foreground"
-                      />
-                      <span className="text-[9px] text-muted-foreground font-normal">Tekan Enter untuk simpan</span>
+                          }}
+                        >
+                          OK
+                        </button>
+                        <button 
+                          className="flex-1 bg-muted text-muted-foreground text-[10px] py-1 rounded hover:bg-muted/80"
+                          onClick={() => setEditingPriceId(null)}
+                        >
+                          Batal
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div 
                       className="cursor-pointer hover:bg-muted/50 p-1 -m-1 rounded transition-colors group flex items-center justify-between border-b border-dashed border-muted-foreground/50"
                       onClick={() => {
-                        setEditingPriceValue(String(product.price))
+                        setEditingRegular(String(product.rawProduct?.regular_price || ""))
+                        setEditingSale(String(product.rawProduct?.sale_price || ""))
                         setEditingPriceId(product.id)
                       }}
                       title="Klik untuk ubah harga"
                     >
-                      {formatRupiah(product.price)}
-                      <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-100 text-muted-foreground transition-opacity" />
+                      <div className="flex flex-col">
+                        {product.rawProduct?.sale_price ? (
+                          <>
+                            <span className="line-through text-muted-foreground text-[10px]">{formatRupiah(Number(product.rawProduct.regular_price))}</span>
+                            <span className="font-bold text-green-600">{formatRupiah(Number(product.rawProduct.sale_price))}</span>
+                          </>
+                        ) : (
+                          <span className="font-bold">{formatRupiah(Number(product.rawProduct?.regular_price || 0))}</span>
+                        )}
+                      </div>
+                      <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-100 text-muted-foreground transition-opacity shrink-0 ml-1" />
                     </div>
                   )}
                 </td>
@@ -510,51 +556,73 @@ export function ProductDataTable({ products, categories, rawCategories }: Props)
               <div className="flex-1 max-w-[150px]">
                 <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block mb-0.5">Harga</span>
                 {editingPriceId === product.id ? (
-                  <div className="flex flex-col gap-1">
+                  <div className="flex flex-col gap-1 mt-1">
                     <input 
                       type="text" 
-                      autoFocus
-                      value={editingPriceValue}
-                      onChange={(e) => setEditingPriceValue(formatRupiah(parseRupiah(e.target.value)).replace('Rp', '').trim())}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          setConfirmPriceProduct({
-                            id: product.id, 
-                            name: product.name,
-                            oldPrice: product.price,
-                            newPrice: parseRupiah(editingPriceValue)
-                          })
-                          setEditingPriceId(null)
-                        } else if (e.key === 'Escape') {
-                          setEditingPriceId(null)
-                        }
-                      }}
-                      onBlur={() => {
-                         const parsed = parseRupiah(editingPriceValue)
-                         if (parsed !== product.price) {
-                           setConfirmPriceProduct({
-                             id: product.id, 
-                             name: product.name,
-                             oldPrice: product.price,
-                             newPrice: parsed
-                           })
-                         }
-                         setEditingPriceId(null)
+                      placeholder="Normal"
+                      value={editingRegular}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/[^0-9]/g, '')
+                        setEditingRegular(raw === "" ? "" : formatRupiah(parseInt(raw)).replace('Rp', '').trim())
                       }}
                       className="w-full rounded border px-2 py-1 text-sm font-semibold bg-background text-foreground"
                     />
+                    <input 
+                      type="text" 
+                      placeholder="Obral"
+                      value={editingSale}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/[^0-9]/g, '')
+                        setEditingSale(raw === "" ? "" : formatRupiah(parseInt(raw)).replace('Rp', '').trim())
+                      }}
+                      className="w-full rounded border px-2 py-1 text-sm font-semibold bg-background text-foreground"
+                    />
+                    <div className="flex gap-1 mt-1">
+                      <button 
+                        className="flex-1 bg-primary text-primary-foreground text-xs py-1 rounded"
+                        onClick={() => {
+                          const parsedReg = parseRupiah(editingRegular)
+                          const parsedSale = editingSale.trim() ? parseRupiah(editingSale) : null
+                          if (parsedReg !== Number(product.rawProduct?.regular_price || 0) || parsedSale !== (product.rawProduct?.sale_price ? Number(product.rawProduct.sale_price) : null)) {
+                            setConfirmPriceProduct({
+                              id: product.id, 
+                              name: product.name,
+                              oldRegular: Number(product.rawProduct?.regular_price || 0),
+                              oldSale: Number(product.rawProduct?.sale_price || 0),
+                              newRegular: parsedReg,
+                              newSale: parsedSale
+                            })
+                          }
+                          setEditingPriceId(null)
+                        }}
+                      >OK</button>
+                      <button 
+                        className="flex-1 bg-muted text-muted-foreground text-xs py-1 rounded"
+                        onClick={() => setEditingPriceId(null)}
+                      >Batal</button>
+                    </div>
                   </div>
                 ) : (
                   <div 
-                    className="cursor-pointer inline-flex items-center justify-between border-b border-dashed border-muted-foreground/50 pb-0.5 group"
+                    className="cursor-pointer inline-flex items-center justify-between border-b border-dashed border-muted-foreground/50 pb-0.5 group mt-1"
                     onClick={() => {
-                      setEditingPriceValue(String(product.price))
+                      setEditingRegular(String(product.rawProduct?.regular_price || ""))
+                      setEditingSale(String(product.rawProduct?.sale_price || ""))
                       setEditingPriceId(product.id)
                     }}
                     title="Klik untuk ubah harga"
                   >
-                    <span className="font-bold text-foreground text-sm">{formatRupiah(product.price)}</span>
-                    <Pencil className="h-3 w-3 ml-2 opacity-50 group-hover:opacity-100 text-muted-foreground transition-opacity" />
+                    <div className="flex flex-col">
+                      {product.rawProduct?.sale_price ? (
+                        <>
+                          <span className="line-through text-muted-foreground text-[10px]">{formatRupiah(Number(product.rawProduct.regular_price))}</span>
+                          <span className="font-bold text-green-600 text-sm">{formatRupiah(Number(product.rawProduct.sale_price))}</span>
+                        </>
+                      ) : (
+                        <span className="font-bold text-foreground text-sm">{formatRupiah(Number(product.rawProduct?.regular_price || 0))}</span>
+                      )}
+                    </div>
+                    <Pencil className="h-3 w-3 ml-2 opacity-50 group-hover:opacity-100 text-muted-foreground transition-opacity shrink-0" />
                   </div>
                 )}
               </div>
@@ -604,6 +672,7 @@ export function ProductDataTable({ products, categories, rawCategories }: Props)
         <QuickEditModal
           product={quickEditProduct}
           categories={rawCategories}
+          attributeOptions={attributeOptions}
           onClose={() => setQuickEditProduct(null)}
         />
       )}
@@ -640,21 +709,31 @@ export function ProductDataTable({ products, categories, rawCategories }: Props)
           <AlertDialogHeader>
             <AlertDialogTitle>Konfirmasi Perubahan Harga</AlertDialogTitle>
             <AlertDialogDescription>
-              Ubah harga reguler untuk produk <strong>{confirmPriceProduct?.name}</strong>?
-              <br/><br/>
-              Harga Lama: <span className="line-through">{formatRupiah(confirmPriceProduct?.oldPrice || 0)}</span>
-              <br/>
-              Harga Baru: <span className="font-bold text-green-600">{formatRupiah(confirmPriceProduct?.newPrice || 0)}</span>
+              <span className="block mb-4">Ubah harga untuk produk <strong>{confirmPriceProduct?.name}</strong>?</span>
+              <span className="grid grid-cols-2 gap-4 text-sm">
+                <span className="space-y-1 block">
+                  <strong className="text-muted-foreground block">Harga Lama</strong>
+                  <span className="block">Normal: {formatRupiah(confirmPriceProduct?.oldRegular || 0)}</span>
+                  <span className="block">Obral: {confirmPriceProduct?.oldSale ? formatRupiah(confirmPriceProduct.oldSale) : "-"}</span>
+                </span>
+                <span className="space-y-1 block">
+                  <strong className="text-primary block">Harga Baru</strong>
+                  <span className="font-bold block">Normal: {formatRupiah(confirmPriceProduct?.newRegular || 0)}</span>
+                  <span className="font-bold text-green-600 block">Obral: {confirmPriceProduct?.newSale ? formatRupiah(confirmPriceProduct.newSale) : "-"}</span>
+                </span>
+              </span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Batal</AlertDialogCancel>
             <AlertDialogAction 
-              onClick={async (e) => {
+              onClick={(e) => {
                 e.preventDefault()
                 if (confirmPriceProduct) {
-                  await updateProductPriceAction(confirmPriceProduct.id, confirmPriceProduct.newPrice)
-                  setConfirmPriceProduct(null)
+                  startTransition(async () => {
+                    await updateProductPriceAction(confirmPriceProduct.id, confirmPriceProduct.newRegular, confirmPriceProduct.newSale)
+                    setConfirmPriceProduct(null)
+                  })
                 }
               }}
             >

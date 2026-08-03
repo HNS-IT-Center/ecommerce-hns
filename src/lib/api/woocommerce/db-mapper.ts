@@ -53,6 +53,17 @@ export function prismaProductToWoo(prismaProduct: any): WooProduct {
     salePrice = prismaProduct.salePrice ? String(prismaProduct.salePrice) : "";
   }
 
+  // Obral yang sudah lewat tanggal berakhir diperlakukan seolah tidak ada.
+  // Ini disengaja dihitung saat baca, bukan dengan meng-NULL-kan kolomnya lewat
+  // cron: obral berhenti tepat pada detik tanggalnya, dan tidak ada jendela
+  // waktu di mana harga diskon masih tampil karena job belum sempat jalan.
+  // Nilai aslinya tetap utuh di database sebagai riwayat.
+  const saleEndDate: Date | null = prismaProduct.saleEndDate ?? null;
+  const saleExpired = saleEndDate !== null && saleEndDate.getTime() <= Date.now();
+  if (saleExpired) {
+    salePrice = "";
+  }
+
   const price = salePrice ? salePrice : regularPrice;
   const onSale = Boolean(salePrice);
 
@@ -130,7 +141,7 @@ export function prismaProductToWoo(prismaProduct: any): WooProduct {
     sale_price: salePrice,
     on_sale: onSale,
     date_on_sale_from_gmt: null,
-    date_on_sale_to_gmt: null,
+    date_on_sale_to_gmt: saleEndDate ? saleEndDate.toISOString() : null,
     stock_status: prismaProduct.stockStatus
       ? STOCK_STATUS_TO_WOO[prismaProduct.stockStatus as keyof typeof STOCK_STATUS_TO_WOO] ?? "instock"
       : "instock",
@@ -138,6 +149,7 @@ export function prismaProductToWoo(prismaProduct: any): WooProduct {
     categories,
     brands,
     images,
+    video_url: prismaProduct.videoUrl ?? null,
     attributes,
     variations,
     meta_data: [],

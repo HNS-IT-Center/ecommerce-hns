@@ -2,15 +2,20 @@
 
 import Image from "next/image"
 import { useState, useRef, useEffect } from "react"
-import { motion, AnimatePresence } from "framer-motion"
-import { ChevronLeft, ChevronRight, X } from "lucide-react"
+import { motion, AnimatePresence, type PanInfo } from "framer-motion"
+import { ChevronLeft, ChevronRight, X, Play } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { getVideoEmbed } from "@/lib/utils/product"
 
 interface ProductGalleryProps {
   images: Array<{ src: string; alt: string }>
+  videoUrl?: string | null
 }
 
-export function ProductGallery({ images }: ProductGalleryProps) {
+export function ProductGallery({ images, videoUrl }: ProductGalleryProps) {
+  const [isVideoOpen, setIsVideoOpen] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const videoEmbed = videoUrl ? getVideoEmbed(videoUrl) : null
   const [activeIndex, setActiveIndex] = useState(0)
   const [direction, setDirection] = useState(0)
   const [isLightboxOpen, setIsLightboxOpen] = useState(false)
@@ -52,19 +57,37 @@ export function ProductGallery({ images }: ProductGalleryProps) {
     )
   }
 
+  /**
+   * Hentikan video dan kembalikan kanvas ke foto.
+   *
+   * Dipanggil eksplisit dari setiap jalur yang mengganti gambar, bukan lewat
+   * effect yang mengamati `activeIndex` — proyek ini melarang setState di dalam
+   * effect, dan lagi pula pemicunya memang selalu sebuah aksi pengguna.
+   *
+   * `pause()` dipanggil lebih dulu untuk berkas video biasa; untuk sematan
+   * YouTube/Vimeo, melepas iframe-nya dari DOM yang menghentikan pemutaran —
+   * tanpa itu suaranya tetap terdengar walau gambarnya sudah tidak tampak.
+   */
+  const closeVideo = () => {
+    videoRef.current?.pause()
+    setIsVideoOpen(false)
+  }
+
   const handleNext = (e?: React.MouseEvent) => {
     e?.stopPropagation()
+    closeVideo()
     setDirection(1)
     setActiveIndex((prev) => (prev + 1) % images.length)
   }
 
   const handlePrev = (e?: React.MouseEvent) => {
     e?.stopPropagation()
+    closeVideo()
     setDirection(-1)
     setActiveIndex((prev) => (prev - 1 + images.length) % images.length)
   }
 
-  const handleDragEnd = (e: any, { offset }: any) => {
+  const handleDragEnd = (_e: MouseEvent | TouchEvent | PointerEvent, { offset }: PanInfo) => {
     const swipe = offset.x
     if (swipe < -50) {
       handleNext()
@@ -98,6 +121,9 @@ export function ProductGallery({ images }: ProductGalleryProps) {
   }
 
   const handleImageClick = () => {
+    // Saat video sedang diputar, kanvas ini milik video — klik di atasnya tidak
+    // boleh membuka lightbox foto.
+    if (isVideoOpen) return
     if (isMobile) {
       setIsLightboxOpen(true)
     }
@@ -130,6 +156,60 @@ export function ProductGallery({ images }: ProductGalleryProps) {
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
       >
+        {/* Bendera video di gambar utama. Hanya di indeks 0 karena video adalah
+            pendamping gambar utama, bukan slide tersendiri. */}
+        {videoEmbed && activeIndex === 0 && !isVideoOpen && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              setIsVideoOpen(true)
+            }}
+            className="absolute left-3 top-3 z-40 flex items-center gap-1.5 rounded-full bg-black/70 py-1.5 pl-2 pr-3 text-xs font-semibold text-white backdrop-blur-md transition-colors hover:bg-black/85 cursor-pointer"
+          >
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary">
+              <Play className="h-2.5 w-2.5 fill-current text-primary-foreground" />
+            </span>
+            Video
+          </button>
+        )}
+
+        {/* Video diputar DI DALAM kanvas gambar utama, bukan di modal terpisah:
+            pembeli tetap berada di konteks galeri, dan thumbnail di bawah masih
+            terlihat sehingga bisa langsung berpindah ke foto lain. */}
+        {videoEmbed && isVideoOpen && (
+          <div className="absolute inset-0 z-40 bg-black">
+            {videoEmbed.kind === "iframe" ? (
+              <iframe
+                src={`${videoEmbed.src}?autoplay=1`}
+                className="h-full w-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            ) : (
+              <video
+                ref={videoRef}
+                src={videoEmbed.src}
+                controls
+                autoPlay
+                className="h-full w-full object-contain"
+              />
+            )}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                closeVideo()
+              }}
+              className="absolute right-2 top-2 z-50 flex items-center gap-1 rounded-full bg-black/70 py-1.5 pl-2 pr-3 text-xs font-semibold text-white backdrop-blur-md transition-colors hover:bg-black/90 cursor-pointer"
+              aria-label="Tutup video dan kembali ke foto"
+            >
+              <X className="h-3.5 w-3.5" />
+              Tutup
+            </button>
+          </div>
+        )}
+
         <AnimatePresence initial={false} custom={direction}>
           <motion.div
             key={activeIndex}
@@ -203,6 +283,7 @@ export function ProductGallery({ images }: ProductGalleryProps) {
             <button
               key={i}
               onClick={() => {
+                closeVideo()
                 setDirection(i > activeIndex ? 1 : -1)
                 setActiveIndex(i)
               }}
@@ -294,6 +375,7 @@ export function ProductGallery({ images }: ProductGalleryProps) {
           </motion.div>
         )}
       </AnimatePresence>
+
     </div>
   )
 }

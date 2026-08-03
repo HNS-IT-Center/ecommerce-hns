@@ -30,12 +30,35 @@ const productInclude = {
   },
 };
 
-function decodeProduct(product: Product): Product {
+/**
+ * Nolkan harga obral yang masa berlakunya sudah lewat.
+ *
+ * Sengaja dijalankan DI SINI, bukan hanya di dalam `prismaProductToWoo`: mapper
+ * itu dipanggil di dalam `unstable_cache`, jadi "sekarang" yang dilihatnya adalah
+ * saat entri cache dibuat — obral yang berakhir tengah hari masih akan tampil
+ * diskon sampai cache-nya kedaluwarsa (300-600 detik kemudian). `decodeProduct`
+ * berjalan di luar cache pada setiap permintaan, sehingga di sinilah tanggalnya
+ * benar-benar akurat. Operasinya idempoten, aman walau mapper sudah menolkannya.
+ */
+function applySaleExpiry(product: Product): Product {
+  if (!product.sale_price || !product.date_on_sale_to_gmt) return product;
+  if (new Date(product.date_on_sale_to_gmt).getTime() > Date.now()) return product;
+
   return {
     ...product,
-    name: decodeHtmlEntities(product.name),
-    categories: product.categories?.map((c) => ({ ...c, name: decodeHtmlEntities(c.name) })),
-    brands: product.brands?.map((b) => ({ ...b, name: decodeHtmlEntities(b.name) })),
+    sale_price: "",
+    on_sale: false,
+    price: product.regular_price,
+  };
+}
+
+function decodeProduct(product: Product): Product {
+  const withPricing = applySaleExpiry(product);
+  return {
+    ...withPricing,
+    name: decodeHtmlEntities(withPricing.name),
+    categories: withPricing.categories?.map((c) => ({ ...c, name: decodeHtmlEntities(c.name) })),
+    brands: withPricing.brands?.map((b) => ({ ...b, name: decodeHtmlEntities(b.name) })),
   };
 }
 
@@ -106,7 +129,16 @@ function buildPrismaWhere(params: GetProductsParams): Prisma.ProductWhereInput {
   }
 
   if (params.onSale) {
+    // Harus ikut memeriksa tanggal berakhir, bukan cuma "salePrice terisi".
+    // Kolom sale_price sengaja tidak dikosongkan saat masa obral lewat (lihat
+    // catatan di schema.prisma), jadi tanpa syarat tanggal di sini produk yang
+    // obralnya sudah berakhir tetap muncul di daftar "sedang diskon" padahal
+    // halaman produknya sudah menampilkan harga normal.
     where.salePrice = { not: null };
+    where.AND = [
+      ...(where.AND ? (Array.isArray(where.AND) ? where.AND : [where.AND]) : []),
+      { OR: [{ saleEndDate: null }, { saleEndDate: { gt: new Date() } }] },
+    ];
   }
 
   if (params.featured) {
@@ -321,6 +353,40 @@ function slugify(name: string, wooId: number): string {
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/(^-|-$)+/g, "") + `-${wooId}`
   );
+}
+
+function brandSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)+/g, "");
+}
+
+/**
+ * Cari brand berdasarkan nama, buat kalau belum ada.
+ *
+ * Form admin mengirim nama apa adanya (staff boleh mengetik brand baru), jadi
+ * pencocokan dilakukan lewat slug — "ASUS", "Asus", dan "asus " semuanya jatuh
+ * ke baris yang sama, alih-alih menumpuk tiga brand berbeda yang tampak identik
+ * di katalog. Kolom `slug` unik, `name` tidak, jadi slug memang satu-satunya
+ * kunci yang bisa diandalkan di sini.
+ */
+async function resolveBrandId(
+  tx: Prisma.TransactionClient,
+  brandName: string | null | undefined
+): Promise<number | null> {
+  const trimmed = brandName?.trim();
+  if (!trimmed) return null;
+
+  const slug = brandSlug(trimmed);
+  if (!slug) return null;
+
+  const brand = await tx.brand.upsert({
+    where: { slug },
+    create: { name: trimmed, slug },
+    update: {},
+  });
+  return brand.id;
 }
 
 // --------------------------------------------------------------- kategori utama
@@ -616,8 +682,19 @@ export async function createProduct(input: ProductInput): Promise<Product> {
   const wooId = await nextWooId();
   const slug = slugify(input.name, wooId);
   const stockQty = input.stock_quantity ?? null;
+  // Status stok datang eksplisit dari form (Tersedia/Stok Habis) sekarang —
+  // "Tersedia" dengan kuantitas kosong berarti stok tidak dilacak, bukan 0.
+  // Jangan turunkan status dari kuantitas seperti sebelumnya, itu membuat
+  // "Tersedia" tanpa angka diam-diam tersimpan sebagai "Stok Habis".
+  const stockStatus =
+    input.stock_status === "outofstock"
+      ? StockStatus.OUTOFSTOCK
+      : input.stock_status === "onbackorder"
+        ? StockStatus.ONBACKORDER
+        : StockStatus.INSTOCK;
 
   const created = await prisma.$transaction(async (tx) => {
+    const brandId = await resolveBrandId(tx, input.brand);
     const product = await tx.product.create({
       data: {
         wooId,
@@ -629,8 +706,11 @@ export async function createProduct(input: ProductInput): Promise<Product> {
         description: input.description || null,
         regularPrice: input.regular_price || null,
         salePrice: input.sale_price || null,
+        saleEndDate: input.date_on_sale_to_gmt ? new Date(input.date_on_sale_to_gmt) : null,
         stockQty,
-        stockStatus: (stockQty ?? 0) > 0 ? StockStatus.INSTOCK : StockStatus.OUTOFSTOCK,
+        stockStatus,
+        videoUrl: input.video_url || null,
+        brandId,
       },
     });
     await replaceProductRelations(tx, product.id, input);
@@ -652,9 +732,12 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
   const stockQty = input.stock_quantity;
 
   const updated = await prisma.$transaction(async (tx) => {
+    const brandId =
+      input.brand !== undefined ? await resolveBrandId(tx, input.brand) : undefined;
     const product = await tx.product.update({
       where: { id: existing.id },
       data: {
+        ...(brandId !== undefined && { brandId }),
         ...(input.name !== undefined && { name: input.name, slug: slugify(input.name, existing.wooId) }),
         ...(input.status !== undefined && {
           status: STATUS_FROM_PARAM[input.status] ?? ProductStatus.DRAFT,
@@ -663,9 +746,19 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
         ...(input.description !== undefined && { description: input.description || null }),
         ...(input.regular_price !== undefined && { regularPrice: input.regular_price || null }),
         ...(input.sale_price !== undefined && { salePrice: input.sale_price || null }),
-        ...(stockQty !== undefined && {
+        ...(input.date_on_sale_to_gmt !== undefined && {
+          saleEndDate: input.date_on_sale_to_gmt ? new Date(input.date_on_sale_to_gmt) : null,
+        }),
+        ...(input.video_url !== undefined && { videoUrl: input.video_url || null }),
+        ...(stockQty !== undefined && input.stock_status === undefined && {
           stockQty,
           stockStatus: stockQty > 0 ? StockStatus.INSTOCK : StockStatus.OUTOFSTOCK,
+        }),
+        ...(input.stock_status !== undefined && {
+          stockQty: stockQty !== undefined ? stockQty : null,
+          stockStatus: input.stock_status === 'instock' ? StockStatus.INSTOCK : 
+                       input.stock_status === 'outofstock' ? StockStatus.OUTOFSTOCK : 
+                       StockStatus.ONBACKORDER,
         }),
       },
     });
