@@ -1,9 +1,29 @@
 "use client"
 
 import { useActionState, useMemo, useState } from "react"
-import { ChevronRight, FolderInput, Merge, Pencil, Plus, Trash2, TriangleAlert, X } from "lucide-react"
+import {
+  ChevronDown,
+  ChevronRight,
+  Folder,
+  FolderInput,
+  FolderOpen,
+  Merge,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  TriangleAlert,
+  X,
+} from "lucide-react"
 import type { AdminCategory } from "@/lib/api/woocommerce/categories"
 import { collectDescendantIds, planCategoryMove } from "@/lib/utils/category-move"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   createCategoryAction,
   deleteCategoryAction,
@@ -13,6 +33,7 @@ import {
   renameCategoryAction,
 } from "./actions"
 import { EMPTY_MERGE_PREVIEW, EMPTY_STATE } from "./state"
+import { CategoryDragRow, CategoryRootDropZone, CategoryTreeDnD } from "./category-tree-dnd"
 
 /**
  * Layar kelola kategori untuk PIC.
@@ -22,6 +43,12 @@ import { EMPTY_MERGE_PREVIEW, EMPTY_STATE } from "./state"
  * penataan ulang harus menunggu developer. Layar ini memindahkan kendali itu ke
  * PIC, dengan rem yang membuat kesalahan mahal jadi sulit dilakukan tanpa
  * sengaja.
+ *
+ * Aksi tiap baris dikumpulkan di balik satu menu "Aksi" berlabel teks, bukan
+ * deretan ikon telanjang: kata lebih mudah dibaca staff awam daripada tebakan
+ * ikon, dan satu tombol per baris tetap rapi di layar sempit. Logika di baliknya
+ * — rename, pindah (dengan preview), gabung (dengan preview), hapus (dengan
+ * penjaga sub-kategori & produk) — tidak berubah; menu hanya jadi pemicunya.
  */
 
 type Props = { categories: AdminCategory[] }
@@ -68,8 +95,45 @@ export function CategoryManager({ categories }: Props) {
   const [mergingId, setMergingId] = useState<number | null>(null)
   const [mergeTarget, setMergeTarget] = useState<string>("")
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
+  const [query, setQuery] = useState("")
+  const [showCreate, setShowCreate] = useState(false)
 
   const byId = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories])
+
+  /** Id kategori yang punya anak — dipakai tombol buka/tutup semua. */
+  const parentIds = useMemo(() => {
+    const s = new Set<number>()
+    for (const c of categories) if (c.parentId !== null) s.add(c.parentId)
+    return s
+  }, [categories])
+
+  const allExpanded = useMemo(
+    () => [...parentIds].every((id) => !collapsed.has(id)),
+    [parentIds, collapsed]
+  )
+
+  const toggleAll = () => setCollapsed(allExpanded ? new Set(parentIds) : new Set())
+
+  /**
+   * Saat mencari, hanya node yang cocok DAN seluruh leluhurnya yang ditampilkan
+   * — leluhur ikut supaya jalurnya tetap terlihat. `null` berarti tidak sedang
+   * mencari, jadi pohon utuh apa adanya.
+   */
+  const matchIds = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (q === "") return null
+    const keep = new Set<number>()
+    for (const c of categories) {
+      if (!c.name.toLowerCase().includes(q)) continue
+      keep.add(c.id)
+      let parent = c.parentId
+      while (parent !== null) {
+        keep.add(parent)
+        parent = byId.get(parent)?.parentId ?? null
+      }
+    }
+    return keep
+  }, [categories, byId, query])
 
   /**
    * Preview dihitung dengan fungsi yang sama persis yang dipakai server saat
@@ -99,6 +163,13 @@ export function CategoryManager({ categories }: Props) {
     return total
   }, [byId, categories, movingId])
 
+  const startEdit = (node: AdminCategory) => {
+    setEditingId(node.id)
+    setConfirmingId(null)
+    setMovingId(null)
+    setMergingId(null)
+  }
+
   const openMove = (node: AdminCategory) => {
     setMovingId(node.id)
     setMoveTarget(node.parentId === null ? "" : String(node.parentId))
@@ -113,6 +184,13 @@ export function CategoryManager({ categories }: Props) {
     setEditingId(null)
     setConfirmingId(null)
     setMovingId(null)
+  }
+
+  const openDelete = (node: AdminCategory) => {
+    setConfirmingId(node.id)
+    setEditingId(null)
+    setMovingId(null)
+    setMergingId(null)
   }
 
   const toggle = (id: number) =>
@@ -134,11 +212,18 @@ export function CategoryManager({ categories }: Props) {
     createState.ok ?? renameState.ok ?? deleteState.ok ?? moveState.ok ?? mergeState.ok
 
   function renderNode(node: Node, depth: number) {
+    // Saat mencari, node yang tidak cocok (dan bukan leluhur yang cocok)
+    // disembunyikan sepenuhnya.
+    if (matchIds && !matchIds.has(node.id)) return null
+
     const isEditing = editingId === node.id
     const isConfirming = confirmingId === node.id
     const isMoving = movingId === node.id
     const isMerging = mergingId === node.id
-    const isOpen = !collapsed.has(node.id)
+    // Saat mencari, cabang selalu dibuka supaya hasil yang dalam tetap terlihat
+    // tanpa harus membuka manual satu per satu.
+    const isOpen = matchIds !== null || !collapsed.has(node.id)
+    const hasChildren = node.children.length > 0
     // Dampak hanya ditampilkan kalau memang milik kategori & tujuan yang sedang
     // dipilih, supaya angka dari percobaan sebelumnya tidak ikut dikonfirmasi.
     const shownPreview =
@@ -151,11 +236,8 @@ export function CategoryManager({ categories }: Props) {
 
     return (
       <li key={node.id}>
-        <div
-          className="flex flex-wrap items-center gap-1 rounded-lg py-1 hover:bg-muted/50"
-          style={{ paddingInlineStart: `${depth * 1}rem` }}
-        >
-          {node.children.length > 0 ? (
+        <CategoryDragRow node={node} depth={depth}>
+          {hasChildren ? (
             <button
               type="button"
               onClick={() => toggle(node.id)}
@@ -167,6 +249,18 @@ export function CategoryManager({ categories }: Props) {
             </button>
           ) : (
             <span className="w-6 shrink-0" aria-hidden="true" />
+          )}
+
+          {/* Ikon folder memberi hierarki yang bisa dibaca sekejap: induk hijau,
+              daun abu-abu pudar. */}
+          {hasChildren ? (
+            isOpen ? (
+              <FolderOpen className="h-4 w-4 shrink-0 text-brand-green" aria-hidden="true" />
+            ) : (
+              <Folder className="h-4 w-4 shrink-0 text-brand-green" aria-hidden="true" />
+            )
+          ) : (
+            <Folder className="h-4 w-4 shrink-0 text-muted-foreground/50" aria-hidden="true" />
           )}
 
           {isEditing ? (
@@ -195,53 +289,45 @@ export function CategoryManager({ categories }: Props) {
             </form>
           ) : (
             <>
-              <span className="flex-1 break-words text-sm">{node.name}</span>
-              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                {node.productCount} produk
+              <span
+                className={`flex-1 break-words text-sm ${depth === 0 ? "font-semibold" : ""}`}
+              >
+                {node.name}
               </span>
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingId(node.id)
-                  setConfirmingId(null)
-                  setMovingId(null)
-                }}
-                className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                aria-label={`Ganti nama ${node.name}`}
+              <span
+                className="shrink-0 rounded-full border border-input bg-muted/40 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground"
+                title="Produk yang menempel langsung di kategori ini"
               >
-                <Pencil className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => (isMoving ? setMovingId(null) : openMove(node))}
-                className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                aria-label={`Pindahkan ${node.name}`}
-              >
-                <FolderInput className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => (isMerging ? setMergingId(null) : openMerge(node))}
-                className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                aria-label={`Gabungkan ${node.name} ke kategori lain`}
-              >
-                <Merge className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setConfirmingId(isConfirming ? null : node.id)
-                  setEditingId(null)
-                  setMovingId(null)
-                }}
-                className="shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                aria-label={`Hapus ${node.name}`}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+                {node.productCount}
+              </span>
+              <DropdownMenu>
+                <DropdownMenuTrigger className="ml-1 inline-flex shrink-0 items-center gap-1 rounded-lg border border-input bg-background px-2.5 py-1 text-xs font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40">
+                  Aksi
+                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="min-w-44">
+                  <DropdownMenuItem onClick={() => startEdit(node)}>
+                    <Pencil className="h-4 w-4" />
+                    Ganti nama
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => openMove(node)}>
+                    <FolderInput className="h-4 w-4" />
+                    Pindahkan…
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => openMerge(node)}>
+                    <Merge className="h-4 w-4" />
+                    Gabungkan…
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant="destructive" onClick={() => openDelete(node)}>
+                    <Trash2 className="h-4 w-4" />
+                    Hapus
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </>
           )}
-        </div>
+        </CategoryDragRow>
 
         {isMoving && (
           <div
@@ -457,12 +543,14 @@ export function CategoryManager({ categories }: Props) {
           </div>
         )}
 
-        {node.children.length > 0 && isOpen && (
+        {hasChildren && isOpen && (
           <ul>{node.children.map((child) => renderNode(child, depth + 1))}</ul>
         )}
       </li>
     )
   }
+
+  const noSearchResult = matchIds !== null && matchIds.size === 0
 
   return (
     <div className="space-y-4">
@@ -478,57 +566,98 @@ export function CategoryManager({ categories }: Props) {
         </p>
       )}
 
-      <form
-        action={createAction}
-        className="flex flex-wrap items-end gap-2 rounded-xl border border-input bg-muted/30 p-3"
-      >
-        <div className="min-w-0 flex-1">
-          <label className="mb-1 block text-xs font-semibold" htmlFor="new-name">
-            Kategori baru
-          </label>
+      {/* Toolbar: cari, buka/tutup semua, dan pemicu form tambah. Dikumpulkan di
+          satu baris supaya pohon di bawahnya jadi fokus utama layar. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
-            id="new-name"
-            name="name"
-            required
-            placeholder="Nama kategori"
-            className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Cari kategori…"
+            aria-label="Cari kategori"
+            className="w-full rounded-lg border border-input bg-background py-2 pl-9 pr-3 text-sm outline-none focus:border-primary"
           />
         </div>
-        <div className="min-w-0 flex-1">
-          <label className="mb-1 block text-xs font-semibold" htmlFor="new-parent">
-            Di bawah
-          </label>
-          <select
-            id="new-parent"
-            name="parentId"
-            defaultValue=""
-            className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-          >
-            <option value="">— kategori utama —</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.path}
-              </option>
-            ))}
-          </select>
-        </div>
         <button
-          type="submit"
-          disabled={creating}
-          className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-60"
+          type="button"
+          onClick={toggleAll}
+          disabled={parentIds.size === 0 || matchIds !== null}
+          className="shrink-0 rounded-lg border border-input bg-background px-3 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+        >
+          {allExpanded ? "Tutup semua" : "Buka semua"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowCreate((v) => !v)}
+          aria-expanded={showCreate}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-bold text-primary-foreground hover:opacity-90"
         >
           <Plus className="h-4 w-4" />
-          Tambah
+          Tambah kategori
         </button>
-      </form>
-
-      <div className="rounded-xl border border-input p-2">
-        {tree.length === 0 ? (
-          <p className="px-2 py-3 text-sm text-muted-foreground">Belum ada kategori.</p>
-        ) : (
-          <ul>{tree.map((node) => renderNode(node, 0))}</ul>
-        )}
       </div>
+
+      {showCreate && (
+        <form
+          action={createAction}
+          className="flex flex-wrap items-end gap-2 rounded-xl border border-input bg-muted/30 p-3"
+        >
+          <div className="min-w-0 flex-1">
+            <label className="mb-1 block text-xs font-semibold" htmlFor="new-name">
+              Kategori baru
+            </label>
+            <input
+              id="new-name"
+              name="name"
+              required
+              placeholder="Nama kategori"
+              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            />
+          </div>
+          <div className="min-w-0 flex-1">
+            <label className="mb-1 block text-xs font-semibold" htmlFor="new-parent">
+              Di bawah
+            </label>
+            <select
+              id="new-parent"
+              name="parentId"
+              defaultValue=""
+              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+            >
+              <option value="">— kategori utama —</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.path}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="submit"
+            disabled={creating}
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-primary-foreground disabled:opacity-60"
+          >
+            <Plus className="h-4 w-4" />
+            Simpan
+          </button>
+        </form>
+      )}
+
+      <CategoryTreeDnD categories={categories}>
+        <div className="rounded-xl border border-input p-2">
+          <CategoryRootDropZone />
+          {tree.length === 0 ? (
+            <p className="px-2 py-3 text-sm text-muted-foreground">Belum ada kategori.</p>
+          ) : noSearchResult ? (
+            <p className="px-2 py-3 text-sm text-muted-foreground">
+              Tidak ada kategori yang cocok dengan &quot;{query.trim()}&quot;.
+            </p>
+          ) : (
+            <ul>{tree.map((node) => renderNode(node, 0))}</ul>
+          )}
+        </div>
+      </CategoryTreeDnD>
 
       <p className="flex items-start gap-2 text-xs text-muted-foreground">
         <X className="mt-0.5 h-3.5 w-3.5 shrink-0" />
