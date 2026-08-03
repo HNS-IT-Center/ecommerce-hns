@@ -6,9 +6,12 @@ import { CategoryOperationError } from "@/lib/api/woocommerce/categories"
 import {
   bulkAssignCategory,
   previewBulkAssignCategory,
+  deleteProduct,
+  updateProduct,
   type BulkCategoryMode,
 } from "@/lib/api/woocommerce/products"
 import type { BulkApplyState, BulkPreviewState } from "./state"
+import { getPrisma } from "@/lib/prisma/client"
 
 /**
  * Pembersihan cache tinggal di sini, bukan di `lib/api` — lapisan data tidak
@@ -88,5 +91,158 @@ export async function applyBulkCategoryAction(
       return { error: error.message, ok: null }
     }
     throw error
+  }
+}
+
+export async function deleteProductAction(id: number) {
+  try {
+    const authUser = await requireAuth()
+    const userName = (authUser && typeof authUser === 'object' && 'name' in authUser) ? String(authUser.name) : "Admin"
+    
+    const prisma = getPrisma()
+    const product = await prisma.product.findUnique({ where: { wooId: id } })
+    
+    await deleteProduct(id)
+    
+    if (product) {
+      await prisma.productLog.create({
+        data: {
+          userName,
+          productId: product.wooId,
+          productName: product.name,
+          action: "DELETE",
+          fieldAffected: "all",
+          oldValue: "Exists",
+          newValue: "Deleted",
+        }
+      })
+    }
+    
+    refresh()
+    return { error: null }
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return { error: error.message }
+    }
+    if (error instanceof Error) {
+      return { error: error.message }
+    }
+    return { error: "Terjadi kesalahan saat menghapus produk." }
+  }
+}
+
+export async function updateProductPriceAction(id: number, newPrice: number) {
+  try {
+    const authUser = await requireAuth()
+    const userName = (authUser && typeof authUser === 'object' && 'name' in authUser) ? String(authUser.name) : "Admin"
+    
+    const prisma = getPrisma()
+    const product = await prisma.product.findUnique({ where: { wooId: id } })
+    if (!product) throw new Error("Produk tidak ditemukan")
+    
+    const oldPrice = product.regularPrice?.toNumber() || 0
+    
+    await updateProduct(id, { regular_price: String(newPrice) })
+    
+    await prisma.productLog.create({
+      data: {
+        userName,
+        productId: product.wooId,
+        productName: product.name,
+        action: "UPDATE_PRICE",
+        fieldAffected: "regular_price",
+        oldValue: String(oldPrice),
+        newValue: String(newPrice),
+      }
+    })
+    
+    refresh()
+    return { error: null }
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return { error: error.message }
+    }
+    if (error instanceof Error) {
+      return { error: error.message }
+    }
+    return { error: "Terjadi kesalahan saat mengupdate harga." }
+  }
+}
+
+export async function bulkUpdateProductStatusAction(ids: number[], actionType: string) {
+  try {
+    const authUser = await requireAuth()
+    const userName = (authUser && typeof authUser === 'object' && 'name' in authUser) ? String(authUser.name) : "Admin"
+    
+    if (ids.length === 0) return { error: "Belum ada produk yang dipilih." }
+    
+    // Determine the field and value based on actionType
+    let updateData: Record<string, any> = {}
+    let fieldAffected = ""
+    let newValueStr = ""
+    
+    switch (actionType) {
+      case "publish":
+      case "draft":
+      case "private":
+        updateData = { status: actionType }
+        fieldAffected = "status"
+        newValueStr = actionType
+        break
+      case "outofstock":
+      case "instock":
+        updateData = { stock_status: actionType }
+        fieldAffected = "stock_status"
+        newValueStr = actionType
+        break
+      default:
+        return { error: "Aksi tidak valid." }
+    }
+
+    const prisma = getPrisma()
+    
+    // Get existing products to log old values
+    const products = await prisma.product.findMany({
+      where: { wooId: { in: ids } }
+    })
+
+    const productMap = new Map(products.map(p => [p.wooId, p]))
+
+    // Update in WooCommerce using Promise.all
+    // Using individual updateProduct calls since the bulk API wrapper isn't strictly defined here,
+    // or we can use updateProduct if bulk is not strictly needed per-spec, but Promise.all is fast enough for small batches.
+    await Promise.all(ids.map(id => updateProduct(id, updateData)))
+
+    // Log each change
+    const logsData = ids.map(id => {
+      const p = productMap.get(id)
+      let oldValueStr = "unknown"
+      if (p) {
+        if (fieldAffected === "status") oldValueStr = p.status || "unknown"
+        if (fieldAffected === "stock_status") oldValueStr = p.stockStatus || "unknown"
+      }
+      
+      return {
+        userName,
+        productId: id,
+        productName: p?.name || `Product #${id}`,
+        action: `BULK_${fieldAffected.toUpperCase()}`,
+        fieldAffected,
+        oldValue: oldValueStr,
+        newValue: newValueStr,
+      }
+    })
+
+    if (logsData.length > 0) {
+      await prisma.productLog.createMany({ data: logsData })
+    }
+
+    refresh()
+    return { error: null }
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return { error: error.message }
+    }
+    return { error: "Gagal menerapkan perubahan massal." }
   }
 }

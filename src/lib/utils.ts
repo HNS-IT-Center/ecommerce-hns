@@ -22,3 +22,7 @@ export function formatDate(isoDate: string): string {
   }).format(new Date(isoDate));
 }
 
+export function parseRupiah(value: string): number {
+  const numericString = value.replace(/[^0-9-]/g, "");
+  return numericString ? parseInt(numericString, 10) : 0;
+}

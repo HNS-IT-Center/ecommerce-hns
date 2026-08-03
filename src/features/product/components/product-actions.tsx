@@ -32,7 +32,7 @@ export function ProductActions({
         </span>
         {showCartButton && (
           <Button
-            variant="cta"
+            variant="default"
             size="lg"
             onClick={onAddToCart}
             disabled={!canAddToCart}
@@ -47,7 +47,7 @@ export function ProductActions({
           href={waUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className={buttonVariants({ variant: "whatsapp", size: "lg", className: "flex-1 md:w-full" })}
+          className={buttonVariants({ variant: "default", size: "lg", className: "flex-1 md:w-full bg-[#25D366] hover:bg-[#128C7E] text-white" })}
         >
           <MessageCircle className="h-5 w-5" />
           <span className="hidden md:inline">{waLabel}</span>

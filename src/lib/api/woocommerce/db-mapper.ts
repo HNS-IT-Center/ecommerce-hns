@@ -123,6 +123,8 @@ export function prismaProductToWoo(prismaProduct: any): WooProduct {
     description: prismaProduct.description || "",
     short_description: prismaProduct.shortDescription || "",
     sku: prismaProduct.sku || "",
+    date_created: prismaProduct.createdAt?.toISOString() || new Date().toISOString(),
+    date_modified: prismaProduct.updatedAt?.toISOString() || new Date().toISOString(),
     price,
     regular_price: regularPrice,
     sale_price: salePrice,

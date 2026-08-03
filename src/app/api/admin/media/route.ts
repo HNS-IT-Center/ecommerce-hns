@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { uploadMedia, WordPressAuthNotConfiguredError } from "@/lib/api/wordpress/media"
+import { uploadMedia, R2UploadError } from "@/lib/api/cloudflare/r2"
 import { UnauthorizedError, requireAuth } from "@/lib/auth"
 
 /**
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     if (error instanceof UnauthorizedError) {
       return NextResponse.json({ error: error.message }, { status: 401 })
     }
-    if (error instanceof WordPressAuthNotConfiguredError) {
+    if (error instanceof R2UploadError) {
       return NextResponse.json({ error: error.message }, { status: 503 })
     }
     console.error("Failed to upload media:", error)

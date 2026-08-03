@@ -11,6 +11,8 @@ export type PcBuilderStepConfig = {
   categoryIds: number[]
   dependSteps: string[]
   dependAttributes: number[]
+  isRequired?: boolean
+  allowMultiple?: boolean
 }
 
 const PC_BUILDER_SETTING_KEY = "PC_BUILDER_CONFIG"
@@ -34,16 +36,25 @@ export async function getPcBuilderConfig(): Promise<PcBuilderStepConfig[]> {
 }
 
 export async function savePcBuilderConfig(steps: PcBuilderStepConfig[]) {
-  const prisma = getPrisma()
-  
-  await prisma.setting.upsert({
-    where: { key: PC_BUILDER_SETTING_KEY },
-    update: { value: steps as any },
-    create: { key: PC_BUILDER_SETTING_KEY, value: steps as any },
-  })
+  try {
+    const prisma = getPrisma()
+    
+    // Ensure we are saving a pure JSON object, removing any unexpected types
+    const safeSteps = JSON.parse(JSON.stringify(steps))
 
-  revalidatePath("/admin/pc-builder")
-  return { success: true }
+    await prisma.setting.upsert({
+      where: { key: PC_BUILDER_SETTING_KEY },
+      update: { value: safeSteps },
+      create: { key: PC_BUILDER_SETTING_KEY, value: safeSteps },
+    })
+
+    revalidatePath("/admin/pc-builder")
+    revalidatePath("/build-pc")
+    return { success: true }
+  } catch (error) {
+    console.error("Error saving PC Builder Config:", error)
+    throw error
+  }
 }
 
 export async function getPcBuilderOptions() {

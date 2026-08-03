@@ -6,6 +6,9 @@ export const productFormSchema = z.object({
   shortDescription: z.string().optional(),
   regularPrice: z.string().min(1, "Harga wajib diisi"),
   salePrice: z.string().optional(),
+  salePriceDateEnd: z.string().optional(),
+  manageStock: z.boolean(),
+  stockStatus: z.enum(["instock", "outofstock", "onbackorder"]),
   stockQuantity: z.number().int().min(0).optional(),
   // "private" ikut didukung karena admin sekarang menampilkan produk private;
   // tanpa opsi ini, menyimpan salah satunya diam-diam menurunkannya jadi draft.

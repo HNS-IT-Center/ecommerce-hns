@@ -135,6 +135,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
               whatsappNumber={env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER}
               variantAttributes={variantAttributes}
               variations={variations}
+              siteUrl={env.NEXT_PUBLIC_SITE_URL}
             />
           </div>
 

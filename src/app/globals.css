@@ -260,17 +260,28 @@
     100% { transform: translateX(-50%); }
   }
 }
-
 @media (prefers-reduced-motion: reduce) {
   .animate-marquee {
     animation: none;
   }
 }
 
-/* @tailwindcss/typography punya palet abu-abu sendiri yang tidak terhubung
-   ke token desain kita (--foreground/--muted-foreground/--brand-green) —
-   akibatnya teks deskripsi (produk & kebijakan) terlihat abu pudar padahal
-   heading di sekitarnya nyaris hitam. Timpa variabelnya supaya konsisten. */
+
+/* Admin sidebar: override the Shadcn sidebar --sidebar token with our primary blue */
+.admin-sidebar,
+[data-mobile="true"][data-sidebar="sidebar"] {
+  --sidebar: #2166de;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ffffff;
+  --sidebar-primary-foreground: #2166de;
+  --sidebar-accent: rgba(255,255,255,0.15);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(255,255,255,0.15);
+  background-color: #2166de !important;
+  color: #ffffff !important;
+}
+
+/* @tailwindcss/typography: override prose colors to match design tokens */
 .prose {
   --tw-prose-body: var(--foreground);
   --tw-prose-headings: var(--foreground);
@@ -288,3 +299,12 @@
   --tw-prose-td-borders: var(--border);
 }
 
+/* Hide number input spinners globally */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}

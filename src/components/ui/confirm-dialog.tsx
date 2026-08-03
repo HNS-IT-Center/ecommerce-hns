@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react"
 
 import {
   AlertDialog,
-  AlertDialogClose,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -87,11 +87,9 @@ export function ConfirmDialog({
           )}
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogClose
-            render={<Button variant="outline" disabled={sedangJalan} />}
-          >
+          <AlertDialogCancel disabled={sedangJalan}>
             {cancelLabel}
-          </AlertDialogClose>
+          </AlertDialogCancel>
           <Button
             variant={destructive ? "destructive" : "default"}
             onClick={tangani}

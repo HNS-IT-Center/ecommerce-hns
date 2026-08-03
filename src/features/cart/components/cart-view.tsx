@@ -148,10 +148,10 @@ export function CartView({ whatsappNumber }: CartViewProps) {
           </div>
 
           <Button
-            variant="whatsapp"
+            variant="default"
             size="lg"
             onClick={handleCheckoutWA}
-            className="mt-6 h-14 w-full shadow-lg shadow-whatsapp/20"
+            className="mt-6 h-14 w-full bg-[#25D366] hover:bg-[#128C7E] text-white shadow-lg shadow-whatsapp/20"
           >
             <MessageCircle className="h-5 w-5" />
             Checkout via WhatsApp

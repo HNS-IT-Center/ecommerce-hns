@@ -34,6 +34,8 @@ export type Product = {
   description: string;
   short_description: string;
   sku: string;
+  date_created: string;
+  date_modified: string;
   price: string;
   regular_price: string;
   sale_price: string;
@@ -84,7 +86,7 @@ export type GetProductsParams = {
   brand?: string | string[]; // Custom if using brands taxonomy
   perPage?: number;
   page?: number;
-  orderby?: "date" | "id" | "include" | "title" | "slug" | "price" | "popularity" | "rating";
+  orderby?: "date" | "id" | "include" | "title" | "slug" | "price" | "popularity" | "rating" | "sku";
   order?: "asc" | "desc";
   search?: string;
   minPrice?: number;
@@ -102,6 +104,7 @@ export type GetProductsParams = {
    * begitu dibuat.
    */
   status?: "publish" | "draft" | "private" | "any";
+  stock_status?: "instock" | "outofstock" | "onbackorder";
 };
 
 export type ProductAttributeTaxonomy = {
@@ -127,7 +130,9 @@ export type ProductInput = {
   short_description?: string;
   regular_price?: string;
   sale_price?: string;
+  date_on_sale_to_gmt?: string;
   manage_stock?: boolean;
+  stock_status?: "instock" | "outofstock" | "onbackorder";
   stock_quantity?: number;
   categories?: Array<{ id: number }>;
   attributes?: Array<{ name: string; options: string[]; visible?: boolean }>;
