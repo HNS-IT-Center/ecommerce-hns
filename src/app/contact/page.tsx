@@ -2,7 +2,8 @@ import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { MapPin, Clock, Mail, MessageCircle, Navigation } from "lucide-react"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
-import { STORES } from "@/lib/constants/stores"
+import { getStores } from "@/lib/api/stores"
+import { formatOpeningHours } from "@/lib/utils/opening-hours"
 import { env } from "@/config/env"
 
 export const metadata = {
@@ -10,9 +11,13 @@ export const metadata = {
   description: "Hubungi HNS IT Center via WhatsApp, email, atau kunjungi toko kami di Batam.",
 }
 
+/** Alasannya sama dengan di `/stores` — lihat catatan revalidate di sana. */
+export const revalidate = 3600
+
 const CS_EMAIL = "cs@hnsitcenter.co.id"
 
-export default function ContactPage() {
+export default async function ContactPage() {
+  const stores = await getStores()
   const waUrl = buildWhatsAppUrl(
     env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER,
     "Halo HNS IT Center, saya ingin bertanya."
@@ -82,7 +87,7 @@ export default function ContactPage() {
               Kunjungi Toko Kami
             </h2>
             <div className="grid gap-6 md:grid-cols-2">
-              {STORES.map((store) => (
+              {stores.map((store) => (
                 <div key={store.id} className="rounded-2xl border bg-card p-6 shadow-sm">
                   <h3 className="text-lg font-bold">{store.name}</h3>
                   <div className="mt-4 flex items-start gap-3 text-sm text-muted-foreground">
@@ -91,7 +96,7 @@ export default function ContactPage() {
                   </div>
                   <div className="mt-3 flex items-center gap-3 text-sm font-medium text-foreground">
                     <Clock className="h-4 w-4 text-sale-red" />
-                    <p>{store.hours}</p>
+                    <p>{formatOpeningHours(store.hours)}</p>
                   </div>
                   <a
                     href={store.mapsUrl}

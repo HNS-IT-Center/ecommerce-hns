@@ -75,10 +75,15 @@ model Store {
   id        String @id
   name      String
   address   String @db.Text
-  hours     String
   mapsUrl   String @map("maps_url")
-  phone     String
   sortOrder Int    @default(0) @map("sort_order")
+
+  // Jam buka pindah ke tabel sendiri, satu baris per hari. Sebelumnya ia satu
+  // string bebas ("SETIAP HARI SENIN SAMPAI SABTU 09.00 - 21.00, MINGGU ...")
+  // yang tidak bisa dibaca mesin: `openingHoursSpecification` untuk Google
+  // menuntut hari dan jam sebagai nilai terpisah, dan menguraikannya kembali
+  // dari teks bebas hanya memindahkan tebakan ke tempat lain.
+  hours StoreHours[]
 
   // Penghapusan menyisakan jejak, bukan melenyapkan baris. Tombol hapus di
   // layar toko sebelumnya langsung memanggil delete() tanpa konfirmasi apa pun.
@@ -92,6 +97,38 @@ model Store {
 
   @@index([deletedAt])
   @@map("stores")
+}
+
+/**
+ * Jam buka satu toko, satu baris per hari.
+ *
+ * `dayOfWeek` mengikuti `Date.getDay()` JavaScript — 0 Minggu sampai 6 Sabtu —
+ * supaya tidak ada penerjemahan diam-diam antara nilai yang disimpan dan nilai
+ * yang dipakai kode saat menentukan "apakah toko buka sekarang".
+ *
+ * `isClosed` ada karena "tutup" bukan sekadar jam kosong: hari yang tidak
+ * tercatat sama sekali berarti "belum diisi staff", dan itu berbeda dari "hari
+ * ini memang libur". Membedakan keduanya mencegah halaman menampilkan toko buka
+ * 24 jam hanya karena barisnya belum sempat diisi.
+ *
+ * Jam disimpan sebagai teks "HH:MM" 24 jam, bukan DateTime: yang dicatat adalah
+ * waktu dinding yang berulang tiap minggu, bukan satu titik waktu — menyimpannya
+ * sebagai DateTime memaksa tanggal palsu dan mengundang pergeseran zona waktu.
+ */
+model StoreHours {
+  id        Int     @id @default(autoincrement())
+  storeId   String  @map("store_id")
+  dayOfWeek Int     @map("day_of_week") @db.TinyInt
+  isClosed  Boolean @default(false) @map("is_closed")
+  opensAt   String  @map("opens_at") @db.VarChar(5)
+  closesAt  String  @map("closes_at") @db.VarChar(5)
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  // Satu hari hanya boleh punya satu baris per toko. Tanpa ini, dua kali simpan
+  // menghasilkan Senin ganda dan halaman menampilkan dua jam yang bertentangan.
+  @@unique([storeId, dayOfWeek])
+  @@map("store_hours")
 }
 
 model PolicyPage {

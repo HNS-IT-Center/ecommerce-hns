@@ -3,6 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { Pencil, TriangleAlert } from "lucide-react"
+import { formatOpeningHours, type StoreHours } from "@/lib/utils/opening-hours"
 import { deleteStore } from "./actions"
 
 /**
@@ -27,8 +28,7 @@ type StoreRow = {
   id: string
   name: string
   address: string
-  hours: string
-  phone: string
+  hours: StoreHours[]
 }
 
 export function StoreList({ stores }: { stores: StoreRow[] }) {
@@ -49,8 +49,9 @@ export function StoreList({ stores }: { stores: StoreRow[] }) {
               <div className="min-w-0">
                 <h2 className="font-bold">{store.name}</h2>
                 <p className="mt-1 text-sm text-muted-foreground">{store.address}</p>
-                <p className="mt-1 text-sm text-muted-foreground">{store.hours}</p>
-                <p className="mt-1 text-sm text-muted-foreground">WA: {store.phone}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {formatOpeningHours(store.hours)}
+                </p>
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
