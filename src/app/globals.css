@@ -139,6 +139,12 @@
     --sidebar-accent-foreground: var(--accent-900);
     --sidebar-border: var(--background-200);
     --sidebar-ring: var(--primary-500);
+
+    --chart-1: var(--primary-500);
+    --chart-2: var(--text-500);
+    --chart-3: #d97706;
+    --chart-4: var(--secondary-300);
+    --chart-5: var(--accent-400);
   }
   .dark {
     --text-50: #05150d;
@@ -230,6 +236,12 @@
     --sidebar-accent-foreground: var(--accent-900);
     --sidebar-border: var(--background-200);
     --sidebar-ring: var(--primary-500);
+
+    --chart-1: var(--primary-500);
+    --chart-2: var(--text-500);
+    --chart-3: #f59e0b;
+    --chart-4: var(--secondary-300);
+    --chart-5: var(--accent-400);
   }
 
   * {
@@ -277,6 +289,7 @@
   --sidebar-accent: rgba(255,255,255,0.15);
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: rgba(255,255,255,0.15);
+  background-image: linear-gradient(160deg, #0d2959 0%, #143d85 30%, #2166de 60%, #1b52b1 100%);
   background-color: #2166de !important;
   color: #ffffff !important;
 }

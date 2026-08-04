@@ -28,7 +28,7 @@ export default async function AdminLayout({
   const defaultOpen = cookieStore.get("sidebar_state")?.value !== "false"
 
   return (
-    <div className="bg-slate-50 text-slate-950 min-h-screen w-full flex font-sans">
+    <div className="bg-muted/40 text-foreground min-h-screen w-full flex font-sans">
       <SidebarProvider defaultOpen={defaultOpen} style={{ "--sidebar-width-icon": "4.5rem" } as React.CSSProperties}>
         <AppSidebar />
         <div className="flex flex-col flex-1 w-full relative z-10 min-w-0">
@@ -36,7 +36,7 @@ export default async function AdminLayout({
           <AdminMobileBar />
 
           {/* Warning banner — hidden on mobile to save space */}
-          <div className="hidden md:flex items-center justify-center gap-2 bg-rose-500/90 backdrop-blur-sm px-6 py-2 text-sm font-medium text-white w-full max-w-2xl mx-auto rounded-b-2xl shadow-sm z-40">
+          <div className="hidden md:flex items-center justify-center gap-2 bg-amber-50 text-amber-800 border-b border-amber-200 px-6 py-2 text-sm font-medium w-full shrink-0">
             <TriangleAlert className="h-4 w-4 shrink-0" />
             Admin panel ini sedang dalam tahap pengembangan autentikasi.
           </div>

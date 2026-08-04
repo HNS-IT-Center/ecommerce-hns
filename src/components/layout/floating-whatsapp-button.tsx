@@ -11,6 +11,9 @@ interface FloatingWhatsAppButtonProps {
 
 export function FloatingWhatsAppButton({ whatsappNumber }: FloatingWhatsAppButtonProps) {
   const pathname = usePathname()
+
+  if (pathname?.startsWith("/admin")) return null
+
   // (lihat ProductActions) — tombol mengambang ini akan tumpang tindih
   // dengannya di mobile, jadi disembunyikan khusus di sana.
   // We also hide it on /build-pc on mobile because it has its own floating UI.
