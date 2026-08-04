@@ -326,13 +326,22 @@ input[type="number"] {
    Print / Save-as-PDF
    Dipakai terutama oleh /build-pc/print (quotation rakitan PC).
    --------------------------------------------------------------------------- */
-/* Margin horizontal 0 supaya header/footer bawaan browser (tanggal, judul,
-   URL, "1/2") tidak punya tempat untuk dicetak di Chrome/Edge. Margin vertikal
-   tetap ada — tidak seperti padding pada elemen, nilai di sini berlaku pada
-   SETIAP halaman, jadi halaman ke-2 dst. tidak menempel ke tepi kertas. */
+/* Margin 0 di SEMUA sisi. Header/footer bawaan browser (tanggal, judul, URL,
+   "1/2") dicetak di dalam area margin halaman — dengan margin 0 area itu tidak
+   ada, jadi Chrome/Edge tidak punya tempat untuk menaruhnya.
+
+   Catatan: ini bukan jaminan mutlak. Tidak ada CSS/JS yang benar-benar bisa
+   mematikan header/footer browser (disengaja oleh vendor: itu bukti asal-usul
+   dokumen). Kalau pengguna mengubah "Margins" ke Default di dialog cetak,
+   header/footer akan muncul lagi. Untuk hasil yang dijamin bersih, jalannya
+   generate PDF sendiri di server.
+
+   Karena margin 0, seluruh jarak ke tepi kertas disediakan oleh elemen:
+   horizontal lewat `.print-sheet`, vertikal lewat `.print-page-pad` (lihat
+   di bawah). */
 @page {
   size: A4;
-  margin: 14mm 0;
+  margin: 0;
 }
 
 @media print {
@@ -363,11 +372,12 @@ input[type="number"] {
     page-break-inside: avoid;
   }
 
-  /* Margin kiri/kanan disediakan di sini karena @page memakai margin
-     horizontal 0 (lihat alasannya di atas). */
+  /* Jarak kiri/kanan ke tepi kertas (karena @page margin 0). Padding atas &
+     bawah di sini hanya berlaku di halaman pertama dan terakhir — jarak untuk
+     halaman di tengah ditangani oleh trik thead/tfoot di bawah. */
   .print-sheet {
     width: 100%;
-    padding: 0 9mm;
+    padding: 12mm 9mm;
   }
 
   /* Berapa banyak item yang muat per halaman ditentukan sendiri oleh tinggi
@@ -382,11 +392,20 @@ input[type="number"] {
     display: table-header-group;
   }
 
-  /* Jarak ekstra di atas header tabel. Karena `thead` berulang di tiap
-     halaman, padding ini otomatis memberi ruang di pucuk halaman ke-2 dst.
-     sehingga isinya tidak terkesan menempel ke tepi atas kertas. */
+  /* Jarak atas halaman ke-2 dst. Karena @page memakai margin 0, padding pada
+     `.print-sheet` hanya membuat jarak di halaman PERTAMA — halaman lanjutan
+     akan menempel ke tepi atas kertas. `thead` diulang di setiap halaman,
+     jadi padding di sini efektif menjadi "margin atas" halaman lanjutan. */
   thead th {
-    padding-top: 4mm;
+    padding-top: 12mm;
+  }
+
+  /* ...tapi di halaman pertama thead muncul tepat setelah judul "Rincian
+     Komponen", jadi padding 12mm di sana akan terlihat sebagai celah kosong
+     yang janggal. Baris pertama tabel menariknya kembali ke atas; halaman
+     lanjutan tidak terpengaruh karena hanya thead yang diulang. */
+  table.print-table {
+    margin-top: -12mm;
   }
 
   /* Satu baris item tidak boleh terbelah dua halaman. */

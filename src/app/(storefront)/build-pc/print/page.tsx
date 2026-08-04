@@ -1,7 +1,10 @@
 import { getPrisma } from "@/lib/prisma/client"
-import { getPcBuilderConfig } from "@/app/admin/(panel)/pc-builder/actions"
+import {
+  getPcBuilderConfig,
+  getPcBuilderDisplayConfig,
+} from "@/app/admin/(panel)/pc-builder/actions"
 import { formatRupiah } from "@/lib/utils"
-import { PC_ASSEMBLY_FEE } from "@/lib/constants/pc-builder"
+import { recordPcBuildQuote } from "@/lib/api/pc-build-quotes"
 import { env } from "@/config/env"
 import { PrintClientComponent } from "./print-client-component"
 
@@ -113,7 +116,7 @@ export default async function PrintPcBuilderPage({
   }
 
   const prisma = getPrisma()
-  const [products, stepsConfig] = await Promise.all([
+  const [products, stepsConfig, displayConfig] = await Promise.all([
     prisma.product.findMany({
       where: { id: { in: items.map((i) => i.productId) } },
       select: {
@@ -130,7 +133,10 @@ export default async function PrintPcBuilderPage({
       },
     }),
     getPcBuilderConfig(),
+    getPcBuilderDisplayConfig(),
   ])
+
+  const showItemPrices = displayConfig.showItemPrices
 
   // Nama kategori diambil dari konfigurasi di database, bukan dari URL — URL
   // hanya menyumbang stepId-nya.
@@ -184,8 +190,10 @@ export default async function PrintPcBuilderPage({
     groupItems: groupItems.map((item) => ({ ...item, index: ++numbered })),
   }))
 
+  // Jasa rakit tidak lagi ditambahkan di sini: biayanya dikonfigurasi sebagai
+  // step tersendiri di PC Builder, jadi sudah ikut terhitung di `lineItems`.
   const subtotal = lineItems.reduce((acc, item) => acc + item.subtotal, 0)
-  const total = subtotal + PC_ASSEMBLY_FEE
+  const total = subtotal
   const totalUnits = lineItems.reduce((acc, item) => acc + item.quantity, 0)
 
   const now = new Date()
@@ -194,16 +202,27 @@ export default async function PrintPcBuilderPage({
     month: "long",
     year: "numeric",
   })
-  // Nomor kuitansi deterministik per hari + isi rakitan, supaya dokumen yang
-  // sama menghasilkan nomor yang sama kalau dicetak ulang di hari yang sama.
-  const quoteRef = `HNS-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(
-    now.getDate()
-  ).padStart(2, "0")}-${(
-    lineItems.reduce((acc, item) => acc + item.id * item.quantity, 0) % 46656
-  )
-    .toString(36)
-    .toUpperCase()
-    .padStart(3, "0")}`
+
+  // Catat quotation supaya bisa diverifikasi lewat /q/[code]. Pencatatan yang
+  // gagal tidak boleh menggagalkan pencetakan — pelanggan tetap harus dapat
+  // dokumennya, cuma tanpa kode verifikasi.
+  let quoteRef: string | null = null
+  try {
+    const recorded = await recordPcBuildQuote(
+      lineItems.map((item) => ({
+        productId: item.id,
+        name: item.name,
+        sku: item.sku,
+        image: item.image,
+        price: item.price,
+        quantity: item.quantity,
+        stepName: item.stepName,
+      }))
+    )
+    quoteRef = recorded.code
+  } catch (error) {
+    console.error("[build-pc/print] gagal mencatat quotation:", error)
+  }
 
   return (
     <div className="min-h-screen bg-neutral-100 py-8 print:bg-white print:py-0">
@@ -243,10 +262,12 @@ export default async function PrintPcBuilderPage({
               Rakitan PC
             </p>
             <dl className="mt-2.5 space-y-1 text-[11px]">
-              <div className="flex items-baseline justify-end gap-2">
-                <dt className="text-white/60">No.</dt>
-                <dd className="font-mono font-semibold tracking-tight">{quoteRef}</dd>
-              </div>
+              {quoteRef && (
+                <div className="flex items-baseline justify-end gap-2">
+                  <dt className="text-white/60">No.</dt>
+                  <dd className="font-mono font-semibold tracking-tight">{quoteRef}</dd>
+                </div>
+              )}
               <div className="flex items-baseline justify-end gap-2">
                 <dt className="text-white/60">Tanggal</dt>
                 <dd className="font-semibold">{issuedDate}</dd>
@@ -271,15 +292,15 @@ export default async function PrintPcBuilderPage({
 
           {/* Tabel tunggal untuk semua grup: kolom Qty/Harga/Subtotal sejajar
               rapi lintas kategori, dan tidak ada jarak besar antar kategori. */}
-          <table className="w-full border-collapse text-left">
+          <table className="print-table w-full border-collapse text-left">
             <colgroup>
               <col style={{ width: "7mm" }} />
               {/* Muat thumbnail 100px (≈26.5mm) + jarak ke kolom nama. */}
               <col style={{ width: "30mm" }} />
               <col />
               <col style={{ width: "12mm" }} />
-              <col style={{ width: "26mm" }} />
-              <col style={{ width: "28mm" }} />
+              {showItemPrices && <col style={{ width: "26mm" }} />}
+              {showItemPrices && <col style={{ width: "28mm" }} />}
             </colgroup>
 
             <thead>
@@ -288,8 +309,12 @@ export default async function PrintPcBuilderPage({
                 <th className="pb-1.5 pt-1 font-black" />
                 <th className="pb-1.5 pt-1 font-black">Komponen</th>
                 <th className="pb-1.5 pt-1 text-center font-black">Qty</th>
-                <th className="pb-1.5 pt-1 text-right font-black">Harga</th>
-                <th className="pb-1.5 pt-1 text-right font-black">Subtotal</th>
+                {showItemPrices && (
+                  <th className="pb-1.5 pt-1 text-right font-black">Harga</th>
+                )}
+                {showItemPrices && (
+                  <th className="pb-1.5 pt-1 text-right font-black">Subtotal</th>
+                )}
               </tr>
             </thead>
 
@@ -297,7 +322,7 @@ export default async function PrintPcBuilderPage({
               <tbody key={groupName} className="print-avoid-break">
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={showItemPrices ? 6 : 4}
                     className="pb-1 pt-2.5 text-[10px] font-black uppercase tracking-[0.16em]"
                     style={{ color: INK_NAVY }}
                   >
@@ -355,19 +380,23 @@ export default async function PrintPcBuilderPage({
                       {item.quantity}
                     </td>
 
-                    <td
-                      className="py-2 text-right align-middle text-[11px] font-semibold tabular-nums"
-                      style={{ color: INK_RED }}
-                    >
-                      {formatRupiah(item.price)}
-                    </td>
+                    {showItemPrices && (
+                      <td
+                        className="py-2 text-right align-middle text-[11px] font-semibold tabular-nums"
+                        style={{ color: INK_RED }}
+                      >
+                        {formatRupiah(item.price)}
+                      </td>
+                    )}
 
-                    <td
-                      className="py-2 text-right align-middle text-[11.5px] font-black tabular-nums"
-                      style={{ color: INK_RED }}
-                    >
-                      {formatRupiah(item.subtotal)}
-                    </td>
+                    {showItemPrices && (
+                      <td
+                        className="py-2 text-right align-middle text-[11.5px] font-black tabular-nums"
+                        style={{ color: INK_RED }}
+                      >
+                        {formatRupiah(item.subtotal)}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -384,22 +413,15 @@ export default async function PrintPcBuilderPage({
           {/* ---------- Total ---------- */}
           <div className="flex justify-end px-8 pb-5 print:px-7 print:pb-4">
             <div className="w-full max-w-[84mm]">
-              <div
-                className="flex items-baseline justify-between border-t py-1.5 text-[11px]"
-                style={{ borderColor: INK_HAIRLINE }}
-              >
-                <span style={{ color: INK_GRAY }}>Subtotal komponen</span>
-                <span className="font-semibold tabular-nums">{formatRupiah(subtotal)}</span>
-              </div>
-              <div
-                className="flex items-baseline justify-between border-t py-1.5 text-[11px]"
-                style={{ borderColor: INK_HAIRLINE }}
-              >
-                <span style={{ color: INK_GRAY }}>Jasa rakit</span>
-                <span className="font-semibold tabular-nums">
-                  {formatRupiah(PC_ASSEMBLY_FEE)}
-                </span>
-              </div>
+              {showItemPrices && (
+                <div
+                  className="flex items-baseline justify-between border-t py-1.5 text-[11px]"
+                  style={{ borderColor: INK_HAIRLINE }}
+                >
+                  <span style={{ color: INK_GRAY }}>Subtotal komponen</span>
+                  <span className="font-semibold tabular-nums">{formatRupiah(subtotal)}</span>
+                </div>
+              )}
               <div
                 className="mt-2 flex items-baseline justify-between rounded px-4 py-2.5 text-white"
                 style={{ backgroundColor: INK_NAVY }}
@@ -425,8 +447,11 @@ export default async function PrintPcBuilderPage({
                 </p>
                 <ul className="space-y-0.5 text-[9.5px] leading-snug" style={{ color: INK_GRAY }}>
                   <li>Harga dapat berubah sewaktu-waktu tanpa pemberitahuan sebelumnya.</li>
-                  <li>Stok tidak mengikat sebelum ada pembayaran lunas atau DP.</li>
+                  <li>Stok &amp; Harga tidak mengikat sebelum ada pembayaran lunas atau DP.</li>
                   <li>Jasa rakit sudah termasuk instalasi sistem operasi standar.</li>
+                  <li className="font-semibold" style={{ color: INK_BLACK }}>
+                    Harga yang berlaku adalah harga pada sistem saat transaksi.
+                  </li>
                 </ul>
               </div>
 

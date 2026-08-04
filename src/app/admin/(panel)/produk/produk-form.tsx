@@ -334,8 +334,13 @@ export function ProdukForm({
     document.body.removeChild(downloadLink)
   }
 
+  // Origin yang sedang dibuka lebih dulu, baru env sebagai cadangan saat SSR:
+  // urutan sebaliknya membuat QR di panel production ikut menunjuk localhost
+  // kalau NEXT_PUBLIC_SITE_URL belum disesuaikan per-lingkungan.
   const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== "undefined" ? window.location.origin : "")
+    typeof window !== "undefined"
+      ? window.location.origin
+      : process.env.NEXT_PUBLIC_SITE_URL || ""
   const qrLink = `${siteUrl}/p/${productId}`
 
   return (

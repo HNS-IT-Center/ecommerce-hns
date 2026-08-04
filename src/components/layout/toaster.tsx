@@ -25,7 +25,13 @@ export function Toaster() {
   const positionClassName = isAdmin
     ? "!top-4 !left-4 !right-auto !bottom-auto sm:!top-6 sm:!left-6 sm:!right-auto sm:!bottom-auto"
     : isBuildPc
-      ? "!top-[140px] !bottom-auto md:!top-auto md:!bottom-4"
+      // Kanan atas. `!bottom-auto` wajib di semua breakpoint karena viewport
+      // bawaan memasang `bottom-4 sm:bottom-6` — tanpa itu toast tetap
+      // tertarik ke bawah di layar sm ke atas.
+      // Di mobile posisinya diturunkan ke bawah bar pencarian mengambang
+      // (judul step + kolom cari + tombol sort) supaya tidak menutupinya;
+      // di desktop bar itu tidak ada, jadi cukup jarak di bawah header.
+      ? "!top-[140px] !bottom-auto sm:!bottom-auto md:!top-24"
       : ""
 
   const viewportClassName = `no-print print:hidden ${positionClassName}`.trim()

@@ -4,18 +4,26 @@ import * as React from "react"
 import { motion, Reorder, AnimatePresence } from "framer-motion"
 import { Plus, Save, Loader2, CheckCircle2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { PcBuilderStepConfig, savePcBuilderConfig } from "../actions"
+import {
+  PcBuilderStepConfig,
+  savePcBuilderConfig,
+  savePcBuilderDisplayConfig,
+  type PcBuilderDisplayConfig,
+} from "../actions"
 import { StepCard } from "./step-card"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToastManager } from "@/components/ui/toast"
 
 interface PcBuilderFormProps {
   initialSteps: PcBuilderStepConfig[]
+  initialDisplay: PcBuilderDisplayConfig
   categories: { id: number, name: string, path: string }[]
   attributes: { id: number, name: string }[]
 }
 
-export function PcBuilderForm({ initialSteps, categories, attributes }: PcBuilderFormProps) {
+export function PcBuilderForm({ initialSteps, initialDisplay, categories, attributes }: PcBuilderFormProps) {
   const [steps, setSteps] = React.useState<PcBuilderStepConfig[]>(initialSteps || [])
+  const [showItemPrices, setShowItemPrices] = React.useState(initialDisplay.showItemPrices)
   const [isSaving, setIsSaving] = React.useState(false)
   const [showSuccessToast, setShowSuccessToast] = React.useState(false)
   const toastManager = useToastManager()
@@ -75,6 +83,7 @@ export function PcBuilderForm({ initialSteps, categories, attributes }: PcBuilde
       const orderedSteps = steps.map((s, i) => ({ ...s, order: i }))
       const serializedSteps = JSON.parse(JSON.stringify(orderedSteps))
       await savePcBuilderConfig(serializedSteps)
+      await savePcBuilderDisplayConfig({ showItemPrices })
       setShowSuccessToast(true)
       setTimeout(() => setShowSuccessToast(false), 3000)
     } catch (error) {
@@ -106,6 +115,51 @@ export function PcBuilderForm({ initialSteps, categories, attributes }: PcBuilde
           </Button>
         </div>
       </motion.div>
+
+      {/* Pengaturan tampilan dokumen quotation. */}
+      <div className="rounded-2xl border border-border/50 bg-background/60 p-5 shadow-sm">
+        <h4 className="font-bold text-base">Tampilan PDF Quotation</h4>
+        <p className="mt-0.5 text-sm text-muted-foreground">
+          Atur apa yang terlihat oleh pelanggan pada dokumen yang dicetak.
+        </p>
+
+        <div className="mt-4">
+          <p className="text-sm font-semibold mb-2">Harga per item</p>
+          <RadioGroup
+            value={showItemPrices ? "show" : "hide"}
+            onValueChange={(v) => setShowItemPrices(v === "show")}
+            className="flex flex-col gap-2 sm:flex-row sm:gap-3"
+          >
+            <label
+              className={`flex flex-1 cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5 transition-colors ${
+                showItemPrices ? "border-primary bg-primary/5" : "border-input hover:bg-muted/40"
+              }`}
+            >
+              <RadioGroupItem value="show" className="mt-0.5" />
+              <span>
+                <span className="block text-sm font-semibold">Tampilkan</span>
+                <span className="block text-xs text-muted-foreground">
+                  Kolom Harga &amp; Subtotal tiap komponen ikut tercetak.
+                </span>
+              </span>
+            </label>
+            <label
+              className={`flex flex-1 cursor-pointer items-start gap-2.5 rounded-xl border px-3 py-2.5 transition-colors ${
+                !showItemPrices ? "border-primary bg-primary/5" : "border-input hover:bg-muted/40"
+              }`}
+            >
+              <RadioGroupItem value="hide" className="mt-0.5" />
+              <span>
+                <span className="block text-sm font-semibold">Sembunyikan</span>
+                <span className="block text-xs text-muted-foreground">
+                  Hanya daftar komponen &amp; Total. Rincian harga tetap bisa dilihat staf
+                  lewat kode quotation.
+                </span>
+              </span>
+            </label>
+          </RadioGroup>
+        </div>
+      </div>
 
       <div className="pt-2 pb-20">
         {steps.length === 0 ? (

@@ -4,7 +4,6 @@ import { useEffect, useState, useMemo } from "react"
 import { useNewBuilderStore, BuilderProduct } from "@/store/new-builder"
 import { PcBuilderStepConfig } from "@/app/admin/(panel)/pc-builder/actions"
 import { formatRupiah } from "@/lib/utils"
-import { PC_ASSEMBLY_FEE } from "@/lib/constants/pc-builder"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import { fetchBuilderProducts } from "../actions"
 import { ProductCardBuilder } from "./product-card-builder"
@@ -189,9 +188,7 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
         })
       }
     })
-    message += `\nSubtotal komponen: ${formatRupiah(getTotalPrice())}\n`
-    message += `Jasa rakit: ${formatRupiah(PC_ASSEMBLY_FEE)}\n`
-    message += `*Estimasi Total: ${formatRupiah(getTotalPrice() + PC_ASSEMBLY_FEE)}*\n\n`
+    message += `\n*Estimasi Total: ${formatRupiah(getTotalPrice())}*\n\n`
     message += "Mohon info ketersediaan barang. Terima kasih."
     window.open(buildWhatsAppUrl(whatsappNumber, message), "_blank")
   }
@@ -352,18 +349,10 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
       {/* Ringkasan & aksi selalu menempel di dasar panel, di luar area scroll. */}
       <div className="shrink-0 pt-3 border-t border-border/50">
         <div className="rounded-lg bg-muted/50 dark:bg-muted/20 p-3 mb-3 space-y-1.5">
-          <div className="flex justify-between items-baseline text-xs">
-            <span className="text-muted-foreground">Subtotal komponen</span>
-            <span className="font-semibold tabular-nums">{formatRupiah(getTotalPrice())}</span>
-          </div>
-          <div className="flex justify-between items-baseline text-xs">
-            <span className="text-muted-foreground">Jasa rakit</span>
-            <span className="font-semibold tabular-nums">{formatRupiah(PC_ASSEMBLY_FEE)}</span>
-          </div>
-          <div className="flex justify-between items-baseline border-t border-border/50 pt-1.5">
+          <div className="flex justify-between items-baseline">
             <span className="text-xs font-bold">Total</span>
             <span className="text-base font-black text-sale-red tabular-nums">
-              {formatRupiah(getTotalPrice() + PC_ASSEMBLY_FEE)}
+              {formatRupiah(getTotalPrice())}
             </span>
           </div>
           <div className="flex justify-between items-baseline text-[11px] pt-0.5">

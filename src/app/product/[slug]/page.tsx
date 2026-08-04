@@ -9,6 +9,7 @@ import { ProductGallery } from "@/features/product/components/product-gallery"
 import { ProductInfo } from "@/features/product/components/product-info"
 import { ProductTabs } from "@/features/product/components/product-tabs"
 import { RelatedProducts } from "@/features/product/components/related-products"
+import { resolveSiteUrl } from "@/lib/utils/site-url"
 import { env } from "@/config/env"
 
 type ProductPageProps = {
@@ -36,6 +37,10 @@ export default async function ProductPage({ params }: ProductPageProps) {
   const product = await getProductBySlug(slug)
 
   if (!product) notFound()
+
+  // QR produk ikut host yang sedang dibuka, bukan nilai tetap dari env —
+  // supaya kode yang dipindai dari halaman production tidak menunjuk localhost.
+  const siteUrl = await resolveSiteUrl()
 
   // Atribut yang benar-benar dipakai untuk memilih varian (`variation: true`) —
   // atribut lain (mis. "Motherboard Size") cuma informasi spek, bukan pilihan.
@@ -132,7 +137,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
               whatsappNumber={env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER}
               variantAttributes={variantAttributes}
               variations={variations}
-              siteUrl={env.NEXT_PUBLIC_SITE_URL}
+              siteUrl={siteUrl}
             />
           </div>
 

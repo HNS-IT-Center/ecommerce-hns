@@ -456,3 +456,40 @@ model ProductLog {
   @@index([createdAt])
   @@map("product_logs")
 }
+
+/**
+ * Quotation rakitan PC yang pernah dicetak dari /build-pc.
+ *
+ * Satu baris = satu KOMBINASI komponen unik, bukan satu klik Print. Dua orang
+ * yang merakit isi yang sama persis akan berbagi baris ini; yang bertambah
+ * hanya `printCount`. Tanpa itu, tabel akan penuh duplikat karena satu orang
+ * biasa menekan Print berkali-kali untuk rakitan yang sama.
+ *
+ * `items` menyimpan snapshot harga saat quotation diterbitkan, supaya halaman
+ * verifikasi /q/[code] bisa membandingkannya dengan harga terkini dan
+ * menandai kalau ada selisih.
+ */
+model PcBuildQuote {
+  id   Int    @id @default(autoincrement())
+  // Kode yang dicetak di PDF, mis. "HNSPC-260804-7K3M".
+  code String @unique @db.VarChar(32)
+  // SHA-256 dari daftar `productId:qty` terurut. Inilah kunci dedupe-nya.
+  contentHash String @unique @map("content_hash") @db.VarChar(64)
+
+  // Snapshot: [{ productId, name, sku, price, quantity, stepName }]
+  items Json
+
+  subtotal    Decimal @db.Decimal(14, 2)
+  assemblyFee Decimal @map("assembly_fee") @db.Decimal(14, 2)
+  total       Decimal @db.Decimal(14, 2)
+
+  itemCount  Int @map("item_count")
+  printCount Int @default(1) @map("print_count")
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  lastPrintedAt DateTime @default(now()) @map("last_printed_at")
+
+  @@index([createdAt])
+  @@index([lastPrintedAt])
+  @@map("pc_build_quotes")
+}
