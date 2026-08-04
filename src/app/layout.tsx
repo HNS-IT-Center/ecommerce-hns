@@ -8,7 +8,7 @@ import { MobileDock } from "@/components/layout/mobile-dock";
 import { FlyToCartProvider } from "@/components/providers/fly-to-cart-provider";
 import { JsonLd } from "@/components/seo/json-ld";
 import { env } from "@/config/env";
-import NextTopLoader from 'nextjs-toploader';
+import NextTopLoader from "nextjs-toploader";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -23,7 +23,8 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(env.NEXT_PUBLIC_SITE_URL),
   title: {
-    default: "HNS IT Center Batam — Toko Komputer, Laptop & Aksesoris Terlengkap",
+    default:
+      "HNS IT Center Batam — Toko Komputer, Laptop & Aksesoris Terlengkap",
     template: `%s | ${env.NEXT_PUBLIC_SITE_NAME}`,
   },
   description:
@@ -33,6 +34,10 @@ export const metadata: Metadata = {
 const organizationJsonLd = {
   "@context": "https://schema.org",
   "@type": "Organization",
+  // Jangkar bagi tiap cabang untuk menunjuk induknya lewat `parentOrganization`.
+  // Tanpa `@id`, kedua toko terbaca sebagai dua badan usaha yang tidak
+  // berhubungan — lihat `features/stores/lib/structured-data.ts`.
+  "@id": `${env.NEXT_PUBLIC_SITE_URL}/#organization`,
   name: env.NEXT_PUBLIC_SITE_NAME,
   url: env.NEXT_PUBLIC_SITE_URL,
   description:
@@ -78,7 +83,9 @@ export default function RootLayout({
             {children}
             <Toaster />
           </Toast>
-          <FloatingWhatsAppButton whatsappNumber={env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER} />
+          <FloatingWhatsAppButton
+            whatsappNumber={env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER}
+          />
           <MobileDock />
         </FlyToCartProvider>
       </body>
