@@ -321,3 +321,83 @@ input[type="number"]::-webkit-outer-spin-button {
 input[type="number"] {
   -moz-appearance: textfield;
 }
+
+/* ---------------------------------------------------------------------------
+   Print / Save-as-PDF
+   Dipakai terutama oleh /build-pc/print (quotation rakitan PC).
+   --------------------------------------------------------------------------- */
+/* Margin horizontal 0 supaya header/footer bawaan browser (tanggal, judul,
+   URL, "1/2") tidak punya tempat untuk dicetak di Chrome/Edge. Margin vertikal
+   tetap ada — tidak seperti padding pada elemen, nilai di sini berlaku pada
+   SETIAP halaman, jadi halaman ke-2 dst. tidak menempel ke tepi kertas. */
+@page {
+  size: A4;
+  margin: 14mm 0;
+}
+
+@media print {
+  /* Elemen mengambang global (MobileDock, tombol WhatsApp, toast, drawer)
+     tidak boleh ikut tercetak. */
+  .no-print {
+    display: none !important;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    /* Warna aksen quotation harus tetap tercetak, bukan dibuat putih. */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Tema gelap tidak boleh terbawa ke kertas. */
+  .dark body,
+  body.dark {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /* Jangan potong baris item quotation di tengah halaman. */
+  .print-avoid-break {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Margin kiri/kanan disediakan di sini karena @page memakai margin
+     horizontal 0 (lihat alasannya di atas). */
+  .print-sheet {
+    width: 100%;
+    padding: 0 9mm;
+  }
+
+  /* Berapa banyak item yang muat per halaman ditentukan sendiri oleh tinggi
+     barisnya — nama produk panjang membungkus jadi dua baris, jadi jumlah
+     tetap (mis. "8 per halaman") akan salah begitu ada nama yang panjang.
+     Aturan di bawah membiarkan tabel mengalir, tapi memaksa potongannya jatuh
+     di tempat yang benar. */
+
+  /* Header tabel diulang di setiap halaman lanjutan supaya kolom
+     Qty/Harga/Subtotal tetap punya judul. */
+  thead {
+    display: table-header-group;
+  }
+
+  /* Jarak ekstra di atas header tabel. Karena `thead` berulang di tiap
+     halaman, padding ini otomatis memberi ruang di pucuk halaman ke-2 dst.
+     sehingga isinya tidak terkesan menempel ke tepi atas kertas. */
+  thead th {
+    padding-top: 4mm;
+  }
+
+  /* Satu baris item tidak boleh terbelah dua halaman. */
+  tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Jangan tinggalkan judul kategori sendirian di dasar halaman. */
+  tbody > tr:first-child {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+}

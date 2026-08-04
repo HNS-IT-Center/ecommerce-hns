@@ -61,7 +61,7 @@ export function MobileDock() {
   ]
 
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-border shadow-[0_-4px_10px_rgba(0,0,0,0.05)] pb-safe">
+    <div className="no-print print:hidden md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-border shadow-[0_-4px_10px_rgba(0,0,0,0.05)] pb-safe">
       <div className="flex h-[60px] w-full items-center justify-around px-2">
         {items.map((item, i) => (
           <Link 

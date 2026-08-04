@@ -22,11 +22,13 @@ export function Toaster() {
   // tepat saat aksi AI selesai.
   const isAdmin = pathname?.startsWith("/admin")
 
-  const viewportClassName = isAdmin
+  const positionClassName = isAdmin
     ? "!top-4 !left-4 !right-auto !bottom-auto sm:!top-6 sm:!left-6 sm:!right-auto sm:!bottom-auto"
     : isBuildPc
       ? "!top-[140px] !bottom-auto md:!top-auto md:!bottom-4"
       : ""
+
+  const viewportClassName = `no-print print:hidden ${positionClassName}`.trim()
 
   return (
     <ToastPortal>

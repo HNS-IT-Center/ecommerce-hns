@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from "react"
 import { useNewBuilderStore, BuilderProduct } from "@/store/new-builder"
 import { PcBuilderStepConfig } from "@/app/admin/(panel)/pc-builder/actions"
 import { formatRupiah } from "@/lib/utils"
+import { PC_ASSEMBLY_FEE } from "@/lib/constants/pc-builder"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import { fetchBuilderProducts } from "../actions"
 import { ProductCardBuilder } from "./product-card-builder"
@@ -154,21 +155,27 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
   }
 
   const handlePrint = () => {
-    // Collect selected products
-    const itemsParam = Object.entries(selections).flatMap(([stepId, selArray]) => {
-      return selArray.map(sel => `${sel.product.id}:${sel.quantity}`)
-    }).join(",")
-    
+    // Hanya id & kuantitas yang dikirim — nama, harga, dan gambar dibaca ulang
+    // dari database di halaman /build-pc/print, jadi harga yang tampil di PDF
+    // tidak bisa dipalsukan lewat inspect element di halaman ini.
+    const itemsParam = steps
+      .flatMap((step) => {
+        const stepSels = selections[step.id]
+        if (!Array.isArray(stepSels)) return []
+        return stepSels.map((sel) => `${step.id}:${sel.product.id}:${sel.quantity}`)
+      })
+      .join(",")
+
     if (itemsParam.length === 0) {
-      toastManager.add({ 
-        title: "Build Kosong", 
+      toastManager.add({
+        title: "Build Kosong",
         description: "Belum ada komponen yang dipilih."
       })
       return
     }
-    
+
     // Navigate to the print page
-    window.open(`/build-pc/print?items=${itemsParam}`, '_blank')
+    window.open(`/build-pc/print?items=${encodeURIComponent(itemsParam)}`, '_blank')
   }
 
   const handleCheckoutWA = () => {
@@ -182,8 +189,10 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
         })
       }
     })
-    message += `\n*Estimasi Harga: ${formatRupiah(getTotalPrice())}*\n\n`
-    message += "Mohon info ketersediaan barang dan biaya rakit. Terima kasih."
+    message += `\nSubtotal komponen: ${formatRupiah(getTotalPrice())}\n`
+    message += `Jasa rakit: ${formatRupiah(PC_ASSEMBLY_FEE)}\n`
+    message += `*Estimasi Total: ${formatRupiah(getTotalPrice() + PC_ASSEMBLY_FEE)}*\n\n`
+    message += "Mohon info ketersediaan barang. Terima kasih."
     window.open(buildWhatsAppUrl(whatsappNumber, message), "_blank")
   }
 
@@ -203,10 +212,13 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
   })
 
   const renderStepsList = () => (
-    <>
-      <div className="flex items-center justify-between mb-6">
+    // Tingginya dibatasi & daftarnya scroll sendiri, mengikuti pola panel
+    // My Build supaya kedua sidebar terasa sepadan dan tidak memanjang
+    // melebihi layar.
+    <div className="flex flex-col max-h-[70vh] md:max-h-[calc(100vh-11rem)] min-h-0">
+      <div className="flex items-center justify-between mb-4 shrink-0">
         <h2 className="font-bold text-lg">Build Progress</h2>
-        <button 
+        <button
           onClick={() => {
             if (window.confirm("Apakah Anda yakin ingin mereset semua pilihan komponen rakitan PC ini?")) {
               clearSelections();
@@ -218,13 +230,13 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
           Reset
         </button>
       </div>
-      <div className="space-y-3 pb-24 md:pb-0">
+      <div className="space-y-2 flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 -mr-1 pb-24 md:pb-0">
         {steps.map((step, index) => {
           const stepSels = selections[step.id]
           const isSelected = Array.isArray(stepSels) && stepSels.length > 0
           const isActive = activeStepId === step.id
 
-          let btnClass = "w-full text-left px-4 py-3 rounded-xl border flex flex-col transition-all cursor-pointer "
+          let btnClass = "w-full text-left px-3 py-2.5 rounded-lg border flex flex-col transition-all cursor-pointer "
           if (isActive) btnClass += "bg-blue-50 border-blue-200 shadow-sm dark:bg-blue-900/20 dark:border-blue-800 "
           else if (isSelected) btnClass += "bg-brand-green/5 border-brand-green/20 hover:bg-brand-green/10 "
           else btnClass += "bg-background border-border/50 hover:bg-accent hover:border-accent-foreground/20 "
@@ -259,57 +271,73 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
           )
         })}
       </div>
-    </>
+    </div>
   )
 
   const renderMyBuildList = () => (
-    <>
-      <h2 className="font-bold text-lg mb-4 hidden md:block">My Build</h2>
-      <div className="flex items-center justify-between mb-6 md:hidden">
+    // Kolom penuh dengan daftar item yang scroll sendiri: ringkasan harga dan
+    // tombol aksi (termasuk Print / Save PDF) tetap terlihat tanpa perlu
+    // menggulir sampai dasar panel, berapapun banyaknya komponen dipilih.
+    <div className="flex flex-col max-h-[70vh] md:max-h-[calc(100vh-11rem)] min-h-0">
+      <h2 className="font-bold text-lg mb-4 hidden md:block shrink-0">My Build</h2>
+      <div className="flex items-center justify-between mb-6 md:hidden shrink-0">
         <h2 className="font-bold text-lg">My Build</h2>
       </div>
-      
-      <div className="space-y-3 mb-6">
+
+      <div className="space-y-3 mb-4 flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 -mr-1">
         {steps.map(step => {
           const stepSels = selections[step.id]
           if (!Array.isArray(stepSels) || stepSels.length === 0) return null
           return stepSels.map((sel, idx) => (
-            <div key={`${step.id}-${idx}`} className="p-4 bg-[#F2F2F2] dark:bg-muted/30 rounded-xl border border-border/50 group">
-              <div className="text-[12px] font-extrabold text-sale-red mb-2">{step.name}</div>
-              
-              <div className="flex gap-3">
-                <div className="w-20 h-20 bg-[#D9D9D9] dark:bg-muted/50 rounded-xl flex-shrink-0 flex items-center justify-center overflow-hidden">
-                  {sel.product.image ? (
-                    <Image src={sel.product.image} alt={sel.product.name} width={80} height={80} className="object-cover w-full h-full" />
-                  ) : (
-                    <div className="text-[10px] font-bold text-sale-red text-center leading-tight">Image<br/>Placeholder</div>
-                  )}
+            <div
+              key={`${step.id}-${idx}`}
+              className="group relative flex gap-2.5 rounded-lg border border-border/50 bg-muted/40 dark:bg-muted/20 p-2 transition-colors hover:border-border"
+            >
+              <div className="h-12 w-12 shrink-0 overflow-hidden rounded-md bg-background flex items-center justify-center">
+                {sel.product.image ? (
+                  <Image src={sel.product.image} alt={sel.product.name} width={48} height={48} className="object-cover w-full h-full" />
+                ) : (
+                  <div className="text-[8px] font-semibold text-muted-foreground">N/A</div>
+                )}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground leading-none">
+                  {step.name}
                 </div>
-                
-                <div className="flex-1 min-w-0 flex flex-col justify-between">
-                  <div>
-                    <div className="text-sm font-bold leading-tight line-clamp-2">
-                      {sel.product.name}
-                    </div>
-                    <div className="text-xs font-bold mt-1">x{sel.quantity}</div>
-                  </div>
-                  
-                  <div className="flex flex-col mt-2 gap-2">
-                    <div className="text-sm font-black">{formatRupiah(sel.product.price * sel.quantity)}</div>
-                    
-                    <div className="flex gap-2 justify-end">
-                      <button onClick={() => {
-                        setActiveStep(step.id)
-                        setIsMobileMyBuildOpen(false)
-                      }} className="bg-[#4D7CFF] hover:bg-blue-600 text-white rounded-full p-2 shadow-sm transition-colors">
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => removeProduct(step.id, sel.product.id)} className="bg-[#FF4D4D] hover:bg-[#FF3333] text-white rounded-full p-2 shadow-sm transition-colors">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
+                <div className="mt-1 text-xs font-semibold leading-snug line-clamp-2">
+                  {sel.product.name}
                 </div>
+                <div className="mt-1 flex items-baseline gap-1.5">
+                  <span className="text-xs font-black text-sale-red">
+                    {formatRupiah(sel.product.price * sel.quantity)}
+                  </span>
+                  <span className="text-[10px] font-medium text-muted-foreground">
+                    &times;{sel.quantity}
+                  </span>
+                </div>
+              </div>
+
+              {/* Aksi tampil saat hover di desktop; di mobile selalu terlihat
+                  karena tidak ada hover. */}
+              <div className="flex shrink-0 flex-col gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={() => {
+                    setActiveStep(step.id)
+                    setIsMobileMyBuildOpen(false)
+                  }}
+                  aria-label={`Ubah pilihan ${step.name}`}
+                  className="cursor-pointer rounded-md p-1 text-muted-foreground hover:bg-background hover:text-blue-600 active:scale-95 transition-all"
+                >
+                  <Edit2 className="h-3 w-3" />
+                </button>
+                <button
+                  onClick={() => removeProduct(step.id, sel.product.id)}
+                  aria-label={`Hapus ${sel.product.name}`}
+                  className="cursor-pointer rounded-md p-1 text-muted-foreground hover:bg-background hover:text-sale-red active:scale-95 transition-all"
+                >
+                  <X className="h-3 w-3" />
+                </button>
               </div>
             </div>
           ))
@@ -321,36 +349,61 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
         )}
       </div>
 
-      <div className="bg-blue-50 dark:bg-blue-900/10 rounded-xl p-4 mb-6">
-        <div className="flex justify-between items-center mb-3">
-          <span className="text-sm font-medium text-muted-foreground">Subtotal</span>
-          <span className="text-lg font-black text-sale-red">{formatRupiah(getTotalPrice())}</span>
+      {/* Ringkasan & aksi selalu menempel di dasar panel, di luar area scroll. */}
+      <div className="shrink-0 pt-3 border-t border-border/50">
+        <div className="rounded-lg bg-muted/50 dark:bg-muted/20 p-3 mb-3 space-y-1.5">
+          <div className="flex justify-between items-baseline text-xs">
+            <span className="text-muted-foreground">Subtotal komponen</span>
+            <span className="font-semibold tabular-nums">{formatRupiah(getTotalPrice())}</span>
+          </div>
+          <div className="flex justify-between items-baseline text-xs">
+            <span className="text-muted-foreground">Jasa rakit</span>
+            <span className="font-semibold tabular-nums">{formatRupiah(PC_ASSEMBLY_FEE)}</span>
+          </div>
+          <div className="flex justify-between items-baseline border-t border-border/50 pt-1.5">
+            <span className="text-xs font-bold">Total</span>
+            <span className="text-base font-black text-sale-red tabular-nums">
+              {formatRupiah(getTotalPrice() + PC_ASSEMBLY_FEE)}
+            </span>
+          </div>
+          <div className="flex justify-between items-baseline text-[11px] pt-0.5">
+            <span className="text-muted-foreground">Komponen dipilih</span>
+            <span className="font-semibold">{selectedStepsCount}/{totalSteps}</span>
+          </div>
         </div>
-        <div className="flex justify-between items-center text-sm">
-          <span className="text-muted-foreground">Components selected</span>
-          <span className="font-bold">{selectedStepsCount}/{totalSteps}</span>
+
+        {/* Dua aksi utama sebaris supaya panel tidak memanjang ke bawah. */}
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            onClick={() => {
+              if (activeStepIndex < totalSteps - 1) {
+                setActiveStep(steps[activeStepIndex + 1].id)
+                setIsMobileMyBuildOpen(false)
+              }
+            }}
+            className="w-full cursor-pointer bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold h-10 rounded-lg text-sm transition-colors"
+          >
+            Continue
+          </Button>
+
+          <Button
+            onClick={handleCheckoutWA}
+            className="w-full cursor-pointer bg-[#25D366] hover:bg-[#1EBE5A] active:bg-[#17A74C] text-white font-bold h-10 rounded-lg flex items-center justify-center gap-1.5 text-sm transition-colors"
+          >
+            <MessageCircle className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">Konsultasi</span>
+          </Button>
         </div>
+
+        <button
+          onClick={handlePrint}
+          className="mt-2 w-full cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-foreground/15 bg-foreground text-background hover:bg-foreground/85 active:bg-foreground/75 h-10 text-sm font-semibold transition-colors"
+        >
+          <Printer className="w-3.5 h-3.5" />
+          Print / Save PDF
+        </button>
       </div>
-
-      <Button onClick={() => {
-        if (activeStepIndex < totalSteps - 1) {
-          setActiveStep(steps[activeStepIndex + 1].id)
-          setIsMobileMyBuildOpen(false)
-        }
-      }} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-12 rounded-xl mb-3 shadow-md shadow-blue-600/20">
-        Continue
-      </Button>
-
-      <Button onClick={handleCheckoutWA} className="w-full bg-[#25D366] hover:bg-[#25D366]/90 text-white font-bold h-12 rounded-xl shadow-md shadow-[#25D366]/20 flex items-center justify-center gap-2">
-        <MessageCircle className="w-4 h-4" />
-        Consult with Expert (WA)
-      </Button>
-      
-      <button onClick={handlePrint} className="w-full mt-4 flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors font-medium">
-        <Printer className="w-4 h-4" />
-        Print / Save PDF
-      </button>
-    </>
+    </div>
   )
 
   return (
@@ -364,7 +417,7 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
             setIsMobileMyBuildOpen(!isMobileMyBuildOpen)
             if (isMobileStepsOpen) setIsMobileStepsOpen(false)
           }}
-          className="rounded-full shadow-[0_0_15px_rgba(0,0,0,0.5)] dark:shadow-[0_0_15px_rgba(255,255,255,0.2)] bg-black hover:bg-black/80 h-12 w-12 p-0 flex items-center justify-center text-white"
+          className="cursor-pointer rounded-full shadow-[0_0_15px_rgba(0,0,0,0.5)] dark:shadow-[0_0_15px_rgba(255,255,255,0.2)] bg-black hover:bg-black/80 active:scale-95 h-12 w-12 p-0 flex items-center justify-center text-white transition-all"
         >
           {isMobileMyBuildOpen ? <XCircle className="h-6 w-6" /> : <SaveIcon size={22} />}
         </Button>
@@ -375,7 +428,7 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
             setIsMobileStepsOpen(!isMobileStepsOpen)
             if (isMobileMyBuildOpen) setIsMobileMyBuildOpen(false)
           }}
-          className="rounded-full shadow-[0_0_15px_rgba(0,0,0,0.5)] dark:shadow-[0_0_15px_rgba(255,255,255,0.2)] bg-black hover:bg-black/80 h-12 w-12 p-0 flex items-center justify-center text-white"
+          className="cursor-pointer rounded-full shadow-[0_0_15px_rgba(0,0,0,0.5)] dark:shadow-[0_0_15px_rgba(255,255,255,0.2)] bg-black hover:bg-black/80 active:scale-95 h-12 w-12 p-0 flex items-center justify-center text-white transition-all"
         >
           {isMobileStepsOpen ? <XCircle className="h-6 w-6" /> : <Stack3Icon size={22} />}
         </Button>
@@ -396,7 +449,9 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: "100%", opacity: 0 }}
             transition={{ type: "spring", bounce: 0, duration: 0.4 }}
-            className="fixed inset-x-0 bottom-0 z-[55] bg-card rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.1)] border-t border-border/50 p-5 max-h-[80vh] overflow-y-auto md:hidden print:hidden"
+            // Sama seperti drawer My Build: panel di dalamnya sudah punya area
+            // scroll sendiri, jadi drawer ini tidak ikut men-scroll.
+            className="fixed inset-x-0 bottom-0 z-[55] bg-card rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.1)] border-t border-border/50 p-5 max-h-[85vh] overflow-hidden md:hidden print:hidden"
           >
             {renderStepsList()}
           </motion.div>
@@ -411,7 +466,10 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: "100%", opacity: 0 }}
             transition={{ type: "spring", bounce: 0, duration: 0.4 }}
-            className="fixed inset-x-0 bottom-0 z-[55] bg-card rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.1)] border-t border-border/50 p-5 max-h-[80vh] overflow-y-auto md:hidden print:hidden"
+            // Panel My Build mengatur scroll-nya sendiri di dalam (daftar item
+            // scroll, ringkasan & tombol tetap terlihat), jadi drawer ini tidak
+            // ikut men-scroll supaya tidak ada dua scrollbar bertumpuk.
+            className="fixed inset-x-0 bottom-0 z-[55] bg-card rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.1)] border-t border-border/50 p-5 max-h-[85vh] overflow-hidden md:hidden print:hidden"
           >
             {renderMyBuildList()}
           </motion.div>
@@ -436,7 +494,9 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
 
       {/* MAIN CONTENT: Products */}
       <div className="flex-1 min-w-0 print:w-full">
-        <div className="mb-6 print:hidden">
+        {/* Judul versi desktop. Di mobile judulnya pindah ke dalam bar
+            mengambang di bawah, supaya tetap terlihat saat menggulir. */}
+        <div className="mb-6 hidden md:block print:hidden">
           <h1 className="text-3xl font-extrabold tracking-tight md:text-4xl">
             {activeStep ? activeStep.name : "Memuat..."}
           </h1>
@@ -463,7 +523,7 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
                 else if (sortMode === "name_desc") setSortMode("default")
                 else setSortMode("name_asc")
               }}
-              className="px-4 h-10 bg-black text-white rounded-xl text-xs font-bold dark:bg-white dark:text-black hover:opacity-80 transition-opacity whitespace-nowrap"
+              className="cursor-pointer px-4 h-10 bg-black text-white rounded-xl text-xs font-bold dark:bg-white dark:text-black hover:opacity-80 active:scale-95 transition-all whitespace-nowrap"
             >
               Sort by Alphabet {sortMode === "name_asc" ? "(A-Z)" : sortMode === "name_desc" ? "(Z-A)" : ""}
             </button>
@@ -473,7 +533,7 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
                 else if (sortMode === "price_desc") setSortMode("default")
                 else setSortMode("price_asc")
               }}
-              className="px-4 h-10 bg-black text-white rounded-xl text-xs font-bold dark:bg-white dark:text-black hover:opacity-80 transition-opacity whitespace-nowrap"
+              className="cursor-pointer px-4 h-10 bg-black text-white rounded-xl text-xs font-bold dark:bg-white dark:text-black hover:opacity-80 active:scale-95 transition-all whitespace-nowrap"
             >
               Sort by Price {sortMode === "price_asc" ? "(Low)" : sortMode === "price_desc" ? "(High)" : ""}
             </button>
@@ -482,12 +542,25 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
 
         {/* MOBILE FLOATING NAVBAR (Pill) FOR SEARCH & SORT */}
         {activeStep && (
-          <div className="md:hidden fixed top-0 left-0 right-0 z-[45] p-4 pointer-events-none">
-            <div className="bg-background/80 backdrop-blur-xl border shadow-lg rounded-2xl p-3 pointer-events-auto flex flex-col gap-3">
+          <div className="md:hidden fixed top-0 left-0 right-0 z-[45] p-3 pointer-events-none">
+            <div className="bg-background/80 backdrop-blur-xl border shadow-lg rounded-2xl p-3 pointer-events-auto flex flex-col gap-2.5">
+              {/* Nama step ikut di dalam bar mengambang. Kalau ditaruh di alur
+                  normal halaman (seperti <h1> versi desktop), bar ini menutupinya
+                  begitu halaman digulir — padahal justru saat menggulir daftar
+                  panjang pengguna perlu tahu sedang memilih komponen apa. */}
+              <div className="flex items-baseline justify-between gap-2">
+                <h1 className="text-base font-extrabold tracking-tight truncate">
+                  {activeStep.name}
+                </h1>
+                <span className="text-[11px] font-semibold text-muted-foreground shrink-0">
+                  {activeStepIndex + 1}/{totalSteps}
+                </span>
+              </div>
+
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  placeholder={`Cari ${activeStep.name}...`} 
+                <Input
+                  placeholder={`Cari ${activeStep.name}...`}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-9 h-9 rounded-xl bg-card border-border/50 text-sm"
@@ -501,7 +574,7 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
                     else setSortMode("name_asc")
                     window.scrollTo({ top: 0, behavior: 'smooth' })
                   }}
-                  className="flex-1 h-8 bg-muted text-foreground rounded-lg text-xs font-semibold hover:bg-muted/80 transition-opacity whitespace-nowrap"
+                  className="cursor-pointer flex-1 h-8 bg-muted text-foreground rounded-lg text-xs font-semibold hover:bg-muted/80 active:scale-95 transition-all whitespace-nowrap"
                 >
                   A-Z {sortMode === "name_asc" ? "↓" : sortMode === "name_desc" ? "↑" : ""}
                 </button>
@@ -511,7 +584,7 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
                     else setSortMode("price_asc")
                     window.scrollTo({ top: 0, behavior: 'smooth' })
                   }}
-                  className="flex-1 h-8 bg-muted text-foreground rounded-lg text-xs font-semibold hover:bg-muted/80 transition-opacity whitespace-nowrap"
+                  className="cursor-pointer flex-1 h-8 bg-muted text-foreground rounded-lg text-xs font-semibold hover:bg-muted/80 active:scale-95 transition-all whitespace-nowrap"
                 >
                   Price {sortMode === "price_asc" ? "↓" : sortMode === "price_desc" ? "↑" : ""}
                 </button>
@@ -520,8 +593,11 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
           </div>
         )}
 
-        {/* Add padding top on mobile to account for the floating navbar */}
-        <div className="md:mt-0 mt-4">
+        {/* Jarak atas di mobile menyesuaikan tinggi bar mengambang (judul +
+            kolom cari + tombol sort) dikurangi `py-8` milik pembungkus halaman,
+            supaya kartu pertama tidak tertutup tapi juga tidak menyisakan
+            celah kosong berlebih. */}
+        <div className="md:mt-0 mt-[112px]">
           {loading ? (
             <div className="flex items-center justify-center py-32">
               <Loader2 className="w-10 h-10 animate-spin text-muted-foreground/30" />
@@ -562,8 +638,8 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
               {hasMore && (
                 <div className="flex justify-center mt-6">
                   <Button 
-                    variant="outline" 
-                    className="rounded-xl px-8 h-12 font-bold hover:bg-accent"
+                    variant="outline"
+                    className="cursor-pointer rounded-xl px-8 h-12 font-bold hover:bg-accent active:scale-95 transition-all"
                     onClick={() => setPage(p => p + 1)}
                     disabled={loadingMore}
                   >
@@ -576,45 +652,6 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
           )}
         </div>
         
-        {/* Print-only layout */}
-        <div className="hidden print:block w-full">
-          <h1 className="text-2xl font-bold mb-4">PC Builder Custom - HNS IT Center</h1>
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b-2 border-black">
-                <th className="py-2">Komponen</th>
-                <th className="py-2">Nama Produk</th>
-                <th className="py-2 text-right">Harga</th>
-              </tr>
-            </thead>
-            <tbody>
-              {steps.map(step => {
-                const stepSels = selections[step.id]
-                if (!Array.isArray(stepSels) || stepSels.length === 0) {
-                  return (
-                    <tr key={step.id} className="border-b border-gray-300">
-                      <td className="py-3 font-semibold">{step.name}</td>
-                      <td className="py-3">-</td>
-                      <td className="py-3 text-right">-</td>
-                    </tr>
-                  )
-                }
-                return stepSels.map((sel, idx) => (
-                  <tr key={`${step.id}-${idx}`} className="border-b border-gray-300">
-                    <td className="py-3 font-semibold">{idx === 0 ? step.name : ""}</td>
-                    <td className="py-3">{sel.product.name} x{sel.quantity}</td>
-                    <td className="py-3 text-right">{formatRupiah(sel.product.price * sel.quantity)}</td>
-                  </tr>
-                ))
-              })}
-              <tr>
-                <td colSpan={2} className="py-4 font-bold text-right text-lg">Total Estimasi:</td>
-                <td className="py-4 font-bold text-right text-lg">{formatRupiah(getTotalPrice())}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
       </div>
 
       {/* RIGHT SIDEBAR: Summary */}
