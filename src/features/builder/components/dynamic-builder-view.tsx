@@ -549,9 +549,9 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
                         toastManager.add({
                           title: "Komponen Ditambahkan",
                           description: `${activeStep?.name} berhasil dipilih`,
-                          variant: "success",
-                          duration: 2000
-                        } as any)
+                          timeout: 2000,
+                          data: { variant: "success" },
+                        })
                       }}
                       onUpdateQuantity={(q) => updateQuantity(activeStep!.id, product.id, q)}
                       displayAttributeIds={configuredAttributeIds}

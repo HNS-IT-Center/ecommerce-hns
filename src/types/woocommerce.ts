@@ -48,6 +48,7 @@ export type Product = {
   categories: Array<{ id: number; name: string; slug: string; primary?: boolean }>;
   brands: Array<{ id: number; name: string; slug: string }>;
   images: Array<ProductImage>;
+  video_url: string | null;
   attributes: Array<ProductAttribute>;
   variations: number[];
   meta_data: Array<{ id: number; key: string; value: unknown }>;
@@ -137,4 +138,7 @@ export type ProductInput = {
   categories?: Array<{ id: number }>;
   attributes?: Array<{ name: string; options: string[]; visible?: boolean }>;
   images?: Array<{ url: string }>;
+  video_url?: string | null;
+  /** Nama brand apa adanya — dicocokkan/di-upsert di server, bukan id. */
+  brand?: string | null;
 };

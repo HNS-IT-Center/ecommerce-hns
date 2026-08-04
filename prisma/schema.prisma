@@ -146,6 +146,11 @@ enum CatalogVisibility {
   HIDDEN
 }
 
+enum BannerDisplayMode {
+  IMAGE_ONLY // Gambar mengisi seluruh slide; tanpa overlay teks / scrim gelap
+  IMAGE_TEXT // Perilaku bawaan: gambar + overlay teks
+}
+
 // --------------------------------------------------------------------------- produk
 
 model Product {
@@ -170,11 +175,21 @@ model Product {
   regularPrice Decimal? @map("regular_price") @db.Decimal(14, 2)
   salePrice    Decimal? @map("sale_price")    @db.Decimal(14, 2)
 
+  // Batas akhir masa obral. NULL = obral tanpa batas waktu.
+  // Kolomnya TIDAK dikosongkan otomatis saat lewat tanggal — nilai obral tetap
+  // tersimpan sebagai riwayat, dan yang mengabaikannya adalah lapisan baca
+  // (prismaProductToWoo + filter onSale). Dengan begitu obral berakhir tepat
+  // pada detik tanggalnya tanpa bergantung pada cron yang bisa saja mati.
+  saleEndDate DateTime? @map("sale_end_date")
+
   stockStatus  StockStatus? @map("stock_status")
   stockQty     Int?         @map("stock_qty")
   backordersAllowed Boolean? @map("backorders_allowed")
   soldIndividually  Boolean? @map("sold_individually")
   reviewsAllowed    Boolean? @map("reviews_allowed")
+
+  // Satu video per produk — link eksternal (YouTube/Vimeo/mp4) atau URL R2 hasil upload.
+  videoUrl String? @map("video_url") @db.VarChar(1000)
 
   featured  Boolean @default(false)
   viewCount Int     @default(0) @map("view_count")
@@ -205,6 +220,48 @@ model Product {
   @@index([status, type])
   @@fulltext([name])
   @@map("products")
+}
+
+// --------------------------------------------------------------------------- banner promo
+
+/**
+ * Slide hero di beranda.
+ *
+ * Sebelumnya berupa array yang ditulis langsung di dalam
+ * features/home/components/hero-carousel.tsx, sehingga mengganti promo mingguan
+ * berarti menyunting kode dan menunggu deploy.
+ *
+ * `startsAt`/`endsAt` TIDAK ditegakkan lewat cron. Sama seperti masa berlaku
+ * harga obral, jadwalnya dihitung saat dibaca (lihat lib/api/banners.ts) supaya
+ * promo mulai dan berhenti tepat waktu tanpa bergantung pada job yang bisa mati.
+ */
+model PromoBanner {
+  id String @id @default(uuid())
+
+  tag      String? @db.VarChar(100)
+  title    String  @db.VarChar(255)
+  subtitle String? @db.VarChar(500)
+
+  ctaLabel String? @map("cta_label") @db.VarChar(100)
+  ctaHref  String? @map("cta_href")  @db.VarChar(1000)
+
+  /// Gambar latar opsional. Kalau kosong, slide memakai warna solid `bgClass`.
+  imageUrl String? @map("image_url") @db.VarChar(1000)
+  bgClass  String  @default("bg-primary") @map("bg_class") @db.VarChar(100)
+
+  displayMode BannerDisplayMode @default(IMAGE_TEXT) @map("display_mode")
+
+  sortOrder Int     @default(0) @map("sort_order")
+  isActive  Boolean @default(true) @map("is_active")
+
+  startsAt DateTime? @map("starts_at")
+  endsAt   DateTime? @map("ends_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive, sortOrder])
+  @@map("promo_banners")
 }
 
 // --------------------------------------------------------------------------- kategori

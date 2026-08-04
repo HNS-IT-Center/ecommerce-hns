@@ -25,3 +25,38 @@ export function getStockStatus(product: WooProduct): "instock" | "lowstock" | "o
   if (product.stock_quantity !== null && product.stock_quantity <= 5) return "lowstock";
   return "instock";
 }
+
+export type VideoEmbed = { kind: "iframe"; src: string } | { kind: "file"; src: string };
+
+/**
+ * Video produk bisa berupa link YouTube/Vimeo (butuh <iframe> embed) atau
+ * file langsung hasil upload ke R2 (bisa diputar lewat <video> biasa).
+ * Deteksi dari host URL-nya, bukan dari field terpisah — form admin cuma
+ * menyimpan satu URL video apapun sumbernya.
+ */
+export function getVideoEmbed(url: string): VideoEmbed | null {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, "");
+
+    if (host === "youtube.com" || host === "m.youtube.com") {
+      const videoId = parsed.searchParams.get("v");
+      if (videoId) return { kind: "iframe", src: `https://www.youtube.com/embed/${videoId}` };
+      return null;
+    }
+    if (host === "youtu.be") {
+      const videoId = parsed.pathname.slice(1);
+      if (videoId) return { kind: "iframe", src: `https://www.youtube.com/embed/${videoId}` };
+      return null;
+    }
+    if (host === "vimeo.com") {
+      const videoId = parsed.pathname.slice(1);
+      if (videoId) return { kind: "iframe", src: `https://player.vimeo.com/video/${videoId}` };
+      return null;
+    }
+
+    return { kind: "file", src: url };
+  } catch {
+    return null;
+  }
+}

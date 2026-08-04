@@ -1,44 +1,80 @@
 "use client"
 
-import { useState } from "react"
-import { useForm, useFieldArray, Controller } from "react-hook-form"
+import { useState, useTransition } from "react"
+import { useForm, useFieldArray } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { Loader2, Plus, Trash2, X } from "lucide-react"
+import {
+  Loader2,
+  Plus,
+  X,
+  PackageSearch,
+  Wallet,
+  FolderTree,
+  Layers,
+  CheckCircle2,
+  XCircle,
+  TriangleAlert,
+} from "lucide-react"
 import { useRouter } from "next/navigation"
 
 import { productFormSchema, type ProductFormValues } from "@/lib/validators/product"
-import type { ProductCategory } from "@/types/woocommerce"
+import type { ProductCategory, ProductAttributeTaxonomy } from "@/types/woocommerce"
 import { CategoryPicker } from "./category-picker"
+import { AttributeRow } from "./attribute-row"
 import { type BulkProductRow } from "./product-data-table"
-import { formatRupiah, parseRupiah } from "@/lib/utils"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Button } from "@/components/ui/button"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { RupiahInput } from "@/components/ui/rupiah-input"
+import { cn } from "@/lib/utils"
 
-const inputClass =
-  "w-full rounded-xl border border-input bg-muted/50 px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:bg-background"
-const labelClass = "mb-1 block text-sm font-semibold"
+/** Disamakan dengan formulir produk penuh — lihat produk-form.tsx. */
+const FIELD_TEXT = "text-xs md:text-xs"
+
+const STATUS_OPTIONS = [
+  { value: "publish", label: "Publish", color: "text-success" },
+  { value: "draft", label: "Draft", color: "text-muted-foreground" },
+  { value: "private", label: "Private", color: "text-info" },
+] as const
 
 type QuickEditModalProps = {
   product: BulkProductRow
   categories: ProductCategory[]
+  attributeOptions: ProductAttributeTaxonomy[]
   onClose: () => void
 }
 
-function formatPriceInput(value: string | number) {
-  const parsed = parseRupiah(String(value))
-  if (parsed === 0 && !String(value).includes("0")) return ""
-  return formatRupiah(parsed)
+function SectionHeading({
+  icon: Icon,
+  title,
+  accent,
+}: {
+  icon: React.ElementType
+  title: string
+  accent: string
+}) {
+  return (
+    <div className="mb-3 flex items-center gap-2 text-[13px] font-semibold">
+      <span className={cn("flex h-6 w-6 items-center justify-center rounded-md", accent)}>
+        <Icon className="h-3.5 w-3.5" />
+      </span>
+      {title}
+    </div>
+  )
 }
 
-export function QuickEditModal({ product, categories, onClose }: QuickEditModalProps) {
+export function QuickEditModal({
+  product,
+  categories,
+  attributeOptions,
+  onClose,
+}: QuickEditModalProps) {
   const router = useRouter()
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
 
-  // Derive initial stock mode
-  let initialStockMode: "instock" | "outofstock" | "manage" = "instock"
-  if (product.rawProduct?.manage_stock) {
-    initialStockMode = "manage"
-  } else if (product.rawProduct?.stock_status === "outofstock") {
-    initialStockMode = "outofstock"
-  }
+  const raw = product.rawProduct
 
   const {
     register,
@@ -51,47 +87,55 @@ export function QuickEditModal({ product, categories, onClose }: QuickEditModalP
     resolver: zodResolver(productFormSchema),
     defaultValues: {
       name: product.name,
-      description: product.rawProduct?.description || "",
-      shortDescription: product.rawProduct?.short_description || "",
-      regularPrice: product.rawProduct?.regular_price || String(product.price || ""),
-      salePrice: product.rawProduct?.sale_price || "",
-      salePriceDateEnd: product.rawProduct?.date_on_sale_to_gmt ? product.rawProduct.date_on_sale_to_gmt.split("T")[0] : "",
-      manageStock: product.rawProduct?.manage_stock || false,
-      stockStatus: (product.rawProduct?.stock_status as any) || "instock",
-      stockQuantity: product.rawProduct?.stock_quantity || 0,
-      status: (product.status === "publish" || product.status === "private" ? product.status : "draft") as "publish" | "draft" | "private",
-      categoryIds: product.rawProduct?.categories?.map((c: { id: number }) => c.id) || [],
-      attributes: product.rawProduct?.attributes?.map((attr: { name: string, options: string[] }) => ({
+      description: raw?.description || "",
+      shortDescription: raw?.short_description || "",
+      regularPrice: raw?.regular_price || String(product.price || ""),
+      salePrice: raw?.sale_price || "",
+      salePriceDateEnd: raw?.date_on_sale_to_gmt ? raw.date_on_sale_to_gmt.split("T")[0] : "",
+      manageStock: false,
+      // Quick Edit kini memakai dua keadaan yang sama dengan formulir penuh
+      // (Tersedia / Stok Habis) — sebelumnya ada mode ketiga "Isi Jumlah Stok"
+      // yang membingungkan, padahal jumlah stok cuma pelengkap dari "Tersedia".
+      stockStatus: raw?.stock_status === "outofstock" ? "outofstock" : "instock",
+      stockQuantity: raw?.stock_quantity ?? undefined,
+      status:
+        product.status === "publish" || product.status === "private" ? product.status : "draft",
+      categoryIds: raw?.categories?.map((c) => c.id) ?? [],
+      attributes: (raw?.attributes ?? []).map((attr) => ({
         name: attr.name,
         value: attr.options[0] || "",
-      })) || [],
+      })),
       imageIds: [],
+      videoUrl: raw?.video_url ?? "",
+      brand: raw?.brands?.[0]?.name ?? "",
     },
   })
 
   const { fields, append, remove } = useFieldArray({ control, name: "attributes" })
   const selectedCategoryIds = watch("categoryIds")
-  const currentStatus = watch("status")
-
-  const [stockMode, setStockMode] = useState<"instock" | "outofstock" | "manage">(initialStockMode)
+  const status = watch("status")
+  const stockStatus = watch("stockStatus")
+  const regularPrice = watch("regularPrice") ?? ""
+  const salePrice = watch("salePrice") ?? ""
 
   async function onSubmit(values: ProductFormValues) {
     setSubmitError(null)
-
-    // Parse the display prices back to raw numeric strings for the API
-    const rawRegularPrice = String(parseRupiah(values.regularPrice))
-    const rawSalePrice = values.salePrice ? String(parseRupiah(values.salePrice)) : ""
 
     const payload = {
       id: product.id,
       name: values.name,
       status: values.status,
-      regular_price: rawRegularPrice,
-      sale_price: rawSalePrice,
-      date_on_sale_to_gmt: values.salePriceDateEnd || "",
-      manage_stock: stockMode === "manage",
-      stock_status: stockMode === "manage" ? undefined : (stockMode === "outofstock" ? "outofstock" : "instock"),
-      stock_quantity: stockMode === "manage" ? values.stockQuantity : undefined,
+      regular_price: values.regularPrice,
+      sale_price: values.salePrice || "",
+      // Diakhiri pada penghujung hari yang dipilih supaya obral masih berlaku
+      // sepanjang tanggal itu — sama seperti di formulir produk penuh.
+      date_on_sale_to_gmt:
+        values.salePrice && values.salePriceDateEnd
+          ? new Date(`${values.salePriceDateEnd}T23:59:59`).toISOString()
+          : "",
+      manage_stock: values.stockStatus === "instock" && values.stockQuantity !== undefined,
+      stock_status: values.stockStatus,
+      stock_quantity: values.stockStatus === "instock" ? values.stockQuantity : 0,
       categories: values.categoryIds.map((id) => ({ id })),
       attributes: values.attributes.map((attr) => ({
         name: attr.name,
@@ -109,238 +153,310 @@ export function QuickEditModal({ product, categories, onClose }: QuickEditModalP
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Gagal menyimpan produk")
 
-      router.refresh()
-      onClose()
+      startTransition(() => {
+        router.refresh()
+        onClose()
+      })
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Gagal menyimpan produk")
     }
   }
 
+  const isBusy = isSubmitting || isPending
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
       <div className="flex max-h-full w-full max-w-4xl flex-col rounded-2xl border border-border bg-background shadow-2xl">
-        <div className="flex items-center justify-between border-b border-border p-4">
-          <h2 className="text-lg font-bold">Quick Edit Produk</h2>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-2 hover:bg-muted"
-            aria-label="Tutup"
-          >
-            <X className="h-5 w-5" />
-          </button>
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <div>
+            <h2 className="text-base font-bold">Quick Edit Produk</h2>
+            <p className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground">{product.name}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+              Batal
+            </Button>
+            <Button type="submit" form="quick-edit-form" disabled={isBusy} className="gap-2">
+              {isBusy && <Loader2 className="h-4 w-4 animate-spin" />}
+              Simpan
+            </Button>
+            <button
+              onClick={onClose}
+              className="rounded-lg p-2 hover:bg-muted"
+              aria-label="Tutup"
+              type="button"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-auto p-4 md:p-6">
           <form id="quick-edit-form" onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             {submitError && (
-              <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-xs text-destructive">
+                <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
                 {submitError}
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              
-              <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+              <div className="space-y-5">
                 <div>
-                  <label className={labelClass} htmlFor="name">
-                    Nama Produk
-                  </label>
-                  <input id="name" {...register("name")} className={inputClass} />
-                  {errors.name && <p className="mt-1 text-xs text-destructive">{errors.name.message}</p>}
-                </div>
-
-                <div>
-                  <p className={labelClass}>Status</p>
-                  <div className="flex gap-4">
-                    {(["publish", "draft", "private"] as const).map((status) => (
-                      <label key={status} className="flex items-center gap-2 text-sm">
-                        <input
-                          type="radio"
-                          value={status}
-                          checked={currentStatus === status}
-                          {...register("status")}
-                          className="h-4 w-4 text-primary"
-                        />
-                        <span className="capitalize">{status}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className={labelClass} htmlFor="regularPrice">
-                      Harga Normal
-                    </label>
-                    <Controller
-                      name="regularPrice"
-                      control={control}
-                      render={({ field }) => (
-                        <input
-                          id="regularPrice"
-                          value={field.value ? formatPriceInput(field.value) : ""}
-                          onChange={(e) => field.onChange(e.target.value)}
-                          className={inputClass}
-                          placeholder="Rp 0"
-                        />
-                      )}
-                    />
-                    {errors.regularPrice && (
-                      <p className="mt-1 text-xs text-destructive">{errors.regularPrice.message}</p>
-                    )}
-                  </div>
-                  <div>
-                    <label className={labelClass} htmlFor="salePrice">
-                      Harga Obral
-                    </label>
-                    <Controller
-                      name="salePrice"
-                      control={control}
-                      render={({ field }) => (
-                        <input
-                          id="salePrice"
-                          value={field.value ? formatPriceInput(field.value) : ""}
-                          onChange={(e) => field.onChange(e.target.value)}
-                          className={inputClass}
-                          placeholder="Rp 0"
-                        />
-                      )}
-                    />
-                  </div>
-                </div>
-                
-                <div>
-                  <label className={labelClass} htmlFor="salePriceDateEnd">
-                    Batas Akhir Obral (Opsional)
-                  </label>
-                  <input 
-                    id="salePriceDateEnd" 
-                    type="date"
-                    {...register("salePriceDateEnd")} 
-                    className={inputClass} 
+                  <SectionHeading
+                    icon={PackageSearch}
+                    title="Informasi Dasar"
+                    accent="bg-primary/10 text-primary"
                   />
-                  <p className="text-xs text-muted-foreground mt-1">Setelah tanggal ini, harga akan kembali ke Harga Normal secara otomatis.</p>
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="qe-name" className="mb-1.5">
+                        Nama Produk
+                      </Label>
+                      <textarea
+                        id="qe-name"
+                        rows={2}
+                        {...register("name", {
+                          setValueAs: (v: unknown) =>
+                            String(v ?? "").replace(/\s*\n+\s*/g, " ").trim(),
+                        })}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") e.preventDefault()
+                        }}
+                        className="w-full resize-none rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                      />
+                      {errors.name && (
+                        <p className="mt-1 text-[11px] text-destructive">{errors.name.message}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <Label className="mb-2">Status</Label>
+                      <RadioGroup
+                        value={status}
+                        onValueChange={(val) =>
+                          setValue("status", val as ProductFormValues["status"], {
+                            shouldDirty: true,
+                          })
+                        }
+                        className="flex flex-row gap-2"
+                      >
+                        {STATUS_OPTIONS.map((opt) => (
+                          <label
+                            key={opt.value}
+                            className={cn(
+                              "flex flex-1 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 transition-colors",
+                              status === opt.value
+                                ? "border-primary bg-primary/5"
+                                : "border-input hover:bg-muted/40"
+                            )}
+                          >
+                            <RadioGroupItem value={opt.value} />
+                            <span
+                              className={cn(
+                                "text-xs font-semibold",
+                                status === opt.value && opt.color
+                              )}
+                            >
+                              {opt.label}
+                            </span>
+                          </label>
+                        ))}
+                      </RadioGroup>
+                    </div>
+                  </div>
                 </div>
 
                 <div>
-                  <p className={labelClass}>Status Stok</p>
-                  <div className="flex flex-col gap-2">
-                    <select
-                      value={stockMode}
-                      onChange={(e) => setStockMode(e.target.value as any)}
-                      className={inputClass}
-                    >
-                      <option value="instock">Tersedia (In Stock)</option>
-                      <option value="outofstock">Kosong (Out of Stock)</option>
-                      <option value="manage">Isi Jumlah Stok</option>
-                    </select>
-                    
-                    {stockMode === "manage" && (
-                      <div className="mt-2">
-                        <label className="mb-1 block text-xs font-semibold" htmlFor="stockQuantity">
-                          Jumlah Stok Saat Ini
-                        </label>
-                        <input
-                          id="stockQuantity"
-                          type="text"
-                          pattern="[0-9]*"
-                          inputMode="numeric"
-                          {...register("stockQuantity", { valueAsNumber: true })}
-                          className={inputClass}
-                          placeholder="0"
+                  <SectionHeading
+                    icon={Wallet}
+                    title="Harga & Stok"
+                    accent="bg-success/10 text-success"
+                  />
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label htmlFor="qe-regularPrice" className="mb-1.5">
+                          Harga Normal
+                        </Label>
+                        <RupiahInput
+                          id="qe-regularPrice"
+                          className={FIELD_TEXT}
+                          value={regularPrice}
+                          onValueChange={(v) =>
+                            setValue("regularPrice", v, { shouldDirty: true, shouldValidate: true })
+                          }
+                        />
+                        {errors.regularPrice && (
+                          <p className="mt-1 text-[11px] text-destructive">
+                            {errors.regularPrice.message}
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <Label htmlFor="qe-salePrice" className="mb-1.5">
+                          Harga Obral
+                        </Label>
+                        <RupiahInput
+                          id="qe-salePrice"
+                          className={FIELD_TEXT}
+                          value={salePrice}
+                          onValueChange={(v) => setValue("salePrice", v, { shouldDirty: true })}
                         />
                       </div>
-                    )}
+                    </div>
+
+                    <div>
+                      <Label htmlFor="qe-salePriceDateEnd" className="mb-1.5">
+                        Obral Berlaku Sampai (opsional)
+                      </Label>
+                      <Input
+                        id="qe-salePriceDateEnd"
+                        type="date"
+                        disabled={!salePrice}
+                        className={cn(FIELD_TEXT, "w-full sm:w-56")}
+                        {...register("salePriceDateEnd")}
+                      />
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {salePrice
+                          ? "Lewat tanggal ini harga otomatis kembali ke Harga Normal."
+                          : "Isi Harga Obral dulu untuk mengatur batas waktunya."}
+                      </p>
+                    </div>
+
+                    <div>
+                      <Label className="mb-2">Ketersediaan Stok</Label>
+                      <RadioGroup
+                        value={stockStatus}
+                        onValueChange={(val) =>
+                          setValue("stockStatus", val as ProductFormValues["stockStatus"], {
+                            shouldDirty: true,
+                          })
+                        }
+                        className="flex flex-row gap-2"
+                      >
+                        <label
+                          className={cn(
+                            "flex flex-1 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 transition-colors",
+                            stockStatus === "instock"
+                              ? "border-success bg-success/5"
+                              : "border-input hover:bg-muted/40"
+                          )}
+                        >
+                          <RadioGroupItem value="instock" />
+                          <CheckCircle2
+                            className={cn(
+                              "h-3.5 w-3.5",
+                              stockStatus === "instock" ? "text-success" : "text-muted-foreground"
+                            )}
+                          />
+                          <span className="text-xs font-semibold">Tersedia</span>
+                        </label>
+                        <label
+                          className={cn(
+                            "flex flex-1 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 transition-colors",
+                            stockStatus === "outofstock"
+                              ? "border-destructive bg-destructive/5"
+                              : "border-input hover:bg-muted/40"
+                          )}
+                        >
+                          <RadioGroupItem value="outofstock" />
+                          <XCircle
+                            className={cn(
+                              "h-3.5 w-3.5",
+                              stockStatus === "outofstock"
+                                ? "text-destructive"
+                                : "text-muted-foreground"
+                            )}
+                          />
+                          <span className="text-xs font-semibold">Stok Habis</span>
+                        </label>
+                      </RadioGroup>
+
+                      {stockStatus === "instock" && (
+                        <div className="mt-2.5">
+                          <Label htmlFor="qe-stockQuantity" className="mb-1.5">
+                            Jumlah Stok (opsional)
+                          </Label>
+                          <Input
+                            id="qe-stockQuantity"
+                            type="number"
+                            className={FIELD_TEXT}
+                            placeholder="Kosongkan jika tidak dilacak per jumlah"
+                            {...register("stockQuantity", {
+                              setValueAs: (v) => (v === "" || v === null ? undefined : Number(v)),
+                            })}
+                            onWheel={(e) => e.currentTarget.blur()}
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <div>
-                  <p className={labelClass}>Kategori</p>
+                  <SectionHeading
+                    icon={FolderTree}
+                    title="Kategori"
+                    accent="bg-warning/10 text-warning"
+                  />
                   {errors.categoryIds && (
-                    <p className="mb-1 text-xs text-destructive">{errors.categoryIds.message}</p>
+                    <p className="mb-1 text-[11px] text-destructive">{errors.categoryIds.message}</p>
                   )}
-                  <div className="max-h-[400px] overflow-y-auto rounded-xl border border-border p-2">
-                    <CategoryPicker
-                      categories={categories}
-                      value={selectedCategoryIds ?? []}
-                      onChange={(ids) => setValue("categoryIds", ids, { shouldValidate: true })}
-                    />
-                  </div>
+                  <CategoryPicker
+                    categories={categories}
+                    value={selectedCategoryIds ?? []}
+                    onChange={(ids) =>
+                      setValue("categoryIds", ids, { shouldValidate: true, shouldDirty: true })
+                    }
+                  />
                 </div>
 
                 <div>
-                  <div className="flex items-center justify-between">
-                    <p className={labelClass}>Spesifikasi / Atribut</p>
-                    <button
+                  <div className="mb-3 flex items-center justify-between">
+                    <SectionHeading
+                      icon={Layers}
+                      title="Spesifikasi / Atribut"
+                      accent="bg-info/10 text-info"
+                    />
+                    <Button
                       type="button"
+                      variant="outline"
+                      size="sm"
                       onClick={() => append({ name: "", value: "" })}
-                      className="flex items-center gap-1 text-sm font-semibold text-brand-green hover:underline"
                     >
-                      <Plus className="h-4 w-4" />
-                      Tambah Atribut
-                    </button>
+                      <Plus className="h-3.5 w-3.5" />
+                      Tambah
+                    </Button>
                   </div>
-                  <div className="space-y-2 mt-2">
-                    {fields.map((field, index) => (
-                      <div key={field.id} className="flex flex-col gap-2 rounded-xl border border-border p-3 bg-muted/10">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-semibold text-muted-foreground">Atribut #{index + 1}</span>
-                          <button
-                            type="button"
-                            onClick={() => remove(index)}
-                            className="rounded p-1 text-destructive hover:bg-destructive/10"
-                            aria-label="Hapus atribut"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <input
-                            {...register(`attributes.${index}.name`)}
-                            placeholder="Nama (mis. Warna)"
-                            className={inputClass}
-                          />
-                          <input
-                            {...register(`attributes.${index}.value`)}
-                            placeholder="Nilai (mis. Hitam)"
-                            className={inputClass}
-                          />
-                        </div>
-                      </div>
-                    ))}
+                  <div className="space-y-2">
                     {fields.length === 0 && (
-                      <p className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-xl border border-border border-dashed text-center">
+                      <p className="rounded-xl border border-dashed border-input px-3 py-3 text-center text-xs text-muted-foreground">
                         Belum ada atribut khusus untuk produk ini.
                       </p>
                     )}
+                    {fields.map((field, index) => (
+                      <AttributeRow
+                        key={field.id}
+                        name={watch(`attributes.${index}.name`) ?? ""}
+                        value={watch(`attributes.${index}.value`) ?? ""}
+                        onNameChange={(v) =>
+                          setValue(`attributes.${index}.name`, v, { shouldDirty: true })
+                        }
+                        onValueChange={(v) =>
+                          setValue(`attributes.${index}.value`, v, { shouldDirty: true })
+                        }
+                        onRemove={() => remove(index)}
+                        attributeOptions={attributeOptions}
+                      />
+                    ))}
                   </div>
                 </div>
               </div>
             </div>
-            
           </form>
-        </div>
-
-        <div className="flex items-center justify-end gap-3 border-t border-border p-4 bg-muted/20 rounded-b-2xl">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl px-4 py-2 text-sm font-semibold hover:bg-muted"
-          >
-            Batal
-          </button>
-          <button
-            type="submit"
-            form="quick-edit-form"
-            disabled={isSubmitting}
-            className="flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
-          >
-            {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            Simpan
-          </button>
         </div>
       </div>
     </div>

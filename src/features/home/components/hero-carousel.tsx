@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react"
 
 import {
@@ -11,28 +12,23 @@ import {
   type CarouselApi,
 } from "@/components/ui/carousel"
 
-const slides = [
-  {
-    id: 1,
-    tag: "PROMO MINGGU INI",
-    title: "Garansi Resmi 2 Tahun",
-    subtitle: "Semua produk laptop & komponen bergaransi",
-    cta: "Cek Katalog",
-    href: "/shop",
-    bgClass: "bg-brand-green",
-  },
-  {
-    id: 2,
-    tag: "NEW ARRIVAL",
-    title: "Build PC Custom Impianmu",
-    subtitle: "Konsultasi gratis dengan teknisi berpengalaman",
-    cta: "Mulai Rakit",
-    href: "/build-pc",
-    bgClass: "bg-primary",
-  },
-]
+export type HeroSlide = {
+  id: string
+  tag: string | null
+  title: string
+  subtitle: string | null
+  cta: string | null
+  href: string | null
+  imageUrl: string | null
+  bgClass: string
+  displayMode: "IMAGE_ONLY" | "IMAGE_TEXT"
+}
 
-export function HeroCarousel() {
+/**
+ * Slide-nya datang dari database (dikelola lewat /admin/banner), bukan lagi
+ * ditulis di berkas ini — mengganti promo mingguan tidak lagi menuntut deploy.
+ */
+export function HeroCarousel({ slides }: { slides: HeroSlide[] }) {
   const [api, setApi] = React.useState<CarouselApi>()
   const [current, setCurrent] = React.useState(0)
   // Number of dots is fixed by our slides, so derive it instead of storing it.
@@ -61,6 +57,10 @@ export function HeroCarousel() {
     return () => clearInterval(interval)
   }, [api])
 
+  // Tanpa banner aktif, seluruh blok disembunyikan — carousel kosong setinggi
+  // 400px di puncak beranda jauh lebih buruk daripada tidak ada sama sekali.
+  if (slides.length === 0) return null
+
   return (
     <div className="relative w-full max-w-7xl mx-auto px-4 md:px-6 mt-6">
       <Carousel setApi={setApi} className="w-full" opts={{ loop: true }}>
@@ -68,28 +68,52 @@ export function HeroCarousel() {
           {slides.map((slide) => (
             <CarouselItem key={slide.id}>
               <div
-                className={`relative flex h-[300px] sm:h-[350px] md:h-[400px] w-full flex-col justify-center rounded-3xl ${slide.bgClass} p-8 md:p-16 text-white shadow-xl overflow-hidden`}
+                className={`relative flex aspect-[2/1] w-full flex-col justify-center rounded-3xl ${slide.bgClass} p-8 md:p-16 text-white shadow-xl overflow-hidden`}
               >
-                {/* Decorative Background Pattern (Optional) */}
-                <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white via-transparent to-transparent" />
-                
-                <div className="relative z-10 max-w-2xl space-y-4">
-                  <span className="inline-block rounded-full bg-white/20 px-3 py-1 text-xs font-semibold tracking-wider backdrop-blur-sm">
-                    {slide.tag}
-                  </span>
-                  <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl md:text-5xl lg:text-6xl text-balance">
-                    {slide.title}
-                  </h2>
-                  <p className="text-sm md:text-lg text-white/90">
-                    {slide.subtitle}
-                  </p>
-                  <div className="pt-4">
-                    <Link href={slide.href} className="inline-flex h-10 items-center justify-center rounded-full bg-secondary px-8 text-sm font-bold text-brand-green shadow-sm transition-colors hover:bg-white/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50">
-                      {slide.cta}
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Link>
+                {slide.imageUrl ? (
+                  <>
+                    <Image
+                      src={slide.imageUrl}
+                      alt=""
+                      fill
+                      priority
+                      sizes="(max-width: 1280px) 100vw, 1280px"
+                      className="object-cover"
+                    />
+                    {/* Scrim gelap hanya untuk mode IMAGE_TEXT agar teks terbaca */}
+                    {slide.displayMode === "IMAGE_TEXT" && (
+                      <div className="absolute inset-0 bg-black/45" />
+                    )}
+                  </>
+                ) : (
+                  <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white via-transparent to-transparent" />
+                )}
+
+                {slide.displayMode === "IMAGE_TEXT" && (
+                  <div className="relative z-10 max-w-2xl space-y-4">
+                    {slide.tag && (
+                      <span className="inline-block rounded-full bg-white/20 px-3 py-1 text-xs font-semibold tracking-wider backdrop-blur-sm">
+                        {slide.tag}
+                      </span>
+                    )}
+                    <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl md:text-5xl lg:text-6xl text-balance">
+                      {slide.title}
+                    </h2>
+                    {slide.subtitle && (
+                      <p className="text-sm md:text-lg text-white/90">
+                        {slide.subtitle}
+                      </p>
+                    )}
+                    {slide.cta && slide.href && (
+                      <div className="pt-4">
+                        <Link href={slide.href} className="inline-flex h-10 items-center justify-center rounded-full bg-secondary px-8 text-sm font-bold text-brand-green shadow-sm transition-colors hover:bg-white/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50">
+                          {slide.cta}
+                          <ArrowRight className="ml-2 h-4 w-4" />
+                        </Link>
+                      </div>
+                    )}
                   </div>
-                </div>
+                )}
               </div>
             </CarouselItem>
           ))}

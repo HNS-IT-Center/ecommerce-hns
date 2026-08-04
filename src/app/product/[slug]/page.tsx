@@ -112,6 +112,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
             {/* Left: Gallery */}
             <ProductGallery
               images={product.images?.map((img) => ({ src: img.src, alt: img.alt || product.name })) || []}
+              videoUrl={product.video_url}
             />
 
             {/* Right: Product Info */}

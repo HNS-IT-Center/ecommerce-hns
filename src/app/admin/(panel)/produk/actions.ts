@@ -131,7 +131,7 @@ export async function deleteProductAction(id: number) {
   }
 }
 
-export async function updateProductPriceAction(id: number, newPrice: number) {
+export async function updateProductPriceAction(id: number, regularPrice: number, salePrice?: number | null) {
   try {
     const authUser = await requireAuth()
     const userName = (authUser && typeof authUser === 'object' && 'name' in authUser) ? String(authUser.name) : "Admin"
@@ -140,9 +140,15 @@ export async function updateProductPriceAction(id: number, newPrice: number) {
     const product = await prisma.product.findUnique({ where: { wooId: id } })
     if (!product) throw new Error("Produk tidak ditemukan")
     
-    const oldPrice = product.regularPrice?.toNumber() || 0
+    const oldRegular = product.regularPrice?.toNumber() || 0
+    const oldSale = product.salePrice?.toNumber() || 0
     
-    await updateProduct(id, { regular_price: String(newPrice) })
+    const updatePayload: any = { regular_price: String(regularPrice) }
+    if (salePrice !== undefined) {
+      updatePayload.sale_price = salePrice === null ? "" : String(salePrice)
+    }
+
+    await updateProduct(id, updatePayload)
     
     await prisma.productLog.create({
       data: {
@@ -150,9 +156,9 @@ export async function updateProductPriceAction(id: number, newPrice: number) {
         productId: product.wooId,
         productName: product.name,
         action: "UPDATE_PRICE",
-        fieldAffected: "regular_price",
-        oldValue: String(oldPrice),
-        newValue: String(newPrice),
+        fieldAffected: "price",
+        oldValue: `Regular: ${oldRegular}, Sale: ${oldSale}`,
+        newValue: `Regular: ${regularPrice}, Sale: ${salePrice !== undefined ? (salePrice || 0) : oldSale}`,
       }
     })
     

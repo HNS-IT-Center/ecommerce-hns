@@ -17,12 +17,26 @@ export function Toaster() {
   const { toasts } = useToastManager()
   const pathname = usePathname()
   const isBuildPc = pathname?.startsWith("/build-pc")
+  // Panel admin menaruh notifikasi di kiri atas: sudut kanan bawah di sana
+  // ditempati tombol WhatsApp mengambang dan dock mobile, yang menutupi toast
+  // tepat saat aksi AI selesai.
+  const isAdmin = pathname?.startsWith("/admin")
+
+  const viewportClassName = isAdmin
+    ? "!top-4 !left-4 !right-auto !bottom-auto sm:!top-6 sm:!left-6 sm:!right-auto sm:!bottom-auto"
+    : isBuildPc
+      ? "!top-[140px] !bottom-auto md:!top-auto md:!bottom-4"
+      : ""
 
   return (
     <ToastPortal>
-      <ToastViewport className={isBuildPc ? "!top-[140px] !bottom-auto md:!top-auto md:!bottom-4" : ""}>
-        {toasts.map((toast: any) => {
-          const isSuccess = toast.variant === 'success';
+      <ToastViewport className={viewportClassName}>
+        {toasts.map((toast) => {
+          // Varian dibawa lewat `data` (payload bebas milik base-ui), bukan
+          // sebagai prop tingkat atas — base-ui tidak punya field `variant`,
+          // jadi menaruhnya di sana dulu hanya bisa lolos typecheck dengan
+          // `as any` di setiap pemanggil.
+          const isSuccess = toast.data?.variant === "success"
           return (
           <ToastRoot 
             key={toast.id} 

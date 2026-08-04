@@ -1,6 +1,10 @@
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
 import { env } from "@/config/env"
 
+// Pembeda unggahan yang jatuh pada milidetik yang sama — lihat catatan di
+// `uploadMedia`.
+let uploadCounter = 0
+
 export class R2UploadError extends Error {
   constructor(message: string) {
     super(message)
@@ -84,11 +88,17 @@ export async function uploadMedia(file: File): Promise<{ id: number; source_url:
   try {
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
-    
-    // Create a unique filename
+
+    // Date.now() saja TIDAK cukup unik: mengunggah beberapa gambar sekaligus
+    // (Promise.all dari form admin) menyelesaikan beberapa berkas dalam
+    // milidetik yang sama, sehingga dua unggahan mendapat id — dan nama berkas —
+    // yang identik. Akibatnya berkas pertama tertimpa di R2 dan React melihat
+    // dua elemen dengan key yang sama, yang membuat kartu gambar saling
+    // menumpuk di pengurut. Penghitung dalam proses menutup celah itu.
     const timestamp = Date.now()
+    const uniqueId = timestamp * 1000 + (uploadCounter++ % 1000)
     const safeName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "").toLowerCase()
-    const key = `products/${timestamp}-${safeName}`
+    const key = `products/${uniqueId}-${safeName}`
     
     const command = new PutObjectCommand({
       Bucket: config.bucket,
@@ -106,7 +116,7 @@ export async function uploadMedia(file: File): Promise<{ id: number; source_url:
     const source_url = `${publicBase}/${key}`
     
     return {
-      id: timestamp, // Synthetic ID for React keys and local state management
+      id: uniqueId, // Synthetic ID for React keys and local state management
       source_url,
       alt: file.name,
     }

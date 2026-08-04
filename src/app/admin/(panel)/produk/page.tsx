@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react"
-import { getProductsPaginated } from "@/lib/api/woocommerce/products"
+import { getProductsPaginated, getProductAttributes } from "@/lib/api/woocommerce/products"
 import { getCategoriesForAdmin } from "@/lib/api/woocommerce/categories"
 import { ProductDataTable } from "./product-data-table"
 
@@ -23,17 +23,18 @@ export default async function AdminProdukPage({ searchParams }: Props) {
     apiStockStatus = "outofstock"
   }
 
-  const [{ products, totalPages }, categories] = await Promise.all([
+  const [{ products, totalPages }, categories, attributeOptions] = await Promise.all([
     getProductsPaginated({
       search: q,
       page: currentPage,
       perPage: 25,
-      orderby: currentSort as any,
+      orderby: currentSort,
       order: currentOrder,
       status: apiStatus,
       stock_status: apiStockStatus,
     }),
     getCategoriesForAdmin(),
+    getProductAttributes(),
   ])
 
   const rows = products.map((product) => ({
@@ -66,6 +67,7 @@ export default async function AdminProdukPage({ searchParams }: Props) {
       <div className="mt-6">
         <ProductDataTable
           products={rows}
+          attributeOptions={attributeOptions}
           categories={categories.map((c) => ({ id: c.id, path: c.path }))}
           rawCategories={categories.map(c => ({
             id: c.id,

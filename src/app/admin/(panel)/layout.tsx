@@ -1,5 +1,6 @@
 import { Metadata } from "next"
 import { redirect } from "next/navigation"
+import { cookies } from "next/headers"
 
 import { TriangleAlert } from "lucide-react"
 import { getCurrentUser } from "@/lib/auth"
@@ -22,10 +23,13 @@ export default async function AdminLayout({
   const user = await getCurrentUser()
 
   if (!user) redirect("/admin/login")
+  
+  const cookieStore = await cookies()
+  const defaultOpen = cookieStore.get("sidebar_state")?.value !== "false"
 
   return (
     <div className="bg-slate-50 text-slate-950 min-h-screen w-full flex font-sans">
-      <SidebarProvider style={{ "--sidebar-width-icon": "4.5rem" } as React.CSSProperties}>
+      <SidebarProvider defaultOpen={defaultOpen} style={{ "--sidebar-width-icon": "4.5rem" } as React.CSSProperties}>
         <AppSidebar />
         <div className="flex flex-col flex-1 w-full relative z-10 min-w-0">
           {/* Mobile top bar — shown only on mobile, replaces client bottom nav */}
