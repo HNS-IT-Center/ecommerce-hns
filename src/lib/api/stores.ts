@@ -11,28 +11,60 @@
  * konvensi yang sama seperti modul kategori: pembersihan cache milik lapisan
  * action, supaya fungsi di sini tetap bisa dipakai dari script.
  */
-import { getPrisma } from "@/lib/prisma/client"
-import type { Store } from "@prisma/client"
-import { isDayOfWeek, isValidTime, sortForDisplay, type StoreHours } from "@/lib/utils/opening-hours"
+import { getPrisma } from "@/lib/prisma/client";
+import type { Store } from "@prisma/client";
+import {
+  isDayOfWeek,
+  isValidTime,
+  sortForDisplay,
+  type StoreHours,
+} from "@/lib/utils/opening-hours";
 
-/** Toko beserta jam bukanya — bentuk yang dipakai seluruh halaman. */
-export type StoreWithHours = Store & { hours: StoreHours[] }
+/**
+ * Toko beserta jam bukanya — bentuk yang dipakai seluruh halaman.
+ *
+ * `latitude`/`longitude` sengaja ditulis ulang jadi `number`. Prisma
+ * mengembalikan `Decimal` dari decimal.js, dan objek itu tidak bisa dilempar
+ * lintas batas Server Component tanpa serialisasi, juga tidak bisa langsung
+ * dipakai membangun URL peta. Mengubahnya sekali di sini lebih baik daripada
+ * setiap pemanggil mengingat untuk memanggil `.toNumber()`.
+ */
+export type StoreWithHours = Omit<Store, "latitude" | "longitude"> & {
+  latitude: number | null;
+  longitude: number | null;
+  hours: StoreHours[];
+};
 
 export type StoreInput = {
-  id: string
-  name: string
-  address: string
-  hours: StoreHours[]
-  mapsUrl: string
-  sortOrder: number
-}
+  id: string;
+  name: string;
+  address: string;
+  hours: StoreHours[];
+  mapsUrl: string;
+  /** Apa adanya seperti diketik staff; dinormalisasi saat membangun tautan wa.me. */
+  phone: string;
+  /** `null` berarti belum diisi — peta jatuh ke pencarian alamat. */
+  latitude: number | null;
+  longitude: number | null;
+  googlePlaceId: string | null;
+  sortOrder: number;
+};
 
 /**
  * Jam selalu ikut terbaca dan sudah diurutkan mulai Senin, jadi tidak ada
  * halaman yang perlu mengingat untuk menyertakannya sendiri — persis alasan
  * yang sama kenapa penyaringan `deletedAt` dikumpulkan di berkas ini.
  */
-function withHours(row: Store & { hours: { dayOfWeek: number; isClosed: boolean; opensAt: string; closesAt: string }[] }): StoreWithHours {
+function withHours(
+  row: Store & {
+    hours: {
+      dayOfWeek: number;
+      isClosed: boolean;
+      opensAt: string;
+      closesAt: string;
+    }[];
+  },
+): StoreWithHours {
   const jam = row.hours
     .filter((h) => isDayOfWeek(h.dayOfWeek))
     .map((h) => ({
@@ -40,9 +72,14 @@ function withHours(row: Store & { hours: { dayOfWeek: number; isClosed: boolean;
       isClosed: h.isClosed,
       opensAt: h.opensAt,
       closesAt: h.closesAt,
-    }))
+    }));
 
-  return { ...row, hours: sortForDisplay(jam) }
+  return {
+    ...row,
+    latitude: row.latitude === null ? null : Number(row.latitude),
+    longitude: row.longitude === null ? null : Number(row.longitude),
+    hours: sortForDisplay(jam),
+  };
 }
 
 /** Hanya toko yang belum dihapus. Dipakai admin maupun storefront. */
@@ -51,8 +88,8 @@ export async function getStores(): Promise<StoreWithHours[]> {
     where: { deletedAt: null },
     orderBy: { sortOrder: "asc" },
     include: { hours: true },
-  })
-  return rows.map(withHours)
+  });
+  return rows.map(withHours);
 }
 
 /**
@@ -66,15 +103,15 @@ export async function getStore(id: string): Promise<StoreWithHours | null> {
   const row = await getPrisma().store.findFirst({
     where: { id, deletedAt: null },
     include: { hours: true },
-  })
-  return row ? withHours(row) : null
+  });
+  return row ? withHours(row) : null;
 }
 
 /** Kesalahan yang layak ditampilkan apa adanya ke staff, bukan ditelan jadi 500. */
 export class StoreOperationError extends Error {
   constructor(message: string) {
-    super(message)
-    this.name = "StoreOperationError"
+    super(message);
+    this.name = "StoreOperationError";
   }
 }
 
@@ -93,7 +130,10 @@ export class StoreOperationError extends Error {
  * collation `utf8mb4_unicode_ci` — "Nagoya Hill" dan "NAGOYA HILL" dianggap
  * sama oleh MariaDB, dan memang itu yang diinginkan di sini.
  */
-async function assertNameAvailable(name: string, exceptId?: string): Promise<void> {
+async function assertNameAvailable(
+  name: string,
+  exceptId?: string,
+): Promise<void> {
   const clash = await getPrisma().store.findFirst({
     where: {
       name,
@@ -101,26 +141,59 @@ async function assertNameAvailable(name: string, exceptId?: string): Promise<voi
       ...(exceptId ? { NOT: { id: exceptId } } : {}),
     },
     select: { id: true },
-  })
+  });
 
   if (clash) {
     throw new StoreOperationError(
-      `Sudah ada toko bernama "${name}" (id: ${clash.id}). Pakai nama yang berbeda supaya pelanggan bisa membedakan keduanya.`
-    )
+      `Sudah ada toko bernama "${name}" (id: ${clash.id}). Pakai nama yang berbeda supaya pelanggan bisa membedakan keduanya.`,
+    );
   }
 }
 
 function assertFilled(input: StoreInput): void {
-  const kosong = (["id", "name", "address", "mapsUrl"] as const).filter(
-    (key) => input[key] === ""
-  )
+  const kosong = (
+    ["id", "name", "address", "mapsUrl", "phone"] as const
+  ).filter((key) => input[key] === "");
   if (kosong.length > 0) {
-    throw new StoreOperationError(`Kolom berikut wajib diisi: ${kosong.join(", ")}.`)
+    throw new StoreOperationError(
+      `Kolom berikut wajib diisi: ${kosong.join(", ")}.`,
+    );
   }
   if (!Number.isFinite(input.sortOrder)) {
-    throw new StoreOperationError("Urutan tampil harus berupa angka.")
+    throw new StoreOperationError("Urutan tampil harus berupa angka.");
   }
-  assertHoursValid(input.hours)
+  assertCoordinatesValid(input.latitude, input.longitude);
+  assertHoursValid(input.hours);
+}
+
+/**
+ * Koordinat diperiksa berpasangan, bukan sendiri-sendiri.
+ *
+ * Satu angka tanpa pasangannya tidak menunjuk ke mana pun, tapi cukup untuk
+ * membuat kode di hilir mengira koordinatnya ada — dan peta akan menggambar
+ * titik di tengah laut alih-alih memberi tahu bahwa isiannya belum lengkap.
+ *
+ * Rentangnya dijaga juga: lintang di luar ±90 dan bujur di luar ±180 bukan
+ * sekadar salah, ia diterima diam-diam oleh kolom Decimal dan baru terlihat
+ * salah setelah peta tampil kosong.
+ */
+function assertCoordinatesValid(
+  latitude: number | null,
+  longitude: number | null,
+): void {
+  if (latitude === null && longitude === null) return;
+
+  if (latitude === null || longitude === null) {
+    throw new StoreOperationError(
+      "Latitude dan longitude harus diisi berpasangan — satu tanpa yang lain tidak menunjuk lokasi mana pun.",
+    );
+  }
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+    throw new StoreOperationError("Latitude harus angka antara -90 dan 90.");
+  }
+  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    throw new StoreOperationError("Longitude harus angka antara -180 dan 180.");
+  }
 }
 
 /**
@@ -130,68 +203,78 @@ function assertFilled(input: StoreInput): void {
  * menampilkan jam buka yang keliru di hasil pencarian.
  */
 function assertHoursValid(hours: StoreHours[]): void {
-  const hariTerlihat = new Set<number>()
+  const hariTerlihat = new Set<number>();
 
   for (const jam of hours) {
     if (!isDayOfWeek(jam.dayOfWeek)) {
-      throw new StoreOperationError(`Hari tidak sah: ${jam.dayOfWeek}. Nilainya harus 0 (Minggu) sampai 6 (Sabtu).`)
+      throw new StoreOperationError(
+        `Hari tidak sah: ${jam.dayOfWeek}. Nilainya harus 0 (Minggu) sampai 6 (Sabtu).`,
+      );
     }
     if (hariTerlihat.has(jam.dayOfWeek)) {
-      throw new StoreOperationError("Ada hari yang tercatat dua kali.")
+      throw new StoreOperationError("Ada hari yang tercatat dua kali.");
     }
-    hariTerlihat.add(jam.dayOfWeek)
+    hariTerlihat.add(jam.dayOfWeek);
 
     // Hari tutup tidak perlu jam yang masuk akal — jamnya memang tidak dipakai.
-    if (jam.isClosed) continue
+    if (jam.isClosed) continue;
 
     if (!isValidTime(jam.opensAt) || !isValidTime(jam.closesAt)) {
       throw new StoreOperationError(
-        `Jam untuk hari ke-${jam.dayOfWeek} harus berformat HH:MM 24 jam, mis. 09:00.`
-      )
+        `Jam untuk hari ke-${jam.dayOfWeek} harus berformat HH:MM 24 jam, mis. 09:00.`,
+      );
     }
     if (jam.opensAt >= jam.closesAt) {
       throw new StoreOperationError(
-        `Jam tutup harus lebih malam dari jam buka (hari ke-${jam.dayOfWeek}: ${jam.opensAt}–${jam.closesAt}).`
-      )
+        `Jam tutup harus lebih malam dari jam buka (hari ke-${jam.dayOfWeek}: ${jam.opensAt}–${jam.closesAt}).`,
+      );
     }
   }
 }
 
 export async function createStore(input: StoreInput): Promise<void> {
-  assertFilled(input)
+  assertFilled(input);
 
   // Id diperiksa TANPA menyaring `deletedAt`: ia kunci utama tabel, jadi baris
   // yang sudah dihapus pun masih memegangnya. Tanpa pemeriksaan ini staff cuma
   // melihat pelanggaran constraint dari database, yang tidak memberi tahu apa
   // pun tentang apa yang harus mereka perbuat.
-  const existing = await getPrisma().store.findUnique({ where: { id: input.id }, select: { deletedAt: true } })
+  const existing = await getPrisma().store.findUnique({
+    where: { id: input.id },
+    select: { deletedAt: true },
+  });
   if (existing) {
     throw new StoreOperationError(
       existing.deletedAt
         ? `Id "${input.id}" masih dipegang toko yang sudah dihapus. Pakai id lain.`
-        : `Id "${input.id}" sudah dipakai toko lain.`
-    )
+        : `Id "${input.id}" sudah dipakai toko lain.`,
+    );
   }
 
-  await assertNameAvailable(input.name)
+  await assertNameAvailable(input.name);
 
-  const { hours, ...store } = input
+  const { hours, ...store } = input;
   await getPrisma().store.create({
     data: { ...store, hours: { create: hours } },
-  })
+  });
 }
 
 export async function updateStore(input: StoreInput): Promise<void> {
-  assertFilled(input)
+  assertFilled(input);
 
-  const { id, hours, ...data } = input
+  const { id, hours, ...data } = input;
 
-  const target = await getPrisma().store.findFirst({ where: { id, deletedAt: null }, select: { id: true } })
+  const target = await getPrisma().store.findFirst({
+    where: { id, deletedAt: null },
+    select: { id: true },
+  });
   if (!target) {
-    throw new StoreOperationError("Toko tidak ditemukan, atau sudah dihapus orang lain.")
+    throw new StoreOperationError(
+      "Toko tidak ditemukan, atau sudah dihapus orang lain.",
+    );
   }
 
-  await assertNameAvailable(data.name, id)
+  await assertNameAvailable(data.name, id);
 
   /**
    * Jam ditulis ulang seluruhnya dalam satu transaksi, bukan ditambal per baris.
@@ -204,8 +287,10 @@ export async function updateStore(input: StoreInput): Promise<void> {
   await getPrisma().$transaction([
     getPrisma().store.update({ where: { id }, data }),
     getPrisma().storeHours.deleteMany({ where: { storeId: id } }),
-    getPrisma().storeHours.createMany({ data: hours.map((h) => ({ ...h, storeId: id })) }),
-  ])
+    getPrisma().storeHours.createMany({
+      data: hours.map((h) => ({ ...h, storeId: id })),
+    }),
+  ]);
 }
 
 /**
@@ -221,10 +306,13 @@ export async function updateStore(input: StoreInput): Promise<void> {
  * catatan siapa yang sebenarnya menghapus lebih dulu. Kembaliannya jumlah baris
  * yang benar-benar berubah, jadi pemanggilnya bisa tahu bedanya.
  */
-export async function softDeleteStore(id: string, deletedBy: string): Promise<number> {
+export async function softDeleteStore(
+  id: string,
+  deletedBy: string,
+): Promise<number> {
   const { count } = await getPrisma().store.updateMany({
     where: { id, deletedAt: null },
     data: { deletedAt: new Date(), deletedBy },
-  })
-  return count
+  });
+  return count;
 }

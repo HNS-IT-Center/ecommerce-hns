@@ -78,6 +78,40 @@ model Store {
   mapsUrl   String @map("maps_url")
   sortOrder Int    @default(0) @map("sort_order")
 
+  /// Nomor WhatsApp cabang ini. Sempat dihapus ketika dikira seluruh percakapan
+  /// masuk lewat satu pintu; ternyata tiap cabang punya nomornya sendiri, dan
+  /// mengarahkan pelanggan Nagoya Hill ke nomor Gateway berarti pertanyaan soal
+  /// stok dijawab oleh toko yang tidak memegang barangnya.
+  ///
+  /// Disimpan apa adanya seperti yang diketik staff ("0821-8559-8887"); normalisasi
+  /// ke bentuk internasional terjadi saat membangun tautan wa.me, supaya angka yang
+  /// mereka lihat di panel sama dengan yang mereka kenal.
+  ///
+  /// `@default("")` semata-mata jembatan migrasi: dua toko yang sudah ada tidak
+  /// punya nilai, dan kolom NOT NULL tanpa default akan menolak `db push`.
+  /// Kosongnya tidak dibiarkan lolos — `assertFilled` menuntutnya terisi setiap
+  /// kali toko disimpan lewat panel.
+  phone String @default("")
+
+  /// Koordinat toko. Peta dibangun dari angka ini, bukan dari pencarian teks:
+  /// mencocokkan nama dan alamat menyerahkan hasilnya pada tebakan penyedia peta,
+  /// dan tebakan itu sudah terbukti meleset — kedua kartu toko sempat menunjuk
+  /// Pizza Hut dan sebuah kelenteng, bukan toko kalian.
+  ///
+  /// Nullable supaya toko bisa dibuat lebih dulu dan koordinatnya menyusul;
+  /// yang belum punya koordinat jatuh ke pencarian alamat seperti sebelumnya.
+  ///
+  /// `Decimal` dengan sembilan angka di belakang koma, bukan `Float`: presisi
+  /// biner Float menggeser titik beberapa meter setiap kali nilainya dibaca ulang,
+  /// dan untuk membedakan dua ruko bersebelahan itu sudah cukup merepotkan.
+  latitude  Decimal? @db.Decimal(12, 9)
+  longitude Decimal? @db.Decimal(12, 9)
+
+  /// Pengenal tempat di Google. TIDAK dipakai menggambar peta — itu tugas
+  /// koordinat — melainkan untuk tombol Petunjuk Arah, supaya aplikasi Google Maps
+  /// membuka listing yang persis alih-alih sekadar menuju sepasang koordinat.
+  googlePlaceId String? @map("google_place_id") @db.VarChar(191)
+
   // Jam buka pindah ke tabel sendiri, satu baris per hari. Sebelumnya ia satu
   // string bebas ("SETIAP HARI SENIN SAMPAI SABTU 09.00 - 21.00, MINGGU ...")
   // yang tidak bisa dibaca mesin: `openingHoursSpecification` untuk Google

@@ -1,18 +1,18 @@
-import { notFound } from "next/navigation"
-import { getStore } from "@/lib/api/stores"
-import { StoreForm } from "../store-form"
+import { notFound } from "next/navigation";
+import { getStore } from "@/lib/api/stores";
+import { StoreForm } from "../store-form";
 
 type Props = {
-  params: Promise<{ id: string }>
-}
+  params: Promise<{ id: string }>;
+};
 
 export default async function AdminTokoEditPage({ params }: Props) {
-  const { id } = await params
+  const { id } = await params;
   // `getStore` menyaring `deletedAt`, jadi toko yang sudah dihapus tidak bisa
   // dibuka lewat URL langsung dan dihidupkan kembali dengan menekan Simpan.
-  const store = await getStore(id)
+  const store = await getStore(id);
 
-  if (!store) notFound()
+  if (!store) notFound();
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -21,5 +21,5 @@ export default async function AdminTokoEditPage({ params }: Props) {
         <StoreForm store={store} />
       </div>
     </div>
-  )
+  );
 }

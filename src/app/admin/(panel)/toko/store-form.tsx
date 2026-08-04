@@ -15,6 +15,10 @@ type StoreFormProps = {
     name: string;
     address: string;
     mapsUrl: string;
+    phone: string;
+    latitude: number | null;
+    longitude: number | null;
+    googlePlaceId: string | null;
     hours: StoreHours[];
     sortOrder: number;
   };
@@ -115,6 +119,77 @@ export function StoreForm({ store }: StoreFormProps) {
                   placeholder="https://maps.app.goo.gl/..."
                   className={inputClass}
                 />
+              </div>
+
+              <div>
+                <label className={labelClass} htmlFor="phone">
+                  Nomor WhatsApp
+                </label>
+                <input
+                  id="phone"
+                  name="phone"
+                  defaultValue={store?.phone}
+                  required
+                  placeholder="0821-8559-8887"
+                  className={inputClass}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Nomor cabang ini sendiri — tiap toko berbeda. Boleh ditulis
+                  dengan tanda hubung; tautan WhatsApp dirapikan otomatis.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className={labelClass} htmlFor="latitude">
+                    Latitude
+                  </label>
+                  <input
+                    id="latitude"
+                    name="latitude"
+                    inputMode="decimal"
+                    defaultValue={store?.latitude ?? ""}
+                    placeholder="1.1325512"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass} htmlFor="longitude">
+                    Longitude
+                  </label>
+                  <input
+                    id="longitude"
+                    name="longitude"
+                    inputMode="decimal"
+                    defaultValue={store?.longitude ?? ""}
+                    placeholder="104.0176706"
+                    className={inputClass}
+                  />
+                </div>
+                <p className="col-span-2 text-xs text-muted-foreground">
+                  Buka Google Maps, klik kanan tepat di lokasi toko, lalu klik
+                  angka koordinat yang muncul — angkanya tersalin. Tempel di
+                  sini, pisahkan angka sebelum dan sesudah koma. Kosongkan kalau
+                  belum tahu; peta akan memakai alamat sebagai gantinya.
+                </p>
+              </div>
+
+              <div>
+                <label className={labelClass} htmlFor="googlePlaceId">
+                  Google Place ID
+                </label>
+                <input
+                  id="googlePlaceId"
+                  name="googlePlaceId"
+                  defaultValue={store?.googlePlaceId ?? ""}
+                  placeholder="ChIJuyX1wwyJ2TER4j__MNSJRwo"
+                  className={inputClass}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Opsional. Dipakai tombol Petunjuk Arah supaya aplikasi Maps
+                  membuka listing toko yang persis, bukan sekadar sepasang
+                  koordinat.
+                </p>
               </div>
 
               <div>

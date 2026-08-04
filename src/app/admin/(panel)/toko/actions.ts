@@ -1,18 +1,18 @@
-"use server"
+"use server";
 
-import { revalidatePath } from "next/cache"
-import { redirect } from "next/navigation"
-import { requireAuth } from "@/lib/auth"
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { requireAuth } from "@/lib/auth";
 import {
   StoreOperationError,
   createStore as createStoreRow,
   softDeleteStore,
   updateStore as updateStoreRow,
   type StoreInput,
-} from "@/lib/api/stores"
-import { UnauthorizedError } from "@/lib/auth"
-import { DAYS, type StoreHours } from "@/lib/utils/opening-hours"
-import type { StoreActionState } from "./state"
+} from "@/lib/api/stores";
+import { UnauthorizedError } from "@/lib/auth";
+import { DAYS, type StoreHours } from "@/lib/utils/opening-hours";
+import type { StoreActionState } from "./state";
 
 /**
  * Jam dikirim sebagai tiga medan per hari (`closed-3`, `opens-3`, `closes-3`),
@@ -27,24 +27,41 @@ function readHours(formData: FormData): StoreHours[] {
     isClosed: formData.get(`closed-${day}`) === "on",
     opensAt: String(formData.get(`opens-${day}`) ?? "").trim(),
     closesAt: String(formData.get(`closes-${day}`) ?? "").trim(),
-  }))
+  }));
+}
+
+/**
+ * Medan kosong berarti "belum diisi", bukan nol. `Number("")` menghasilkan 0,
+ * dan 0,0 adalah koordinat yang sah — sebuah titik di Samudra Atlantik. Tanpa
+ * pembedaan ini, toko yang koordinatnya dikosongkan akan digambar di lepas
+ * pantai Afrika alih-alih jatuh ke pencarian alamat.
+ */
+function readOptionalNumber(formData: FormData, key: string): number | null {
+  const raw = String(formData.get(key) ?? "").trim();
+  return raw === "" ? null : Number(raw);
 }
 
 function readStoreInput(formData: FormData): StoreInput {
+  const placeId = String(formData.get("googlePlaceId") ?? "").trim();
+
   return {
     id: String(formData.get("id") ?? "").trim(),
     name: String(formData.get("name") ?? "").trim(),
     address: String(formData.get("address") ?? "").trim(),
     hours: readHours(formData),
     mapsUrl: String(formData.get("mapsUrl") ?? "").trim(),
+    phone: String(formData.get("phone") ?? "").trim(),
+    latitude: readOptionalNumber(formData, "latitude"),
+    longitude: readOptionalNumber(formData, "longitude"),
+    googlePlaceId: placeId === "" ? null : placeId,
     sortOrder: Number(formData.get("sortOrder") ?? 0),
-  }
+  };
 }
 
 function revalidateStorePages() {
-  revalidatePath("/admin/toko")
-  revalidatePath("/stores")
-  revalidatePath("/contact")
+  revalidatePath("/admin/toko");
+  revalidatePath("/stores");
+  revalidatePath("/contact");
 }
 
 /**
@@ -59,31 +76,34 @@ function revalidateStorePages() {
  */
 async function run(fn: () => Promise<void>): Promise<StoreActionState | never> {
   try {
-    await requireAuth()
-    await fn()
+    await requireAuth();
+    await fn();
   } catch (error) {
-    if (error instanceof UnauthorizedError || error instanceof StoreOperationError) {
-      return { error: error.message }
+    if (
+      error instanceof UnauthorizedError ||
+      error instanceof StoreOperationError
+    ) {
+      return { error: error.message };
     }
-    throw error
+    throw error;
   }
 
-  revalidateStorePages()
-  redirect("/admin/toko")
+  revalidateStorePages();
+  redirect("/admin/toko");
 }
 
 export async function createStore(
   _prev: StoreActionState,
-  formData: FormData
+  formData: FormData,
 ): Promise<StoreActionState> {
-  return run(() => createStoreRow(readStoreInput(formData)))
+  return run(() => createStoreRow(readStoreInput(formData)));
 }
 
 export async function updateStore(
   _prev: StoreActionState,
-  formData: FormData
+  formData: FormData,
 ): Promise<StoreActionState> {
-  return run(() => updateStoreRow(readStoreInput(formData)))
+  return run(() => updateStoreRow(readStoreInput(formData)));
 }
 
 /**
@@ -94,10 +114,10 @@ export async function updateStore(
  * yang bisa dipalsukan oleh pelakunya sendiri tidak ada gunanya sebagai jejak.
  */
 export async function deleteStore(formData: FormData) {
-  const user = await requireAuth()
-  const id = String(formData.get("id") ?? "")
-  if (!id) return
+  const user = await requireAuth();
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
 
-  await softDeleteStore(id, user.id)
-  revalidateStorePages()
+  await softDeleteStore(id, user.id);
+  revalidateStorePages();
 }
