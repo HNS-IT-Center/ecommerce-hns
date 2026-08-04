@@ -19,8 +19,8 @@ export default async function AdminKategoriPage() {
     <div className="mx-auto max-w-3xl">
       <h1 className="text-2xl font-bold">Kategori</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        {categories.length} kategori, {totalProducts} kaitan produk. Angka di tiap baris adalah
-        produk yang menempel langsung di kategori itu.
+        {categories.length} kategori, {totalProducts} kaitan produk. Badge hijau = total produk di
+        cabang; badge abu-abu = produk yang menempel langsung.
       </p>
 
       <div className="mt-6">
