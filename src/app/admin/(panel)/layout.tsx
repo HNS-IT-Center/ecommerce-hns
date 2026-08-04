@@ -2,7 +2,6 @@ import { Metadata } from "next"
 import { redirect } from "next/navigation"
 import { cookies } from "next/headers"
 
-import { TriangleAlert } from "lucide-react"
 import { getCurrentUser } from "@/lib/auth"
 
 import { AppSidebar } from "@/components/admin/app-sidebar"
@@ -34,12 +33,6 @@ export default async function AdminLayout({
         <div className="flex flex-col flex-1 w-full relative z-10 min-w-0">
           {/* Mobile top bar — shown only on mobile, replaces client bottom nav */}
           <AdminMobileBar />
-
-          {/* Warning banner — hidden on mobile to save space */}
-          <div className="hidden md:flex items-center justify-center gap-2 bg-rose-500/90 backdrop-blur-sm px-6 py-2 text-sm font-medium text-white w-full max-w-2xl mx-auto rounded-b-2xl shadow-sm z-40">
-            <TriangleAlert className="h-4 w-4 shrink-0" />
-            Admin panel ini sedang dalam tahap pengembangan autentikasi.
-          </div>
 
           {/* Main Content */}
           <main className="flex-1 overflow-auto p-4 md:p-8">
