@@ -37,6 +37,8 @@ export type StoreWithHours = Omit<Store, "latitude" | "longitude"> & {
 
 export type StoreInput = {
   id: string;
+  /** Kosong berarti "turunkan dari nama" — lihat `resolveSlug`. */
+  slug: string;
   name: string;
   address: string;
   hours: StoreHours[];
@@ -82,8 +84,15 @@ function withHours(
   };
 }
 
-/** Hanya toko yang belum dihapus. Dipakai admin maupun storefront. */
-export async function getStores(): Promise<StoreWithHours[]> {
+/**
+ * Toko yang masih hidup, urut sesuai `sortOrder`.
+ *
+ * Namanya menyebut "active" supaya penyaringan `deletedAt` terlihat di setiap
+ * tempat pemanggilan. `getStores()` yang lama tidak salah, tapi ia menyembunyikan
+ * fakta bahwa tabel ini memakai soft delete — dan yang tersembunyi itulah yang
+ * kelak dilupakan orang yang menambah halaman baru.
+ */
+export async function getActiveStores(): Promise<StoreWithHours[]> {
   const rows = await getPrisma().store.findMany({
     where: { deletedAt: null },
     orderBy: { sortOrder: "asc" },
@@ -95,16 +104,96 @@ export async function getStores(): Promise<StoreWithHours[]> {
 /**
  * Satu toko yang belum dihapus, atau null.
  *
+ * Dicari lewat `slug`, bukan `id` — inilah pintu masuk dari URL publik
+ * `/toko-fisik/[slug]`. Baris yang sudah dihapus tidak akan pernah cocok, karena
+ * `softDeleteStore` membubuhkan akhiran pada slug-nya.
+ *
  * Menyaring `deletedAt` juga di sini, bukan hanya di daftar. Tanpa itu, halaman
  * sunting masih bisa dibuka lewat URL langsung untuk toko yang sudah dihapus,
  * dan menyimpannya akan menghidupkannya kembali tanpa siapa pun memutuskannya.
  */
-export async function getStore(id: string): Promise<StoreWithHours | null> {
+export async function getStoreBySlug(
+  slug: string,
+): Promise<StoreWithHours | null> {
+  const row = await getPrisma().store.findFirst({
+    where: { slug, deletedAt: null },
+    include: { hours: true },
+  });
+  return row ? withHours(row) : null;
+}
+
+/**
+ * Satu toko menurut `id`, untuk layar admin.
+ *
+ * Terpisah dari `getStoreBySlug` dengan sengaja: panel menyunting BARIS tertentu
+ * dan alamatnya tidak boleh berubah hanya karena staff mengganti slug di formulir
+ * yang sama. Storefront menunjuk lewat slug, admin menunjuk lewat id.
+ */
+export async function getStoreById(id: string): Promise<StoreWithHours | null> {
   const row = await getPrisma().store.findFirst({
     where: { id, deletedAt: null },
     include: { hours: true },
   });
   return row ? withHours(row) : null;
+}
+
+const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * Ubah teks bebas jadi slug: huruf kecil, hanya angka-huruf, dipisah tanda hubung.
+ * Dipakai untuk menurunkan slug dari nama toko saat staff mengosongkannya.
+ */
+export function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Slug yang akan dipakai: yang diketik staff kalau ada, kalau tidak diturunkan
+ * dari nama. Mengosongkannya adalah jalur normal, bukan kelalaian — kebanyakan
+ * toko tidak butuh alamat yang berbeda dari namanya.
+ */
+function resolveSlug(input: StoreInput): string {
+  const diketik = input.slug.trim();
+  const hasil = diketik === "" ? slugify(input.name) : diketik;
+
+  if (hasil === "") {
+    throw new StoreOperationError(
+      "Slug tidak bisa diturunkan dari nama toko ini. Isi slug secara manual, mis. nagoya-gateway.",
+    );
+  }
+  if (!SLUG_PATTERN.test(hasil)) {
+    throw new StoreOperationError(
+      `Slug "${hasil}" tidak sah. Pakai huruf kecil, angka, dan tanda hubung saja — mis. nagoya-gateway.`,
+    );
+  }
+  return hasil;
+}
+
+/**
+ * Slug wajib unik di SELURUH tabel, termasuk baris yang sudah dihapus, karena
+ * itulah yang dijamin indeks unik database. Yang membuat penghapusan tidak
+ * mengunci slug selamanya adalah `softDeleteStore`, yang membubuhkan akhiran pada
+ * slug baris yang dihapus.
+ */
+async function assertSlugAvailable(
+  slug: string,
+  exceptId?: string,
+): Promise<void> {
+  const clash = await getPrisma().store.findFirst({
+    where: { slug, ...(exceptId ? { NOT: { id: exceptId } } : {}) },
+    select: { id: true, deletedAt: true },
+  });
+
+  if (clash) {
+    throw new StoreOperationError(
+      `Slug "${slug}" sudah dipakai toko lain (id: ${clash.id}). Pakai slug yang berbeda.`,
+    );
+  }
 }
 
 /** Kesalahan yang layak ditampilkan apa adanya ke staff, bukan ditelan jadi 500. */
@@ -253,9 +342,12 @@ export async function createStore(input: StoreInput): Promise<void> {
 
   await assertNameAvailable(input.name);
 
+  const slug = resolveSlug(input);
+  await assertSlugAvailable(slug);
+
   const { hours, ...store } = input;
   await getPrisma().store.create({
-    data: { ...store, hours: { create: hours } },
+    data: { ...store, slug, hours: { create: hours } },
   });
 }
 
@@ -275,6 +367,10 @@ export async function updateStore(input: StoreInput): Promise<void> {
   }
 
   await assertNameAvailable(data.name, id);
+
+  const slug = resolveSlug(input);
+  await assertSlugAvailable(slug, id);
+  data.slug = slug;
 
   /**
    * Jam ditulis ulang seluruhnya dalam satu transaksi, bukan ditambal per baris.
@@ -310,9 +406,31 @@ export async function softDeleteStore(
   id: string,
   deletedBy: string,
 ): Promise<number> {
+  /**
+   * Slug baris yang dihapus diberi akhiran supaya slug aslinya langsung bebas.
+   *
+   * Tanpa ini, indeks unik menahan alamat yang bagus selamanya — persis yang
+   * terjadi pada `id` kemarin: "nagoya-gateway" tidak bisa dipakai lagi hanya
+   * karena pernah ada baris terhapus yang memegangnya, dan satu-satunya jalan
+   * keluar adalah menghapus keras lewat skrip.
+   *
+   * Stempel waktu dipakai, bukan penghitung, supaya menghapus toko dengan nama
+   * yang sama dua kali tidak bertabrakan dengan bekas penghapusan sebelumnya.
+   */
+  const sekarang = new Date();
+  const target = await getPrisma().store.findFirst({
+    where: { id, deletedAt: null },
+    select: { slug: true },
+  });
+  if (!target) return 0;
+
   const { count } = await getPrisma().store.updateMany({
     where: { id, deletedAt: null },
-    data: { deletedAt: new Date(), deletedBy },
+    data: {
+      deletedAt: sekarang,
+      deletedBy,
+      slug: `${target.slug}--dihapus-${sekarang.getTime()}`.slice(0, 191),
+    },
   });
   return count;
 }

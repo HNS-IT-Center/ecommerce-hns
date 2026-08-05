@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getStore } from "@/lib/api/stores";
+import { getStoreById } from "@/lib/api/stores";
 import { StoreForm } from "../store-form";
 
 type Props = {
@@ -8,9 +8,9 @@ type Props = {
 
 export default async function AdminTokoEditPage({ params }: Props) {
   const { id } = await params;
-  // `getStore` menyaring `deletedAt`, jadi toko yang sudah dihapus tidak bisa
+  // `getStoreById` menyaring `deletedAt`, jadi toko yang sudah dihapus tidak bisa
   // dibuka lewat URL langsung dan dihidupkan kembali dengan menekan Simpan.
-  const store = await getStore(id);
+  const store = await getStoreById(id);
 
   if (!store) notFound();
 

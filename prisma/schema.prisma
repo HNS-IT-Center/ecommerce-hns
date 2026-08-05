@@ -73,6 +73,21 @@ model User {
 
 model Store {
   id        String @id
+
+  /// Alamat halaman cabang, terpisah dari `id`.
+  ///
+  /// Dipisah karena keduanya menjawab pertanyaan berbeda. `id` menjawab "baris
+  /// mana" dan direferensikan `store_hours` — mengubahnya berarti migrasi foreign
+  /// key. `slug` menjawab "URL apa", dan itu memang berubah: staff salah ketik,
+  /// cabang pindah, namanya diperbarui. Menyatukan keduanya membuat kesalahan
+  /// ketik jadi permanen.
+  ///
+  /// Unik di tingkat database. Supaya penghapusan tidak mengunci alamat yang bagus
+  /// selamanya — persis yang terjadi pada `id` kemarin — `softDeleteStore`
+  /// membubuhkan akhiran pada slug baris yang dihapus, sehingga slug aslinya
+  /// langsung bebas dipakai lagi.
+  slug String @unique @db.VarChar(191)
+
   name      String
   address   String @db.Text
   mapsUrl   String @map("maps_url")

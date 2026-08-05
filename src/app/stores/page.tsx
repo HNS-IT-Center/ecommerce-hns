@@ -2,7 +2,7 @@ import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { MapPin, Clock, MessageCircle, Navigation } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getStores } from "@/lib/api/stores";
+import { getActiveStores } from "@/lib/api/stores";
 import { getStoreEmbedUrl, getWhatsAppUrl } from "@/features/stores/lib/maps";
 import { StoresOverviewMapLoader } from "@/features/stores/components/stores-overview-map-loader";
 import { buildStoreJsonLd } from "@/features/stores/lib/structured-data";
@@ -25,7 +25,7 @@ export const metadata = {
 export const revalidate = 3600;
 
 export default async function StoresPage() {
-  const stores = (await getStores()).map((store) => ({
+  const stores = (await getActiveStores()).map((store) => ({
     ...store,
     waUrl: getWhatsAppUrl(store),
     mapEmbedUrl: getStoreEmbedUrl(store),

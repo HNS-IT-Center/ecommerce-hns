@@ -46,6 +46,7 @@ function readStoreInput(formData: FormData): StoreInput {
 
   return {
     id: String(formData.get("id") ?? "").trim(),
+    slug: String(formData.get("slug") ?? "").trim(),
     name: String(formData.get("name") ?? "").trim(),
     address: String(formData.get("address") ?? "").trim(),
     hours: readHours(formData),

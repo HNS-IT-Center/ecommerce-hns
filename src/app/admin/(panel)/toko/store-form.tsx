@@ -12,6 +12,7 @@ import { EMPTY_STORE_STATE } from "./state";
 type StoreFormProps = {
   store?: {
     id: string;
+    slug: string;
     name: string;
     address: string;
     mapsUrl: string;
@@ -61,7 +62,7 @@ export function StoreForm({ store }: StoreFormProps) {
             <div className="space-y-3 rounded-xl border border-input p-3">
               <div>
                 <label className={labelClass} htmlFor="id">
-                  ID (slug unik)
+                  ID internal
                 </label>
                 <input
                   id="id"
@@ -74,7 +75,8 @@ export function StoreForm({ store }: StoreFormProps) {
                 />
                 {!isEdit && (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Tidak bisa diubah setelah dibuat.
+                    Penanda baris di database, tidak muncul di URL dan tidak bisa
+                    diubah setelah dibuat. Alamat halaman diatur lewat Slug di bawah.
                   </p>
                 )}
               </div>
@@ -90,6 +92,24 @@ export function StoreForm({ store }: StoreFormProps) {
                   required
                   className={inputClass}
                 />
+              </div>
+
+              <div>
+                <label className={labelClass} htmlFor="slug">
+                  Slug URL
+                </label>
+                <input
+                  id="slug"
+                  name="slug"
+                  defaultValue={store?.slug}
+                  placeholder="otomatis dari nama toko"
+                  className={inputClass}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Alamat halaman cabang ini. Kosongkan saja — akan diturunkan
+                  dari nama toko. Huruf kecil, angka, dan tanda hubung; boleh
+                  diubah kapan pun tanpa memengaruhi data lain.
+                </p>
               </div>
 
               <div>

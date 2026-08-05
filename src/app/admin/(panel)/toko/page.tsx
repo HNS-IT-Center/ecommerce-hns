@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { isDatabaseConfigured } from "@/lib/prisma/client";
-import { getStores } from "@/lib/api/stores";
+import { getActiveStores } from "@/lib/api/stores";
 import { StoreList } from "./store-list";
 
 export default async function AdminTokoPage() {
@@ -18,7 +18,7 @@ export default async function AdminTokoPage() {
   // Lewat `lib/api/stores`, bukan `getPrisma()` langsung. Di situlah saringan
   // `deletedAt` tinggal — satu tempat, sehingga halaman berikutnya yang dibuat
   // orang lain tidak bisa melewatkannya tanpa sengaja.
-  const stores = await getStores();
+  const stores = await getActiveStores();
 
   return (
     <div className="mx-auto max-w-3xl">
