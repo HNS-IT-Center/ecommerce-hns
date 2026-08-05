@@ -70,7 +70,11 @@ export function themeToCss(theme: Theme, scope: "chrome" | "card"): string {
 
   const body =
     scope === "chrome"
-      ? surfaceDeclarations(tokens.chrome, "chrome")
+      ? [
+          surfaceDeclarations(tokens.chrome, "chrome"),
+          // Sakelar, bukan warna — lihat catatan di cabang `card` di bawah.
+          tokens.chromeDecor === true ? "--chrome-decor:1;" : "",
+        ].join("")
       : [
           surfaceDeclarations(tokens.card, "card"),
           declare("--card-price", tokens.cardPrice),
@@ -79,6 +83,9 @@ export function themeToCss(theme: Theme, scope: "chrome" | "card"): string {
           declare("--card-badge-hot", tokens.cardBadgeHot),
           declare("--card-badge-hot-fold", tokens.cardBadgeHotFold),
           declare("--card-badge-new", tokens.cardBadgeNew),
+          // Sakelar, bukan warna — nilainya tidak pernah berasal dari input
+          // bebas, jadi tidak perlu (dan tidak bisa) lewat validasi warna.
+          tokens.cardDecor === true ? "--card-decor:1;" : "",
         ].join("")
 
   if (!body) return ""

@@ -3,7 +3,7 @@ import Image from "next/image"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import { env } from "@/config/env"
 import { getThemeSettings } from "@/lib/theme/settings"
-import { ChristmasFooterDecor } from "@/components/theme/christmas-decor"
+import { ChristmasFooterDecor, ChristmasFooterPattern } from "@/components/theme/christmas-decor"
 
 export async function Footer() {
   const waUrl = buildWhatsAppUrl(
@@ -16,8 +16,12 @@ export async function Footer() {
 
   return (
     <footer className="theme-chrome relative border-t bg-muted/20 print:hidden">
+      {isChristmas && <ChristmasFooterPattern />}
       {isChristmas && <ChristmasFooterDecor />}
-      <div className="container mx-auto px-4 md:px-6 py-12 md:py-16">
+      {/* `relative z-10` menaikkan isi footer ke atas lapisan pola di
+          belakangnya — tanpa ini teksnya tetap terbaca, tapi berada di lapisan
+          yang sama dan urutannya bergantung pada urutan DOM saja. */}
+      <div className="container relative z-10 mx-auto px-4 md:px-6 py-12 md:py-16">
         <div className="grid gap-8 md:grid-cols-4 lg:gap-12">
           
           {/* Col 1 */}

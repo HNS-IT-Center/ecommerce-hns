@@ -99,6 +99,10 @@ export default async function RootLayout({
           <style id="theme-vars" dangerouslySetInnerHTML={{ __html: themeCss }} />
         ) : null}
       </head>
+      {/* `theme-christmas` = penanda yang dipakai `globals.css` untuk membuat
+          pembungkus halaman transparan, supaya pola salju di belakangnya
+          terlihat. Ditaruh di `body` agar berlaku untuk seluruh halaman tanpa
+          satu pun dari mereka perlu disunting. */}
       <body className="min-h-full flex flex-col">
         <NextTopLoader color="#0000FF" showSpinner={false} />
         <JsonLd data={organizationJsonLd} />

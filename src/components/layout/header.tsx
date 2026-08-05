@@ -9,7 +9,7 @@ import { SearchBar } from "./search-bar"
 import { UserMenu } from "./user-menu"
 import { getCategories } from "@/lib/api/woocommerce/categories"
 import { getThemeSettings } from "@/lib/theme/settings"
-import { ChristmasHeaderDecor } from "@/components/theme/christmas-decor"
+import { ChristmasHeaderDecor, ChristmasHeaderPattern } from "@/components/theme/christmas-decor"
 
 export async function Header() {
   // Dua pembacaan ini independen, jadi dijalankan berbarengan — tema tidak perlu
@@ -83,8 +83,15 @@ export async function Header() {
         </div>
       </div>
     </header>
-    {/* Spacer to prevent content from jumping under the fixed header */}
-    <div className="h-16 w-full" />
+    {/* Spacer to prevent content from jumping under the fixed header.
+
+        Juga jadi jangkar setrip pola salju: header sendiri `fixed`, jadi
+        apa pun yang dipasang di dalamnya ikut menempel di layar dan tidak
+        pernah tergulung. Spacer ini bagian normal dari aliran halaman, jadi
+        setripnya ikut naik saat halaman digulung — persis yang diinginkan. */}
+    <div className="relative h-16 w-full">
+      {isChristmas && <ChristmasHeaderPattern />}
+    </div>
   </>
   )
 }

@@ -6,6 +6,7 @@ import { useEffect, useState } from "react"
 import { useIsHydrated } from "@/hooks/use-is-hydrated"
 import { cn } from "@/lib/utils"
 import { CartSheet } from "./cart-sheet"
+import { SantaCart } from "@/components/theme/christmas-assets"
 
 export function CartBadge() {
   const mounted = useIsHydrated()
@@ -38,9 +39,33 @@ export function CartBadge() {
     <CartSheet>
       <div
         aria-label={`Keranjang belanja, ${displayedTotal} barang`}
-        className="cart-target-icon relative flex items-center justify-center h-9 w-9 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+        /* `grid` + `place-items-center`: kedua ikon (biasa & Sinterklas)
+           menempati sel yang sama, jadi yang sedang tidak dipakai — diperkecil
+           jadi `scale: 0` oleh CSS tema — tidak menyisakan ruang kosong di
+           sebelah yang tampil. */
+        className="cart-target-icon relative grid place-items-center h-9 w-9 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
       >
-        <ShoppingCart className={cn("h-5 w-5 transition-transform", isBumping && "animate-bounce")} />
+        {/* Dua ikon, dipilih CSS bukan JavaScript.
+
+            Komponen ini berjalan di klien dan tidak bisa membaca tema dari
+            database. Mengoper prop dari root layout bisa saja, tapi `CartBadge`
+            dipakai di header desktop DAN mobile — dan gerbang lewat CSS
+            membuatnya otomatis benar di keduanya tanpa jalur prop terpisah.
+
+            `--chrome-decor` hanya diset tema chrome Natal; tanpanya keranjang
+            biasa yang tampil dan versi Sinterklas tidak pernah dilukis. */}
+        <ShoppingCart
+          className={cn(
+            "christmas-cart-default h-5 w-5 transition-transform",
+            isBumping && "animate-bounce"
+          )}
+        />
+        <SantaCart
+          className={cn(
+            "christmas-cart-santa h-6 w-6 transition-transform",
+            isBumping && "animate-bounce"
+          )}
+        />
       {mounted && totalItems > 0 && (
         <span
           className={cn(

@@ -321,6 +321,165 @@
 }
 
 /**
+ * Pola salju — DI FOOTER DAN SETRIP DI BAWAH NAVBAR SAJA.
+ *
+ * Versi sebelumnya memasang pola ini sebagai latar seluruh situs dan hasilnya
+ * terlalu ramai: pola bertekstur yang berjalan di belakang daftar produk dan
+ * tabel spesifikasi membuat halaman terasa berisik, dan yang paling terganggu
+ * justru halaman yang paling sering dipakai. Sekarang polanya hanya muncul di
+ * dua tempat yang memang bingkai, bukan tempat membaca — footer, dan setrip
+ * pendek tepat di bawah navbar.
+ *
+ * ====================================================================
+ * SETEL DI SINI:
+ *
+ *   --snow-pattern-opacity   seberapa pekat warnanya
+ *   --snow-pattern-size      seberapa rapat kepingnya (kecil = rapat)
+ * ====================================================================
+ *
+ * Karena cakupannya sempit dan tidak ada teks panjang di atasnya, nilai setinggi
+ * ini aman di sini — angka yang sama terasa berlebihan waktu sempat dipakai
+ * sebagai latar seluruh halaman.
+ *
+ * KERAPATAN. Ubinnya sengaja dibuat BESAR (260px). Ubin memuat 19 keping;
+ * makin besar ubinnya, makin renggang jarak antar keping saat diulang. Nilai
+ * 150px sempat dipakai dan hasilnya terlalu padat di footer — kepingnya
+ * bertemu satu sama lain dan bidangnya terbaca penuh, bukan bertekstur.
+ */
+.christmas-pattern {
+  --snow-pattern-opacity: 0.65;
+  --snow-pattern-size: 260px;
+
+  opacity: var(--snow-pattern-opacity);
+  background-size: var(--snow-pattern-size) var(--snow-pattern-size);
+}
+
+/* Di layar sempit ubinnya dikecilkan sedikit — ubin 260px di lebar 360px hanya
+   muat sekali lewat, dan pengulangannya berhenti terbaca sebagai pola. */
+@media (max-width: 639px) {
+  .christmas-pattern {
+    --snow-pattern-size: 190px;
+  }
+}
+
+/**
+ * Ikon keranjang versi Natal di navbar.
+ *
+ * Dua ikon selalu ada di DOM, dan CSS memilih mana yang tampil. Gerbangnya
+ * `--chrome-decor`, yang hanya diset tema chrome Natal — sama seperti
+ * `--card-decor` untuk kartu produk.
+ *
+ * Alasan memakai CSS, bukan kondisi di React: `CartBadge` adalah komponen
+ * klien yang tidak bisa membaca database, dan ia dipakai di header desktop
+ * maupun mobile. Satu aturan CSS mengurus keduanya; prop harus dialirkan dua
+ * kali lewat dua jalur berbeda.
+ *
+ * Ikon Sinterklas `display:none` secara bawaan, jadi tanpa tema Natal ia tidak
+ * pernah dilukis sama sekali.
+ */
+/**
+ * Ditukar lewat `scale`, bukan `display`.
+ *
+ * `display` tidak bisa dihitung dari sebuah custom property — nilainya kata
+ * kunci, bukan angka, jadi `calc()` tidak berlaku dan tidak ada cara menurunkan
+ * `none`/`revert` dari `--chrome-decor` tanpa menulis selektor terpisah untuk
+ * tiap tema. `scale` bisa: nilai 0 melipat ikonnya hingga tak berukuran, dan
+ * karena keduanya `position:absolute` di kotak yang sama, yang ber-skala 0
+ * tidak menyisakan ruang.
+ *
+ * `--chrome-decor` bernilai 1 hanya saat tema chrome Natal aktif.
+ */
+.christmas-cart-default,
+.christmas-cart-santa {
+  grid-area: 1 / 1;
+}
+
+.christmas-cart-default {
+  scale: calc(1 - var(--chrome-decor, 0));
+}
+
+.christmas-cart-santa {
+  scale: var(--chrome-decor, 0);
+}
+
+/**
+ * Untaian Natal saat kursor menyapu kartu produk.
+ *
+ * GERBANGNYA ADA DI SINI, bukan di React. `--card-decor` hanya diset tema kartu
+ * Natal di dalam scope `.theme-card`, jadi `ProductCard` tidak perlu tahu tema
+ * apa pun — ia dipakai di sebelas tempat, dan mengoper prop tema ke semuanya
+ * berarti sebelas jalur yang bisa lupa diperbarui.
+ *
+ * `@media (hover: hover)` membungkus animasinya: di perangkat sentuh tidak ada
+ * hover, jadi hiasan di sana akan tersangkut menutupi foto produk setelah
+ * disentuh sekali.
+ */
+.christmas-card-decor {
+  --decor-on: var(--card-decor, 0);
+
+  /* Tanpa tema, seluruh lapisan tidak terlihat. */
+  opacity: var(--decor-on, 0);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  /**
+   * TURUN dari atas, lalu naik kembali.
+   *
+   * Jalur masuk dan keluarnya SAMA, hanya berlawanan arah — dan itu sebabnya di
+   * sini dipakai `transition`, bukan `@keyframes`.
+   *
+   * Ini juga yang memperbaiki bug: versi sebelumnya memasang animasi "keluar"
+   * sebagai keadaan diam, sehingga animasi itu ikut berjalan SEKALI saat halaman
+   * pertama dimuat — di semua kartu sekaligus, tanpa ada yang menyentuh
+   * kursornya. Transition tidak punya masalah itu: ia hanya berjalan ketika
+   * nilainya benar-benar berubah, dan saat halaman dimuat tidak ada yang
+   * berubah.
+   *
+   * `translateY(-102%)` menaruhnya tepat di atas bingkai gambar, dan
+   * `overflow-hidden` pada pembungkusnya yang menyembunyikannya di sana.
+   * Dikalikan `--decor-on` supaya saat tema mati untaiannya tidak pernah
+   * bergeser ke mana pun.
+   */
+  .christmas-card-garland {
+    transform: translate3d(0, calc(-102% * var(--decor-on, 0)), 0);
+    transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform;
+  }
+
+  /**
+   * Turun ke posisinya. Easing-nya melambat di ujung sehingga untaiannya
+   * terlihat berhenti karena bobotnya sendiri, bukan direm mendadak.
+   */
+  .group:hover .christmas-card-garland {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/**
+ * Tanpa animasi: untaian tetap muncul saat hover, tapi langsung, tanpa gerak.
+ * Menghapusnya sama sekali akan menghilangkan hiasan Natal dari kartu produk
+ * bagi orang yang cuma tidak ingin ada yang bergerak.
+ */
+@media (prefers-reduced-motion: reduce) {
+  /* Untaian tetap muncul saat hover, tapi langsung di tempatnya — tanpa
+     gerakan turun-naik. Menghapusnya sama sekali akan menghilangkan hiasan
+     Natal dari kartu produk bagi orang yang cuma tidak ingin ada yang
+     bergerak. */
+  .christmas-card-garland {
+    transition: none !important;
+    transform: none !important;
+  }
+
+  .christmas-card-decor {
+    opacity: 0;
+  }
+
+  .group:hover .christmas-card-decor {
+    opacity: var(--decor-on, 0);
+  }
+}
+
+/**
  * Salju yang jatuh di bawah navbar.
  *
  * Pitanya diberi mask gradien supaya keping salju MEMUDAR di ujung bawah, bukan
@@ -328,8 +487,30 @@
  * dan langsung terbaca sebagai kotak yang menempel di halaman.
  */
 .christmas-snow {
+  /* SATU nilai mengatur tinggi pita DAN jarak jatuh keping. Kalau keduanya
+     ditulis terpisah, salju berhenti sebelum ujung pita (terlihat menggantung)
+     atau jatuh melewatinya (separuh siklusnya terbuang di area tak terlihat,
+     dan saljunya terlihat jarang padahal jumlahnya sama).
+
+     Sepertiga layar, dibatasi 320px supaya tidak berlebihan di layar tinggi
+     dan tidak hilang di layar pendek. Lihat `christmas-snow.tsx` untuk alasan
+     memilih sepertiga, bukan setengah. */
+  --snow-depth: min(33vh, 320px);
+
+  height: var(--snow-depth);
+
+  /* Memudar di ujung bawah supaya keping MENGHILANG, bukan terpotong garis
+     lurus yang langsung terbaca sebagai kotak yang menempel di halaman. */
   mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
+}
+
+/* Di layar sempit pitanya sedikit dipendekkan: 33vh di ponsel adalah pita yang
+   panjang sekali dibanding lebarnya, dan 14 keping di dalamnya jadi renggang. */
+@media (max-width: 639px) {
+  .christmas-snow {
+    --snow-depth: min(30vh, 240px);
+  }
 }
 
 .christmas-flake {
@@ -350,10 +531,10 @@
     transform: translate3d(0, -20px, 0);
   }
   50% {
-    transform: translate3d(var(--drift, 10px), 90px, 0);
+    transform: translate3d(var(--drift, 10px), calc(var(--snow-depth, 200px) * 0.45), 0);
   }
   100% {
-    transform: translate3d(0, 200px, 0);
+    transform: translate3d(0, var(--snow-depth, 200px), 0);
   }
 }
 

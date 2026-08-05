@@ -16,6 +16,7 @@ import { Rating } from "@/components/ui/rating"
 import { useFlyToCart } from "@/components/providers/fly-to-cart-provider"
 import { useState, useEffect } from "react"
 import { QuickViewModal } from "@/components/ui/quick-view-modal"
+import { ChristmasCardDecor } from "@/components/theme/christmas-card-decor"
 
 export interface Product {
   id: string
@@ -148,6 +149,12 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
           sizes="(max-width: 768px) 50vw, 25vw"
           className="object-contain transition-transform duration-500 group-hover:scale-105"
         />
+
+        {/* Hiasan Natal saat hover. Tidak diberi kondisi di React: seluruh
+            gerbangnya ada di CSS lewat `--card-decor`, yang hanya diset tema
+            kartu Natal. Kartu ini dipakai di sebelas tempat — mengoper prop
+            tema ke semuanya berarti sebelas jalur yang bisa lupa diperbarui. */}
+        <ChristmasCardDecor />
 
         {/* Quick View Hover State (Desktop) */}
         <div className="absolute inset-0 z-20 hidden md:flex items-center justify-center opacity-0 transition-opacity duration-300 group-hover/image:opacity-100 group-hover/image:bg-background/40 group-hover/image:backdrop-blur-sm pointer-events-none">

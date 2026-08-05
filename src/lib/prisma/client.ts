@@ -48,7 +48,8 @@ function createPrismaClient(): PrismaClient {
    * naikkan batas paketnya di Hostinger — jangan naikkan angka ini tanpa itu.
    */
   const sep = url.includes("?") ? "&" : "?"
-  url = `${url}${sep}connectionLimit=3&acquireTimeout=30000`
+  const connectionLimit = process.env.NODE_ENV === "production" ? 3 : 1
+  url = `${url}${sep}connectionLimit=${connectionLimit}&acquireTimeout=30000`
 
   const adapter = new PrismaMariaDb(url, {
     // Protokol biner menandai parameter sebagai utf8mb4_general_ci, sedangkan

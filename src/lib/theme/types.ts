@@ -26,6 +26,14 @@ export type ThemeSurface = {
 export type ThemeTokens = {
   /** Header, Footer, dan Mobile Dock — dikendalikan tab pertama. */
   chrome?: ThemeSurface
+  /**
+   * Menyalakan hiasan chrome bertema — sekarang: ikon keranjang Sinterklas
+   * di navbar.
+   *
+   * Sakelar, bukan warna. Menghasilkan `--chrome-decor:1` di dalam scope
+   * `.theme-chrome`, dan CSS yang memilih ikonnya membaca variabel itu.
+   */
+  chromeDecor?: boolean
   /** Kartu produk — dikendalikan tab kedua. */
   card?: ThemeSurface
   /** Warna harga diskon di kartu produk. */
@@ -40,6 +48,15 @@ export type ThemeTokens = {
   cardBadgeHotFold?: string
   /** Isi badge "NEW". */
   cardBadgeNew?: string
+  /**
+   * Menyalakan hiasan hover di kartu produk (untaian, pohon, manusia salju).
+   *
+   * Bukan warna, melainkan sakelar — karena itu tidak lewat `declare()` yang
+   * memvalidasi warna. Satu-satunya nilai yang diterima adalah `true`, dan
+   * hasilnya `--card-decor:1` di dalam scope `.theme-card`. Seluruh perilaku
+   * hiasannya diatur CSS dari sana, jadi `ProductCard` tidak perlu tahu tema.
+   */
+  cardDecor?: boolean
 }
 
 export type Theme = {

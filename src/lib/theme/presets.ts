@@ -43,14 +43,26 @@ export const PRESET_THEMES: readonly Theme[] = [
      * dari aset hiasan (lihat `components/theme/christmas-*`). Hanya aksen
      * merah pada harga & badge yang diubah — itu pun ke MERAH, warna yang
      * memang sudah dipakai kartu produk, jadi tidak ada yang terasa asing.
+     *
+     * PALET mengikuti kit desain di `public/christmas-theme/`, bukan tebakan
+     * sendiri: #ec3013 accent, #1f4d3a pine, #c8952a gold, #201e1d ink. Nilai
+     * ini juga dipakai komponen hiasan, jadi harga di kartu produk dan bola
+     * natal di navbar memakai merah yang sama persis — dua merah yang beda
+     * tipis di satu layar terbaca sebagai salah cetak, bukan variasi.
      */
     tokens: {
-      cardPrice: "#c1121f",
-      cardBadgeSale: "#c1121f",
-      cardBadgeSaleFold: "#7d0b14",
-      cardBadgeHot: "#0b6b4f",
-      cardBadgeHotFold: "#064032",
-      cardBadgeNew: "#c1121f",
+      // Menyalakan ikon keranjang Sinterklas di navbar. Latar chrome sengaja
+      // tetap tidak diisi — lihat catatan panjang di atas.
+      chromeDecor: true,
+      cardPrice: "#ec3013",
+      cardBadgeSale: "#ec3013",
+      cardBadgeSaleFold: "#b5240e",
+      cardBadgeHot: "#1f4d3a",
+      cardBadgeHotFold: "#143528",
+      cardBadgeNew: "#ec3013",
+      // Menyalakan hiasan hover di kartu produk. Hanya tema INI yang
+      // menyalakannya — preset musiman lain tetap memakai kartu polos.
+      cardDecor: true,
     },
   },
   {
