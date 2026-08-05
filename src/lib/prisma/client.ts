@@ -27,7 +27,29 @@ function createPrismaClient(): PrismaClient {
   url = url.replace(/^['"]|['"]$/g, "")
   // Replace mysql:// with mariadb://
   url = url.replace(/^mysql:\/\//, "mariadb://")
-  
+
+  /**
+   * Kolam koneksi dibatasi 3, bukan 10 seperti bawaan driver.
+   *
+   * Hostinger membatasi user database ini pada `max_connections_per_hour` = 500,
+   * dan batas itu menghitung koneksi yang DIBUKA, bukan yang sedang dipakai
+   * bersamaan. Kolam besar berarti setiap lonjakan permintaan membuka lebih
+   * banyak koneksi sekaligus, dan jatahnya habis jauh sebelum bebannya sendiri
+   * terasa berat.
+   *
+   * Gejalanya menyesatkan waktu terjadi: driver melaporkan "pool timeout ...
+   * active=0 idle=0" — terbaca seperti kolam yang penuh, padahal kolamnya justru
+   * kosong karena tidak satu pun koneksi baru berhasil dibuka. Pesan aslinya
+   * (`no: 1226 ... has exceeded the max_connections_per_hour resource`) hanya
+   * muncul kalau kebetulan tertangkap sebelum percobaan ulang menutupinya.
+   *
+   * Tiga sudah lapang untuk panel yang dipakai segelintir orang dan storefront
+   * yang sebagian besar halamannya statis. Kalau suatu saat terasa sempit,
+   * naikkan batas paketnya di Hostinger — jangan naikkan angka ini tanpa itu.
+   */
+  const sep = url.includes("?") ? "&" : "?"
+  url = `${url}${sep}connectionLimit=3&acquireTimeout=30000`
+
   const adapter = new PrismaMariaDb(url, {
     // Protokol biner menandai parameter sebagai utf8mb4_general_ci, sedangkan
     // semua kolom di DB ini utf8mb4_unicode_ci. Prisma menerjemahkan `contains`
