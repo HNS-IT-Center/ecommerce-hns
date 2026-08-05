@@ -6,8 +6,13 @@ import { Home, Monitor, ShoppingBag, ShoppingCart, User } from "lucide-react"
 import { useCartStore } from "@/store/cart"
 import { useIsHydrated } from "@/hooks/use-is-hydrated"
 import { cn } from "@/lib/utils"
+import { ChristmasDockDecor } from "@/components/theme/christmas-decor"
 
-export function MobileDock() {
+/**
+ * `isChristmas` dioper sebagai prop dari root layout, bukan dibaca sendiri —
+ * komponen ini berjalan di klien dan tidak bisa menyentuh database.
+ */
+export function MobileDock({ isChristmas = false }: { isChristmas?: boolean }) {
   const pathname = usePathname()
   const mounted = useIsHydrated()
   const totalItems = useCartStore((state) => state.getTotalItems())
@@ -61,7 +66,8 @@ export function MobileDock() {
   ]
 
   return (
-    <div className="no-print print:hidden md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-border shadow-[0_-4px_10px_rgba(0,0,0,0.05)] pb-safe">
+    <div className="theme-chrome no-print print:hidden md:hidden fixed bottom-0 left-0 right-0 z-50 bg-background border-t border-border shadow-[0_-4px_10px_rgba(0,0,0,0.05)] pb-safe">
+      {isChristmas && <ChristmasDockDecor />}
       <div className="flex h-[60px] w-full items-center justify-around px-2">
         {items.map((item, i) => (
           <Link 

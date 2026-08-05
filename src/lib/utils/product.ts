@@ -9,14 +9,26 @@ export function getProductBadge(product: WooProduct): ProductBadge {
   return null;
 }
 
+/**
+ * Warna badge dialirkan lewat token `--card-badge-*` supaya Theme Editor bisa
+ * menimpanya per-scope (lihat `.theme-card` di globals.css). Nilai defaultnya
+ * disetel sama persis dengan warna sebelumnya, jadi tanpa tema aktif tampilannya
+ * tidak berubah.
+ *
+ * Kelasnya ditulis utuh sebagai string literal, bukan dirangkai (`bg-${x}`),
+ * karena pemindai Tailwind hanya mengenali kelas yang tertulis lengkap.
+ */
 export function getBadgeColorClass(badge: "Hot" | "Deal" | "New"): string {
   switch (badge) {
+    // Tetap `bg-sale-red` (ramp accent), BUKAN `--card-badge-sale` yang dipakai
+    // badge terlipat. Keduanya memang beda warna sejak awal, dan menyamakannya
+    // di sini akan mengubah tampilan — di luar lingkup refactor ini.
     case "Deal":
       return "bg-sale-red";
     case "Hot":
-      return "bg-orange-500";
+      return "bg-(--card-badge-hot)";
     case "New":
-      return "bg-blue-500";
+      return "bg-(--card-badge-new)";
   }
 }
 

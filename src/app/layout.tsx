@@ -8,6 +8,8 @@ import { MobileDock } from "@/components/layout/mobile-dock";
 import { FlyToCartProvider } from "@/components/providers/fly-to-cart-provider";
 import { JsonLd } from "@/components/seo/json-ld";
 import { env } from "@/config/env";
+import { getActiveThemeCss, getThemeSettings } from "@/lib/theme/settings";
+import { ChristmasSnow } from "@/components/theme/christmas-snow";
 import NextTopLoader from "nextjs-toploader";
 
 const inter = Inter({
@@ -64,20 +66,47 @@ const websiteJsonLd = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  /**
+   * CSS tema aktif, dibaca lewat `unstable_cache` (lihat lib/theme/settings.ts).
+   *
+   * Aman untuk rendering statis: tidak menyentuh `cookies()`/`headers()`, jadi
+   * halaman storefront tetap statis/ISR. Nilainya string kosong kalau tema masih
+   * default, sehingga halaman tanpa tema tidak membawa elemen `<style>` sama
+   * sekali.
+   *
+   * Disuntik di `<head>` sebagai HTML hasil render server — bukan lewat
+   * `useEffect` atau localStorage — sehingga warnanya sudah benar pada lukisan
+   * pertama dan tidak ada kedipan tema (FOUC).
+   */
+  const [themeCss, theme] = await Promise.all([
+    getActiveThemeCss(),
+    getThemeSettings(),
+  ]);
+  const isChristmas = theme.activeChromeThemeId === "christmas";
+
   return (
     <html
       lang="id"
       className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        {themeCss ? (
+          <style id="theme-vars" dangerouslySetInnerHTML={{ __html: themeCss }} />
+        ) : null}
+      </head>
       <body className="min-h-full flex flex-col">
         <NextTopLoader color="#0000FF" showSpinner={false} />
         <JsonLd data={organizationJsonLd} />
         <JsonLd data={websiteJsonLd} />
+        {/* Salju dipasang di root, bukan di dalam header: header `overflow`-nya
+            terbatas dan tingginya hanya 4rem, sedangkan salju harus jatuh ke
+            area di bawahnya. */}
+        {isChristmas && <ChristmasSnow />}
         <FlyToCartProvider>
           <Toast limit={1}>
             {children}
@@ -86,7 +115,7 @@ export default function RootLayout({
           {/* Keduanya membawa `print:hidden` sendiri supaya tidak ikut masuk ke
               PDF quotation (/build-pc/print). */}
           <FloatingWhatsAppButton whatsappNumber={env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER} />
-          <MobileDock />
+          <MobileDock isChristmas={isChristmas} />
         </FlyToCartProvider>
       </body>
     </html>

@@ -2,15 +2,21 @@ import Link from "next/link"
 import Image from "next/image"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import { env } from "@/config/env"
+import { getThemeSettings } from "@/lib/theme/settings"
+import { ChristmasFooterDecor } from "@/components/theme/christmas-decor"
 
-export function Footer() {
+export async function Footer() {
   const waUrl = buildWhatsAppUrl(
     env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER,
     "Halo HNS IT Center, saya ingin bertanya."
   )
 
+  const theme = await getThemeSettings()
+  const isChristmas = theme.activeChromeThemeId === "christmas"
+
   return (
-    <footer className="border-t bg-muted/20 print:hidden">
+    <footer className="theme-chrome relative border-t bg-muted/20 print:hidden">
+      {isChristmas && <ChristmasFooterDecor />}
       <div className="container mx-auto px-4 md:px-6 py-12 md:py-16">
         <div className="grid gap-8 md:grid-cols-4 lg:gap-12">
           

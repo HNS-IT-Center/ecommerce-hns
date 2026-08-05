@@ -145,6 +145,19 @@
     --chart-3: #d97706;
     --chart-4: var(--secondary-300);
     --chart-5: var(--accent-400);
+
+    /* Kartu produk — token yang bisa ditimpa Theme Editor lewat `.theme-card`.
+       Nilainya sengaja disetel PERSIS sama dengan warna Tailwind yang dulu
+       ditulis langsung di product-card.tsx (red-500/800, orange-500/800),
+       supaya refactor ke variabel ini tidak mengubah tampilan sedikit pun.
+       Ditaruh di sini, bukan di `@theme inline`, karena token di blok itu
+       di-inline saat build sehingga tidak bisa ditimpa per-scope saat runtime. */
+    --card-badge-sale: oklch(63.7% 0.237 25.331);
+    --card-badge-sale-fold: oklch(44.4% 0.177 26.899);
+    --card-badge-hot: oklch(70.5% 0.213 47.604);
+    --card-badge-hot-fold: oklch(47% 0.157 37.304);
+    --card-badge-new: oklch(62.3% 0.214 259.815);
+    --card-price: oklch(63.7% 0.237 25.331);
   }
   .dark {
     --text-50: #05150d;
@@ -275,6 +288,78 @@
 @media (prefers-reduced-motion: reduce) {
   .animate-marquee {
     animation: none;
+  }
+}
+
+/**
+ * Ayunan ornamen Natal.
+ *
+ * Titik tumpunya di ATAS (`transform-origin: top center`) supaya ornamen
+ * berayun menggantung dari talinya, bukan berputar di tengah badannya —
+ * perbedaan kecil yang menentukan apakah gerakannya terbaca sebagai benda
+ * tergantung atau sekadar ikon yang bergoyang.
+ *
+ * Amplitudonya hanya 2,5 derajat dan siklusnya lambat. Hiasan ini menempel di
+ * header yang ikut tergulung sepanjang kunjungan; gerakan yang lebih besar akan
+ * menarik perhatian terus-menerus dan mengganggu, bukan menyenangkan.
+ */
+.christmas-ornament {
+  transform-origin: top center;
+  animation: christmas-sway 6s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes christmas-sway {
+  0%, 100% { transform: rotate(-2.5deg); }
+  50% { transform: rotate(2.5deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .christmas-ornament {
+    animation: none;
+  }
+}
+
+/**
+ * Salju yang jatuh di bawah navbar.
+ *
+ * Pitanya diberi mask gradien supaya keping salju MEMUDAR di ujung bawah, bukan
+ * terpotong garis lurus. Tanpa ini batas efeknya terlihat sebagai garis tegas
+ * dan langsung terbaca sebagai kotak yang menempel di halaman.
+ */
+.christmas-snow {
+  mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
+}
+
+.christmas-flake {
+  animation-name: christmas-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  will-change: transform;
+}
+
+/**
+ * Melayang ke samping DI TENGAH jatuh, bukan lurus ke bawah.
+ *
+ * Salju sungguhan tidak pernah jatuh vertikal — pergeseran kecil di titik 50%
+ * inilah yang membedakan "salju" dari "titik-titik yang turun".
+ */
+@keyframes christmas-fall {
+  0% {
+    transform: translate3d(0, -20px, 0);
+  }
+  50% {
+    transform: translate3d(var(--drift, 10px), 90px, 0);
+  }
+  100% {
+    transform: translate3d(0, 200px, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .christmas-snow {
+    display: none;
   }
 }
 
