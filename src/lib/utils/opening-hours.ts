@@ -247,10 +247,16 @@ export function getOpenStatus(
   // halaman berani menyatakan "tutup" atas data yang tidak pernah ada.
   if (!hariIni) return { state: "unknown", label: "Jam buka belum diisi" };
 
+  /**
+   * Labelnya menggabungkan keadaan dan jamnya sekaligus — "Buka · tutup 21.00",
+   * bukan lencana "Buka" ditambah baris "Buka sampai 21.00" di bawahnya. Dua
+   * elemen yang mengatakan hal yang sama memaksa mata membaca dua kali untuk satu
+   * keterangan.
+   */
   const berikutnya = () => {
     const lain = nextOpenDay(hours, sekarang.day);
     return lain
-      ? `Buka lagi ${DAY_NAMES[lain.dayOfWeek]} ${toLabel(lain.opensAt)}`
+      ? `Tutup · buka lagi ${DAY_NAMES[lain.dayOfWeek]} ${toLabel(lain.opensAt)}`
       : "Sedang tutup";
   };
 
@@ -260,10 +266,16 @@ export function getOpenStatus(
   const tutup = toMinutes(hariIni.closesAt);
 
   if (sekarang.minutes < buka) {
-    return { state: "closed", label: `Buka pukul ${toLabel(hariIni.opensAt)}` };
+    return {
+      state: "closed",
+      label: `Tutup · buka ${toLabel(hariIni.opensAt)}`,
+    };
   }
   if (sekarang.minutes < tutup) {
-    return { state: "open", label: `Buka sampai ${toLabel(hariIni.closesAt)}` };
+    return {
+      state: "open",
+      label: `Buka · tutup ${toLabel(hariIni.closesAt)}`,
+    };
   }
   return { state: "closed", label: berikutnya() };
 }

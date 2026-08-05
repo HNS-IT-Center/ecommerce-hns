@@ -1,13 +1,10 @@
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
-import { MapPin, Clock, MessageCircle, Navigation } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { getActiveStores } from "@/lib/api/stores";
-import { getStoreEmbedUrl, getWhatsAppUrl } from "@/features/stores/lib/maps";
-import { StoresOverviewMapLoader } from "@/features/stores/components/stores-overview-map-loader";
-import { buildStoreJsonLd } from "@/features/stores/lib/structured-data";
 import { JsonLd } from "@/components/seo/json-ld";
-import { formatOpeningHours } from "@/lib/utils/opening-hours";
+import { getActiveStores } from "@/lib/api/stores";
+import { getDirectionsUrl, getWhatsAppUrl } from "@/features/stores/lib/maps";
+import { buildStoreJsonLd } from "@/features/stores/lib/structured-data";
+import { StorePanel } from "@/features/stores/components/store-panel";
 import { env } from "@/config/env";
 
 export const metadata = {
@@ -24,29 +21,42 @@ export const metadata = {
  */
 export const revalidate = 3600;
 
-export default async function StoresPage() {
-  const stores = (await getActiveStores()).map((store) => ({
-    ...store,
-    waUrl: getWhatsAppUrl(store),
-    mapEmbedUrl: getStoreEmbedUrl(store),
-  }));
+/** Pertanyaan yang benar-benar ditanyakan sebelum orang berangkat ke toko. */
+const FAQ_KUNJUNGAN = [
+  {
+    q: "Bisa cek stok dulu sebelum datang?",
+    a: "Bisa, dan untuk barang tertentu memang disarankan. Chat WhatsApp cabang yang dituju sambil menyebutkan tipe barangnya — stok tiap cabang berbeda.",
+  },
+  {
+    q: "Ada tempat parkir?",
+    a: "Ada di kedua cabang. Untuk cabang yang berada di dalam mal, ikuti area parkir mal seperti biasa.",
+  },
+  {
+    q: "Jam berapa paling sepi?",
+    a: "Pagi menjelang siang di hari kerja biasanya paling lengang. Akhir pekan sore paling ramai, terutama untuk konsultasi rakit PC.",
+  },
+  {
+    q: "Mau servis, langsung bawa unitnya saja?",
+    a: "Boleh langsung datang. Bawa kelengkapan yang berkaitan dengan keluhannya — adaptor, kabel, atau media instalasi — supaya teknisi tidak perlu menebak.",
+  },
+];
 
-  /**
-   * Hanya toko berkoordinat yang bisa digambar di peta ikhtisar. Yang belum
-   * diisi tidak menggagalkan apa pun — ia sekadar tidak muncul di peta, dan
-   * kartunya di bawah tetap lengkap.
-   */
-  const storesOnMap = stores
-    .filter((s) => s.latitude !== null && s.longitude !== null)
-    .map((s) => ({
-      id: s.id,
-      name: s.name,
-      address: s.address,
-      phone: s.phone,
-      googlePlaceId: s.googlePlaceId,
-      latitude: s.latitude as number,
-      longitude: s.longitude as number,
-    }));
+export default async function StoresPage() {
+  const stores = await getActiveStores();
+
+  const panels = stores.map((store) => ({
+    id: store.id,
+    name: store.name,
+    address: store.address,
+    hours: store.hours,
+    mapsUrl: store.mapsUrl,
+    phone: store.phone,
+    googlePlaceId: store.googlePlaceId,
+    latitude: store.latitude,
+    longitude: store.longitude,
+    waUrl: getWhatsAppUrl(store),
+    directionsUrl: getDirectionsUrl(store),
+  }));
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -56,12 +66,12 @@ export default async function StoresPage() {
           data={buildStoreJsonLd(store, env.NEXT_PUBLIC_SITE_URL)}
         />
       ))}
+
       <Header />
       <main className="flex-1">
-        {/* Title Section */}
         <section className="bg-brand-green py-12 text-center text-primary-foreground">
           <h1 className="text-3xl font-extrabold tracking-tight md:text-4xl lg:text-5xl">
-            OUR STORE & BRANCH
+            TOKO &amp; CABANG KAMI
           </h1>
           <p className="mt-4 text-lg text-primary-foreground/80">
             Temukan lokasi toko terdekat kami di kota Anda
@@ -69,118 +79,71 @@ export default async function StoresPage() {
         </section>
 
         {/*
-          Peta ikhtisar: seluruh cabang sekaligus, dengan penanda yang kita
-          pasang sendiri. Tingginya dibatasi 45vh di desktop — peta yang memakan
-          seluruh layar mendorong kartu toko, yang berisi informasi sebenarnya,
-          ke bawah lipatan.
-
-          Di layar sempit tingginya 260px, bukan disembunyikan: peta memberi
-          jawaban "jauh atau dekat dari saya" yang tidak bisa diberikan alamat
-          tertulis, dan justru pengguna ponsel yang paling sering menanyakannya.
+          Seluruh isi halaman berbagi satu lebar. Susunan lama menaruh peta
+          selebar layar penuh di atas konten yang menyempit di tengah, dan
+          perbedaan lebar itulah yang membuat halamannya terasa kosong.
         */}
-        {storesOnMap.length > 0 && (
-          <section className="w-full">
-            <div className="h-[260px] w-full bg-muted md:h-[45vh]">
-              <StoresOverviewMapLoader stores={storesOnMap} />
+        <div className="mx-auto w-full max-w-6xl px-4 py-10 md:py-14">
+          {stores.length === 0 ? (
+            <p className="rounded-2xl border border-dashed p-8 text-center text-muted-foreground">
+              Data toko belum tersedia. Hubungi kami lewat WhatsApp untuk
+              menanyakan lokasi cabang terdekat.
+            </p>
+          ) : (
+            <>
+              {/* Fakta ringkas: menjawab "ada berapa" dan "kapan buka" sebelum
+                  orang menggulir. Sengaja tanpa angka rating — angka presisi yang
+                  tidak ada yang memperbaruinya lebih merusak daripada tidak ada. */}
+              <dl className="flex flex-wrap gap-x-8 gap-y-2 rounded-xl border bg-card px-5 py-3.5 text-sm text-muted-foreground">
+                <div className="flex gap-1.5">
+                  <dt>Jumlah cabang</dt>
+                  <dd className="font-bold text-foreground">{stores.length}</dd>
+                </div>
+                <div className="flex gap-1.5">
+                  <dt>Buka</dt>
+                  <dd className="font-bold text-foreground">setiap hari</dd>
+                </div>
+                <div className="flex gap-1.5">
+                  <dt>Wilayah</dt>
+                  <dd className="font-bold text-foreground">Batam</dd>
+                </div>
+              </dl>
+
+              {/* Grid meregangkan anaknya sama tinggi secara bawaan; `h-full` di
+                  dalam panel dan `mt-auto` pada barisan tombol yang membuat
+                  tombolnya rata di dasar walau alamatnya berbeda panjang. */}
+              <div className="mt-6 grid gap-6 md:grid-cols-2">
+                {panels.map((store) => (
+                  <StorePanel key={store.id} store={store} />
+                ))}
+              </div>
+            </>
+          )}
+
+          <section className="mt-12">
+            <h2 className="text-xl font-bold md:text-2xl">
+              Sebelum berkunjung
+            </h2>
+            <div className="mt-4 divide-y rounded-2xl border bg-card">
+              {FAQ_KUNJUNGAN.map((item) => (
+                <details key={item.q} className="group px-5 py-4">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold marker:content-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+                    {item.q}
+                    <span
+                      className="shrink-0 text-xl leading-none text-muted-foreground transition-transform group-open:rotate-45"
+                      aria-hidden="true"
+                    >
+                      +
+                    </span>
+                  </summary>
+                  <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
+                    {item.a}
+                  </p>
+                </details>
+              ))}
             </div>
           </section>
-        )}
-
-        {/* Store Grid Section */}
-        <section className="mx-auto max-w-7xl px-4 py-16 md:px-6">
-          {stores.length === 0 && (
-            <p className="rounded-2xl border border-dashed p-8 text-center text-muted-foreground">
-              Belum ada data toko. Hubungi kami lewat WhatsApp untuk menanyakan
-              lokasi terdekat.
-            </p>
-          )}
-          <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-            {stores.map((store) => (
-              <div
-                key={store.id}
-                className="overflow-hidden rounded-2xl border bg-card shadow-sm transition-all hover:shadow-md"
-              >
-                {/* Peta tiap toko menggantikan gambar penampung: yang dicari orang
-                    di halaman ini adalah "di mana persisnya", dan itu dijawab peta
-                    bertitik, bukan kotak abu-abu berisi nama yang sudah tertulis
-                    di bawahnya. */}
-                <div className="relative h-48 w-full bg-muted">
-                  <iframe
-                    src={store.mapEmbedUrl}
-                    title={`Peta lokasi ${store.name}`}
-                    width="100%"
-                    height="100%"
-                    style={{ border: 0 }}
-                    loading="lazy"
-                    referrerPolicy="no-referrer-when-downgrade"
-                  ></iframe>
-                </div>
-
-                <div className="p-6">
-                  <h3 className="text-xl font-bold">{store.name}</h3>
-
-                  <div className="mt-4 flex items-start gap-3 text-sm text-muted-foreground">
-                    <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand-green" />
-                    <p className="leading-relaxed">{store.address}</p>
-                  </div>
-
-                  {/* Jam kosong bukan galat, cuma data yang belum diisi — jadi
-                      warnanya muted, bukan merah. Merah menyuruh orang bertindak,
-                      dan di sini tidak ada yang bisa dilakukan pengunjung. */}
-                  <div
-                    className={`mt-4 flex items-center gap-3 text-sm ${
-                      store.hours.length === 0
-                        ? "text-muted-foreground"
-                        : "font-medium text-foreground"
-                    }`}
-                  >
-                    <Clock
-                      className={`h-4 w-4 shrink-0 ${
-                        store.hours.length === 0
-                          ? "text-muted-foreground"
-                          : "text-sale-red"
-                      }`}
-                    />
-                    <p>{formatOpeningHours(store.hours)}</p>
-                  </div>
-
-                  {/* WhatsApp jalur konversi utama HNS, jadi ia yang solid; peta
-                      pendukung, jadi outline. Hierarkinya jangan dibalik. */}
-                  <div className="mt-8 grid grid-cols-2 gap-3">
-                    <Button
-                      variant="outline"
-                      size="lg"
-                      render={
-                        <a
-                          href={store.mapsUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        />
-                      }
-                    >
-                      <Navigation className="h-4 w-4" />
-                      Google Maps
-                    </Button>
-                    <Button
-                      variant="whatsapp"
-                      size="lg"
-                      render={
-                        <a
-                          href={store.waUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        />
-                      }
-                    >
-                      <MessageCircle className="h-4 w-4" />
-                      WhatsApp
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+        </div>
       </main>
       <Footer />
     </div>

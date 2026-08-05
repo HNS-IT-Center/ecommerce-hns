@@ -51,7 +51,11 @@ export type MapStore = {
  * `currentColor` diwarisi dari `text-primary` pada pembungkusnya, jadi warnanya
  * ikut berubah bersama tema tanpa satu pun nilai heksadesimal ditulis di sini.
  */
-function brandIcon(label: string): L.DivIcon {
+function brandIcon(label: string | null): L.DivIcon {
+  const teks = label
+    ? `<span class="mt-0.5 whitespace-nowrap rounded bg-background/90 px-1.5 py-0.5 text-[11px] font-semibold text-foreground shadow-sm">${label}</span>`
+    : "";
+
   return L.divIcon({
     className: "!bg-transparent !border-0",
     iconSize: [32, 42],
@@ -64,9 +68,7 @@ function brandIcon(label: string): L.DivIcon {
                 fill="currentColor" stroke="white" stroke-width="2.5"/>
           <circle cx="16" cy="16" r="5.5" fill="white"/>
         </svg>
-        <span class="mt-0.5 whitespace-nowrap rounded bg-background/90 px-1.5 py-0.5 text-[11px] font-semibold text-foreground shadow-sm">
-          ${label}
-        </span>
+        ${teks}
       </div>
     `,
   });
@@ -95,21 +97,45 @@ function ScrollZoomOnClick() {
   return null;
 }
 
-export function StoresOverviewMap({ stores }: { stores: MapStore[] }) {
+/** Zoom untuk peta satu cabang: cukup rapat untuk mengenali blok rukonya. */
+const SINGLE_STORE_ZOOM = 16;
+
+type Props = {
+  stores: MapStore[];
+  /**
+   * Nama toko ditempel di bawah penanda. Dimatikan pada peta kecil di dalam panel,
+   * karena namanya sudah tertulis persis di bawah petanya — label kedua di ruang
+   * sesempit itu hanya menutupi jalan yang justru dicari orang.
+   */
+  showLabels?: boolean;
+};
+
+export function StoresOverviewMap({ stores, showLabels = true }: Props) {
+  /**
+   * `fitBounds` atas satu titik menghasilkan zoom maksimum — layar penuh aspal
+   * tanpa satu pun nama jalan. Karena itu satu cabang memakai center + zoom tetap,
+   * dan hanya dua cabang atau lebih yang dihitung batasnya.
+   */
   const bounds = useMemo(
     () =>
-      L.latLngBounds(
-        stores.map((s) => [s.latitude, s.longitude] as [number, number]),
-      ),
+      stores.length > 1
+        ? L.latLngBounds(
+            stores.map((s) => [s.latitude, s.longitude] as [number, number]),
+          )
+        : undefined,
     [stores],
   );
 
   if (stores.length === 0) return null;
 
+  const tunggal = stores.length === 1 ? stores[0] : null;
+
   return (
     <MapContainer
       bounds={bounds}
       boundsOptions={{ padding: BOUNDS_PADDING }}
+      center={tunggal ? [tunggal.latitude, tunggal.longitude] : undefined}
+      zoom={tunggal ? SINGLE_STORE_ZOOM : undefined}
       scrollWheelZoom={false}
       className="h-full w-full"
     >
@@ -133,7 +159,7 @@ export function StoresOverviewMap({ stores }: { stores: MapStore[] }) {
         <Marker
           key={store.id}
           position={[store.latitude, store.longitude]}
-          icon={brandIcon(store.name)}
+          icon={brandIcon(showLabels ? store.name : null)}
         >
           <Popup>
             <span className="block text-sm font-bold">{store.name}</span>
