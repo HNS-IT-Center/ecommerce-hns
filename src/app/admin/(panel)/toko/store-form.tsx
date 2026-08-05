@@ -75,8 +75,9 @@ export function StoreForm({ store }: StoreFormProps) {
                 />
                 {!isEdit && (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Penanda baris di database, tidak muncul di URL dan tidak bisa
-                    diubah setelah dibuat. Alamat halaman diatur lewat Slug di bawah.
+                    Penanda baris di database, tidak muncul di URL dan tidak
+                    bisa diubah setelah dibuat. Alamat halaman diatur lewat Slug
+                    di bawah.
                   </p>
                 )}
               </div>

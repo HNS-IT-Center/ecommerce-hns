@@ -35,6 +35,21 @@ type StoreRow = {
 export function StoreList({ stores }: { stores: StoreRow[] }) {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
+  /**
+   * Nama yang diketik staff di kotak konfirmasi.
+   *
+   * Menghapus toko berarti alamat, jam tujuh hari, koordinat, dan nomor WA
+   * cabang itu hilang dari halaman pelanggan seketika. Tombol "Ya, hapus" saja
+   * terlalu mudah ditekan karena letaknya di tempat yang sama untuk setiap baris
+   * — mengetik namanya memaksa mata membaca baris MANA yang sedang dihapus.
+   */
+  const [ketikan, setKetikan] = useState("");
+
+  const mintaKonfirmasi = (id: string | null) => {
+    setConfirmingId(id);
+    setKetikan("");
+  };
+
   if (stores.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">Belum ada data toko.</p>
@@ -87,7 +102,7 @@ export function StoreList({ stores }: { stores: StoreRow[] }) {
                 <button
                   type="button"
                   onClick={() =>
-                    setConfirmingId(isConfirming ? null : store.id)
+                    mintaKonfirmasi(isConfirming ? null : store.id)
                   }
                   aria-expanded={isConfirming}
                   aria-controls={`konfirmasi-hapus-${store.id}`}
@@ -105,10 +120,29 @@ export function StoreList({ stores }: { stores: StoreRow[] }) {
               >
                 <p className="flex items-start gap-2 text-xs text-destructive">
                   <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  Hapus <strong className="font-bold">{store.name}</strong> dari
-                  daftar toko? Datanya tetap tersimpan dan bisa dipulihkan lewat
-                  database, tapi tidak lagi muncul di panel.
+                  Toko ini akan hilang dari halaman lokasi dan halaman kontak
+                  seketika, beserta alamat, jam tujuh hari, dan nomor
+                  WhatsApp-nya. Barisnya tetap tersimpan di database dan bisa
+                  dipulihkan, tapi tidak lagi muncul di panel.
                 </p>
+
+                <label
+                  className="mt-3 block text-xs text-muted-foreground"
+                  htmlFor={`ketik-nama-${store.id}`}
+                >
+                  Ketik{" "}
+                  <strong className="font-bold text-foreground">
+                    {store.name}
+                  </strong>{" "}
+                  untuk melanjutkan
+                </label>
+                <input
+                  id={`ketik-nama-${store.id}`}
+                  value={ketikan}
+                  onChange={(e) => setKetikan(e.target.value)}
+                  autoComplete="off"
+                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-1.5 text-sm outline-none focus:border-destructive"
+                />
 
                 <form
                   action={deleteStore}
@@ -117,13 +151,14 @@ export function StoreList({ stores }: { stores: StoreRow[] }) {
                   <input type="hidden" name="id" value={store.id} />
                   <button
                     type="submit"
-                    className="rounded-lg bg-destructive px-3 py-1 text-xs font-bold text-white transition-opacity hover:opacity-90"
+                    disabled={ketikan.trim() !== store.name}
+                    className="rounded-lg bg-destructive px-3 py-1 text-xs font-bold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Ya, hapus
                   </button>
                   <button
                     type="button"
-                    onClick={() => setConfirmingId(null)}
+                    onClick={() => mintaKonfirmasi(null)}
                     className="rounded-lg px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted"
                   >
                     Batal
