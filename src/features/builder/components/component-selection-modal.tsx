@@ -225,6 +225,8 @@ export function ComponentSelectionModal({ isOpen, onClose, slot }: ComponentSele
                         src={product.images[0].src}
                         alt={product.name}
                         fill
+                        // Wadahnya tetap 80px (h-20 w-20) di semua ukuran layar.
+                        sizes="80px"
                         className="object-cover"
                       />
                     )}

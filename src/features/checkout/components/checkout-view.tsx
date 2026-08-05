@@ -57,6 +57,8 @@ export function CheckoutView() {
                       src={item.image}
                       alt={item.name}
                       fill
+                      // 80px (h-20) di bawah breakpoint sm, 96px (sm:h-24) di atasnya.
+                      sizes="(min-width: 640px) 96px, 80px"
                       className="object-cover"
                     />
                   ) : (

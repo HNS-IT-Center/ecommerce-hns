@@ -7,15 +7,25 @@ import { generateOrderMessage } from "@/features/checkout/lib/generate-order-mes
 import { Trash2, Plus, Minus, MessageCircle, ShoppingBag } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
+import { useState } from "react"
 import { Button, buttonVariants } from "@/components/ui/button"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 
 type CartViewProps = {
   whatsappNumber: string
 }
 
 export function CartView({ whatsappNumber }: CartViewProps) {
-  const { items, removeItem, updateQuantity, getTotalPrice } = useCartStore()
+  const { items, removeItem, updateQuantity, getTotalPrice, clearCart } = useCartStore()
   const totalUnits = items.reduce((sum, item) => sum + item.quantity, 0)
+  const [clearOpen, setClearOpen] = useState(false)
+  /**
+   * Item yang menunggu konfirmasi hapus. Sama seperti di panel keranjang:
+   * tombol `−` berubah jadi ikon hapus saat kuantitas tinggal 1, jadi keduanya
+   * menempati posisi yang sama dan satu tekanan berlebih bisa menghilangkan
+   * barang tanpa sengaja.
+   */
+  const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null)
 
   if (items.length === 0) {
     return (
@@ -47,8 +57,14 @@ export function CartView({ whatsappNumber }: CartViewProps) {
       {/* Cart Items */}
       <div className="lg:col-span-8">
         <div className="rounded-xl border bg-card">
-          <div className="border-b p-6">
+          <div className="flex items-center justify-between gap-3 border-b p-6">
             <h2 className="text-xl font-bold">Keranjang Belanja</h2>
+            <button
+              onClick={() => setClearOpen(true)}
+              className="cursor-pointer rounded-md px-2.5 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+            >
+              Hapus Semua
+            </button>
           </div>
           <div className="divide-y">
             {items.map((item) => (
@@ -60,6 +76,8 @@ export function CartView({ whatsappNumber }: CartViewProps) {
                       src={item.image}
                       alt={item.name}
                       fill
+                      // 96px (h-24) di bawah breakpoint sm, 128px (sm:h-32) di atasnya.
+                      sizes="(min-width: 640px) 128px, 96px"
                       className="object-cover"
                     />
                   ) : (
@@ -92,32 +110,63 @@ export function CartView({ whatsappNumber }: CartViewProps) {
                     </div>
                   </div>
 
-                  <div className="mt-4 flex items-center justify-between">
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
                     <div className="flex items-center rounded-lg border bg-background">
                       <button
-                        onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                        className="flex h-8 w-8 items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground"
+                        onClick={() =>
+                          item.quantity <= 1
+                            ? setPendingRemoveId(item.id)
+                            : updateQuantity(item.id, item.quantity - 1)
+                        }
+                        className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-l-lg transition-colors ${
+                          item.quantity <= 1
+                            ? "text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                        }`}
+                        aria-label={
+                          item.quantity <= 1
+                            ? `Hapus ${item.name}`
+                            : `Kurangi jumlah ${item.name}`
+                        }
                       >
-                        <Minus className="h-4 w-4" />
+                        {item.quantity <= 1 ? (
+                          <Trash2 className="h-4 w-4" />
+                        ) : (
+                          <Minus className="h-4 w-4" />
+                        )}
                       </button>
-                      <span className="flex h-8 w-12 items-center justify-center text-sm font-medium">
+                      <span className="flex h-9 w-12 items-center justify-center text-sm font-semibold tabular-nums">
                         {item.quantity}
                       </span>
                       <button
                         onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                        className="flex h-8 w-8 items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground"
+                        className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-r-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        aria-label={`Tambah jumlah ${item.name}`}
                       >
                         <Plus className="h-4 w-4" />
                       </button>
                     </div>
-                    
-                    <button
-                      onClick={() => removeItem(item.id)}
-                      className="flex items-center gap-2 text-sm font-medium text-sale-red hover:underline"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      <span className="hidden sm:inline">Hapus</span>
-                    </button>
+
+                    {pendingRemoveId === item.id && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Hapus item ini?</span>
+                        <button
+                          onClick={() => setPendingRemoveId(null)}
+                          className="cursor-pointer rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-muted"
+                        >
+                          Batal
+                        </button>
+                        <button
+                          onClick={() => {
+                            removeItem(item.id)
+                            setPendingRemoveId(null)
+                          }}
+                          className="cursor-pointer rounded-md bg-destructive px-3 py-1.5 text-xs font-bold text-white transition-opacity hover:opacity-90"
+                        >
+                          Hapus
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -162,6 +211,19 @@ export function CartView({ whatsappNumber }: CartViewProps) {
           </p>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={clearOpen}
+        onOpenChange={setClearOpen}
+        title="Hapus semua item?"
+        description={`${items.length} produk akan dikeluarkan dari keranjang. Tindakan ini tidak bisa dibatalkan.`}
+        confirmLabel="Hapus Semua"
+        destructive
+        onConfirm={() => {
+          clearCart()
+          setPendingRemoveId(null)
+        }}
+      />
     </div>
   )
 }

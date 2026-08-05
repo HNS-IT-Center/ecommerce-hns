@@ -1,6 +1,7 @@
 import "server-only"
 
 import { createHash } from "crypto"
+import { cache } from "react"
 
 import { getPrisma } from "@/lib/prisma/client"
 
@@ -15,13 +16,20 @@ export type QuoteLineItem = {
 }
 
 /**
- * Sidik jari isi rakitan. Dihitung dari pasangan `productId:qty` yang DIURUTKAN
+ * Sidik jari isi rakitan. Dihitung dari `productId:qty:harga` yang DIURUTKAN
  * lebih dulu, supaya urutan pemilihan komponen tidak menghasilkan hash berbeda
  * untuk rakitan yang sebenarnya identik.
+ *
+ * Harga ikut di-hash dengan sengaja: quotation adalah dokumen penawaran, jadi
+ * isi yang sama pada harga berbeda adalah penawaran yang BERBEDA dan harus
+ * punya kode sendiri. Kalau harga diabaikan, mencetak ulang rakitan yang sama
+ * setelah harga naik akan menimpa snapshot lama — dokumen yang sudah dipegang
+ * pelanggan jadi tidak cocok lagi dengan yang tersimpan, dan halaman verifikasi
+ * kehilangan kemampuannya menandai selisih harga.
  */
 function computeContentHash(items: QuoteLineItem[]): string {
   const normalized = items
-    .map((item) => `${item.productId}:${item.quantity}`)
+    .map((item) => `${item.productId}:${item.quantity}:${item.price}`)
     .sort()
     .join(",")
 
@@ -51,36 +59,54 @@ function buildQuoteCode(contentHash: string, issuedAt: Date): string {
 }
 
 /**
- * Catat quotation, atau naikkan penghitung kalau rakitan yang sama sudah pernah
- * dicetak. Mengembalikan kode & snapshot yang tersimpan.
+ * Catat quotation. Mengembalikan kode yang tersimpan.
+ *
+ * Rakitan dengan isi DAN harga yang sama persis tidak membuat baris baru — yang
+ * berubah cuma `updatedAt`, penanda kapan terakhir dokumen itu dicetak ulang.
+ * Snapshot-nya sendiri sengaja TIDAK pernah ditimpa: dokumen yang sudah dicetak
+ * pelanggan harus selamanya cocok dengan yang tersimpan, supaya `/verify/[code]`
+ * bisa dipercaya sebagai bukti penawaran. Harga baru = penawaran baru = kode
+ * baru (lihat `computeContentHash`).
  *
  * Kegagalan di sini TIDAK boleh menggagalkan pencetakan — dokumen tetap harus
  * bisa keluar walau pencatatan gagal, jadi pemanggilnya menangani error.
+ *
+ * Penulisannya di-dedupe per `contentHash` lewat `cache()`, bukan per argumen:
+ * setiap render mengirim array baru, jadi `cache()` yang membungkus fungsi ini
+ * langsung tidak akan pernah kena. Tanpa dedupe, render ulang React (Strict
+ * Mode menjalankan effect & render dua kali di dev) membuat `updatedAt` maju
+ * beberapa milidetik setelah `createdAt` walau pelanggan baru mencetak SEKALI —
+ * kolom "Diperbarui" di admin jadi tampak seperti ada cetak ulang yang tidak
+ * pernah terjadi.
  */
 export async function recordPcBuildQuote(items: QuoteLineItem[]) {
+  return upsertQuoteByHash(computeContentHash(items), JSON.stringify(items))
+}
+
+/**
+ * SEMUA argumen di sini sengaja berupa string primitif.
+ *
+ * `cache()` mengunci pada identitas tiap argumen, jadi mengoper array `items`
+ * apa adanya membuat memoisasi tidak pernah kena — setiap render membuat array
+ * baru, dan array baru selalu dianggap argumen yang berbeda. Dengan hash +
+ * JSON, dua render dengan isi rakitan sama menghasilkan kunci yang identik dan
+ * database benar-benar cuma disentuh sekali per permintaan.
+ */
+const upsertQuoteByHash = cache(async function upsertQuoteByHash(
+  contentHash: string,
+  itemsJson: string
+) {
   const prisma = getPrisma()
-  const contentHash = computeContentHash(items)
-
-  const existing = await prisma.pcBuildQuote.findUnique({ where: { contentHash } })
-
-  if (existing) {
-    const updated = await prisma.pcBuildQuote.update({
-      where: { contentHash },
-      data: {
-        printCount: { increment: 1 },
-        lastPrintedAt: new Date(),
-      },
-    })
-    return { code: updated.code, isNew: false }
-  }
-
+  const items = JSON.parse(itemsJson) as QuoteLineItem[]
   const subtotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0)
   const issuedAt = new Date()
 
-  const created = await prisma.pcBuildQuote.create({
-    data: {
-      code: buildQuoteCode(contentHash, issuedAt),
-      contentHash,
+  const quote = await prisma.pcBuildQuote.upsert({
+    where: { contentHash },
+    // Hanya menyentuh `updatedAt` (diisi otomatis oleh `@updatedAt`) — kolom
+    // lain dibiarkan apa adanya supaya snapshot tetap utuh.
+    update: {},
+    create: {
       items,
       subtotal,
       // Jasa rakit sekarang jadi step biasa di PC Builder, jadi nilainya sudah
@@ -89,15 +115,16 @@ export async function recordPcBuildQuote(items: QuoteLineItem[]) {
       assemblyFee: 0,
       total: subtotal,
       itemCount: items.length,
+      code: buildQuoteCode(contentHash, issuedAt),
+      contentHash,
       createdAt: issuedAt,
-      lastPrintedAt: issuedAt,
     },
   })
 
-  return { code: created.code, isNew: true }
-}
+  return { code: quote.code }
+})
 
-/** Dipakai halaman verifikasi publik /q/[code]. */
+/** Dipakai halaman verifikasi publik /verify/[code]. */
 export async function getQuoteByCode(code: string) {
   const prisma = getPrisma()
   return prisma.pcBuildQuote.findUnique({

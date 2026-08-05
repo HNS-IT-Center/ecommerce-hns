@@ -15,7 +15,12 @@ export default async function AdminLogsPage({ searchParams }: Props) {
 
   const currentTab =
     tab === "kategori" ? "kategori" : tab === "pc-build" ? "pc-build" : "produk"
-  const currentPage = Number(page ?? 1)
+  // `page` datang dari URL yang bisa diedit bebas. Tanpa penjagaan ini,
+  // `?page=abc` menghasilkan NaN dan `?page=0` menghasilkan `skip` negatif —
+  // keduanya membuat Prisma melempar error dan seluruh halaman gagal render.
+  const parsedPage = Number(page)
+  const requestedPage =
+    Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1
   const currentSort = sort || "createdAt"
   const currentOrder = (order === "asc" || order === "desc") ? order : "desc"
 
@@ -24,13 +29,18 @@ export default async function AdminLogsPage({ searchParams }: Props) {
   let logs: ProductLog[] = []
   let quotes: PcBuildQuoteRow[] = []
   let totalItems = 0
+  let currentPage = requestedPage
   const perPage = 25
 
   if (currentTab === "pc-build") {
     totalItems = await prisma.pcBuildQuote.count()
 
+    // Minta halaman di luar jangkauan (mis. `?page=999`) dikembalikan ke
+    // halaman terakhir yang ada, bukan tabel kosong tanpa penjelasan.
+    currentPage = Math.min(requestedPage, Math.max(1, Math.ceil(totalItems / perPage)))
+
     const rows = await prisma.pcBuildQuote.findMany({
-      orderBy: { lastPrintedAt: "desc" },
+      orderBy: { updatedAt: "desc" },
       skip: (currentPage - 1) * perPage,
       take: perPage,
     })
@@ -41,13 +51,10 @@ export default async function AdminLogsPage({ searchParams }: Props) {
       id: row.id,
       code: row.code,
       items: row.items as unknown as PcBuildQuoteRow["items"],
-      subtotal: Number(row.subtotal),
-      assemblyFee: Number(row.assemblyFee),
       total: Number(row.total),
       itemCount: row.itemCount,
-      printCount: row.printCount,
       createdAt: row.createdAt,
-      lastPrintedAt: row.lastPrintedAt,
+      updatedAt: row.updatedAt,
     }))
   } else if (currentTab === "produk") {
     const whereCondition = q ? {
@@ -59,7 +66,9 @@ export default async function AdminLogsPage({ searchParams }: Props) {
     } : {}
 
     totalItems = await prisma.productLog.count({ where: whereCondition })
-    
+
+    currentPage = Math.min(requestedPage, Math.max(1, Math.ceil(totalItems / perPage)))
+
     logs = await prisma.productLog.findMany({
       where: whereCondition,
       orderBy: { [currentSort]: currentOrder },

@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { notFound } from "next/navigation"
+import { SearchX } from "lucide-react"
 
 import { getPrisma } from "@/lib/prisma/client"
 import { getQuoteByCode, type QuoteLineItem } from "@/lib/api/pc-build-quotes"
@@ -15,15 +15,95 @@ export const metadata = {
   robots: { index: false, follow: false },
 }
 
+/** Sama dengan yang dipakai form pencarian di /verify. */
+const QUOTE_CODE_PATTERN = /^HNSPC-\d{6}-[A-Z0-9]{4}$/
+
+/**
+ * Kode tidak ketemu BUKAN `notFound()`.
+ *
+ * Salah ketik satu karakter saat menyalin kode dari dokumen cetak adalah hal
+ * yang wajar terjadi, dan halaman 404 generik memperlakukannya seperti URL
+ * rusak: pengguna tidak tahu apa yang salah dan tidak diberi jalan untuk
+ * mencoba lagi. Di sini kodenya ditampilkan kembali supaya mudah dicocokkan
+ * dengan dokumen, lengkap dengan tautan untuk mengulang pencarian.
+ */
+function QuoteNotFound({ code, malformed }: { code: string; malformed: boolean }) {
+  // URL bisa diisi apa saja, termasuk string ribuan karakter. Kode aslinya cuma
+  // 19 karakter, jadi apa pun di luar itu dipotong supaya kartunya tidak jebol.
+  const shown = code.length > 24 ? `${code.slice(0, 24)}…` : code
+
+  return (
+    <div className="flex min-h-screen flex-col bg-background">
+      <Header />
+
+      <main className="flex-1 bg-muted/20 py-8">
+        <div className="mx-auto max-w-lg px-4 md:px-6">
+          <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-sm md:p-8">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+              <SearchX className="h-6 w-6 text-muted-foreground" />
+            </div>
+
+            <h1 className="mt-4 text-lg font-bold md:text-xl">
+              Rakitan PC tidak ditemukan
+            </h1>
+
+            <p className="mt-2 text-sm text-muted-foreground">
+              {malformed ? (
+                <>
+                  Kode <span className="font-mono font-semibold">{shown}</span> tidak sesuai
+                  format. Kode quotation selalu berawalan{" "}
+                  <span className="font-mono font-semibold">HNSPC-</span>, contohnya{" "}
+                  <span className="font-mono font-semibold">HNSPC-260804-VVGT</span>.
+                </>
+              ) : (
+                <>
+                  Tidak ada quotation dengan kode{" "}
+                  <span className="font-mono font-semibold text-foreground">{shown}</span>.
+                  Periksa lagi penulisannya pada dokumen — huruf O dan angka 0 mudah
+                  tertukar.
+                </>
+              )}
+            </p>
+
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
+              <Link
+                href="/verify"
+                className="inline-flex cursor-pointer items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90"
+              >
+                Coba kode lain
+              </Link>
+              <Link
+                href="/build-pc"
+                className="inline-flex cursor-pointer items-center justify-center rounded-lg border border-border px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-muted"
+              >
+                Rakit PC baru
+              </Link>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <Footer />
+    </div>
+  )
+}
+
 export default async function VerifyQuotePage({
   params,
 }: {
   params: Promise<{ code: string }>
 }) {
   const { code } = await params
-  const quote = await getQuoteByCode(decodeURIComponent(code))
+  const requestedCode = decodeURIComponent(code).trim().toUpperCase()
 
-  if (!quote) notFound()
+  // Kode yang formatnya jelas salah tidak perlu menyentuh database sama sekali.
+  if (!QUOTE_CODE_PATTERN.test(requestedCode)) {
+    return <QuoteNotFound code={requestedCode} malformed />
+  }
+
+  const quote = await getQuoteByCode(requestedCode)
+
+  if (!quote) return <QuoteNotFound code={requestedCode} malformed={false} />
 
   const items = quote.items as unknown as QuoteLineItem[]
 
@@ -52,9 +132,15 @@ export default async function VerifyQuotePage({
   })
 
   const hasChanges = rows.some((r) => r.changed)
-  const currentTotal =
-    rows.reduce((acc, r) => acc + (r.currentPrice ?? r.price) * r.quantity, 0) +
-    Number(quote.assemblyFee)
+
+  // `assemblyFee` TIDAK ditambahkan lagi di sini. Untuk quotation baru nilainya
+  // 0 (jasa rakit sudah jadi baris item tersendiri), sedangkan untuk quotation
+  // lama `subtotal` sudah memuatnya — menjumlahkannya sekali lagi membuat total
+  // harga terkini lebih mahal dari yang seharusnya.
+  const currentTotal = rows.reduce(
+    (acc, r) => acc + (r.currentPrice ?? r.price) * r.quantity,
+    0
+  )
 
   const issued = quote.createdAt.toLocaleDateString("id-ID", {
     day: "numeric",
@@ -125,20 +211,11 @@ export default async function VerifyQuotePage({
               ))}
             </ul>
 
+            {/* Tanpa baris "Jasa rakit" yang terpisah, subtotal selalu sama
+                dengan total — jadi cukup satu baris saja. Jasa rakit sekarang
+                muncul sebagai komponen biasa di daftar di atas. */}
             <div className="mt-5 space-y-1.5 border-t border-border pt-4">
-              <div className="flex items-baseline justify-between text-sm">
-                <span className="text-muted-foreground">Subtotal komponen</span>
-                <span className="font-semibold tabular-nums">
-                  {formatRupiah(Number(quote.subtotal))}
-                </span>
-              </div>
-              <div className="flex items-baseline justify-between text-sm">
-                <span className="text-muted-foreground">Jasa rakit</span>
-                <span className="font-semibold tabular-nums">
-                  {formatRupiah(Number(quote.assemblyFee))}
-                </span>
-              </div>
-              <div className="flex items-baseline justify-between border-t border-border pt-2">
+              <div className="flex items-baseline justify-between">
                 <span className="text-sm font-bold">Total saat diterbitkan</span>
                 <span className="text-lg font-black tabular-nums text-sale-red">
                   {formatRupiah(Number(quote.total))}

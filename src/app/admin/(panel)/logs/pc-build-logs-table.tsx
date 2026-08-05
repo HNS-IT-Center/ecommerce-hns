@@ -25,13 +25,10 @@ export type PcBuildQuoteRow = {
     quantity: number
     stepName: string | null
   }>
-  subtotal: number
-  assemblyFee: number
   total: number
   itemCount: number
-  printCount: number
   createdAt: Date
-  lastPrintedAt: Date
+  updatedAt: Date
 }
 
 type Props = {
@@ -61,8 +58,8 @@ export function PcBuildLogsTable({ quotes, totalPages, currentPage }: Props) {
               <th className="px-4 py-3">Kode</th>
               <th className="px-4 py-3">Item</th>
               <th className="px-4 py-3 text-right">Total</th>
-              <th className="px-4 py-3 text-center">Dicetak</th>
               <th className="px-4 py-3">Dibuat</th>
+              <th className="px-4 py-3">Diperbarui</th>
               <th className="px-4 py-3 text-right">Aksi</th>
             </tr>
           </thead>
@@ -78,13 +75,11 @@ export function PcBuildLogsTable({ quotes, totalPages, currentPage }: Props) {
                 <td className="px-4 py-3 text-right font-bold tabular-nums whitespace-nowrap">
                   {formatRupiah(quote.total)}
                 </td>
-                <td className="px-4 py-3 text-center">
-                  <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-semibold tabular-nums">
-                    {quote.printCount}&times;
-                  </span>
-                </td>
                 <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
                   {format(quote.createdAt, "d MMM yyyy, HH:mm", { locale: localeId })}
+                </td>
+                <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                  {format(quote.updatedAt, "d MMM yyyy, HH:mm", { locale: localeId })}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-1">
@@ -96,7 +91,7 @@ export function PcBuildLogsTable({ quotes, totalPages, currentPage }: Props) {
                       <Eye className="h-4 w-4" />
                     </button>
                     <Link
-                      href={`/q/${quote.code}`}
+                      href={`/verify/${quote.code}`}
                       target="_blank"
                       className="cursor-pointer rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                       aria-label={`Buka halaman verifikasi ${quote.code}`}
@@ -118,7 +113,10 @@ export function PcBuildLogsTable({ quotes, totalPages, currentPage }: Props) {
           </p>
           <div className="flex gap-2">
             <Link
-              href={`/admin/logs?tab=pc-build&page=${currentPage - 1}`}
+              // Di-clamp, bukan sekadar `currentPage - 1`: `pointer-events-none`
+              // hanya memblokir mouse, jadi tautan yang dicapai lewat keyboard
+              // masih bisa mengarah ke `page=0` dan menghasilkan skip negatif.
+              href={`/admin/logs?tab=pc-build&page=${Math.max(1, currentPage - 1)}`}
               aria-disabled={currentPage <= 1}
               className={`flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold transition-colors ${
                 currentPage <= 1
@@ -130,7 +128,7 @@ export function PcBuildLogsTable({ quotes, totalPages, currentPage }: Props) {
               Sebelumnya
             </Link>
             <Link
-              href={`/admin/logs?tab=pc-build&page=${currentPage + 1}`}
+              href={`/admin/logs?tab=pc-build&page=${Math.min(totalPages, currentPage + 1)}`}
               aria-disabled={currentPage >= totalPages}
               className={`flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold transition-colors ${
                 currentPage >= totalPages
@@ -177,20 +175,10 @@ export function PcBuildLogsTable({ quotes, totalPages, currentPage }: Props) {
                 ))}
               </ul>
 
-              <div className="mt-3 space-y-1 border-t border-border pt-3 text-xs">
+              {/* Jasa rakit sudah jadi komponen biasa di daftar di atas, jadi
+                  subtotal selalu sama dengan total — cukup satu baris. */}
+              <div className="mt-3 border-t border-border pt-3 text-xs">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span className="font-semibold tabular-nums">
-                    {formatRupiah(selected.subtotal)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Jasa rakit</span>
-                  <span className="font-semibold tabular-nums">
-                    {formatRupiah(selected.assemblyFee)}
-                  </span>
-                </div>
-                <div className="flex justify-between border-t border-border pt-1.5">
                   <span className="font-bold">Total</span>
                   <span className="text-sm font-black tabular-nums text-sale-red">
                     {formatRupiah(selected.total)}
