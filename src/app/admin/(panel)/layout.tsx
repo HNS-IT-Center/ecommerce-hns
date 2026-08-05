@@ -27,7 +27,7 @@ export default async function AdminLayout({
   const defaultOpen = cookieStore.get("sidebar_state")?.value !== "false"
 
   return (
-    <div className="bg-slate-50 text-slate-950 min-h-screen w-full flex font-sans">
+    <div className="bg-muted/40 text-foreground min-h-screen w-full flex font-sans">
       <SidebarProvider defaultOpen={defaultOpen} style={{ "--sidebar-width-icon": "4.5rem" } as React.CSSProperties}>
         <AppSidebar />
         <div className="flex flex-col flex-1 w-full relative z-10 min-w-0">

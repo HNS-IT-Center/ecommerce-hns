@@ -83,9 +83,9 @@ export default function RootLayout({
             {children}
             <Toaster />
           </Toast>
-          <FloatingWhatsAppButton
-            whatsappNumber={env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER}
-          />
+          {/* Keduanya membawa `print:hidden` sendiri supaya tidak ikut masuk ke
+              PDF quotation (/build-pc/print). */}
+          <FloatingWhatsAppButton whatsappNumber={env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER} />
           <MobileDock />
         </FlyToCartProvider>
       </body>

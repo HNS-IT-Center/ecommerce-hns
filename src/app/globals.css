@@ -139,6 +139,12 @@
     --sidebar-accent-foreground: var(--accent-900);
     --sidebar-border: var(--background-200);
     --sidebar-ring: var(--primary-500);
+
+    --chart-1: var(--primary-500);
+    --chart-2: var(--text-500);
+    --chart-3: #d97706;
+    --chart-4: var(--secondary-300);
+    --chart-5: var(--accent-400);
   }
   .dark {
     --text-50: #05150d;
@@ -230,6 +236,12 @@
     --sidebar-accent-foreground: var(--accent-900);
     --sidebar-border: var(--background-200);
     --sidebar-ring: var(--primary-500);
+
+    --chart-1: var(--primary-500);
+    --chart-2: var(--text-500);
+    --chart-3: #f59e0b;
+    --chart-4: var(--secondary-300);
+    --chart-5: var(--accent-400);
   }
 
   * {
@@ -277,6 +289,7 @@
   --sidebar-accent: rgba(255,255,255,0.15);
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: rgba(255,255,255,0.15);
+  background-image: linear-gradient(160deg, #0d2959 0%, #143d85 30%, #2166de 60%, #1b52b1 100%);
   background-color: #2166de !important;
   color: #ffffff !important;
 }
@@ -307,4 +320,103 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 input[type="number"] {
   -moz-appearance: textfield;
+}
+
+/* ---------------------------------------------------------------------------
+   Print / Save-as-PDF
+   Dipakai terutama oleh /build-pc/print (quotation rakitan PC).
+   --------------------------------------------------------------------------- */
+/* Margin 0 di SEMUA sisi. Header/footer bawaan browser (tanggal, judul, URL,
+   "1/2") dicetak di dalam area margin halaman — dengan margin 0 area itu tidak
+   ada, jadi Chrome/Edge tidak punya tempat untuk menaruhnya.
+
+   Catatan: ini bukan jaminan mutlak. Tidak ada CSS/JS yang benar-benar bisa
+   mematikan header/footer browser (disengaja oleh vendor: itu bukti asal-usul
+   dokumen). Kalau pengguna mengubah "Margins" ke Default di dialog cetak,
+   header/footer akan muncul lagi. Untuk hasil yang dijamin bersih, jalannya
+   generate PDF sendiri di server.
+
+   Karena margin 0, seluruh jarak ke tepi kertas disediakan oleh elemen:
+   horizontal lewat `.print-sheet`, vertikal lewat `.print-page-pad` (lihat
+   di bawah). */
+@page {
+  size: A4;
+  margin: 0;
+}
+
+@media print {
+  /* Elemen mengambang global (MobileDock, tombol WhatsApp, toast, drawer)
+     tidak boleh ikut tercetak. */
+  .no-print {
+    display: none !important;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    /* Warna aksen quotation harus tetap tercetak, bukan dibuat putih. */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Tema gelap tidak boleh terbawa ke kertas. */
+  .dark body,
+  body.dark {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /* Jangan potong baris item quotation di tengah halaman. */
+  .print-avoid-break {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Jarak kiri/kanan ke tepi kertas (karena @page margin 0). Padding atas &
+     bawah di sini hanya berlaku di halaman pertama dan terakhir — jarak untuk
+     halaman di tengah ditangani oleh trik thead/tfoot di bawah. */
+  .print-sheet {
+    width: 100%;
+    padding: 12mm 9mm;
+  }
+
+  /* Berapa banyak item yang muat per halaman ditentukan sendiri oleh tinggi
+     barisnya — nama produk panjang membungkus jadi dua baris, jadi jumlah
+     tetap (mis. "8 per halaman") akan salah begitu ada nama yang panjang.
+     Aturan di bawah membiarkan tabel mengalir, tapi memaksa potongannya jatuh
+     di tempat yang benar. */
+
+  /* Header tabel diulang di setiap halaman lanjutan supaya kolom
+     Qty/Harga/Subtotal tetap punya judul. */
+  thead {
+    display: table-header-group;
+  }
+
+  /* Jarak atas halaman ke-2 dst. Karena @page memakai margin 0, padding pada
+     `.print-sheet` hanya membuat jarak di halaman PERTAMA — halaman lanjutan
+     akan menempel ke tepi atas kertas. `thead` diulang di setiap halaman,
+     jadi padding di sini efektif menjadi "margin atas" halaman lanjutan. */
+  thead th {
+    padding-top: 12mm;
+  }
+
+  /* ...tapi di halaman pertama thead muncul tepat setelah judul "Rincian
+     Komponen", jadi padding 12mm di sana akan terlihat sebagai celah kosong
+     yang janggal. Baris pertama tabel menariknya kembali ke atas; halaman
+     lanjutan tidak terpengaruh karena hanya thead yang diulang. */
+  table.print-table {
+    margin-top: -12mm;
+  }
+
+  /* Satu baris item tidak boleh terbelah dua halaman. */
+  tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Jangan tinggalkan judul kategori sendirian di dasar halaman. */
+  tbody > tr:first-child {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
 }

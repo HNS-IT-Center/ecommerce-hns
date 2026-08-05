@@ -57,39 +57,36 @@ export function AppSidebar() {
       >
         {/* Header */}
         <SidebarHeader
-          className="h-[64px] flex flex-row items-center border-b border-white/20 px-4 relative shrink-0 bg-[#1a54c0]"
+          className="h-[64px] flex flex-row items-center border-b border-white/20 px-4 relative shrink-0 bg-transparent"
         >
-          {open ? (
-            <Link
-              href="/admin"
-              className="flex items-center gap-3 font-bold text-white hover:opacity-90 transition-opacity w-full"
-            >
-              <div className="bg-white rounded-lg p-1.5 shrink-0 shadow-sm">
-                <StoreIcon className="h-5 w-5 text-[#2166de]" />
-              </div>
-              <div className="flex flex-col min-w-0">
-                <span className="text-sm font-bold leading-tight truncate">HNS IT Center</span>
-                <span className="text-[10px] font-normal text-blue-200">Administrator</span>
-              </div>
-            </Link>
-          ) : (
-            <div className="w-full flex justify-center">
-              <div className="bg-white rounded-lg p-1.5 shrink-0 shadow-sm">
-                <StoreIcon className="h-5 w-5 text-[#2166de]" />
-              </div>
+          <Link
+            href="/admin"
+            className={`flex items-center gap-3 font-bold text-white hover:opacity-90 transition-opacity w-full ${
+              open ? "" : "justify-center"
+            }`}
+          >
+            <div className="bg-white rounded-lg p-1.5 shrink-0 shadow-sm">
+              <StoreIcon className="h-5 w-5 text-[#2166de]" />
             </div>
-          )}
-
+            <div
+              className={`flex flex-col min-w-0 transition-[opacity,width] duration-150 ease-linear overflow-hidden ${
+                open ? "opacity-100 w-auto" : "opacity-0 w-0"
+              }`}
+            >
+              <span className="text-sm font-bold leading-tight truncate">HNS IT Center</span>
+              <span className="text-[10px] font-normal text-blue-200">Administrator</span>
+            </div>
+          </Link>
         </SidebarHeader>
 
-        {/* Toggle button — edge of sidebar vertically centered */}
+        {/* Toggle button — slim tab docked to the sidebar edge */}
         <button
           onClick={toggleSidebar}
-          className="absolute -right-6 top-1/2 -translate-y-1/2 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-slate-800 border-4 border-background shadow-lg hover:bg-slate-700 cursor-pointer transition-colors"
+          className="absolute -right-3.5 top-20 z-50 flex h-7 w-7 items-center justify-center rounded-full bg-white text-[#2166de] border border-black/5 shadow-md hover:bg-blue-50 cursor-pointer transition-colors"
           title={open ? "Tutup sidebar" : "Buka sidebar"}
         >
           <ChevronLeft
-            className="h-7 w-7 text-white transition-transform duration-200"
+            className="h-4 w-4 transition-transform duration-200"
             style={{ transform: open ? "rotate(0deg)" : "rotate(180deg)" }}
           />
         </button>
@@ -108,14 +105,17 @@ export function AppSidebar() {
                   const linkEl = (
                     <Link
                       href={item.url}
-                      className={`flex items-center gap-3 rounded-xl w-full transition-colors duration-150 ${
+                      className={`relative flex items-center gap-3 rounded-lg w-full transition-colors duration-150 ${
                         open ? "px-3 py-2.5" : "justify-center py-2.5"
                       } ${
                         isActive
-                          ? "bg-white/20 text-white font-semibold"
+                          ? "bg-white/15 text-white font-semibold"
                           : "text-blue-100 hover:text-white hover:bg-white/10"
                       }`}
                     >
+                      {isActive && (
+                        <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-r-full bg-white" />
+                      )}
                       <item.icon className="h-5 w-5 shrink-0" />
                       {open && (
                         <span className="font-medium text-sm">{item.title}</span>
@@ -148,7 +148,7 @@ export function AppSidebar() {
           <Link
             href="/"
             target="_blank"
-            className={`flex items-center gap-3 rounded-xl w-full transition-colors duration-150 text-blue-100 hover:text-white hover:bg-white/10 ${
+            className={`flex items-center gap-3 rounded-lg w-full transition-colors duration-150 text-blue-100 hover:text-white hover:bg-white/10 ${
               open ? "px-3 py-2.5" : "justify-center py-2.5"
             }`}
             title="Ke Toko"
@@ -159,8 +159,8 @@ export function AppSidebar() {
         </div>
 
         {/* Footer */}
-        <SidebarFooter className="p-4 border-t border-blue-600/40">
-          <div className={`flex items-center ${open ? "gap-3" : "justify-center"}`}>
+        <SidebarFooter className="p-3 border-t border-white/10">
+          <div className={`flex items-center rounded-lg py-1.5 ${open ? "gap-3 px-1.5" : "justify-center"}`}>
             <UserNav />
             {open && (
               <div className="flex flex-col min-w-0">

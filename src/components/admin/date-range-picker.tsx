@@ -29,7 +29,7 @@ export function CalendarDateRangePicker({
           id="date"
           className={cn(
             buttonVariants({ variant: "outline" }),
-            "w-[260px] justify-start text-left font-normal",
+            "w-full sm:w-[260px] justify-start text-left font-normal",
             !date && "text-muted-foreground"
           )}
         >

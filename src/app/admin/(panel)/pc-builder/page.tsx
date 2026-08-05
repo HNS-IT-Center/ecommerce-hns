@@ -1,10 +1,15 @@
-import { getPcBuilderConfig, getPcBuilderOptions } from "./actions"
+import {
+  getPcBuilderConfig,
+  getPcBuilderDisplayConfig,
+  getPcBuilderOptions,
+} from "./actions"
 import { PcBuilderForm } from "./_components/pc-builder-form"
 
 export default async function PcBuilderPage() {
-  const [config, options] = await Promise.all([
+  const [config, options, display] = await Promise.all([
     getPcBuilderConfig(),
-    getPcBuilderOptions()
+    getPcBuilderOptions(),
+    getPcBuilderDisplayConfig(),
   ])
 
   // Ensure config is sorted by order
@@ -21,10 +26,11 @@ export default async function PcBuilderPage() {
       </p>
 
       <div className="mt-8">
-        <PcBuilderForm 
-          initialSteps={sortedConfig} 
-          categories={options.categories} 
-          attributes={options.attributes} 
+        <PcBuilderForm
+          initialSteps={sortedConfig}
+          initialDisplay={display}
+          categories={options.categories}
+          attributes={options.attributes}
         />
       </div>
     </div>

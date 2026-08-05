@@ -45,7 +45,7 @@ export function ProductCardBuilder({ product, quantity, onSelect, onUpdateQuanti
       <button 
         type="button" 
         onClick={product.stock > 0 ? onSelect : undefined} 
-        className="relative aspect-square w-full overflow-hidden bg-secondary/50 rounded-t-xl group/image block text-left"
+        className="relative aspect-square w-full overflow-hidden bg-secondary/50 rounded-t-xl group/image block text-left cursor-pointer disabled:cursor-not-allowed"
         disabled={product.stock === 0}
       >
         <Image
@@ -82,8 +82,8 @@ export function ProductCardBuilder({ product, quantity, onSelect, onUpdateQuanti
         {/* Product Name */}
         <button 
           type="button" 
-          onClick={product.stock > 0 ? onSelect : undefined} 
-          className="text-left"
+          onClick={product.stock > 0 ? onSelect : undefined}
+          className="text-left cursor-pointer disabled:cursor-not-allowed"
           disabled={product.stock === 0}
         >
           <h3 className="line-clamp-2 text-xs font-medium leading-snug text-foreground transition-colors group-hover:text-brand-green">
@@ -120,7 +120,7 @@ export function ProductCardBuilder({ product, quantity, onSelect, onUpdateQuanti
                 <Button 
                   variant="ghost" 
                   size="icon" 
-                  className="h-6 w-6 rounded-full bg-background hover:bg-red-100 hover:text-red-600 shadow-sm"
+                  className="h-6 w-6 rounded-full bg-background hover:bg-red-100 hover:text-red-600 shadow-sm cursor-pointer active:scale-95 transition-all"
                   onClick={() => onUpdateQuantity(quantity - 1)}
                 >
                   <Minus className="h-3 w-3" />
@@ -129,7 +129,7 @@ export function ProductCardBuilder({ product, quantity, onSelect, onUpdateQuanti
                 <Button 
                   variant="ghost" 
                   size="icon" 
-                  className="h-6 w-6 rounded-full bg-background hover:bg-brand-green/20 hover:text-brand-green shadow-sm"
+                  className="h-6 w-6 rounded-full bg-background hover:bg-brand-green/20 hover:text-brand-green shadow-sm cursor-pointer active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-50"
                   onClick={() => onUpdateQuantity(quantity + 1)}
                   disabled={quantity >= product.stock}
                 >

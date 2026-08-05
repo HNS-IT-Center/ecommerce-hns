@@ -25,6 +25,8 @@ type ComboboxProps = {
 }
 
 const MAX_VISIBLE_OPTIONS = 30
+// Sesuai `max-h-52` (13rem = 208px) pada dropdown + margin 4px terhadap input.
+const DROPDOWN_MAX_HEIGHT = 212
 
 /**
  * Input teks bebas dengan saran dari data yang sudah ada (mis. nama atribut,
@@ -50,9 +52,12 @@ export function Combobox({
   disabled,
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false)
-  const [position, setPosition] = React.useState<{ top: number; left: number; width: number } | null>(
-    null
-  )
+  const [position, setPosition] = React.useState<{
+    top?: number
+    bottom?: number
+    left: number
+    width: number
+  } | null>(null)
   const anchorRef = React.useRef<HTMLDivElement>(null)
 
   const filtered = React.useMemo(() => {
@@ -72,13 +77,25 @@ export function Combobox({
   // Posisi dropdown mengikuti input. Dihitung ulang saat dibuka dan saat
   // halaman digulir/diubah ukurannya — karena elemennya berada di `body`,
   // ia tidak ikut bergerak sendiri bersama kartunya.
+  //
+  // Dropdown default terbuka ke bawah, tapi kalau ruang di bawah lebih sempit
+  // dari tinggi dropdown (mis. input ini ada di baris paling bawah form,
+  // dekat batas viewport), ia dibalik ke atas supaya tidak terpotong.
   React.useLayoutEffect(() => {
     if (!isVisible) return
 
     function updatePosition() {
       const rect = anchorRef.current?.getBoundingClientRect()
       if (!rect) return
-      setPosition({ top: rect.bottom + 4, left: rect.left, width: rect.width })
+
+      const spaceBelow = window.innerHeight - rect.bottom
+      const spaceAbove = rect.top
+
+      if (spaceBelow < DROPDOWN_MAX_HEIGHT && spaceAbove > spaceBelow) {
+        setPosition({ bottom: window.innerHeight - rect.top + 4, left: rect.left, width: rect.width })
+      } else {
+        setPosition({ top: rect.bottom + 4, left: rect.left, width: rect.width })
+      }
     }
 
     updatePosition()
@@ -108,7 +125,12 @@ export function Combobox({
         createPortal(
           <div
             className="fixed z-[100] max-h-52 overflow-y-auto rounded-lg border border-input bg-popover p-1 shadow-lg"
-            style={{ top: position.top, left: position.left, width: position.width }}
+            style={{
+              top: position.top,
+              bottom: position.bottom,
+              left: position.left,
+              width: position.width,
+            }}
           >
             {filtered.map((option) => {
               const isSelected = option.label.toLowerCase() === value.trim().toLowerCase()
