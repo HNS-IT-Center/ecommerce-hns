@@ -60,8 +60,10 @@ export async function getThemeSettings(): Promise<ThemeSettings> {
 /**
  * CSS bertema untuk disuntik di root layout.
  *
- * Mengembalikan string kosong kalau kedua tema "default", sehingga halaman
- * tanpa tema aktif tidak membawa elemen `<style>` sama sekali.
+ * TIDAK pernah mengembalikan string kosong — tema "default" pun menghasilkan
+ * blok reset. Lihat catatan panjang di `themeToCss`: elemen `<style>` yang
+ * hilang sama sekali tidak bisa membatalkan versi lama yang masih tersimpan di
+ * cache produksi.
  *
  * Pembacaannya lewat `unstable_cache` dan tidak menyentuh `cookies()`/`headers()`,
  * jadi halaman storefront TETAP statis/ISR — ini syarat yang tidak boleh

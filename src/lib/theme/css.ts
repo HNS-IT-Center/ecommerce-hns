@@ -88,9 +88,37 @@ export function themeToCss(theme: Theme, scope: "chrome" | "card"): string {
           tokens.cardDecor === true ? "--card-decor:1;" : "",
         ].join("")
 
-  if (!body) return ""
-
   const selector = scope === "chrome" ? ".theme-chrome" : ".theme-card"
+
+  /**
+   * Tema kosong menghasilkan blok RESET, bukan string kosong.
+   *
+   * Dulu di sini `if (!body) return ""`, dan itu sumber bug yang sulit dilacak:
+   * tema "default" jadi berarti TIDAK ADA elemen `<style>` sama sekali. Selama
+   * halamannya selalu dibuat ulang, itu tidak masalah. Tapi di produksi ada
+   * lapisan cache di depan Next, dan HTML lama yang masih memegang `<style>`
+   * tema sebelumnya tidak punya apa pun yang membatalkannya — karena keadaan
+   * yang benar dinyatakan sebagai KETIADAAN markup, dan ketiadaan tidak bisa
+   * menimpa apa pun.
+   *
+   * Gejalanya asimetris dan itu yang bikin membingungkan: berganti ke tema
+   * berwarna terlihat langsung (HTML baru menambah `<style>`), sedangkan
+   * kembali ke default seolah tidak berpengaruh sampai cache server dibersihkan
+   * manual.
+   *
+   * Dengan blok reset, "default" menjadi instruksi yang aktif: token-nya
+   * dikembalikan ke `initial` sehingga nilai global yang berlaku dipakai lagi.
+   * Elemen `<style>` selalu ada, jadi yang berubah antar tema hanya ISINYA —
+   * dan isi yang berubah selalu menimpa isi yang lama.
+   */
+  if (!body) {
+    const reset =
+      scope === "chrome"
+        ? "--background:initial;--foreground:initial;--muted:initial;--muted-foreground:initial;--border:initial;--accent:initial;--accent-foreground:initial;--chrome-decor:initial;"
+        : "--card:initial;--card-foreground:initial;--muted-foreground:initial;--border:initial;--accent:initial;--accent-foreground:initial;--card-price:initial;--card-badge-sale:initial;--card-badge-sale-fold:initial;--card-badge-hot:initial;--card-badge-hot-fold:initial;--card-badge-new:initial;--card-decor:initial;"
+    return `${selector}{${reset}}`
+  }
+
   return `${selector}{${body}}`
 }
 

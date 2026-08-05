@@ -75,9 +75,7 @@ export default async function RootLayout({
    * CSS tema aktif, dibaca lewat `unstable_cache` (lihat lib/theme/settings.ts).
    *
    * Aman untuk rendering statis: tidak menyentuh `cookies()`/`headers()`, jadi
-   * halaman storefront tetap statis/ISR. Nilainya string kosong kalau tema masih
-   * default, sehingga halaman tanpa tema tidak membawa elemen `<style>` sama
-   * sekali.
+   * halaman storefront tetap statis/ISR.
    *
    * Disuntik di `<head>` sebagai HTML hasil render server — bukan lewat
    * `useEffect` atau localStorage — sehingga warnanya sudah benar pada lukisan
@@ -95,9 +93,20 @@ export default async function RootLayout({
       className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
-        {themeCss ? (
-          <style id="theme-vars" dangerouslySetInnerHTML={{ __html: themeCss }} />
-        ) : null}
+        {/* SELALU dirender, termasuk saat temanya "default".
+
+            Dulu elemen ini hanya muncul kalau ada tema aktif, dan itu membuat
+            "kembali ke default" mustahil menimpa halaman yang sudah tersimpan
+            di cache: keadaan yang benar dinyatakan sebagai KETIADAAN elemen,
+            dan ketiadaan tidak bisa membatalkan elemen yang masih ada di HTML
+            lama. Akibatnya berganti ke tema berwarna terasa langsung sementara
+            kembali ke default seperti tidak berpengaruh sampai cache server
+            dibersihkan manual.
+
+            Sekarang tema default mengirim blok reset (lihat `themeToCss`), jadi
+            yang berubah antar tema hanya ISI elemen ini — dan isi yang berubah
+            selalu menimpa isi sebelumnya. */}
+        <style id="theme-vars" dangerouslySetInnerHTML={{ __html: themeCss }} />
       </head>
       {/* `theme-christmas` = penanda yang dipakai `globals.css` untuk membuat
           pembungkus halaman transparan, supaya pola salju di belakangnya
