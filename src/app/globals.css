@@ -151,13 +151,37 @@
        ditulis langsung di product-card.tsx (red-500/800, orange-500/800),
        supaya refactor ke variabel ini tidak mengubah tampilan sedikit pun.
        Ditaruh di sini, bukan di `@theme inline`, karena token di blok itu
-       di-inline saat build sehingga tidak bisa ditimpa per-scope saat runtime. */
-    --card-badge-sale: oklch(63.7% 0.237 25.331);
-    --card-badge-sale-fold: oklch(44.4% 0.177 26.899);
-    --card-badge-hot: oklch(70.5% 0.213 47.604);
-    --card-badge-hot-fold: oklch(47% 0.157 37.304);
-    --card-badge-new: oklch(62.3% 0.214 259.815);
-    --card-price: oklch(63.7% 0.237 25.331);
+       di-inline saat build sehingga tidak bisa ditimpa per-scope saat runtime.
+
+       DUA LAPIS, dan itu disengaja.
+
+       `*-default` memegang angkanya; token yang dipakai komponen menunjuk ke
+       sana. Lapisan ini ADA supaya blok reset tema default (lihat `themeToCss`
+       di lib/theme/css.ts) punya sesuatu yang bisa ditunjuk.
+
+       Dulu reset itu memakai `initial`, dan itu bug: pada custom property,
+       `initial` BUKAN "kembali ke nilai global" melainkan guaranteed-invalid.
+       Karena `.theme-card` lebih spesifik daripada `:root`, reset selalu
+       menang — `var(--card-badge-sale)` gagal resolve, dan badge diskon yang
+       seharusnya merah tampil abu-abu (begitu pula harga). Gejalanya muncul
+       justru saat tema "default", yaitu keadaan paling normal.
+
+       Token `*-decor` TIDAK butuh perlakuan ini: pemakainya sudah menulis
+       fallback sendiri (`var(--card-decor, 0)`), jadi `initial` di sana memang
+       berarti "mati" — persis yang diinginkan. */
+    --card-badge-sale-default: oklch(63.7% 0.237 25.331);
+    --card-badge-sale-fold-default: oklch(44.4% 0.177 26.899);
+    --card-badge-hot-default: oklch(70.5% 0.213 47.604);
+    --card-badge-hot-fold-default: oklch(47% 0.157 37.304);
+    --card-badge-new-default: oklch(62.3% 0.214 259.815);
+    --card-price-default: oklch(63.7% 0.237 25.331);
+
+    --card-badge-sale: var(--card-badge-sale-default);
+    --card-badge-sale-fold: var(--card-badge-sale-fold-default);
+    --card-badge-hot: var(--card-badge-hot-default);
+    --card-badge-hot-fold: var(--card-badge-hot-fold-default);
+    --card-badge-new: var(--card-badge-new-default);
+    --card-price: var(--card-price-default);
   }
   .dark {
     --text-50: #05150d;

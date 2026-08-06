@@ -112,10 +112,34 @@ export function themeToCss(theme: Theme, scope: "chrome" | "card"): string {
    * dan isi yang berubah selalu menimpa isi yang lama.
    */
   if (!body) {
+    /**
+     * DUA JENIS reset, dan membedakannya itu penting.
+     *
+     * (a) `initial` — untuk token yang nilainya DIWARISI dari `:root`/`.dark`
+     *     (`--background`, `--card`, `--border`, …) dan untuk sakelar dekorasi
+     *     yang pemakainya sudah menulis fallback sendiri (`var(--card-decor, 0)`).
+     *     Di sini `initial` benar: elemen ber-scope berhenti punya nilai
+     *     sendiri, jadi nilai warisan dari induknya yang berlaku.
+     *
+     * (b) `var(--x-default)` — untuk token WARNA kartu yang default globalnya
+     *     didefinisikan di `:root` (lihat `globals.css`).
+     *
+     * Perbedaan ini pernah dilewatkan, dan akibatnya nyata: seluruh token
+     * kartu di-reset dengan `initial`. Pada custom property, `initial` BUKAN
+     * "pakai nilai global" melainkan guaranteed-invalid — dan karena
+     * `.theme-card` lebih spesifik daripada `:root`, reset itu selalu menang.
+     * `var(--card-badge-sale)` gagal resolve, sehingga badge diskon dan harga
+     * yang seharusnya merah tampil abu-abu, justru pada tema "default".
+     *
+     * Menunjuk ke `--x-default` mempertahankan alasan blok reset ini dibuat
+     * (elemen `<style>` SELALU ada, jadi isinya bisa menimpa versi lama di
+     * cache) tanpa membuat nilainya menjadi tidak sah.
+     */
     const reset =
       scope === "chrome"
         ? "--background:initial;--foreground:initial;--muted:initial;--muted-foreground:initial;--border:initial;--accent:initial;--accent-foreground:initial;--chrome-decor:initial;"
-        : "--card:initial;--card-foreground:initial;--muted-foreground:initial;--border:initial;--accent:initial;--accent-foreground:initial;--card-price:initial;--card-badge-sale:initial;--card-badge-sale-fold:initial;--card-badge-hot:initial;--card-badge-hot-fold:initial;--card-badge-new:initial;--card-decor:initial;"
+        : "--card:initial;--card-foreground:initial;--muted-foreground:initial;--border:initial;--accent:initial;--accent-foreground:initial;--card-decor:initial;" +
+          "--card-price:var(--card-price-default);--card-badge-sale:var(--card-badge-sale-default);--card-badge-sale-fold:var(--card-badge-sale-fold-default);--card-badge-hot:var(--card-badge-hot-default);--card-badge-hot-fold:var(--card-badge-hot-fold-default);--card-badge-new:var(--card-badge-new-default);"
     return `${selector}{${reset}}`
   }
 
