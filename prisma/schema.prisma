@@ -575,7 +575,75 @@ model PcBuildQuote {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
+  /// Sisi balik relasi ke `PcBuildSubmission`. WAJIB ada karena Prisma menolak
+  /// relasi satu arah — tapi ia TIDAK menghasilkan kolom apa pun di database.
+  ///
+  /// JANGAN PERNAH meng-`include` field ini pada jalur yang bisa diakses publik.
+  /// `pc_build_submissions` berisi nama dan nomor WhatsApp pelanggan, sedangkan
+  /// `/verify/[code]` adalah halaman terbuka tanpa autentikasi. Yang menjaga
+  /// keduanya terpisah adalah `getQuoteByCode()` yang tidak menyertakan relasi
+  /// ini — bukan ketiadaan field-nya.
+  submissions PcBuildSubmission[]
+
   @@index([createdAt])
   @@index([updatedAt])
   @@map("pc_build_quotes")
+}
+
+/**
+ * Rakitan yang DIKIRIM pelanggan ke HNS lewat tombol "Kirim ke HNS".
+ *
+ * Tabel sendiri, bukan kolom tambahan di `PcBuildQuote`, dan alasannya struktural.
+ * `contentHash` di sana `@unique`, sehingga dua baris dengan isi rakitan sama
+ * mustahil ada. Kalau identitas pengirim ditaruh di tabel itu, kiriman pelanggan
+ * yang isinya kebetulan sama dengan quotation milik staff akan masuk cabang
+ * `update` dan MENIMPA datanya — dan pelanggan kedua yang mengirim rakitan sama
+ * menimpa yang pertama. Rakitan dari preset yang sama menghasilkan hash identik,
+ * jadi kebetulan itu tidak jarang.
+ *
+ * Perbedaan yang mendasarinya: untuk quotation cetak, isi rakitan ADALAH identitas
+ * dokumen — dua cetakan dengan isi sama memang satu dokumen. Untuk kiriman
+ * pelanggan, yang menjadi identitas adalah PENGIRIMNYA. Dua orang mengirim rakitan
+ * RTX 4060 yang sama adalah dua prospek, bukan satu.
+ *
+ * Karena itu tidak ada constraint unik apa pun di sini: satu baris per kiriman,
+ * selalu.
+ */
+model PcBuildSubmission {
+  id Int @id @default(autoincrement())
+
+  /// Relasi lewat `id`, BUKAN lewat `code`. Kode adalah pengenal yang dibaca
+  /// manusia dan formatnya bisa berubah suatu hari; kalau relasinya bersandar
+  /// pada kode, perubahan format memutus sambungannya.
+  quoteId Int          @map("quote_id")
+  quote   PcBuildQuote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  /// Salinan kode saat kiriman dibuat, supaya daftar di panel bisa menampilkannya
+  /// tanpa join. Sengaja BUKAN sumber kebenaran — `quote.code` yang berlaku.
+  quoteCode String @map("quote_code") @db.VarChar(32)
+
+  /// Data pribadi. Lihat catatan retensi di bawah.
+  customerName  String @map("customer_name") @db.VarChar(120)
+  customerPhone String @map("customer_phone") @db.VarChar(32)
+
+  /// "baru" | "dibaca" | "selesai". Penggerak lencana di panel admin: yang
+  /// dihitung hanya yang berstatus "baru", dan staff bisa memadamkannya dengan
+  /// menandai sudah dibaca. Lencana yang tidak pernah bisa padam berubah jadi
+  /// hiasan yang diabaikan.
+  status String @default("baru") @db.VarChar(16)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  /// RETENSI 12 BULAN. Nama dan nomor WhatsApp adalah data pribadi dan tidak
+  /// boleh disimpan selamanya. Penghapusannya dijalankan terpisah (skrip
+  /// berkala), bukan otomatis oleh database — supaya terlihat dan bisa
+  /// dihentikan kalau suatu saat aturannya berubah.
+  ///
+  /// Tabel ini TIDAK BOLEH terjangkau dari endpoint publik mana pun. Halaman
+  /// verifikasi /verify/[code] membaca `pc_build_quotes` saja, dan relasinya
+  /// sengaja satu arah — `PcBuildQuote` tidak punya balikan ke sini, sehingga
+  /// identitas pelanggan tidak punya jalan sampai ke halaman publik itu.
+  @@index([status, createdAt])
+  @@index([createdAt])
+  @@map("pc_build_submissions")
 }
