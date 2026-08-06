@@ -2,7 +2,7 @@ import { getPrisma } from "@/lib/prisma/client"
 import {
   getPcBuilderConfig,
   getPcBuilderDisplayConfig,
-} from "@/app/admin/(panel)/pc-builder/actions"
+} from "@/lib/pc-builder/config"
 import { formatRupiah } from "@/lib/utils"
 import { recordPcBuildQuote } from "@/lib/api/pc-build-quotes"
 import { env } from "@/config/env"

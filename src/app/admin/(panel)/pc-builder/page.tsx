@@ -1,8 +1,8 @@
+import { getPcBuilderOptions } from "./actions"
 import {
   getPcBuilderConfig,
   getPcBuilderDisplayConfig,
-  getPcBuilderOptions,
-} from "./actions"
+} from "@/lib/pc-builder/config"
 import { PcBuilderForm } from "./_components/pc-builder-form"
 
 export default async function PcBuilderPage() {
