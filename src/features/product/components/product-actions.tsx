@@ -1,16 +1,16 @@
-import { ShoppingCart, MessageCircle } from "lucide-react"
-import { Button, buttonVariants } from "@/components/ui/button"
-import { formatRupiah } from "@/lib/utils"
+import { ShoppingCart, MessageCircle } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { formatRupiah } from "@/lib/utils";
 
 type ProductActionsProps = {
-  onAddToCart: (e: React.MouseEvent) => void
-  canAddToCart: boolean
-  showCartButton: boolean
-  addToCartHint?: string
-  waUrl: string
-  waLabel: string
-  price: number
-}
+  onAddToCart: (e: React.MouseEvent) => void;
+  canAddToCart: boolean;
+  showCartButton: boolean;
+  addToCartHint?: string;
+  waUrl: string;
+  waLabel: string;
+  price: number;
+};
 
 export function ProductActions({
   onAddToCart,
@@ -47,7 +47,12 @@ export function ProductActions({
           href={waUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className={buttonVariants({ variant: "default", size: "lg", className: "flex-1 md:w-full bg-[#25D366] hover:bg-[#128C7E] text-white" })}
+          className={buttonVariants({
+            variant: "default",
+            size: "lg",
+            className:
+              "flex-1 md:w-full bg-[#25D366] hover:bg-[#128C7E] text-white",
+          })}
         >
           <MessageCircle className="h-5 w-5" />
           <span className="hidden md:inline">{waLabel}</span>
@@ -55,5 +60,5 @@ export function ProductActions({
         </a>
       </div>
     </div>
-  )
+  );
 }

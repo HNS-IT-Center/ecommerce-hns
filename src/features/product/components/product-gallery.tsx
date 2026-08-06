@@ -1,60 +1,66 @@
-"use client"
+"use client";
 
-import Image from "next/image"
-import { useState, useRef, useEffect } from "react"
-import { motion, AnimatePresence, type PanInfo } from "framer-motion"
-import { ChevronLeft, ChevronRight, X, Play } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { getVideoEmbed } from "@/lib/utils/product"
+import Image from "next/image";
+import { useState, useRef, useEffect } from "react";
+import { motion, AnimatePresence, type PanInfo } from "framer-motion";
+import { ChevronLeft, ChevronRight, X, Play } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { getVideoEmbed } from "@/lib/utils/product";
 
 interface ProductGalleryProps {
-  images: Array<{ src: string; alt: string }>
-  videoUrl?: string | null
+  images: Array<{ src: string; alt: string }>;
+  videoUrl?: string | null;
 }
 
 export function ProductGallery({ images, videoUrl }: ProductGalleryProps) {
-  const [isVideoOpen, setIsVideoOpen] = useState(false)
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const videoEmbed = videoUrl ? getVideoEmbed(videoUrl) : null
-  const [activeIndex, setActiveIndex] = useState(0)
-  const [direction, setDirection] = useState(0)
-  const [isLightboxOpen, setIsLightboxOpen] = useState(false)
-  const [magnifierStyle, setMagnifierStyle] = useState({ display: 'none', top: 0, left: 0, bgPosX: 0, bgPosY: 0 })
-  const imageRef = useRef<HTMLDivElement>(null)
-  const scrollContainerRef = useRef<HTMLDivElement>(null)
-  const [isMobile, setIsMobile] = useState(true) // Default true, verify on mount
+  const [isVideoOpen, setIsVideoOpen] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoEmbed = videoUrl ? getVideoEmbed(videoUrl) : null;
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [direction, setDirection] = useState(0);
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const [magnifierStyle, setMagnifierStyle] = useState({
+    display: "none",
+    top: 0,
+    left: 0,
+    bgPosX: 0,
+    bgPosY: 0,
+  });
+  const imageRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [isMobile, setIsMobile] = useState(true); // Default true, verify on mount
 
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 640)
-    }
-    checkMobile()
-    window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
-  }, [])
+      setIsMobile(window.innerWidth < 640);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
 
   useEffect(() => {
-    const container = scrollContainerRef.current
-    if (!container) return
+    const container = scrollContainerRef.current;
+    if (!container) return;
 
     const handleWheel = (e: WheelEvent) => {
       // Scroll horizontally instead of vertically when hovering over thumbnails
       if (e.deltaY !== 0) {
-        e.preventDefault()
-        container.scrollLeft += e.deltaY
+        e.preventDefault();
+        container.scrollLeft += e.deltaY;
       }
-    }
+    };
 
-    container.addEventListener("wheel", handleWheel, { passive: false })
-    return () => container.removeEventListener("wheel", handleWheel)
-  }, [])
+    container.addEventListener("wheel", handleWheel, { passive: false });
+    return () => container.removeEventListener("wheel", handleWheel);
+  }, []);
 
   if (images.length === 0) {
     return (
       <div className="aspect-square w-full rounded-2xl bg-background flex items-center justify-center drop-shadow-sm">
         <span className="text-muted-foreground">No Image</span>
       </div>
-    )
+    );
   }
 
   /**
@@ -69,65 +75,69 @@ export function ProductGallery({ images, videoUrl }: ProductGalleryProps) {
    * tanpa itu suaranya tetap terdengar walau gambarnya sudah tidak tampak.
    */
   const closeVideo = () => {
-    videoRef.current?.pause()
-    setIsVideoOpen(false)
-  }
+    videoRef.current?.pause();
+    setIsVideoOpen(false);
+  };
 
   const handleNext = (e?: React.MouseEvent) => {
-    e?.stopPropagation()
-    closeVideo()
-    setDirection(1)
-    setActiveIndex((prev) => (prev + 1) % images.length)
-  }
+    e?.stopPropagation();
+    closeVideo();
+    setDirection(1);
+    setActiveIndex((prev) => (prev + 1) % images.length);
+  };
 
   const handlePrev = (e?: React.MouseEvent) => {
-    e?.stopPropagation()
-    closeVideo()
-    setDirection(-1)
-    setActiveIndex((prev) => (prev - 1 + images.length) % images.length)
-  }
+    e?.stopPropagation();
+    closeVideo();
+    setDirection(-1);
+    setActiveIndex((prev) => (prev - 1 + images.length) % images.length);
+  };
 
-  const handleDragEnd = (_e: MouseEvent | TouchEvent | PointerEvent, { offset }: PanInfo) => {
-    const swipe = offset.x
+  const handleDragEnd = (
+    _e: MouseEvent | TouchEvent | PointerEvent,
+    { offset }: PanInfo,
+  ) => {
+    const swipe = offset.x;
     if (swipe < -50) {
-      handleNext()
+      handleNext();
     } else if (swipe > 50) {
-      handlePrev()
+      handlePrev();
     }
-  }
+  };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (isMobile || !imageRef.current) return
-    
-    const { left, top, width, height } = imageRef.current.getBoundingClientRect()
-    const x = e.clientX - left
-    const y = e.clientY - top
-    
+    if (isMobile || !imageRef.current) return;
+
+    const { left, top, width, height } =
+      imageRef.current.getBoundingClientRect();
+    const x = e.clientX - left;
+    const y = e.clientY - top;
+
     // Calculate percentage for background position
-    const bgPosX = (x / width) * 100
-    const bgPosY = (y / height) * 100
-    
+    const bgPosX = (x / width) * 100;
+    const bgPosY = (y / height) * 100;
+
     setMagnifierStyle({
-      display: 'block',
+      display: "block",
       left: x - 50, // radius 50px
       top: y - 50,
       bgPosX,
       bgPosY,
-    })
-  }
+    });
+  };
 
   const handleMouseLeave = () => {
-    setMagnifierStyle((prev) => ({ ...prev, display: 'none' }))
-  }
+    setMagnifierStyle((prev) => ({ ...prev, display: "none" }));
+  };
 
   const handleImageClick = () => {
     // Saat video sedang diputar, kanvas ini milik video — klik di atasnya tidak
     // boleh membuka lightbox foto.
-    if (isVideoOpen) return
+    if (isVideoOpen) return;
     if (isMobile) {
-      setIsLightboxOpen(true)
+      setIsLightboxOpen(true);
     }
-  }
+  };
 
   const variants = {
     enter: (dir: number) => ({
@@ -144,12 +154,12 @@ export function ProductGallery({ images, videoUrl }: ProductGalleryProps) {
       x: dir < 0 ? 100 : -100,
       opacity: 0,
     }),
-  }
+  };
 
   return (
     <div className="space-y-8 min-w-0 w-full">
       {/* Main Image Container */}
-      <div 
+      <div
         ref={imageRef}
         className="group relative w-full aspect-square max-h-[350px] sm:max-h-[500px] overflow-hidden rounded-2xl bg-background drop-shadow-sm flex items-center justify-center cursor-pointer sm:cursor-crosshair"
         onClick={handleImageClick}
@@ -162,8 +172,8 @@ export function ProductGallery({ images, videoUrl }: ProductGalleryProps) {
           <button
             type="button"
             onClick={(e) => {
-              e.stopPropagation()
-              setIsVideoOpen(true)
+              e.stopPropagation();
+              setIsVideoOpen(true);
             }}
             className="absolute left-3 top-3 z-40 flex items-center gap-1.5 rounded-full bg-black/70 py-1.5 pl-2 pr-3 text-xs font-semibold text-white backdrop-blur-md transition-colors hover:bg-black/85 cursor-pointer"
           >
@@ -198,8 +208,8 @@ export function ProductGallery({ images, videoUrl }: ProductGalleryProps) {
             <button
               type="button"
               onClick={(e) => {
-                e.stopPropagation()
-                closeVideo()
+                e.stopPropagation();
+                closeVideo();
               }}
               className="absolute right-2 top-2 z-50 flex items-center gap-1 rounded-full bg-black/70 py-1.5 pl-2 pr-3 text-xs font-semibold text-white backdrop-blur-md transition-colors hover:bg-black/90 cursor-pointer"
               aria-label="Tutup video dan kembali ke foto"
@@ -240,14 +250,14 @@ export function ProductGallery({ images, videoUrl }: ProductGalleryProps) {
         </AnimatePresence>
 
         {/* Desktop Zoom Effect */}
-        {!isMobile && magnifierStyle.display === 'block' && (
+        {!isMobile && magnifierStyle.display === "block" && (
           <div
             className="absolute inset-0 z-30 pointer-events-none bg-background"
             style={{
               backgroundImage: `url(${images[activeIndex].src})`,
               backgroundPosition: `${magnifierStyle.bgPosX}% ${magnifierStyle.bgPosY}%`,
-              backgroundSize: '150%', // 1.5x zoom
-              backgroundRepeat: 'no-repeat',
+              backgroundSize: "150%", // 1.5x zoom
+              backgroundRepeat: "no-repeat",
             }}
           />
         )}
@@ -275,7 +285,7 @@ export function ProductGallery({ images, videoUrl }: ProductGalleryProps) {
 
       {/* Thumbnails */}
       {images.length > 1 && (
-        <div 
+        <div
           ref={scrollContainerRef}
           className="flex gap-3 overflow-x-auto p-2 scrollbar-hide snap-x snap-mandatory scroll-smooth w-full"
         >
@@ -283,15 +293,15 @@ export function ProductGallery({ images, videoUrl }: ProductGalleryProps) {
             <button
               key={i}
               onClick={() => {
-                closeVideo()
-                setDirection(i > activeIndex ? 1 : -1)
-                setActiveIndex(i)
+                closeVideo();
+                setDirection(i > activeIndex ? 1 : -1);
+                setActiveIndex(i);
               }}
               className={cn(
                 "relative h-20 w-20 sm:h-24 sm:w-24 shrink-0 overflow-hidden rounded-xl transition-all bg-background drop-shadow-sm cursor-pointer snap-center",
                 i === activeIndex
                   ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
-                  : "opacity-70 hover:opacity-100"
+                  : "opacity-70 hover:opacity-100",
               )}
             >
               <Image
@@ -316,14 +326,14 @@ export function ProductGallery({ images, videoUrl }: ProductGalleryProps) {
             className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4 sm:p-10 backdrop-blur-sm"
             onClick={() => setIsLightboxOpen(false)}
           >
-            <button 
+            <button
               className="absolute right-4 top-4 z-[110] rounded-full bg-white/10 p-2 text-white hover:bg-white/20 backdrop-blur-md cursor-pointer"
               onClick={() => setIsLightboxOpen(false)}
             >
               <X className="h-6 w-6" />
             </button>
-            
-            <div 
+
+            <div
               className="relative h-full w-full max-w-5xl"
               onClick={(e) => e.stopPropagation()}
             >
@@ -354,7 +364,7 @@ export function ProductGallery({ images, videoUrl }: ProductGalleryProps) {
                   />
                 </motion.div>
               </AnimatePresence>
-              
+
               {images.length > 1 && (
                 <>
                   <button
@@ -375,7 +385,6 @@ export function ProductGallery({ images, videoUrl }: ProductGalleryProps) {
           </motion.div>
         )}
       </AnimatePresence>
-
     </div>
-  )
+  );
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Monitor, ShoppingBag, ShoppingCart, User } from "lucide-react"
+import { Home, Monitor, ShoppingBag, ShoppingCart } from "lucide-react"
 import { useCartStore } from "@/store/cart"
 import { useIsHydrated } from "@/hooks/use-is-hydrated"
 import { cn } from "@/lib/utils"
@@ -57,12 +57,10 @@ export function MobileDock({ isChristmas = false }: { isChristmas?: boolean }) {
       href: "/cart",
       isActive: pathname === "/cart",
     },
-    {
-      label: "Account",
-      icon: <User className="h-6 w-6" />,
-      href: "/account",
-      isActive: pathname.startsWith("/account"),
-    },
+    // Entri "Account" dihapus bersama autentikasi simulasi. Mengarahkan orang ke
+    // halaman yang cuma bisa mengatakan "belum tersedia" adalah jalan buntu yang
+    // memakan satu dari lima slot dock. Akan kembali kalau akun pelanggan yang
+    // sungguhan dibangun.
   ]
 
   return (
