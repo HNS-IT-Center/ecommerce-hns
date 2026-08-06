@@ -16,6 +16,7 @@ import { Rating } from "@/components/ui/rating"
 import { useFlyToCart } from "@/components/providers/fly-to-cart-provider"
 import { useState, useEffect } from "react"
 import { QuickViewModal } from "@/components/ui/quick-view-modal"
+import { ChristmasCardDecor } from "@/components/theme/christmas-card-decor"
 
 export interface Product {
   id: string
@@ -104,7 +105,7 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
 
   return (
     <>
-    <div className="group relative flex flex-col rounded-xl bg-card shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-lg">
+    <div className="theme-card group relative flex flex-col rounded-xl bg-card shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-lg">
       <Link
         href={`/product/${product.slug}`}
         className="absolute inset-0 z-10 rounded-xl focus-visible:outline-2 focus-visible:outline-ring"
@@ -115,12 +116,12 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
       {/* Folded Discount Badge */}
       {hasDiscount && (
         <div className="absolute -left-1.5 top-3 z-[40] drop-shadow-sm pointer-events-none">
-          <div className="rounded-r-md rounded-tl-md bg-red-500 px-2 py-0.5 text-xs font-bold text-white tracking-wide">
+          <div className="rounded-r-md rounded-tl-md bg-(--card-badge-sale) px-2 py-0.5 text-xs font-bold text-white tracking-wide">
             {discountPercent}%
           </div>
-          <div 
-             className="h-1.5 w-1.5 bg-red-800" 
-             style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%)' }} 
+          <div
+             className="h-1.5 w-1.5 bg-(--card-badge-sale-fold)"
+             style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%)' }}
           />
         </div>
       )}
@@ -128,13 +129,13 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
       {/* Hot Badge Folded (when not on sale) */}
       {!hasDiscount && product.badge === "Hot" && (
         <div className="absolute -left-1.5 top-3 z-[40] drop-shadow-sm pointer-events-none">
-          <div className="flex items-center gap-0.5 rounded-r-md rounded-tl-md bg-orange-500 px-1.5 py-0.5 text-xs font-bold text-white tracking-wide">
+          <div className="flex items-center gap-0.5 rounded-r-md rounded-tl-md bg-(--card-badge-hot) px-1.5 py-0.5 text-xs font-bold text-white tracking-wide">
             <FlameIcon size={14} className="text-white" />
             HOT
           </div>
-          <div 
-             className="h-1.5 w-1.5 bg-orange-800" 
-             style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%)' }} 
+          <div
+             className="h-1.5 w-1.5 bg-(--card-badge-hot-fold)"
+             style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%)' }}
           />
         </div>
       )}
@@ -148,6 +149,12 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
           sizes="(max-width: 768px) 50vw, 25vw"
           className="object-contain transition-transform duration-500 group-hover:scale-105"
         />
+
+        {/* Hiasan Natal saat hover. Tidak diberi kondisi di React: seluruh
+            gerbangnya ada di CSS lewat `--card-decor`, yang hanya diset tema
+            kartu Natal. Kartu ini dipakai di sebelas tempat — mengoper prop
+            tema ke semuanya berarti sebelas jalur yang bisa lupa diperbarui. */}
+        <ChristmasCardDecor />
 
         {/* Quick View Hover State (Desktop) */}
         <div className="absolute inset-0 z-20 hidden md:flex items-center justify-center opacity-0 transition-opacity duration-300 group-hover/image:opacity-100 group-hover/image:bg-background/40 group-hover/image:backdrop-blur-sm pointer-events-none">
@@ -163,10 +170,13 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
           </button>
         </div>
 
-        {/* Quick View Button (Mobile) */}
-        <button 
+        {/* Quick View Button (Mobile).
+            Dulu `bg-cyan-100 text-white`: ikon putih di atas lingkaran nyaris
+            putih, rasio kontras ~1.2:1 — praktis tidak terlihat. Sekarang
+            mengikuti perlakuan tombol hover versi desktop di atas. */}
+        <button
           onClick={handleQuickView}
-          className="absolute top-2 right-2 z-[40] flex md:hidden h-8 w-8 items-center justify-center rounded-full bg-cyan-100 text-white shadow-sm hover:bg-blue-300 pointer-events-auto dark:bg-blue-900/80 dark:text-white dark:hover:bg-blue-800"
+          className="absolute top-2 right-2 z-[40] flex md:hidden h-8 w-8 items-center justify-center rounded-full bg-background/80 text-foreground shadow-sm hover:bg-background pointer-events-auto"
           title="Quickview"
         >
           <EyeIcon size={18} />
@@ -208,10 +218,10 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
           {/* Price + Discount */}
           {hasDiscount ? (
             <div className="flex items-baseline gap-1.5">
-              <div className="text-sm font-bold text-red-500">
+              <div className="text-sm font-bold text-(--card-price)">
                 {formatRupiah(product.price)}
               </div>
-              <span className="rounded bg-red-500/10 px-1 py-0.5 text-[9px] font-bold text-red-500">
+              <span className="rounded bg-(--card-price)/10 px-1 py-0.5 text-[9px] font-bold text-(--card-price)">
                 -{discountPercent}%
               </span>
             </div>
@@ -244,7 +254,11 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
                 target="_blank"
                 rel="noopener noreferrer"
                 title="Pesan via WhatsApp"
-                className="relative z-20 flex h-7 w-7 items-center justify-center rounded-full bg-[#25D366]/10 text-[#25D366] transition-all duration-300 ease-in-out hover:bg-[#25D366]/20 hover:scale-110 cursor-pointer"
+                // Hijau WhatsApp SENGAJA tidak ikut tema: warnanya diatur
+                // pedoman merek Meta, dan tombol WhatsApp berwarna lain
+                // terbaca seperti kerusakan tampilan. Dipakai lewat token
+                // `--color-whatsapp` yang sudah ada, bukan hex berulang.
+                className="relative z-20 flex h-7 w-7 items-center justify-center rounded-full bg-whatsapp/10 text-whatsapp transition-all duration-300 ease-in-out hover:bg-whatsapp/20 hover:scale-110 cursor-pointer"
                 onClick={(e) => e.stopPropagation()}
               >
                 <WhatsappIcon size={14} />

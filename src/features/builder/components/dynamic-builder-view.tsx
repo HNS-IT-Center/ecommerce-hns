@@ -199,8 +199,33 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
   // Sort selected items to top
   const activeStepSelections = activeStep ? (Array.isArray(selections[activeStep.id]) ? selections[activeStep.id] : []) : []
   const selectedProductIds = new Set(activeStepSelections.map(s => s.product.id))
-  
-  const sortedProducts = [...products].sort((a, b) => {
+
+  /**
+   * Komponen yang sudah dipilih SELALU ikut ditampilkan, walau tidak ada di
+   * halaman yang sudah dimuat.
+   *
+   * `products` cuma berisi hasil fetch sejauh ini (20 per halaman), dan halaman
+   * pertama MENIMPA isinya. Jadi komponen yang dipilih lewat pencarian, atau
+   * yang aslinya ada di halaman ke-3, tidak ada di array ini sama sekali —
+   * mengurutkan saja tidak cukup karena tidak ada yang bisa diurutkan. Akibatnya
+   * kartunya hilang dari grid dan terlihat seperti belum dipilih sampai tombol
+   * "Load More" ditekan berkali-kali.
+   *
+   * Objek produknya diambil dari store (disimpan utuh saat dipilih), jadi tidak
+   * perlu fetch tambahan.
+   *
+   * Saat sedang mencari, yang disisipkan hanya yang namanya cocok dengan kata
+   * kunci — daftar hasil pencarian harus tetap jujur terhadap apa yang diketik,
+   * bukan tiba-tiba memunculkan komponen yang tidak ada hubungannya.
+   */
+  const loadedProductIds = new Set(products.map(p => p.id))
+  const searchTerm = debouncedSearch.trim().toLowerCase()
+  const selectedButNotLoaded = activeStepSelections
+    .filter(s => !loadedProductIds.has(s.product.id))
+    .map(s => s.product)
+    .filter(p => !searchTerm || p.name.toLowerCase().includes(searchTerm))
+
+  const sortedProducts = [...selectedButNotLoaded, ...products].sort((a, b) => {
     const aSelected = selectedProductIds.has(a.id)
     const bSelected = selectedProductIds.has(b.id)
     if (aSelected && !bSelected) return -1

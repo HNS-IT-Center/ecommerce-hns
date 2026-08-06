@@ -81,10 +81,12 @@ export function BuilderView({ whatsappNumber }: BuilderViewProps) {
                       <div className="flex flex-1 items-center gap-4">
                         <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border bg-muted print:hidden">
                           {slot.selectedItem.image ? (
-                            <Image 
-                              src={slot.selectedItem.image} 
-                              alt={slot.selectedItem.name} 
-                              fill 
+                            <Image
+                              src={slot.selectedItem.image}
+                              alt={slot.selectedItem.name}
+                              fill
+                              // Wadahnya tetap 64px (h-16 w-16) di semua layar.
+                              sizes="64px"
                               className="object-cover"
                             />
                           ) : (

@@ -2,16 +2,26 @@ import Link from "next/link"
 import Image from "next/image"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import { env } from "@/config/env"
+import { getThemeSettings } from "@/lib/theme/settings"
+import { ChristmasFooterDecor, ChristmasFooterPattern } from "@/components/theme/christmas-decor"
 
-export function Footer() {
+export async function Footer() {
   const waUrl = buildWhatsAppUrl(
     env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER,
     "Halo HNS IT Center, saya ingin bertanya."
   )
 
+  const theme = await getThemeSettings()
+  const isChristmas = theme.activeChromeThemeId === "christmas"
+
   return (
-    <footer className="border-t bg-muted/20 print:hidden">
-      <div className="container mx-auto px-4 md:px-6 py-12 md:py-16">
+    <footer className="theme-chrome relative border-t bg-muted/20 print:hidden">
+      {isChristmas && <ChristmasFooterPattern />}
+      {isChristmas && <ChristmasFooterDecor />}
+      {/* `relative z-10` menaikkan isi footer ke atas lapisan pola di
+          belakangnya — tanpa ini teksnya tetap terbaca, tapi berada di lapisan
+          yang sama dan urutannya bergantung pada urutan DOM saja. */}
+      <div className="container relative z-10 mx-auto px-4 md:px-6 py-12 md:py-16">
         <div className="grid gap-8 md:grid-cols-4 lg:gap-12">
           
           {/* Col 1 */}

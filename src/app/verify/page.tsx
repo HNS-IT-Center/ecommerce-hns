@@ -1,7 +1,7 @@
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { Breadcrumb } from "@/components/seo/breadcrumb"
-import { VerifyBuildClient } from "./verify-build-client"
+import { VerifySearchForm } from "./verify-search-form"
 
 export const metadata = {
   title: "Cek Rincian Rakitan PC",
@@ -19,7 +19,7 @@ export default function VerifyBuildPage() {
         items={[{ label: "Beranda", href: "/" }, { label: "Cek Rakitan PC" }]}
       />
       <main className="flex-1 bg-muted/20">
-        <VerifyBuildClient />
+        <VerifySearchForm />
       </main>
       <Footer />
     </div>

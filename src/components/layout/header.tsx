@@ -8,14 +8,29 @@ import { CartBadge } from "./cart-badge"
 import { SearchBar } from "./search-bar"
 import { UserMenu } from "./user-menu"
 import { getCategories } from "@/lib/api/woocommerce/categories"
+import { getThemeSettings } from "@/lib/theme/settings"
+import { ChristmasHeaderDecor, ChristmasHeaderPattern } from "@/components/theme/christmas-decor"
 
 export async function Header() {
-  const categories = await getCategories({ hideEmpty: true, perPage: 100 })
+  // Dua pembacaan ini independen, jadi dijalankan berbarengan — tema tidak perlu
+  // menunggu kategori selesai diambil.
+  const [categories, theme] = await Promise.all([
+    getCategories({ hideEmpty: true, perPage: 100 }),
+    getThemeSettings(),
+  ])
+
+  const isChristmas = theme.activeChromeThemeId === "christmas"
 
   return (
     <>
-      <header className="fixed top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 print:hidden">
-        <div className="container mx-auto flex h-16 items-center px-4 md:px-6">
+      {/* `theme-chrome` = titik cantol Theme Editor. Token di dalam scope ini
+          didefinisikan ulang oleh CSS yang disuntik root layout, dan karena
+          custom property diwarisi, seluruh `bg-background`/`text-foreground` di
+          dalamnya — termasuk MegaMenu, SearchBar, CartBadge, UserMenu — ikut
+          berubah tanpa satu pun className disentuh. */}
+      <header className="theme-chrome fixed top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 print:hidden">
+        {isChristmas && <ChristmasHeaderDecor />}
+        <div className="container relative z-10 mx-auto flex h-16 items-center px-4 md:px-6">
         {/* Mobile Layout (< md): Search - Download - Cart */}
         <div className="flex w-full items-center gap-2 md:hidden">
           <div className="flex-1">
@@ -68,8 +83,15 @@ export async function Header() {
         </div>
       </div>
     </header>
-    {/* Spacer to prevent content from jumping under the fixed header */}
-    <div className="h-16 w-full" />
+    {/* Spacer to prevent content from jumping under the fixed header.
+
+        Juga jadi jangkar setrip pola salju: header sendiri `fixed`, jadi
+        apa pun yang dipasang di dalamnya ikut menempel di layar dan tidak
+        pernah tergulung. Spacer ini bagian normal dari aliran halaman, jadi
+        setripnya ikut naik saat halaman digulung — persis yang diinginkan. */}
+    <div className="relative h-16 w-full">
+      {isChristmas && <ChristmasHeaderPattern />}
+    </div>
   </>
   )
 }

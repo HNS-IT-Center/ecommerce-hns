@@ -8,6 +8,8 @@ import { MobileDock } from "@/components/layout/mobile-dock";
 import { FlyToCartProvider } from "@/components/providers/fly-to-cart-provider";
 import { JsonLd } from "@/components/seo/json-ld";
 import { env } from "@/config/env";
+import { getActiveThemeCss, getThemeSettings } from "@/lib/theme/settings";
+import { ChristmasSnow } from "@/components/theme/christmas-snow";
 import NextTopLoader from "nextjs-toploader";
 
 const inter = Inter({
@@ -64,20 +66,60 @@ const websiteJsonLd = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  /**
+   * CSS tema aktif, dibaca lewat `unstable_cache` (lihat lib/theme/settings.ts).
+   *
+   * Aman untuk rendering statis: tidak menyentuh `cookies()`/`headers()`, jadi
+   * halaman storefront tetap statis/ISR.
+   *
+   * Disuntik di `<head>` sebagai HTML hasil render server — bukan lewat
+   * `useEffect` atau localStorage — sehingga warnanya sudah benar pada lukisan
+   * pertama dan tidak ada kedipan tema (FOUC).
+   */
+  const [themeCss, theme] = await Promise.all([
+    getActiveThemeCss(),
+    getThemeSettings(),
+  ]);
+  const isChristmas = theme.activeChromeThemeId === "christmas";
+
   return (
     <html
       lang="id"
       className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        {/* SELALU dirender, termasuk saat temanya "default".
+
+            Dulu elemen ini hanya muncul kalau ada tema aktif, dan itu membuat
+            "kembali ke default" mustahil menimpa halaman yang sudah tersimpan
+            di cache: keadaan yang benar dinyatakan sebagai KETIADAAN elemen,
+            dan ketiadaan tidak bisa membatalkan elemen yang masih ada di HTML
+            lama. Akibatnya berganti ke tema berwarna terasa langsung sementara
+            kembali ke default seperti tidak berpengaruh sampai cache server
+            dibersihkan manual.
+
+            Sekarang tema default mengirim blok reset (lihat `themeToCss`), jadi
+            yang berubah antar tema hanya ISI elemen ini — dan isi yang berubah
+            selalu menimpa isi sebelumnya. */}
+        <style id="theme-vars" dangerouslySetInnerHTML={{ __html: themeCss }} />
+      </head>
+      {/* `theme-christmas` = penanda yang dipakai `globals.css` untuk membuat
+          pembungkus halaman transparan, supaya pola salju di belakangnya
+          terlihat. Ditaruh di `body` agar berlaku untuk seluruh halaman tanpa
+          satu pun dari mereka perlu disunting. */}
       <body className="min-h-full flex flex-col">
         <NextTopLoader color="#0000FF" showSpinner={false} />
         <JsonLd data={organizationJsonLd} />
         <JsonLd data={websiteJsonLd} />
+        {/* Salju dipasang di root, bukan di dalam header: header `overflow`-nya
+            terbatas dan tingginya hanya 4rem, sedangkan salju harus jatuh ke
+            area di bawahnya. */}
+        {isChristmas && <ChristmasSnow />}
         <FlyToCartProvider>
           <Toast limit={1}>
             {children}
@@ -86,7 +128,7 @@ export default function RootLayout({
           {/* Keduanya membawa `print:hidden` sendiri supaya tidak ikut masuk ke
               PDF quotation (/build-pc/print). */}
           <FloatingWhatsAppButton whatsappNumber={env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER} />
-          <MobileDock />
+          <MobileDock isChristmas={isChristmas} />
         </FlyToCartProvider>
       </body>
     </html>

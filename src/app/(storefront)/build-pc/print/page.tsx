@@ -203,7 +203,7 @@ export default async function PrintPcBuilderPage({
     year: "numeric",
   })
 
-  // Catat quotation supaya bisa diverifikasi lewat /q/[code]. Pencatatan yang
+  // Catat quotation supaya bisa diverifikasi lewat /verify/[code]. Pencatatan yang
   // gagal tidak boleh menggagalkan pencetakan — pelanggan tetap harus dapat
   // dokumennya, cuma tanpa kode verifikasi.
   let quoteRef: string | null = null
@@ -448,7 +448,6 @@ export default async function PrintPcBuilderPage({
                 <ul className="space-y-0.5 text-[9.5px] leading-snug" style={{ color: INK_GRAY }}>
                   <li>Harga dapat berubah sewaktu-waktu tanpa pemberitahuan sebelumnya.</li>
                   <li>Stok &amp; Harga tidak mengikat sebelum ada pembayaran lunas atau DP.</li>
-                  <li>Jasa rakit sudah termasuk instalasi sistem operasi standar.</li>
                   <li className="font-semibold" style={{ color: INK_BLACK }}>
                     Harga yang berlaku adalah harga pada sistem saat transaksi.
                   </li>

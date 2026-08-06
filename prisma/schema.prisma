@@ -547,13 +547,14 @@ model ProductLog {
  * Quotation rakitan PC yang pernah dicetak dari /build-pc.
  *
  * Satu baris = satu KOMBINASI komponen unik, bukan satu klik Print. Dua orang
- * yang merakit isi yang sama persis akan berbagi baris ini; yang bertambah
- * hanya `printCount`. Tanpa itu, tabel akan penuh duplikat karena satu orang
- * biasa menekan Print berkali-kali untuk rakitan yang sama.
+ * yang merakit isi yang sama persis akan berbagi baris ini. Tanpa dedupe itu,
+ * tabel akan penuh duplikat karena satu orang biasa menekan Print berkali-kali
+ * untuk rakitan yang sama.
  *
  * `items` menyimpan snapshot harga saat quotation diterbitkan, supaya halaman
  * verifikasi /q/[code] bisa membandingkannya dengan harga terkini dan
- * menandai kalau ada selisih.
+ * menandai kalau ada selisih. `updatedAt` menandai kapan snapshot itu terakhir
+ * disegarkan.
  */
 model PcBuildQuote {
   id   Int    @id @default(autoincrement())
@@ -569,13 +570,12 @@ model PcBuildQuote {
   assemblyFee Decimal @map("assembly_fee") @db.Decimal(14, 2)
   total       Decimal @db.Decimal(14, 2)
 
-  itemCount  Int @map("item_count")
-  printCount Int @default(1) @map("print_count")
+  itemCount Int @map("item_count")
 
-  createdAt     DateTime @default(now()) @map("created_at")
-  lastPrintedAt DateTime @default(now()) @map("last_printed_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
 
   @@index([createdAt])
-  @@index([lastPrintedAt])
+  @@index([updatedAt])
   @@map("pc_build_quotes")
 }

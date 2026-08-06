@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ClipboardList,
   Megaphone,
+  Palette,
 } from "lucide-react"
 
 import {
@@ -41,6 +42,7 @@ const adminNavItems = [
   { title: "PC Builder",   url: "/admin/pc-builder", icon: Cpu },
   { title: "Banner Promo", url: "/admin/banner",   icon: Megaphone },
   { title: "Toko & Lokasi", url: "/admin/toko",    icon: Store },
+  { title: "Tema",         url: "/admin/theme",    icon: Palette },
   { title: "Logs",         url: "/admin/logs",     icon: ClipboardList },
 ]
 
