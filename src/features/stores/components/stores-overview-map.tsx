@@ -137,7 +137,27 @@ export function StoresOverviewMap({ stores, showLabels = true }: Props) {
       center={tunggal ? [tunggal.latitude, tunggal.longitude] : undefined}
       zoom={tunggal ? SINGLE_STORE_ZOOM : undefined}
       scrollWheelZoom={false}
-      className="h-full w-full"
+      /*
+        `isolate` WAJIB, dan bukan sekadar kerapian.
+
+        Leaflet menyetel z-index besar pada bagian dalamnya — pane 200–700,
+        kontrol zoom 800, wadah kontrol 1000 — tetapi `.leaflet-container`
+        sendiri dibiarkan `z-index: auto`. Karena tidak ada stacking context
+        yang mengurungnya, angka-angka itu bocor dan ikut bersaing di level
+        halaman, tempat mereka mengalahkan apa pun milik kita: panel dropdown
+        KATEGORI (z-50) tertimpa tombol zoom peta.
+
+        `isolation: isolate` membuat kontainer ini jadi stacking context, jadi
+        800 dan 1000 hanya berlaku relatif terhadap sesama isi peta. Urutan di
+        dalam peta tidak berubah sedikit pun — tile tetap di bawah marker,
+        marker di bawah kontrol.
+
+        Diperbaiki di sini, bukan dengan menaikkan z-index header, karena
+        sumber masalahnya kebocoran — bukan header yang kurang tinggi. Menang
+        lomba angka hari ini berarti kalah lagi kalau Leaflet menaikkan
+        nilainya di versi berikutnya.
+      */
+      className="isolate h-full w-full"
     >
       <ScrollZoomOnClick />
       {/*
