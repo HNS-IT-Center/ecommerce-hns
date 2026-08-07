@@ -8,6 +8,21 @@ interface DealsCarouselProps {
   products: Product[]
 }
 
+/**
+ * Berapa kartu pertama yang gambarnya dimuat tanpa menunggu (lihat prop
+ * `priority` di ProductCard).
+ *
+ * Enam mengikuti kelas lebar terpadat di bawah (`xl:w-1/6`) — jumlah kartu yang
+ * muat dalam satu baris di layar terlebar, jadi di viewport mana pun angka ini
+ * menutupi persis yang terlihat tanpa menggulir. Layar yang lebih sempit
+ * menampilkan lebih sedikit kartu per baris, sehingga sisanya memang di luar
+ * layar; itu tetap jauh lebih murah daripada menandai seluruh daftar.
+ *
+ * Section ini yang pertama muncul setelah hero di beranda, jadi kartu-kartu
+ * inilah kandidat LCP-nya.
+ */
+const ABOVE_FOLD_COUNT = 6
+
 export function DealsCarousel({ products }: DealsCarouselProps) {
   const [emblaRef, emblaApi] = useEmblaCarousel({
     loop: true,
@@ -43,9 +58,9 @@ export function DealsCarousel({ products }: DealsCarouselProps) {
   return (
     <div className="overflow-hidden pb-4" ref={emblaRef}>
       <div className="flex touch-pan-y -ml-4">
-        {products.map((product) => (
+        {products.map((product, index) => (
           <div key={product.id} className="min-w-0 flex-none pl-4 w-1/2 md:w-1/4 lg:w-1/5 xl:w-1/6">
-            <ProductCard product={product} />
+            <ProductCard product={product} priority={index < ABOVE_FOLD_COUNT} />
           </div>
         ))}
       </div>

@@ -30,8 +30,8 @@ export async function Footer() {
               <Image 
                 src="/images/Logo HNS IT Center.png" 
                 alt="HNS IT Center Logo" 
-                width={160} 
-                height={40} 
+                width={160}
+                height={49}
                 className="h-10 w-auto object-contain"
               />
             </Link>
