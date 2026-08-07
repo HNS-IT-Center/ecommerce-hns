@@ -3,17 +3,17 @@
 import { useState } from "react"
 import { useBuilderStore, BuilderSlotId } from "@/store/builder"
 import { formatRupiah } from "@/lib/utils"
-import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import { Trash2, MessageCircle, Printer, Plus, AlertCircle, ShoppingBag } from "lucide-react"
 import Image from "next/image"
 import { ComponentSelectionModal } from "./component-selection-modal"
+import { prepareBuildWhatsApp } from "../actions-whatsapp"
 
-type BuilderViewProps = {
-  whatsappNumber: string
-}
-
-export function BuilderView({ whatsappNumber }: BuilderViewProps) {
+/**
+ * Nomor WhatsApp tidak lagi dioper: tujuan dan harga sama-sama dibaca di server.
+ */
+export function BuilderView() {
   const { slots, removeItem, getTotalPrice } = useBuilderStore()
+  const [sendingWA, setSendingWA] = useState(false)
   
   // Modal state
   const [activeSlot, setActiveSlot] = useState<BuilderSlotId | null>(null)
@@ -28,19 +28,34 @@ export function BuilderView({ whatsappNumber }: BuilderViewProps) {
     window.print()
   }
 
-  const handleCheckoutWA = () => {
-    let message = "Halo HNS IT Center, saya ingin merakit PC dengan spesifikasi berikut:\n\n"
+  /**
+   * Pesan disusun di server, dari harga katalog — sama seperti
+   * `dynamic-builder-view.tsx`.
+   *
+   * Sebelumnya dirangkai di sini dari `slot.selectedItem.price` dan
+   * `getTotalPrice()`, yang berasal dari `hns-builder-storage` di localStorage.
+   * Lihat CLAUDE.md §2.7.
+   */
+  const handleCheckoutWA = async () => {
+    if (sendingWA) return
 
-    Object.values(slots).forEach((slot) => {
-      if (slot.selectedItem) {
-        message += `- ${slot.title}: ${slot.selectedItem.name} (${formatRupiah(slot.selectedItem.price)})\n`
-      }
-    })
+    const lines = Object.values(slots)
+      .filter((slot) => slot.selectedItem !== null)
+      .map((slot) => ({
+        productId: Number(slot.selectedItem!.id),
+        quantity: 1,
+        stepName: slot.title,
+      }))
 
-    message += `\n*Estimasi Harga: ${formatRupiah(getTotalPrice())}*\n\n`
-    message += "Mohon info ketersediaan barang dan biaya rakit. Terima kasih."
+    if (lines.length === 0) return
 
-    window.open(buildWhatsAppUrl(whatsappNumber, message), "_blank")
+    setSendingWA(true)
+    try {
+      const hasil = await prepareBuildWhatsApp(lines)
+      if (hasil.ok) window.open(hasil.waUrl, "_blank", "noopener,noreferrer")
+    } finally {
+      setSendingWA(false)
+    }
   }
 
   const slotEntries = Object.values(slots)

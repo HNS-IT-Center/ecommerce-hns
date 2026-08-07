@@ -4,8 +4,8 @@ import { useEffect, useState, useMemo } from "react"
 import { useNewBuilderStore, BuilderProduct } from "@/store/new-builder"
 import { PcBuilderStepConfig } from "@/app/admin/(panel)/pc-builder/actions"
 import { formatRupiah } from "@/lib/utils"
-import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import { fetchBuilderProducts } from "../actions"
+import { prepareBuildWhatsApp } from "../actions-whatsapp"
 import { ProductCardBuilder } from "./product-card-builder"
 import { Check, Edit2, MessageCircle, Printer, Search, X, Loader2, AlertTriangle, RotateCcw, Menu, XCircle } from "lucide-react"
 import { Input } from "@/components/ui/input"
@@ -18,16 +18,20 @@ import SaveIcon from "@/components/icons/save-icon"
 
 type DynamicBuilderViewProps = {
   stepsConfig: PcBuilderStepConfig[]
-  whatsappNumber: string
 }
 
-export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuilderViewProps) {
+/**
+ * Nomor WhatsApp tidak lagi dioper dari env: tujuan dan harganya sama-sama
+ * dibaca di server lewat `prepareBuildWhatsApp`, dari tabel stores.
+ */
+export function DynamicBuilderView({ stepsConfig }: DynamicBuilderViewProps) {
   const { 
     steps, setSteps, selections, activeStepId, setActiveStep, 
     selectProduct, removeProduct, updateQuantity, getTotalPrice, clearSelections
   } = useNewBuilderStore()
 
   const [mounted, setMounted] = useState(false)
+  const [sendingWA, setSendingWA] = useState(false)
   const [products, setProducts] = useState<BuilderProduct[]>([])
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -177,20 +181,65 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
     window.open(`/build-pc/print?items=${encodeURIComponent(itemsParam)}`, '_blank')
   }
 
-  const handleCheckoutWA = () => {
+  /**
+   * Pesan disusun DI SERVER, dari harga katalog.
+   *
+   * Sebelumnya pesan dirangkai di sini memakai `sel.product.price` dan
+   * `getTotalPrice()` — keduanya berasal dari `hns-builder-storage` di
+   * localStorage, yang bisa disunting lewat devtools. Rakitan PC adalah nilai
+   * terbesar di situs ini, jadi angkanya harus dibaca ulang dari katalog.
+   *
+   * Persis pola `handlePrint` di atas, yang sejak awal hanya mengirim id dan
+   * kuantitas. Lihat CLAUDE.md §2.7.
+   */
+  const handleCheckoutWA = async () => {
     if (!validateRequiredSteps()) return
-    let message = "Halo HNS IT Center, saya ingin merakit PC dengan spesifikasi berikut:\n\n"
-    steps.forEach((step) => {
+    if (sendingWA) return
+
+    const lines = steps.flatMap((step) => {
       const stepSels = selections[step.id]
-      if (Array.isArray(stepSels) && stepSels.length > 0) {
-        stepSels.forEach(sel => {
-          message += `- ${step.name}: ${sel.product.name} x${sel.quantity} (${formatRupiah(sel.product.price)})\n`
+      if (!Array.isArray(stepSels)) return []
+      return stepSels.map((sel) => ({
+        productId: Number(sel.product.id),
+        quantity: sel.quantity,
+        stepName: step.name,
+      }))
+    })
+
+    setSendingWA(true)
+    try {
+      const hasil = await prepareBuildWhatsApp(lines)
+      if (!hasil.ok) {
+        toastManager.add({
+          title: "Gagal menyiapkan pesan",
+          description:
+            hasil.reason === "all-unavailable"
+              ? "Komponen yang dipilih sudah tidak tersedia. Muat ulang halaman ini."
+              : hasil.reason === "no-store"
+                ? "Nomor WhatsApp CS belum tersedia."
+                : "Belum ada komponen yang dipilih.",
+        })
+        return
+      }
+
+      // Komponen yang hilang dari katalog disebutkan, bukan dibuang diam-diam:
+      // pelanggan harus tahu rakitannya berangkat tidak lengkap.
+      if (hasil.unavailableProductIds.length > 0) {
+        toastManager.add({
+          title: "Sebagian komponen tidak tersedia",
+          description: `${hasil.unavailableProductIds.length} komponen sudah tidak dijual dan tidak ikut dikirim.`,
         })
       }
-    })
-    message += `\n*Estimasi Total: ${formatRupiah(getTotalPrice())}*\n\n`
-    message += "Mohon info ketersediaan barang. Terima kasih."
-    window.open(buildWhatsAppUrl(whatsappNumber, message), "_blank")
+
+      window.open(hasil.waUrl, "_blank", "noopener,noreferrer")
+    } catch {
+      toastManager.add({
+        title: "Gagal menyiapkan pesan",
+        description: "Coba lagi sebentar lagi.",
+      })
+    } finally {
+      setSendingWA(false)
+    }
   }
 
   const selectedStepsCount = steps.filter(s => Array.isArray(selections[s.id]) && selections[s.id].length > 0).length
@@ -402,10 +451,17 @@ export function DynamicBuilderView({ stepsConfig, whatsappNumber }: DynamicBuild
 
           <Button
             onClick={handleCheckoutWA}
+            disabled={sendingWA}
             className="w-full cursor-pointer bg-[#25D366] hover:bg-[#1EBE5A] active:bg-[#17A74C] text-white font-bold h-10 rounded-lg flex items-center justify-center gap-1.5 text-sm transition-colors"
           >
-            <MessageCircle className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">Konsultasi</span>
+            {sendingWA ? (
+              <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin" />
+            ) : (
+              <MessageCircle className="w-3.5 h-3.5 shrink-0" />
+            )}
+            <span className="truncate">
+              {sendingWA ? "Menyiapkan…" : "Konsultasi"}
+            </span>
           </Button>
         </div>
 
