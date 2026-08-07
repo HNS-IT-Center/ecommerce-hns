@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { MessageCircle, UserRoundX } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp";
 import { env } from "@/config/env";
 
 /**
- * Pemberitahuan bahwa akun pelanggan belum tersedia.
+ * Mengarahkan pengunjung `/login`, `/register`, dan `/account` ke jalur
+ * pemesanan yang sungguhan: WhatsApp.
  *
  * Menggantikan formulir daftar/masuk yang sebelumnya ada di sini. Formulir itu
  * meminta nama, nomor WhatsApp, email, dan PASSWORD, lalu membuang semuanya —
@@ -15,6 +16,13 @@ import { env } from "@/config/env";
  * Dibiarkan sebagai halaman, bukan dihapus rutenya, karena `/login` dan
  * `/register` mungkin sudah tersebar di tautan atau bookmark. Halaman yang
  * menjelaskan lebih baik daripada 404 yang membuat orang mengira situsnya rusak.
+ *
+ * COPY-NYA SENGAJA TIDAK MENYEBUT AKUN SAMA SEKALI — jangan tambahkan.
+ * "Akun belum tersedia" adalah janji terselubung: "belum" berarti "nanti ada".
+ * "Akun tidak tersedia" salah arah pula, karena akun pelanggan memang
+ * direncanakan. Pelanggan tidak peduli apakah kami punya sistem akun; mereka
+ * mau tahu cara memesan. Kalimat yang hanya menyatakan jalur pemesanan tetap
+ * benar apa pun yang dibangun nanti, dan tidak perlu ditulis ulang.
  */
 export function RegistrationUnavailable({
   title,
@@ -28,15 +36,18 @@ export function RegistrationUnavailable({
 
   return (
     <div className="w-full max-w-md space-y-6 rounded-2xl border bg-card p-8 text-center shadow-sm">
-      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-        <UserRoundX className="h-6 w-6 text-muted-foreground" />
+      {/* Ikon percakapan, bukan orang-dicoret. Ikon yang mencoret pengguna
+          menyatakan penolakan — padahal halaman ini menunjukkan jalan, bukan
+          menutup pintu. */}
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-whatsapp/10">
+        <MessageCircle className="h-6 w-6 text-whatsapp" />
       </div>
 
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight">{title}</h1>
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          Akun pelanggan belum tersedia di situs ini. Semua pemesanan, tanya stok,
-          dan konsultasi rakit PC dilayani langsung lewat WhatsApp.
+          Pemesanan, tanya stok, dan konsultasi rakit PC dilayani langsung oleh
+          tim kami lewat WhatsApp.
         </p>
       </div>
 

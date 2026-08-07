@@ -1,8 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
 
-import { Download } from "lucide-react";
-
 import { MegaMenu } from "./mega-menu";
 import { CartBadge } from "./cart-badge";
 import { SearchBar } from "./search-bar";
@@ -39,17 +37,11 @@ export async function Header() {
               <SearchBar className="w-full max-w-none sm:hidden flex" />
             </div>
 
-            <button
-              type="button"
-              className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground group relative shrink-0"
-              aria-label="Download (Coming soon)"
-            >
-              <Download className="h-5 w-5" />
-              <span className="absolute -bottom-8 right-0 whitespace-nowrap rounded bg-foreground px-2 py-1 text-xs text-background opacity-0 transition-opacity group-hover:opacity-100 pointer-events-none z-50">
-                Coming soon
-              </span>
-            </button>
-
+            {/* Tombol Download dihapus: ia tidak melakukan apa pun selain
+                menampilkan tooltip "Coming soon". Tombol yang tidak berfungsi
+                lebih buruk daripada tombol yang tidak ada — ia memakan ruang
+                di bilah mobile yang sempit dan mengajari orang bahwa kontrol
+                di situs ini belum tentu bekerja. */}
             <div className="shrink-0">
               <CartBadge />
             </div>

@@ -2,7 +2,7 @@
 
 import { useCartStore } from "@/store/cart"
 import { formatRupiah } from "@/lib/utils"
-import { Settings, ShoppingBag } from "lucide-react"
+import { MessageCircle, ShoppingBag } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { buttonVariants } from "@/components/ui/button"
@@ -93,14 +93,27 @@ export function CheckoutView() {
           </div>
         </div>
         
-        {/* Coming Soon Block */}
-        <div className="rounded-xl border border-dashed border-primary/50 bg-primary/5 p-12 flex flex-col items-center justify-center text-center">
-          <div className="animate-spin-slow mb-4">
-            <Settings className="h-12 w-12 text-primary" />
+        {/*
+          Menyatakan cara memesan, BUKAN fitur yang sedang dibangun.
+
+          Sebelumnya kotak ini bertuliskan "Coming Soon — sistem checkout
+          otomatis sedang dalam tahap pengembangan". Itu kabar tentang kami,
+          bukan tentang pesanan orang yang sedang membacanya: ia sudah memilih
+          barang dan siap membayar, lalu diberi tahu bahwa yang dia butuhkan
+          belum ada. Titik paling mahal untuk mengecewakan orang.
+
+          Jangan kembalikan bahasa "coming soon" di sini. Pemesanan lewat CS
+          bukan penampung sementara — itu memang cara HNS bekerja, dan
+          kalimatnya tetap benar meski checkout otomatis dibangun nanti.
+        */}
+        <div className="rounded-xl border border-dashed border-whatsapp/50 bg-whatsapp/5 p-12 flex flex-col items-center justify-center text-center">
+          <div className="mb-4">
+            <MessageCircle className="h-12 w-12 text-whatsapp" />
           </div>
-          <h3 className="text-2xl font-bold text-primary mb-2">Coming Soon</h3>
+          <h3 className="text-2xl font-bold text-whatsapp mb-2">Pesan lewat WhatsApp</h3>
           <p className="text-muted-foreground max-w-md">
-            Sistem checkout otomatis sedang dalam tahap pengembangan. Untuk saat ini, silahkan hubungi CS kami.
+            Pesanan Anda diselesaikan bersama tim CS kami lewat WhatsApp —
+            termasuk konfirmasi stok, ongkir, dan cara pembayaran.
           </p>
         </div>
       </div>
