@@ -6,6 +6,7 @@ import { MessageCircle, ShoppingBag } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { buttonVariants } from "@/components/ui/button"
+import { WhatsAppOrderButton } from "./whatsapp-order-button"
 
 export function CheckoutView() {
   const { items, getSelectedTotalPrice } = useCartStore()
@@ -115,6 +116,12 @@ export function CheckoutView() {
             Pesanan Anda diselesaikan bersama tim CS kami lewat WhatsApp —
             termasuk konfirmasi stok, ongkir, dan cara pembayaran.
           </p>
+          {/* Tombolnya ADA DI SINI, bukan hanya di ringkasan samping: kotak ini
+              yang menjelaskan caranya, dan penjelasan tanpa tombol membuat
+              halaman ini jalan buntu bagi orang yang sudah siap membayar. */}
+          <div className="mt-6 w-full max-w-sm">
+            <WhatsAppOrderButton />
+          </div>
         </div>
       </div>
 
