@@ -88,6 +88,7 @@ Sebelum membuat komponen baru, agent WAJIB:
 - Persentase diskon boleh dihitung, karena ia **keterangan** atas selisih dua angka katalog — bukan sumber potongannya.
 - **DILARANG** menampilkan harga yang tidak bisa diperoleh siapa pun, termasuk label seperti "Harga Member" selama mekanismenya tidak ada.
 - Harga yang masuk keranjang wajib sama persis dengan harga yang tampil di halaman produk.
+- **Status login tidak boleh memengaruhi harga.** Akun pelanggan (login Google) hanya menambah kemampuan menyimpan rakitan — ia tidak membuka harga berbeda, diskon khusus, atau tingkatan member apa pun. Fungsi penetapan harga seperti `priceCartFromCatalog` sengaja TIDAK menerima parameter user; jangan menambahkannya. Kalau suatu hari ada harga khusus, ia datang dari katalog sebagai data, bukan dari status login.
 
 **Ini bukan aturan gaya kode.** Pernah ada `memberPrice = Math.floor(harga * 0.95)` di
 `calculate-product-price.ts` yang menyala untuk siapa pun yang "login" — padahal login itu
@@ -98,6 +99,33 @@ HNS. Untuk PC rakitan Rp 20 juta, selisihnya Rp 1 juta.
 
 Kalau harga khusus benar-benar dibutuhkan suatu hari, ia harus datang dari katalog sebagai
 data — bukan dari perkalian di komponen.
+
+### 2.8 Penghapusan: Soft Delete, dengan Satu Pengecualian yang Disengaja
+
+Tabel milik **internal** memakai soft delete (`deletedAt`) — `users` (admin) dan
+`stores`. Alasannya: staff bisa salah tekan, dan baris yang hilang permanen
+membawa serta riwayat yang menunjuk padanya.
+
+**PENGECUALIAN — akun pelanggan dihapus permanen (hard delete).**
+
+Saat pelanggan meminta akunnya dihapus, barisnya benar-benar dihapus dari
+`customers`, bersama seluruh rakitan tersimpannya lewat `onDelete: Cascade`.
+Tidak ada `deletedAt`, tidak ada baris tersisa.
+
+**Jangan "memperbaiki" ini menjadi soft delete.** Soft delete pada data pribadi
+berarti kita tetap menyimpan email dan nama orang yang sudah secara eksplisit
+meminta datanya dihapus — baris itu masih ada, hanya disembunyikan dari
+antarmuka. Itu justru kebalikan dari yang diminta pelanggan, dan menyimpan data
+pribadi tanpa dasar setelah pemiliknya menarik persetujuan adalah masalah
+kepatuhan, bukan sekadar selera teknis.
+
+Bedanya dengan `users` dan `stores`: keduanya data operasional milik HNS yang
+dihapus staff karena salah input atau cabang tutup — bukan data pribadi orang
+lain yang menarik persetujuannya.
+
+Yang wajib ikut saat penghapusan: isi `sessionsRevokedAt` sebelum barisnya
+hilang. Tanpa itu, cookie bertanda tangan yang sudah beredar tetap sah sampai
+kedaluwarsa, dan pemiliknya "masih login" ke akun yang sudah tidak ada.
 
 ---
 
