@@ -30,7 +30,27 @@ import {
  * dibaca ulang dari database saat tombol ditekan; keranjang ada di localStorage
  * dan bisa disunting siapa saja lewat devtools.
  */
-export function WhatsAppOrderButton() {
+type Props = {
+  /**
+   * Dipanggil setiap kali harga selesai dibaca dari katalog, supaya ringkasan
+   * pembayaran bisa menampilkan angka yang sama dengan yang dikirim ke CS.
+   *
+   * Tanpa ini halaman menampilkan dua angka berbeda untuk hal yang sama:
+   * ringkasan memakai harga keranjang, pesan WhatsApp memakai harga katalog.
+   * Dialog memang menerangkan selisihnya, tapi itu hanya menolong orang yang
+   * membacanya sampai selesai — sebagian menekan lanjut refleks, lalu melihat
+   * angka di WhatsApp berbeda dari yang baru saja ada di layar.
+   */
+  onPriced?: (result: {
+    total: number;
+    /** Harga satuan katalog per id baris keranjang (`CartItem.id`). */
+    unitPriceByCartItemId: Record<string, number>;
+    /** Id baris keranjang yang produknya sudah tidak terbit. */
+    unavailableCartItemIds: string[];
+  }) => void;
+};
+
+export function WhatsAppOrderButton({ onPriced }: Props) {
   const items = useCartStore((s) => s.items);
   const [loading, setLoading] = useState(false);
   const [konfirmasi, setKonfirmasi] = useState<
@@ -69,6 +89,15 @@ export function WhatsAppOrderButton() {
         );
         return;
       }
+
+      // Ringkasan diperbarui lebih dulu, apa pun yang terjadi sesudahnya —
+      // termasuk kalau pelanggan menekan Batal di dialog. Angka di layar harus
+      // menjadi angka katalog begitu katalog dibaca.
+      onPriced?.({
+        total: hasil.total,
+        unitPriceByCartItemId: hasil.unitPriceByCartItemId,
+        unavailableCartItemIds: hasil.unavailableCartItemIds,
+      });
 
       // Kalau ada harga yang berubah atau barang yang hilang, pelanggan harus
       // melihatnya SEBELUM pesan dikirim — bukan sesudah CS menanyakannya.

@@ -1,5 +1,7 @@
 "use client"
 
+import { useState } from "react"
+
 import { useCartStore } from "@/store/cart"
 import { formatRupiah } from "@/lib/utils"
 import { MessageCircle, ShoppingBag } from "lucide-react"
@@ -10,10 +12,40 @@ import { WhatsAppOrderButton } from "./whatsapp-order-button"
 
 export function CheckoutView() {
   const { items, getSelectedTotalPrice } = useCartStore()
-  
+
+  /**
+   * Harga menurut katalog, terisi setelah tombol WhatsApp membacanya.
+   *
+   * null = katalog belum dibaca, jadi yang tampil masih angka keranjang.
+   * Begitu terisi, ia menggantikan angka keranjang di SELURUH halaman — baris
+   * per barang maupun ringkasan. Mengoreksi totalnya saja akan membuat
+   * penjumlahan di layar tidak cocok, yang justru memindahkan masalahnya.
+   */
+  const [catalogPricing, setCatalogPricing] = useState<{
+    total: number
+    unitPriceByCartItemId: Record<string, number>
+    unavailableCartItemIds: string[]
+  } | null>(null)
+
   // Only show selected items
   const selectedItems = items.filter(item => item.selected !== false)
-  const totalUnits = selectedItems.reduce((sum, item) => sum + item.quantity, 0)
+  const cartTotal = getSelectedTotalPrice()
+  const displayedTotal = catalogPricing?.total ?? cartTotal
+  const priceWasCorrected =
+    catalogPricing !== null && catalogPricing.total !== cartTotal
+
+  /** Harga satuan yang ditampilkan: katalog kalau sudah dibaca, keranjang kalau belum. */
+  const unitPriceOf = (item: { id: string; price: number }) =>
+    catalogPricing?.unitPriceByCartItemId[item.id] ?? item.price
+
+  const isUnavailable = (item: { id: string }) =>
+    catalogPricing?.unavailableCartItemIds.includes(item.id) ?? false
+
+  // Barang yang sudah tidak terbit tidak ikut dihitung — ia juga tidak ikut
+  // dikirim ke CS.
+  const totalUnits = selectedItems
+    .filter((item) => !isUnavailable(item))
+    .reduce((sum, item) => sum + item.quantity, 0)
   const currentDate = new Intl.DateTimeFormat('id-ID', {
     weekday: 'long',
     year: 'numeric',
@@ -81,11 +113,23 @@ export function CheckoutView() {
                         </p>
                       )}
                       <p className="mt-2 text-sm">
-                        {item.quantity} x {formatRupiah(item.price)}
+                        {item.quantity} x {formatRupiah(unitPriceOf(item))}
+                        {unitPriceOf(item) !== item.price && (
+                          <span className="ml-2 text-muted-foreground line-through">
+                            {formatRupiah(item.price)}
+                          </span>
+                        )}
                       </p>
+                      {isUnavailable(item) && (
+                        <p className="mt-1 text-sm font-semibold text-sale-red">
+                          Sudah tidak tersedia — tidak ikut dipesan
+                        </p>
+                      )}
                     </div>
                     <div className="text-right font-bold text-foreground">
-                      {formatRupiah(item.price * item.quantity)}
+                      {isUnavailable(item)
+                        ? "—"
+                        : formatRupiah(unitPriceOf(item) * item.quantity)}
                     </div>
                   </div>
                 </div>
@@ -120,7 +164,7 @@ export function CheckoutView() {
               yang menjelaskan caranya, dan penjelasan tanpa tombol membuat
               halaman ini jalan buntu bagi orang yang sudah siap membayar. */}
           <div className="mt-6 w-full max-w-sm">
-            <WhatsAppOrderButton />
+            <WhatsAppOrderButton onPriced={setCatalogPricing} />
           </div>
         </div>
       </div>
@@ -132,17 +176,25 @@ export function CheckoutView() {
           <div className="mt-6 space-y-4">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Total Harga ({totalUnits} Barang)</span>
-              <span className="font-medium">{formatRupiah(getSelectedTotalPrice())}</span>
+              <span className="font-medium">{formatRupiah(displayedTotal)}</span>
             </div>
 
             <div className="my-4 border-t border-dashed" />
-            
+
             <div className="flex justify-between">
               <span className="font-bold">Total Belanja</span>
               <span className="text-lg font-extrabold text-sale-red">
-                {formatRupiah(getSelectedTotalPrice())}
+                {formatRupiah(displayedTotal)}
               </span>
             </div>
+
+            {/* Muncul hanya kalau katalog memang mengubah angkanya. Menyebut
+                sebabnya, bukan sekadar mengganti angka diam-diam. */}
+            {priceWasCorrected && (
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Total disesuaikan dengan harga terbaru di katalog.
+              </p>
+            )}
           </div>
         </div>
       </div>

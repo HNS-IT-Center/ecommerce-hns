@@ -34,6 +34,15 @@ export type PrepareCheckoutResult =
       total: number;
       /** Barang yang tidak lagi bisa dijual — sudah dikeluarkan dari pesan. */
       removedNames: string[];
+      /**
+       * Harga satuan katalog, dikunci dengan `cartItemId` — BUKAN `productId`,
+       * yang tidak unik untuk varian (dua varian berbagi id induk yang sama).
+       * Dipakai halaman checkout untuk menampilkan angka yang sama dengan yang
+       * dikirim ke CS.
+       */
+      unitPriceByCartItemId: Record<string, number>;
+      /** Id baris keranjang yang produknya sudah tidak terbit. */
+      unavailableCartItemIds: string[];
       /** Harga yang berubah sejak halaman dimuat. Kosong = tidak ada yang berubah. */
       changes: PriceChange[];
       /** True kalau pesan diringkas karena terlalu panjang. */
@@ -196,6 +205,15 @@ export async function prepareCheckoutWhatsApp(
   const removedNames = cart.unavailableProductIds.map(
     (id) => dimintaPerId.get(id)?.displayedName?.trim() || `Produk #${id}`,
   );
+  const unavailableCartItemIds = cart.unavailableProductIds
+    .map((id) => dimintaPerId.get(id)?.cartItemId)
+    .filter((v): v is string => typeof v === "string");
+
+  const unitPriceByCartItemId: Record<string, number> = {};
+  for (const l of cart.lines) {
+    const cartItemId = dimintaPerId.get(l.productId)?.cartItemId;
+    if (cartItemId) unitPriceByCartItemId[cartItemId] = l.unitPrice;
+  }
 
   // `normalizePhone`, bukan sekadar membuang non-digit: nomor tersimpan dalam
   // bentuk lokal ("0821-6970-3377") dan wa.me menolak awalan 0 — tautannya
@@ -215,6 +233,8 @@ export async function prepareCheckoutWhatsApp(
     lines: cart.lines,
     total: cart.total,
     removedNames,
+    unitPriceByCartItemId,
+    unavailableCartItemIds,
     changes,
     summarised: perluRingkas,
   };
