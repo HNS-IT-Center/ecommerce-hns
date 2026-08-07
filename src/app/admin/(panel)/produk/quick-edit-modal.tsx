@@ -17,7 +17,7 @@ import {
 } from "lucide-react"
 import { useRouter } from "next/navigation"
 
-import { productFormSchema, type ProductFormValues } from "@/lib/validators/product"
+import { quickEditFormSchema, type ProductFormValues } from "@/lib/validators/product"
 import type { ProductCategory, ProductAttributeTaxonomy } from "@/types/woocommerce"
 import { CategoryPicker } from "./category-picker"
 import { AttributeRow } from "./attribute-row"
@@ -76,6 +76,16 @@ export function QuickEditModal({
 
   const raw = product.rawProduct
 
+  // Atribut pembeda varian tidak boleh ikut disunting di Quick Edit: daftar
+  // pilihan varian di induk dibangun dari sini, dan menyimpannya sebagai satu
+  // nilai tunggal akan memangkas pilihan pembeli jadi satu opsi saja.
+  const variationAttributeNames = (raw?.attributes ?? [])
+    .filter((attr) => attr.variation)
+    .map((attr) => attr.name)
+  const variationAttributeKeys = new Set(
+    variationAttributeNames.map((name) => name.trim().toLowerCase()),
+  )
+
   const {
     register,
     control,
@@ -84,9 +94,16 @@ export function QuickEditModal({
     watch,
     formState: { errors, isSubmitting },
   } = useForm<ProductFormValues>({
-    resolver: zodResolver(productFormSchema),
+    resolver: zodResolver(quickEditFormSchema),
     defaultValues: {
       name: product.name,
+      // Tipe asli ikut dibawa supaya validasi memakai aturan yang benar —
+      // produk bervariasi tidak diwajibkan punya harga sendiri. Varian tidak
+      // disunting di sini, jadi daftarnya dibiarkan apa adanya dan tidak ikut
+      // dikirim ke server (lihat catatan di payload).
+      type: raw?.type === "variable" ? "variable" : "simple",
+      variationAttributes: variationAttributeNames,
+      variations: [],
       description: raw?.description || "",
       shortDescription: raw?.short_description || "",
       regularPrice: raw?.regular_price || String(product.price || ""),
@@ -101,10 +118,12 @@ export function QuickEditModal({
       status:
         product.status === "publish" || product.status === "private" ? product.status : "draft",
       categoryIds: raw?.categories?.map((c) => c.id) ?? [],
-      attributes: (raw?.attributes ?? []).map((attr) => ({
-        name: attr.name,
-        value: attr.options[0] || "",
-      })),
+      attributes: (raw?.attributes ?? [])
+        .filter((attr) => !attr.variation)
+        .map((attr) => ({
+          name: attr.name,
+          value: attr.options[0] || "",
+        })),
       imageIds: [],
       videoUrl: raw?.video_url ?? "",
       brand: raw?.brands?.[0]?.name ?? "",
@@ -137,11 +156,20 @@ export function QuickEditModal({
       stock_status: values.stockStatus,
       stock_quantity: values.stockStatus === "instock" ? values.stockQuantity : 0,
       categories: values.categoryIds.map((id) => ({ id })),
-      attributes: values.attributes.map((attr) => ({
-        name: attr.name,
-        options: [attr.value],
-        visible: true,
-      })),
+      // Server menulis ulang SELURUH atribut produk dari daftar ini. Atribut
+      // pembeda varian karena itu harus ikut dikirim kembali apa adanya —
+      // kalau tidak, menyimpan Quick Edit pada produk bervariasi akan menghapus
+      // daftar pilihan di induk dan selector varian di halaman produk hilang.
+      attributes: [
+        ...values.attributes.map((attr) => ({
+          name: attr.name,
+          options: [attr.value],
+          visible: true,
+        })),
+        ...(raw?.attributes ?? [])
+          .filter((attr) => variationAttributeKeys.has(attr.name.trim().toLowerCase()))
+          .map((attr) => ({ name: attr.name, options: attr.options, visible: true })),
+      ],
     }
 
     try {

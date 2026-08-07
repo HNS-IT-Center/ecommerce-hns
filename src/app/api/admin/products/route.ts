@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { revalidatePath } from "next/cache"
-import { createProduct, updateProduct } from "@/lib/api/woocommerce/products"
+import { createProduct, updateProduct, ProductVariationError } from "@/lib/api/woocommerce/products"
 import { UnauthorizedError, requireAuth } from "@/lib/auth"
 import { getPrisma } from "@/lib/prisma/client"
 import type { ProductInput } from "@/types/woocommerce"
@@ -14,6 +14,16 @@ import type { ProductInput } from "@/types/woocommerce"
 function tolakKalauBelumMasuk(error: unknown) {
   return error instanceof UnauthorizedError
     ? NextResponse.json({ error: error.message }, { status: 401 })
+    : null
+}
+
+/**
+ * Penolakan varian bukan kegagalan server — admin bisa memperbaikinya sendiri
+ * (mis. hapus varian dulu), jadi pesannya diteruskan apa adanya dengan 400.
+ */
+function tolakKalauVarianBermasalah(error: unknown) {
+  return error instanceof ProductVariationError
+    ? NextResponse.json({ error: error.message }, { status: 400 })
     : null
 }
 
@@ -40,7 +50,7 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json(product)
   } catch (error) {
-    const ditolak = tolakKalauBelumMasuk(error)
+    const ditolak = tolakKalauBelumMasuk(error) ?? tolakKalauVarianBermasalah(error)
     if (ditolak) return ditolak
     console.error("Failed to create product:", error)
     return NextResponse.json({ error: "Gagal membuat produk" }, { status: 500 })
@@ -157,12 +167,25 @@ export async function PUT(request: NextRequest) {
           newValueStr = JSON.stringify(newObj)
         }
 
+        // Perubahan yang SELURUHNYA soal harga dicatat sebagai UPDATE_PRICE,
+        // sama seperti quick edit harga (lihat `produk/actions.ts`). Sebelumnya
+        // jalur ini selalu menulis EDIT_PRODUCT, jadi harga yang diubah lewat
+        // form edit tidak bisa ditelusuri lewat penyaring "Update Harga" di
+        // halaman log — padahal justru perubahan harga yang paling sering
+        // perlu dilacak balik.
+        //
+        // Kalau harga berubah BERSAMA field lain, tetap EDIT_PRODUCT: itu
+        // memang penyuntingan campuran, dan menyebutnya update harga akan
+        // menyembunyikan perubahan yang lain.
+        const PRICE_FIELDS = new Set(["regular_price", "sale_price"])
+        const isPriceOnly = changes.every((c) => PRICE_FIELDS.has(c.field))
+
         await prisma.productLog.create({
           data: {
             userName,
             productId: product.id,
             productName: product.name,
-            action: "EDIT_PRODUCT",
+            action: isPriceOnly ? "UPDATE_PRICE" : "EDIT_PRODUCT",
             fieldAffected,
             oldValue: oldValueStr,
             newValue: newValueStr,
@@ -174,7 +197,7 @@ export async function PUT(request: NextRequest) {
     revalidatePath("/admin/produk")
     return NextResponse.json(product)
   } catch (error) {
-    const ditolak = tolakKalauBelumMasuk(error)
+    const ditolak = tolakKalauBelumMasuk(error) ?? tolakKalauVarianBermasalah(error)
     if (ditolak) return ditolak
     console.error("Failed to update product:", error)
     return NextResponse.json({ error: "Gagal menyimpan produk" }, { status: 500 })

@@ -107,7 +107,26 @@ export function LogsTable({ logs, totalPages, currentPage, q, sort, order }: Pro
     if (!val) return "-"
     if (action === 'UPDATE_PRICE') {
       const num = Number(val)
-      return isNaN(num) ? val : formatRupiah(num)
+      if (!isNaN(num)) return formatRupiah(num)
+
+      // Perubahan harga reguler dan harga obral sekaligus disimpan sebagai
+      // objek JSON (`fieldAffected: "multiple"`), bukan satu angka. Tanpa
+      // cabang ini nilainya tampil sebagai JSON mentah di kolom log.
+      try {
+        const parsed: unknown = JSON.parse(val)
+        if (parsed && typeof parsed === 'object') {
+          return Object.entries(parsed as Record<string, unknown>)
+            .map(([field, value]) => {
+              const n = Number(value)
+              const label = field === 'sale_price' ? 'Obral' : 'Normal'
+              return `${label}: ${isNaN(n) || value === '' ? '-' : formatRupiah(n)}`
+            })
+            .join(', ')
+        }
+      } catch {
+        // Bukan JSON — jatuh ke nilai apa adanya di bawah.
+      }
+      return val
     }
     return val
   }

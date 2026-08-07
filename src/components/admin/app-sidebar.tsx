@@ -124,6 +124,9 @@ export function AppSidebar() {
     <TooltipProvider delay={0}>
       <Sidebar
         collapsible="icon"
+        // Di ponsel panel keluar dari kanan, mengikuti posisi tombol hamburger
+        // di `AdminMobileBar`. Desktop tetap kiri (default `side`).
+        mobileSide="right"
         style={{ "--sidebar-width-icon": "4.5rem" } as React.CSSProperties}
         className="admin-sidebar border-r border-white/10 text-white shadow-xl"
       >

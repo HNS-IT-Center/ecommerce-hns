@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useForm, useFieldArray } from "react-hook-form"
@@ -13,6 +14,7 @@ import {
   PackageSearch,
   Wallet,
   Layers,
+  Lock,
   FolderTree,
   Images,
   CheckCircle2,
@@ -30,6 +32,7 @@ import { AttributeRow } from "./attribute-row"
 import { ImageUploader, type ProductImageItem } from "./image-uploader"
 import { VideoUploader } from "./video-uploader"
 import { SpecEditor } from "./spec-editor"
+import { VariationEditor } from "./variation-editor"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -129,11 +132,14 @@ export function ProdukForm({
     resolver: zodResolver(productFormSchema),
     defaultValues: {
       name: "",
+      type: "simple",
       description: "",
       shortDescription: "",
       regularPrice: "",
       salePrice: "",
       salePriceDateEnd: "",
+      variationAttributes: [],
+      variations: [],
       manageStock: false,
       stockStatus: "instock",
       stockQuantity: undefined,
@@ -149,6 +155,20 @@ export function ProdukForm({
 
   const { fields, append, remove } = useFieldArray({ control, name: "attributes" })
   const selectedCategoryIds = watch("categoryIds")
+  const productType = watch("type")
+  const variationAttributes = watch("variationAttributes") ?? []
+  const variations = watch("variations") ?? []
+  const isVariableProduct = productType === "variable"
+  const hasExistingVariations = (defaultValues?.variations?.length ?? 0) > 0
+
+  // Saran untuk baris Spesifikasi, tanpa atribut yang sedang dipakai sebagai
+  // pembeda varian — perannya per produk, jadi penyaringan ini juga per produk
+  // dan tidak mengubah master atribut.
+  const selectableAttributeOptions = React.useMemo(() => {
+    if (!isVariableProduct || variationAttributes.length === 0) return attributeOptions
+    const taken = new Set(variationAttributes.map((name) => name.trim().toLowerCase()))
+    return attributeOptions.filter((attr) => !taken.has(attr.name.trim().toLowerCase()))
+  }, [isVariableProduct, variationAttributes, attributeOptions])
   const description = watch("description") ?? ""
   const regularPrice = watch("regularPrice") ?? ""
   const salePrice = watch("salePrice") ?? ""
@@ -222,7 +242,10 @@ export function ProdukForm({
 
       const payload = {
         name: values.name,
-        type: "simple" as const,
+        // Dulu dipatok "simple". Saat admin menyimpan produk bervariasi, tipenya
+        // ikut turun jadi simple dan seluruh varian kehilangan induk — data
+        // rusak diam-diam tanpa pesan error. Sekarang tipenya ikut pilihan form.
+        type: values.type,
         status: values.status,
         description: values.description || "",
         short_description: values.shortDescription || "",
@@ -244,6 +267,22 @@ export function ProdukForm({
           options: [attr.value],
           visible: true,
         })),
+        // Dikirim hanya untuk produk bervariasi. Pada produk simple, field ini
+        // sengaja dibiarkan undefined supaya server tidak menyentuh varian sama
+        // sekali — mengirim array kosong justru berarti "hapus semua varian".
+        ...(values.type === "variable" && {
+          variation_attributes: values.variationAttributes,
+          variations: values.variations.map((variation) => ({
+            id: variation.id,
+            attributes: variation.attributes,
+            sku: variation.sku || "",
+            regular_price: variation.regularPrice,
+            sale_price: variation.salePrice || "",
+            stock_status: variation.stockStatus,
+            stock_quantity: variation.stockQuantity,
+            image_url: variation.imageUrl || null,
+          })),
+        }),
         images: imageUrls.map((url) => ({ url })),
         video_url: values.videoUrl || null,
         brand: values.brand || null,
@@ -551,7 +590,93 @@ export function ProdukForm({
                 <SectionHeading icon={Wallet} title="Harga & Stok" accent="bg-success/10 text-success" />
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <Label className="mb-2">Tipe Produk</Label>
+                  <RadioGroup
+                    value={productType}
+                    onValueChange={(val) =>
+                      setValue("type", val as ProductFormValues["type"], {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      })
+                    }
+                    className="flex flex-col gap-2 sm:flex-row sm:gap-3"
+                  >
+                    {[
+                      { value: "simple", label: "Produk Biasa", hint: "Satu harga, satu stok" },
+                      {
+                        value: "variable",
+                        label: "Produk Bervariasi",
+                        hint: "Punya pilihan (warna/ukuran) dengan harga & stok sendiri",
+                      },
+                    ].map((option) => (
+                      <label
+                        key={option.value}
+                        className={cn(
+                          "flex flex-1 cursor-pointer items-start gap-2 rounded-lg border p-2.5 transition-colors",
+                          productType === option.value
+                            ? "border-primary bg-primary/5"
+                            : "border-input hover:border-primary/50",
+                        )}
+                      >
+                        <RadioGroupItem value={option.value} className="mt-0.5" />
+                        <span>
+                          <span className="block text-xs font-semibold">{option.label}</span>
+                          <span className="block text-[11px] text-muted-foreground">{option.hint}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </RadioGroup>
+                  {isVariableProduct && hasExistingVariations && (
+                    <p className="mt-1.5 text-[11px] text-muted-foreground">
+                      Produk ini punya {defaultValues?.variations?.length} varian. Untuk mengubahnya jadi
+                      produk biasa, hapus semua varian dulu di tabel di bawah.
+                    </p>
+                  )}
+                </div>
+
+                {isVariableProduct && (
+                  <div className="rounded-xl border border-border p-3">
+                    <Label className="mb-2 block">Varian Produk</Label>
+                    <VariationEditor
+                      attributes={variationAttributes}
+                      onAttributesChange={(next) =>
+                        setValue("variationAttributes", next, { shouldDirty: true, shouldValidate: true })
+                      }
+                      variations={variations}
+                      onVariationsChange={(next) =>
+                        setValue("variations", next, { shouldDirty: true, shouldValidate: true })
+                      }
+                      attributeOptions={attributeOptions}
+                      attributesError={errors.variationAttributes?.message}
+                      variationsError={
+                        Array.isArray(errors.variations)
+                          ? undefined
+                          : errors.variations?.message
+                      }
+                      errors={Object.fromEntries(
+                        (Array.isArray(errors.variations) ? errors.variations : []).map(
+                          (rowError, index) => [
+                            index,
+                            rowError?.message ??
+                              rowError?.regularPrice?.message ??
+                              rowError?.attributes?.message,
+                          ],
+                        ),
+                      )}
+                    />
+                  </div>
+                )}
+
+                <div
+                  className={cn(
+                    "grid grid-cols-1 gap-4 sm:grid-cols-2",
+                    // Produk bervariasi tidak punya harga sendiri — harganya nempel
+                    // di tiap varian, dan halaman produk menampilkan "mulai dari"
+                    // varian termurah.
+                    isVariableProduct && "hidden",
+                  )}
+                >
                   <div>
                     <Label htmlFor="regularPrice" className="mb-1.5">
                       Harga Normal
@@ -740,7 +865,7 @@ export function ProdukForm({
             dropdown bersebelahan, yang tidak muat di kolom kanan. */}
         <Card>
           <CardHeader className="flex-row items-center justify-between">
-            <SectionHeading icon={Layers} title="Spesifikasi / Atribut" accent="bg-info/10 text-info" />
+            <SectionHeading icon={Layers} title="Spesifikasi Produk" accent="bg-info/10 text-info" />
             <Button
               type="button"
               variant="outline"
@@ -752,9 +877,42 @@ export function ProdukForm({
             </Button>
           </CardHeader>
           <CardContent className="space-y-2">
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              Spesifikasi berlaku untuk <strong>semua varian</strong> produk ini — mis. &ldquo;DDR 5&rdquo;
+              atau &ldquo;16 GB&rdquo;, yang sama di tiap pilihan warna.
+            </p>
+
+            {/* Atribut pembeda varian ikut ditampilkan tapi dikunci.
+                Menyembunyikannya sama sekali membuat admin bingung kenapa WARNA
+                "tidak ada" di spesifikasi padahal tampil di halaman produk;
+                membiarkannya bisa diedit membuat dua sumber kebenaran yang akan
+                berselisih dengan tabel varian. */}
+            {isVariableProduct && variationAttributes.length > 0 && (
+              <div className="rounded-xl border border-info/30 bg-info/5 px-3 py-2.5">
+                <p className="mb-1.5 text-[11px] font-semibold text-info">
+                  Dipakai sebagai pembeda varian
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {variationAttributes.map((name) => (
+                    <span
+                      key={name}
+                      className="inline-flex items-center gap-1 rounded-md bg-info/10 px-2 py-1 text-[11px] font-medium text-info"
+                    >
+                      <Lock className="h-3 w-3" />
+                      {name}
+                    </span>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  Nilainya diatur per varian di bagian <strong>Harga &amp; Stok</strong> di atas, jadi
+                  tidak bisa diubah dari sini.
+                </p>
+              </div>
+            )}
+
             {fields.length === 0 && (
               <p className="rounded-xl border border-dashed border-input px-3 py-3 text-center text-xs text-muted-foreground">
-                Belum ada atribut. Klik &quot;Tambah Atribut&quot; untuk menambahkan.
+                Belum ada spesifikasi. Klik &quot;Tambah Atribut&quot; untuk menambahkan.
               </p>
             )}
             {fields.map((field, index) => (
@@ -769,7 +927,10 @@ export function ProdukForm({
                   setValue(`attributes.${index}.value`, v, { shouldDirty: true })
                 }
                 onRemove={() => remove(index)}
-                attributeOptions={attributeOptions}
+                // Atribut yang sudah jadi pembeda varian dikeluarkan dari saran,
+                // supaya admin tidak memilihnya lagi di sini dan membuat nilai
+                // spesifikasi yang bertabrakan dengan nilai per varian.
+                attributeOptions={selectableAttributeOptions}
               />
             ))}
           </CardContent>

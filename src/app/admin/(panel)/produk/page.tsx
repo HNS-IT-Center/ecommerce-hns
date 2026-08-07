@@ -42,6 +42,11 @@ export default async function AdminProdukPage({ searchParams }: Props) {
     name: product.name,
     sku: product.sku ?? "",
     status: product.status,
+    // Penanda produk bervariasi + jumlah varian, supaya staff tahu sebelum
+    // membuka form bahwa harga yang tampil adalah "mulai dari" dan bahwa
+    // produk ini punya anak yang ikut terpengaruh.
+    type: product.type,
+    variationCount: product.variations?.length ?? 0,
     price: Number(product.price || 0),
     image: product.images?.[0]?.src ?? null,
     stockStatus: product.stock_status,

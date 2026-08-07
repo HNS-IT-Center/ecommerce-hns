@@ -4,7 +4,7 @@ import { useState, useTransition, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
-import { ChevronDown, ChevronUp, ChevronsUpDown, Edit, Pencil, Search, Trash2, TriangleAlert, Loader2, Check } from "lucide-react"
+import { ChevronDown, ChevronUp, ChevronsUpDown, Edit, Layers, Pencil, Search, Trash2, TriangleAlert, Loader2, Check } from "lucide-react"
 
 import { formatRupiah } from "@/lib/utils"
 import { parseRupiah } from "@/lib/utils"
@@ -43,8 +43,28 @@ export type BulkProductRow = {
   categories: { id: number; name: string }[]
   brands: { name: string }[]
   dateCreated: string | Date
+  /** "variable" = produk induk yang punya varian; harga tampil "mulai dari". */
+  type: Product["type"]
+  variationCount: number
   /** Produk WooCommerce apa adanya — dipakai Quick Edit untuk mengisi form. */
   rawProduct: Product
+}
+
+/**
+ * Penanda produk bervariasi di daftar admin.
+ *
+ * Tanpa ini, produk induk terlihat sama persis dengan produk biasa — padahal
+ * harganya "mulai dari", stoknya ditentukan varian, dan menyuntingnya ikut
+ * memengaruhi seluruh anak. Jumlah varian ikut ditampilkan supaya staff tahu
+ * seberapa besar dampaknya sebelum membuka form.
+ */
+function VariableBadge({ count }: { count: number }) {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-info/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-info">
+      <Layers className="h-3 w-3" />
+      {count > 0 ? `${count} Varian` : "Variable"}
+    </span>
+  )
 }
 
 type Props = {
@@ -356,6 +376,11 @@ export function ProductDataTable({ products, categories, rawCategories, attribut
                   <p className="font-medium text-foreground text-xs leading-tight mb-1">
                     {product.name}
                   </p>
+                  {product.type === "variable" && (
+                    <span className="mr-1.5 inline-block align-middle">
+                      <VariableBadge count={product.variationCount} />
+                    </span>
+                  )}
                   <span className={`text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded ${
                     product.status === 'publish' ? 'bg-green-100 text-green-800' :
                     product.status === 'draft' ? 'bg-amber-100 text-amber-800' :
@@ -532,6 +557,7 @@ export function ProductDataTable({ products, categories, rawCategories, attribut
                   {product.name}
                 </p>
                 <div className="flex flex-wrap gap-1.5 items-center mb-1">
+                  {product.type === "variable" && <VariableBadge count={product.variationCount} />}
                   <span className={`text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded ${
                     product.status === 'publish' ? 'bg-green-100 text-green-800' :
                     product.status === 'draft' ? 'bg-amber-100 text-amber-800' :

@@ -42,16 +42,55 @@ export default async function ProductPage({ params }: ProductPageProps) {
   // supaya kode yang dipindai dari halaman production tidak menunjuk localhost.
   const siteUrl = await resolveSiteUrl()
 
-  // Atribut yang benar-benar dipakai untuk memilih varian (`variation: true`) —
-  // atribut lain (mis. "Motherboard Size") cuma informasi spek, bukan pilihan.
-  const variantAttributes = (product.attributes || [])
-    .filter((attr) => attr.variation)
-    .map((attr) => ({ name: attr.name, options: attr.options }))
-
   const variations =
     product.type === "variable" && product.variations.length > 0
       ? await getProductVariations(product.id)
       : []
+
+  // Atribut yang benar-benar dipakai untuk memilih varian (`variation: true`) —
+  // atribut lain (mis. "Motherboard Size") cuma informasi spek, bukan pilihan.
+  //
+  // Daftar opsinya diambil dari varian yang benar-benar ada, bukan dari daftar
+  // di induk: induk warisan Woo kerap mencantumkan warna yang varian-nya tidak
+  // pernah dibuat, dan tombol seperti itu tidak akan pernah cocok dengan varian
+  // mana pun — pelanggan menekannya lalu harga & tombol beli tidak muncul.
+  const optionsFromVariations = new Map<string, string[]>()
+  for (const variation of variations) {
+    for (const attr of variation.attributes) {
+      if (!attr.option) continue
+      const key = attr.name.trim().toLowerCase()
+      const options = optionsFromVariations.get(key) ?? []
+      if (!options.includes(attr.option)) options.push(attr.option)
+      optionsFromVariations.set(key, options)
+    }
+  }
+
+  const variantAttributes = (product.attributes || [])
+    .filter((attr) => attr.variation)
+    .map((attr) => ({
+      name: attr.name,
+      options: optionsFromVariations.get(attr.name.trim().toLowerCase()) ?? [],
+    }))
+    .filter((attr) => attr.options.length > 0)
+
+  // 69 induk warisan Woo punya varian tapi tidak mencatat satu pun atribut di
+  // barisnya sendiri, jadi tak ada yang bisa ditandai `variation: true`. Nama
+  // atributnya diambil langsung dari varian supaya produknya tetap bisa dipilih
+  // dan dibeli, bukan jatuh ke pesan "hubungi WhatsApp".
+  if (variantAttributes.length === 0 && variations.length > 0) {
+    const seen = new Set<string>()
+    for (const variation of variations) {
+      for (const attr of variation.attributes) {
+        const key = attr.name.trim().toLowerCase()
+        if (!attr.name || seen.has(key)) continue
+        seen.add(key)
+        variantAttributes.push({
+          name: attr.name,
+          options: optionsFromVariations.get(key) ?? [],
+        })
+      }
+    }
+  }
 
   const brandName = product.brands?.[0]?.name || ""
 

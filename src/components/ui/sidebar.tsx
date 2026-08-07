@@ -151,6 +151,7 @@ function SidebarProvider({
 
 function Sidebar({
   side = "left",
+  mobileSide,
   variant = "sidebar",
   collapsible = "offcanvas",
   className,
@@ -159,6 +160,16 @@ function Sidebar({
   ...props
 }: React.ComponentProps<"div"> & {
   side?: "left" | "right"
+  /**
+   * Sisi munculnya panel di layar sempit. Default mengikuti `side`.
+   *
+   * Dipisah karena sisi yang tepat berbeda antar ukuran layar: di desktop
+   * sidebar kiri adalah konvensi yang sudah mapan, sedangkan di ponsel panel
+   * sebaiknya muncul dari sisi yang sama dengan tombol pemanggilnya — kalau
+   * tombol di kanan tapi panel keluar dari kiri, gerakannya terasa terputus,
+   * dan sisi kanan juga lebih mudah dijangkau ibu jari.
+   */
+  mobileSide?: "left" | "right"
   variant?: "sidebar" | "floating" | "inset"
   collapsible?: "offcanvas" | "icon" | "none"
 }) {
@@ -193,7 +204,7 @@ function Sidebar({
               "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
             } as React.CSSProperties
           }
-          side={side}
+          side={mobileSide ?? side}
         >
           <SheetHeader className="sr-only">
             <SheetTitle>Sidebar</SheetTitle>
