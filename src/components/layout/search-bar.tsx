@@ -26,6 +26,15 @@ export function SearchBar({ className }: SearchBarProps = {}) {
   const router = useRouter()
   const listboxId = useId()
 
+  /**
+   * Menandai bahwa overlay menaruh satu entry history miliknya sendiri, supaya
+   * tombol Back menutup overlay alih-alih meninggalkan halaman.
+   *
+   * Ref, bukan state: nilainya dibaca di dalam listener `popstate` dan di
+   * `closeDropdown`, dan keduanya tidak boleh memicu render ulang.
+   */
+  const historyEntryRef = useRef(false)
+
   useEffect(() => {
     setIsMobile(window.innerWidth < 768)
     const handleResize = () => setIsMobile(window.innerWidth < 768)
@@ -57,6 +66,36 @@ export function SearchBar({ className }: SearchBarProps = {}) {
     }
   }, [isMobileSearchOpen, isOpen, isMobile])
 
+  /**
+   * Tombol Back menutup overlay, bukan meninggalkan halaman.
+   *
+   * Saat overlay dibuka, satu entry history disisipkan. Tekan Back akan
+   * mem-pop entry itu — `popstate` menutup overlay dan halaman di baliknya
+   * tetap utuh. Tanpa ini pembeli yang menekan Back saat sedang mengetik
+   * langsung terlempar ke halaman sebelumnya, dan pencariannya hilang.
+   *
+   * Overlay hanya menutup diri di sini; entry-nya sudah lepas oleh pop itu
+   * sendiri, jadi `historyEntryRef` dinolkan tanpa memanggil `history.back()`
+   * lagi (itulah alasan `closeDropdown` tidak dipakai di listener ini).
+   */
+  useEffect(() => {
+    if (!isMobileSearchOpen) return
+
+    window.history.pushState({ hnsSearchOverlay: true }, "")
+    historyEntryRef.current = true
+
+    const handlePopState = () => {
+      historyEntryRef.current = false
+      setIsFocused(false)
+      setIsMobileSearchOpen(false)
+      setHighlightedIndex(-1)
+      inputRef.current?.blur()
+    }
+
+    window.addEventListener("popstate", handlePopState)
+    return () => window.removeEventListener("popstate", handlePopState)
+  }, [isMobileSearchOpen])
+
   const { results, status } = useLiveSearch(query)
 
   // Reset highlight saat query berubah — adjust state selama render (bukan
@@ -72,11 +111,34 @@ export function SearchBar({ className }: SearchBarProps = {}) {
 
   const getOptionId = (index: number) => `${listboxId}-option-${index}`
 
+  /**
+   * Menutup overlay dari dalam aplikasi: tombol kembali di overlay, Escape,
+   * klik backdrop, klik hasil, maupun submit pencarian.
+   *
+   * Kalau overlay sempat menaruh entry history sendiri, entry itu dilepas
+   * lewat `history.back()` — tanpa ini pembeli yang menutup overlay secara
+   * manual meninggalkan satu entry yatim, dan tekan Back berikutnya hanya
+   * "memakan" entry itu tanpa berpindah halaman.
+   *
+   * Pelepasan itu terjadi di sini, SEBELUM pemanggil sempat berpindah halaman.
+   * Urutan tersebut kritis: `history.back()` yang menyusul sebuah `router.push`
+   * (atau push dari `<Link>`) akan membatalkannya — pembeli sekilas melihat
+   * halaman tujuan lalu terlempar kembali ke halaman asalnya. Semua pemanggil
+   * yang ikut bernavigasi memanggil fungsi ini lebih dulu, baru push.
+   *
+   * Penandanya dimatikan sebelum `history.back()` supaya listener `popstate`
+   * yang ikut terpanggil tahu pop ini sudah ditangani dan tidak menutup ulang.
+   */
   const closeDropdown = () => {
     setIsFocused(false)
     setIsMobileSearchOpen(false)
     setHighlightedIndex(-1)
-    if (inputRef.current) inputRef.current.blur()
+    inputRef.current?.blur()
+
+    if (historyEntryRef.current) {
+      historyEntryRef.current = false
+      window.history.back()
+    }
   }
 
   const handleFocus = () => {
@@ -90,20 +152,30 @@ export function SearchBar({ className }: SearchBarProps = {}) {
     blurTimeoutRef.current = setTimeout(() => setIsFocused(false), 150)
   }
 
-  const goToSearchResults = () => {
-    if (query.trim()) {
-      router.push(`/search?q=${encodeURIComponent(query.trim())}`)
-    }
-  }
-
+  /**
+   * Menekan Enter SELALU menutup overlay.
+   *
+   * Sebelumnya overlay hanya tertutup sebagai efek samping: berpindah halaman
+   * mem-remount komponen ini. Begitu pembeli sudah berada di `/search`,
+   * mencari lagi cuma mengganti query param — tidak ada remount, dan overlay
+   * menggantung menutupi hasil yang baru saja diminta.
+   */
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (isOpen && highlightedIndex >= 0 && results[highlightedIndex]) {
-      router.push(`/product/${results[highlightedIndex].slug}`)
-      closeDropdown()
-      return
-    }
-    goToSearchResults()
+
+    const highlighted =
+      isOpen && highlightedIndex >= 0 ? results[highlightedIndex] : undefined
+    const target = highlighted
+      ? `/product/${highlighted.slug}`
+      : query.trim()
+        ? `/search?q=${encodeURIComponent(query.trim())}`
+        : null
+
+    if (!target) return
+
+    // Tutup dulu, baru berpindah — lihat `closeDropdown` soal urutannya.
+    closeDropdown()
+    router.push(target)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {

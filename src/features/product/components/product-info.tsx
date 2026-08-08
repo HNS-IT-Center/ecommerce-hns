@@ -7,6 +7,7 @@ import { useCartStore } from "@/store/cart"
 import { useAuthStore } from "@/store/auth"
 import { useIsHydrated } from "@/hooks/use-is-hydrated"
 import { calculateProductPrice } from "@/features/product/lib/calculate-product-price"
+import { calculateVariationPriceRange } from "@/features/product/lib/calculate-variation-price-range"
 import type { ProductVariation } from "@/types/woocommerce"
 import { useFlyToCart } from "@/components/providers/fly-to-cart-provider"
 import { ProductPriceBox } from "./product-price-box"
@@ -92,6 +93,16 @@ export function ProductInfo({
         })
       )
     : undefined
+
+  /**
+   * Rentang harga varian, hanya selama belum ada varian yang dipilih.
+   *
+   * Begitu `resolvedVariation` terisi, rentang dimatikan dan panel kembali
+   * menampilkan harga tunggal varian itu — lengkap dengan badge diskon dan
+   * harga coretnya.
+   */
+  const priceRange =
+    hasVariants && !resolvedVariation ? calculateVariationPriceRange(variations) : null
 
   const effectivePrice = resolvedVariation?.price ?? price
   const effectiveRegularPrice = resolvedVariation?.regular_price ?? regularPrice
@@ -260,6 +271,7 @@ export function ProductInfo({
         discountPercent={discountPercent}
         displayRegular={displayRegular}
         displayPrice={displayPrice}
+        priceRange={priceRange}
       />
 
       {hasVariants && (
