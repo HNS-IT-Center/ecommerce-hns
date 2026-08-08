@@ -203,6 +203,7 @@ export function ProdukForm({
   const salePrice = watch("salePrice") ?? ""
   const salePriceDateEnd = watch("salePriceDateEnd") ?? ""
   const stockStatus = watch("stockStatus")
+  const stockQuantity = watch("stockQuantity")
   const videoUrl = watch("videoUrl") ?? ""
   const status = watch("status")
   const brand = watch("brand") ?? ""
@@ -862,14 +863,26 @@ export function ProdukForm({
                       <Label htmlFor="stockQuantity" className="mb-1.5">
                         Jumlah Stok (opsional)
                       </Label>
+                      {/* `value` dikendalikan eksplisit, bukan diserahkan ke
+                          `register` — lihat catatan yang sama di
+                          quick-edit-modal.tsx. Input di sini komponen Base UI,
+                          yang mengubah `value: undefined` pada input number
+                          menjadi 0, sehingga "belum diisi" tampil sebagai stok
+                          nol. */}
                       <Input
                         id="stockQuantity"
                         type="number"
+                        min={0}
                         className={FIELD_TEXT}
                         placeholder="Kosongkan jika tidak dilacak per jumlah"
-                        {...register("stockQuantity", {
-                          setValueAs: (v) => (v === "" || v === null ? undefined : Number(v)),
-                        })}
+                        value={stockQuantity ?? ""}
+                        onChange={(e) =>
+                          setValue(
+                            "stockQuantity",
+                            e.target.value === "" ? undefined : Number(e.target.value),
+                            { shouldDirty: true, shouldValidate: true },
+                          )
+                        }
                         onWheel={(e) => e.currentTarget.blur()}
                       />
                     </div>

@@ -83,6 +83,19 @@ const STATUS_FROM_PARAM = {
   private: ProductStatus.PRIVATE,
 } as const;
 
+const STOCK_STATUS_FROM_PARAM = {
+  instock: StockStatus.INSTOCK,
+  outofstock: StockStatus.OUTOFSTOCK,
+  onbackorder: StockStatus.ONBACKORDER,
+} as const;
+
+const TYPE_FROM_PARAM = {
+  simple: ProductType.SIMPLE,
+  variable: ProductType.VARIABLE,
+  grouped: ProductType.GROUPED,
+  external: ProductType.EXTERNAL,
+} as const;
+
 function buildPrismaWhere(params: GetProductsParams): Prisma.ProductWhereInput {
   const where: Prisma.ProductWhereInput = {
     parentId: null, // Only fetch parent products by default for listing
@@ -178,6 +191,17 @@ function buildPrismaWhere(params: GetProductsParams): Prisma.ProductWhereInput {
 
   if (params.featured) {
     where.featured = true;
+  }
+
+  // Sebelumnya `stock_status` diteruskan pemanggil tapi tidak pernah dibaca di
+  // sini, sehingga filter "Stok Kosong" di admin tidak menyaring apa pun —
+  // daftar tetap menampilkan seluruh produk.
+  if (params.stock_status) {
+    where.stockStatus = STOCK_STATUS_FROM_PARAM[params.stock_status];
+  }
+
+  if (params.type) {
+    where.type = TYPE_FROM_PARAM[params.type];
   }
 
   if (params.minPrice !== undefined || params.maxPrice !== undefined) {

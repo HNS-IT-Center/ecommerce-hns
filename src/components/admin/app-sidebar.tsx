@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
@@ -140,8 +141,8 @@ export function AppSidebar() {
               open ? "" : "justify-center"
             }`}
           >
-            <div className="bg-white rounded-lg p-1.5 shrink-0 shadow-sm">
-              <StoreIcon className="h-5 w-5 text-[#2166de]" />
+            <div className="bg-white rounded-lg p-1 shrink-0 shadow-sm flex items-center justify-center h-8 w-8">
+              <Image src="/images/hns-logo.png" alt="HNS IT Center Logo" width={24} height={24} className="object-contain" priority />
             </div>
             <div
               className={`flex flex-col min-w-0 transition-[opacity,width] duration-150 ease-linear overflow-hidden ${

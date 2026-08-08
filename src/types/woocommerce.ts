@@ -106,6 +106,15 @@ export type GetProductsParams = {
    */
   status?: "publish" | "draft" | "private" | "any";
   stock_status?: "instock" | "outofstock" | "onbackorder";
+  /**
+   * Menyaring daftar berdasarkan jenis produk. Dipakai admin untuk memisahkan
+   * produk bervariasi — harga & stoknya ditentukan per varian, jadi keduanya
+   * butuh perlakuan berbeda saat disunting massal.
+   *
+   * "variation" sengaja tidak ditawarkan: varian adalah anak yang sudah
+   * tersaring `parentId: null` di daftar induk.
+   */
+  type?: "simple" | "variable" | "grouped" | "external";
 };
 
 export type ProductAttributeTaxonomy = {

@@ -148,6 +148,7 @@ export function QuickEditModal({
   const selectedCategoryIds = watch("categoryIds")
   const status = watch("status")
   const stockStatus = watch("stockStatus")
+  const stockQuantity = watch("stockQuantity")
   const regularPrice = watch("regularPrice") ?? ""
   const salePrice = watch("salePrice") ?? ""
   const variationAttributes = watch("variationAttributes") ?? []
@@ -554,16 +555,35 @@ export function QuickEditModal({
                           <Label htmlFor="qe-stockQuantity" className="mb-1.5">
                             Jumlah Stok (opsional)
                           </Label>
+                          {/* `value` dikendalikan eksplisit, bukan diserahkan ke
+                              `register`. Input di sini adalah komponen Base UI,
+                              yang menormalkan `value: undefined` pada input
+                              number menjadi 0 — sehingga "belum diisi" tampil
+                              sebagai stok nol, dan staff yang menyimpannya tanpa
+                              sadar menandai produk habis. String kosong menjaga
+                              field tetap terkendali sekaligus benar-benar
+                              kosong. */}
                           <Input
                             id="qe-stockQuantity"
                             type="number"
+                            min={0}
                             className={FIELD_TEXT}
                             placeholder="Kosongkan jika tidak dilacak per jumlah"
-                            {...register("stockQuantity", {
-                              setValueAs: (v) => (v === "" || v === null ? undefined : Number(v)),
-                            })}
+                            value={stockQuantity ?? ""}
+                            onChange={(e) =>
+                              setValue(
+                                "stockQuantity",
+                                e.target.value === "" ? undefined : Number(e.target.value),
+                                { shouldDirty: true, shouldValidate: true },
+                              )
+                            }
                             onWheel={(e) => e.currentTarget.blur()}
                           />
+                          {errors.stockQuantity && (
+                            <p className="mt-1 text-[11px] text-destructive">
+                              {errors.stockQuantity.message}
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
