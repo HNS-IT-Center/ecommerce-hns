@@ -406,6 +406,14 @@ model Brand {
   name String @db.VarChar(191)
   slug String @unique @db.VarChar(191)
 
+  /// URL logo di R2 (lihat `lib/api/cloudflare/r2.ts`), diunggah lewat
+  /// /api/admin/media seperti gambar produk.
+  ///
+  /// NULLABLE dan sengaja begitu: brand yang sudah ada tidak punya logo, dan
+  /// memaksa kolom ini wajib berarti setiap baris lama harus diisi lebih dulu.
+  /// VarChar(500) mengikuti panjang URL R2 yang sudah dipakai kolom gambar lain.
+  logoUrl String? @map("logo_url") @db.VarChar(500)
+
   products Product[]
 
   @@map("brands")

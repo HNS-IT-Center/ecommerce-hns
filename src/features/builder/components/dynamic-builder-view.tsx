@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react"
 import { useNewBuilderStore, BuilderProduct } from "@/store/new-builder"
-import { PcBuilderStepConfig } from "@/app/admin/(panel)/pc-builder/actions"
+import { PcBuilderStepConfig } from "@/lib/pc-builder/config"
 import { formatRupiah } from "@/lib/utils"
 import { fetchBuilderProducts } from "../actions"
 import { prepareBuildWhatsApp } from "../actions-whatsapp"

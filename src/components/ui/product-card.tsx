@@ -38,15 +38,27 @@ export interface Product {
 }
 
 interface ProductCardProps {
-  product: Product;
+  product: Product
+  /**
+   * Tandai HANYA kartu yang sudah terlihat tanpa menggulir.
+   *
+   * Bawaannya lazy-load, yang tepat untuk hampir semua kartu — tapi kartu yang
+   * sudah ada di viewport saat halaman dimuat jadi harus menunggu JavaScript
+   * jalan sebelum gambarnya mulai diunduh, dan itu menunda LCP.
+   *
+   * Jangan dinyalakan untuk seluruh daftar: satu halaman katalog berisi 30
+   * kartu, dan 30 unduhan prioritas tinggi yang berebut bandwidth justru
+   * membuat LCP lebih lambat daripada tanpa penanda ini sama sekali.
+   */
+  priority?: boolean
 }
 
-export function ProductCard({ product }: ProductCardProps) {
-  const router = useRouter();
-  const addItem = useCartStore((state) => state.addItem);
-  const { flyToCart, showCartToast } = useFlyToCart();
-  const [isAdding, setIsAdding] = useState(false);
-  const [isQuickViewOpen, setIsQuickViewOpen] = useState(false);
+export function ProductCard({ product, priority = false }: ProductCardProps) {
+  const router = useRouter()
+  const addItem = useCartStore((state) => state.addItem)
+  const { flyToCart, showCartToast } = useFlyToCart()
+  const [isAdding, setIsAdding] = useState(false)
+  const [isQuickViewOpen, setIsQuickViewOpen] = useState(false)
 
   const isSimpleProduct = product.type === "simple";
   const hasDiscount =
@@ -147,6 +159,7 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
             alt={product.name}
             fill
             sizes="(max-width: 768px) 50vw, 25vw"
+            priority={priority}
             className="object-contain transition-transform duration-500 group-hover:scale-105"
           />
 

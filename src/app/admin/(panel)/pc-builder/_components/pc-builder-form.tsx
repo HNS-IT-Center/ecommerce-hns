@@ -5,11 +5,13 @@ import { motion, Reorder, AnimatePresence } from "framer-motion"
 import { Plus, Save, Loader2, CheckCircle2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
-  PcBuilderStepConfig,
   savePcBuilderConfig,
   savePcBuilderDisplayConfig,
-  type PcBuilderDisplayConfig,
 } from "../actions"
+import {
+  type PcBuilderDisplayConfig,
+  type PcBuilderStepConfig,
+} from "@/lib/pc-builder/config"
 import { StepCard } from "./step-card"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToastManager } from "@/components/ui/toast"

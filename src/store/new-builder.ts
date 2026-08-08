@@ -1,6 +1,6 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
-import { PcBuilderStepConfig } from "@/app/admin/(panel)/pc-builder/actions"
+import { PcBuilderStepConfig } from "@/lib/pc-builder/config"
 
 export type BuilderProduct = {
   id: number

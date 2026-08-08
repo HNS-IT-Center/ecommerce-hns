@@ -124,10 +124,30 @@ function buildPrismaWhere(params: GetProductsParams): Prisma.ProductWhereInput {
   if (params.search) {
     const searchTerms = params.search.trim().split(/\s+/).filter(Boolean);
     if (searchTerms.length > 0) {
+      // Tiap kata dicari ke nama, SKU, brand, DAN kategori — bukan ke nama saja.
+      //
+      // Alasannya: pelanggan mengetik jenis barang lalu mereknya ("laptop
+      // lenovo", "mouse rexus"), padahal jenis barang itu justru jarang ada di
+      // nama produk — "Lenovo LOQ 15IRX9" tidak memuat kata "laptop", kata itu
+      // ada di kategorinya. Dengan pencocokan nama saja kombinasi paling wajar
+      // yang diketik orang malah tidak menghasilkan apa-apa.
+      //
+      // Struktur OR-di-dalam-AND penting: antar kata tetap AND (tiap kata wajib
+      // cocok di suatu tempat) sehingga menambah kata tetap MEMPERSEMPIT hasil.
+      // Kalau seluruhnya dijadikan OR, "laptop lenovo" akan mengembalikan semua
+      // laptop ditambah semua produk Lenovo — kebalikan dari yang dimaksud.
+      //
+      // Deskripsi sengaja TIDAK diikutkan: kata umum seperti "gaming" muncul di
+      // ratusan deskripsi dan akan menenggelamkan hasil yang benar-benar relevan.
       where.AND = [
         ...(where.AND ? (Array.isArray(where.AND) ? where.AND : [where.AND]) : []),
         ...searchTerms.map(term => ({
-          name: { contains: term }
+          OR: [
+            { name: { contains: term } },
+            { sku: { contains: term } },
+            { brand: { name: { contains: term } } },
+            { categories: { some: { category: { name: { contains: term } } } } },
+          ],
         }))
       ];
     }

@@ -6,7 +6,7 @@ import { GripVertical, Trash2, AlertCircle, ChevronDown, ChevronUp, ArrowUp, Arr
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { PcBuilderStepConfig } from "../actions"
+import { PcBuilderStepConfig } from "@/lib/pc-builder/config"
 import { Checkbox } from "@/components/ui/checkbox"
 
 interface StepCardProps {

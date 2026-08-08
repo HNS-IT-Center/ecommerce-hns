@@ -43,6 +43,8 @@ const KNOWN_TAGS = [
   "all-products",
   "product-attributes",
   "blog",
+  "site-theme",
+  "pc-builder-config",
 ] as const
 
 /**

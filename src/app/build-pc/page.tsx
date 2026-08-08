@@ -1,7 +1,7 @@
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { DynamicBuilderView } from "@/features/builder/components/dynamic-builder-view"
-import { getPcBuilderConfig } from "@/app/admin/(panel)/pc-builder/actions"
+import { getPcBuilderConfig } from "@/lib/pc-builder/config"
 
 export const metadata = {
   title: "PC Builder Custom — HNS IT Center",
