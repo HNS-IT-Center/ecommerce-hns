@@ -1,12 +1,19 @@
 "use client"
 
 import * as React from "react"
-import { ImagePlus, Loader2, Plus, Trash2, X } from "lucide-react"
+import { ImagePlus, Images, Plus, Trash2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { RupiahInput } from "@/components/ui/rupiah-input"
 import { cn } from "@/lib/utils"
 import type { ProductVariationValues } from "@/lib/validators/product"
@@ -20,6 +27,14 @@ type VariationEditorProps = {
   variations: ProductVariationValues[]
   onVariationsChange: (variations: ProductVariationValues[]) => void
   attributeOptions: ProductAttributeTaxonomy[]
+  /**
+   * Gambar yang sudah ada di galeri produk ini.
+   *
+   * Sebagian besar varian memakai foto yang sudah diunggah untuk produknya —
+   * memaksa admin mengunggah ulang berkas yang sama hanya menggandakan berkas
+   * di R2 dan memakan waktu.
+   */
+  galleryImages?: { id: string; url: string }[]
   /** Pesan galat per baris dari react-hook-form, dikunci indeks varian. */
   errors?: Record<number, string | undefined>
   attributesError?: string
@@ -64,13 +79,14 @@ export function VariationEditor({
   variations,
   onVariationsChange,
   attributeOptions,
+  galleryImages = [],
   errors,
   attributesError,
   variationsError,
 }: VariationEditorProps) {
-  const [uploadingIndex, setUploadingIndex] = React.useState<number | null>(null)
   const [attributeDraft, setAttributeDraft] = React.useState("")
-  const [uploadError, setUploadError] = React.useState<string | null>(null)
+  /** Indeks varian yang sedang membuka pemilih gambar dari galeri produk. */
+  const [pickerIndex, setPickerIndex] = React.useState<number | null>(null)
 
   const attributeChoices: ComboboxOption[] = React.useMemo(
     () => attributeOptions.map((attr) => ({ id: attr.id, label: attr.name })),
@@ -124,23 +140,42 @@ export function VariationEditor({
     )
   }
 
-  async function uploadImage(index: number, file: File) {
-    setUploadingIndex(index)
-    setUploadError(null)
-    try {
-      const formData = new FormData()
-      formData.append("file", file)
-      const res = await fetch("/api/admin/media", { method: "POST", body: formData })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Upload gambar gagal")
-      updateVariation(index, { imageUrl: data.source_url as string })
-    } catch (error) {
-      // Kegagalan ditampilkan, tidak ditelan diam-diam: tanpa pesan, admin
-      // mengira gambarnya tersimpan padahal tidak.
-      setUploadError(error instanceof Error ? error.message : "Upload gambar gagal")
-    } finally {
-      setUploadingIndex(null)
-    }
+  /**
+   * Simpan berkas di klien, JANGAN unggah sekarang.
+   *
+   * Sama seperti galeri produk utama: pengunggahan ditunda sampai tombol Simpan
+   * ditekan. Mengunggah seketika berarti setiap gambar yang dipilih lalu
+   * dibatalkan admin tetap tinggal di R2 sebagai berkas yatim yang tak pernah
+   * dirujuk baris mana pun.
+   */
+  function pickImage(index: number, file: File) {
+    const previous = variations[index]?.imagePreview
+    if (previous) URL.revokeObjectURL(previous)
+
+    updateVariation(index, {
+      imageFile: file,
+      imagePreview: URL.createObjectURL(file),
+    })
+  }
+
+  function clearImage(index: number) {
+    const previous = variations[index]?.imagePreview
+    if (previous) URL.revokeObjectURL(previous)
+    updateVariation(index, { imageUrl: "", imageFile: undefined, imagePreview: undefined })
+  }
+
+  /**
+   * Pakai gambar yang sudah ada di galeri produk.
+   *
+   * Berkas yang tertunda dibuang: memilih dari galeri berarti admin membatalkan
+   * unggahan yang belum jadi, dan meninggalkannya akan menimpa pilihan ini saat
+   * form disimpan.
+   */
+  function pickFromGallery(index: number, url: string) {
+    const previous = variations[index]?.imagePreview
+    if (previous) URL.revokeObjectURL(previous)
+    updateVariation(index, { imageUrl: url, imageFile: undefined, imagePreview: undefined })
+    setPickerIndex(null)
   }
 
   return (
@@ -250,20 +285,18 @@ export function VariationEditor({
                 <div className="flex flex-col gap-3 sm:flex-row">
                   {/* Gambar varian */}
                   <div className="shrink-0">
-                    <label
-                      className={cn(
-                        "flex h-20 w-20 cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-dashed border-input hover:bg-muted",
-                        uploadingIndex === index && "pointer-events-none opacity-60",
-                      )}
-                    >
-                      {uploadingIndex === index ? (
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                      ) : variation.imageUrl ? (
+                    <label className="flex h-20 w-20 cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-dashed border-input hover:bg-muted">
+                      {variation.imagePreview || variation.imageUrl ? (
                         /* URL gambar datang dari media eksternal (R2/WordPress)
                            dengan host bermacam-macam; next/image butuh daftar
-                           host tetap di next.config, jadi <img> biasa dipakai. */
+                           host tetap di next.config, jadi <img> biasa dipakai.
+                           Pratinjau lokal (blob:) juga tidak bisa lewat next/image. */
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={variation.imageUrl} alt="" className="h-full w-full object-cover" />
+                        <img
+                          src={variation.imagePreview || variation.imageUrl}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
                       ) : (
                         <span className="flex flex-col items-center gap-1 text-muted-foreground">
                           <ImagePlus className="h-5 w-5" />
@@ -276,19 +309,34 @@ export function VariationEditor({
                         className="hidden"
                         onChange={(e) => {
                           const file = e.target.files?.[0]
-                          if (file) uploadImage(index, file)
+                          if (file) pickImage(index, file)
                           e.target.value = ""
                         }}
                       />
                     </label>
-                    {variation.imageUrl && (
+                    {galleryImages.length > 0 && (
                       <button
                         type="button"
-                        onClick={() => updateVariation(index, { imageUrl: "" })}
+                        onClick={() => setPickerIndex(pickerIndex === index ? null : index)}
+                        className="mt-1 flex w-20 items-center justify-center gap-1 rounded-md border border-input py-0.5 text-[10px] text-muted-foreground hover:bg-muted"
+                      >
+                        <Images className="h-3 w-3" />
+                        Galeri
+                      </button>
+                    )}
+                    {(variation.imagePreview || variation.imageUrl) && (
+                      <button
+                        type="button"
+                        onClick={() => clearImage(index)}
                         className="mt-1 w-20 text-[10px] text-muted-foreground hover:text-destructive"
                       >
                         Hapus gambar
                       </button>
+                    )}
+                    {variation.imagePreview && (
+                      <p className="mt-0.5 w-20 text-[10px] text-muted-foreground">
+                        Diunggah saat simpan
+                      </p>
                     )}
                   </div>
 
@@ -369,9 +417,50 @@ export function VariationEditor({
           </div>
         )}
 
-        {uploadError && <p className="mt-2 text-xs text-destructive">{uploadError}</p>}
         {variationsError && <p className="mt-2 text-xs text-destructive">{variationsError}</p>}
       </div>
+
+      {/* Pemilih gambar sebagai dialog, bukan panel yang menyeruak di antara
+          baris varian. Panel inline menggeser tata letak kartu setiap kali
+          dibuka dan thumbnail-nya terjepit; dialog memberi ruang penuh dan
+          menutup sendiri setelah gambar dipilih. */}
+      <Dialog
+        open={pickerIndex !== null}
+        onOpenChange={(open) => !open && setPickerIndex(null)}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Pilih Gambar Varian</DialogTitle>
+            <DialogDescription>
+              Gambar diambil dari galeri produk ini. Untuk memakai gambar lain, tutup dialog dan
+              gunakan tombol unggah pada varian.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid max-h-[60vh] grid-cols-3 gap-2 overflow-y-auto py-1 sm:grid-cols-4 md:grid-cols-5">
+            {galleryImages.map((img) => {
+              const isActive =
+                pickerIndex !== null && variations[pickerIndex]?.imageUrl === img.url
+              return (
+                <button
+                  key={img.id}
+                  type="button"
+                  onClick={() => pickerIndex !== null && pickFromGallery(pickerIndex, img.url)}
+                  className={cn(
+                    "aspect-square overflow-hidden rounded-lg border-2 transition-colors",
+                    isActive
+                      ? "border-primary ring-2 ring-primary/40"
+                      : "border-transparent hover:border-primary/50",
+                  )}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={img.url} alt="" className="h-full w-full object-cover" />
+                </button>
+              )
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

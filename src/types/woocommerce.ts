@@ -133,7 +133,8 @@ export type ProductVariationInput = {
   regular_price?: string;
   sale_price?: string;
   stock_status?: "instock" | "outofstock" | "onbackorder";
-  stock_quantity?: number;
+  /** `null` = stok tidak dilacak per jumlah (bukan "nol"). */
+  stock_quantity?: number | null;
   /** Kosong = varian ikut gambar utama induk. */
   image_url?: string | null;
 };
@@ -153,7 +154,8 @@ export type ProductInput = {
   date_on_sale_to_gmt?: string;
   manage_stock?: boolean;
   stock_status?: "instock" | "outofstock" | "onbackorder";
-  stock_quantity?: number;
+  /** `null` = stok tidak dilacak per jumlah (bukan "nol"). */
+  stock_quantity?: number | null;
   categories?: Array<{ id: number }>;
   attributes?: Array<{ name: string; options: string[]; visible?: boolean }>;
   images?: Array<{ url: string }>;

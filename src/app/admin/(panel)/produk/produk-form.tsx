@@ -161,6 +161,35 @@ export function ProdukForm({
   const isVariableProduct = productType === "variable"
   const hasExistingVariations = (defaultValues?.variations?.length ?? 0) > 0
 
+  /**
+   * Pesan galat per baris varian, dikunci indeksnya.
+   *
+   * `errors.variations` dari react-hook-form adalah array JARANG (sparse):
+   * indeks yang barisnya tidak bermasalah berisi lubang, dan `Array.prototype.map`
+   * mempertahankan lubang itu apa adanya. Melewatkannya langsung ke
+   * `Object.fromEntries` melempar "Iterator value undefined is not an entry
+   * object" — persis yang terjadi saat admin menambah baris varian baru, karena
+   * baris kosong itu membuat sebagian indeks bermasalah dan sebagian tidak.
+   *
+   * Karena itu dirakit dengan perulangan biasa yang melewati entri kosong,
+   * bukan `map` + `fromEntries`.
+   */
+  const variationRowErrors = React.useMemo(() => {
+    const rows = errors.variations
+    if (!Array.isArray(rows)) return {}
+
+    const result: Record<number, string | undefined> = {}
+    rows.forEach((rowError, index) => {
+      if (!rowError) return
+      const message =
+        rowError.message ??
+        rowError.regularPrice?.message ??
+        rowError.attributes?.message
+      if (message) result[index] = message
+    })
+    return result
+  }, [errors.variations])
+
   // Saran untuk baris Spesifikasi, tanpa atribut yang sedang dipakai sebagai
   // pembeda varian — perannya per produk, jadi penyaringan ini juga per produk
   // dan tidak mengubah master atribut.
@@ -197,6 +226,46 @@ export function ProdukForm({
    * dalam urutan yang sama persis dengan yang terlihat di galeri — urutan itu
    * yang menentukan gambar utama di sisi pembeli.
    */
+  /**
+   * Unggah gambar varian yang masih ditahan di klien.
+   *
+   * Mengembalikan URL per indeks varian; indeks yang gambarnya tidak diganti
+   * bernilai `undefined` sehingga pemanggil bisa mempertahankan URL lama.
+   *
+   * Dijalankan bersama unggahan galeri utama saat Simpan ditekan — bukan saat
+   * berkas dipilih — supaya membatalkan form tidak meninggalkan berkas yatim
+   * di R2.
+   */
+  async function uploadPendingVariationImages(
+    variations: ProductFormValues["variations"],
+  ): Promise<(string | undefined)[]> {
+    const pending = variations.filter((v) => v.imageFile).length
+    if (pending === 0) return variations.map(() => undefined)
+
+    const urls: (string | undefined)[] = []
+    let uploaded = 0
+
+    for (const variation of variations) {
+      if (!variation.imageFile) {
+        urls.push(undefined)
+        continue
+      }
+
+      uploaded += 1
+      setUploadProgress(`Mengunggah gambar varian ${uploaded} dari ${pending}…`)
+
+      const formData = new FormData()
+      formData.append("file", variation.imageFile)
+      const res = await fetch("/api/admin/media", { method: "POST", body: formData })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Upload gambar varian gagal")
+      urls.push(data.source_url as string)
+    }
+
+    setUploadProgress(null)
+    return urls
+  }
+
   async function uploadPendingImages(): Promise<string[]> {
     const urls: string[] = []
     let uploaded = 0
@@ -239,6 +308,7 @@ export function ProdukForm({
 
     try {
       const imageUrls = await uploadPendingImages()
+      const variationImageUrls = await uploadPendingVariationImages(values.variations)
 
       const payload = {
         name: values.name,
@@ -260,19 +330,31 @@ export function ProdukForm({
             : "",
         manage_stock: values.stockStatus === "instock" && values.stockQuantity !== undefined,
         stock_status: values.stockStatus,
-        stock_quantity: values.stockStatus === "instock" ? values.stockQuantity : 0,
+        // `null`, bukan 0, saat jumlah tidak diisi.
+        //
+        // "Tersedia" tanpa angka berarti stok TIDAK dilacak per jumlah — barang
+        // ada, jumlahnya saja yang tidak dihitung. Mengirim 0 membuat server
+        // membacanya sebagai "stok nol" lalu menurunkan statusnya jadi habis,
+        // sehingga produk yang baru saja ditandai tersedia langsung tampil
+        // "Stok Habis" di toko.
+        stock_quantity: values.stockStatus === "instock" ? values.stockQuantity ?? null : null,
         categories: values.categoryIds.map((id) => ({ id })),
-        attributes: values.attributes.map((attr) => ({
-          name: attr.name,
-          options: [attr.value],
-          visible: true,
-        })),
+        // Baris tanpa nilai disaring: admin bisa saja mengetik nama atribut
+        // lalu berpindah tanpa mengisinya, dan atribut kosong tidak punya arti
+        // di halaman produk.
+        attributes: values.attributes
+          .filter((attr) => attr.name.trim() && attr.values.length > 0)
+          .map((attr) => ({
+            name: attr.name,
+            options: attr.values,
+            visible: true,
+          })),
         // Dikirim hanya untuk produk bervariasi. Pada produk simple, field ini
         // sengaja dibiarkan undefined supaya server tidak menyentuh varian sama
         // sekali — mengirim array kosong justru berarti "hapus semua varian".
         ...(values.type === "variable" && {
           variation_attributes: values.variationAttributes,
-          variations: values.variations.map((variation) => ({
+          variations: values.variations.map((variation, index) => ({
             id: variation.id,
             attributes: variation.attributes,
             sku: variation.sku || "",
@@ -280,7 +362,9 @@ export function ProdukForm({
             sale_price: variation.salePrice || "",
             stock_status: variation.stockStatus,
             stock_quantity: variation.stockQuantity,
-            image_url: variation.imageUrl || null,
+            // URL hasil unggahan menang atas URL lama: kalau admin mengganti
+            // gambar varian, berkas baru itulah yang dipakai.
+            image_url: variationImageUrls[index] ?? variation.imageUrl ?? null,
           })),
         }),
         images: imageUrls.map((url) => ({ url })),
@@ -648,22 +732,18 @@ export function ProdukForm({
                         setValue("variations", next, { shouldDirty: true, shouldValidate: true })
                       }
                       attributeOptions={attributeOptions}
+                      // Hanya gambar yang sudah punya URL: berkas yang masih
+                      // menunggu diunggah belum bisa dirujuk varian.
+                      galleryImages={images
+                        .filter((img) => img.uploadedUrl)
+                        .map((img) => ({ id: img.id, url: img.uploadedUrl! }))}
                       attributesError={errors.variationAttributes?.message}
                       variationsError={
                         Array.isArray(errors.variations)
                           ? undefined
                           : errors.variations?.message
                       }
-                      errors={Object.fromEntries(
-                        (Array.isArray(errors.variations) ? errors.variations : []).map(
-                          (rowError, index) => [
-                            index,
-                            rowError?.message ??
-                              rowError?.regularPrice?.message ??
-                              rowError?.attributes?.message,
-                          ],
-                        ),
-                      )}
+                      errors={variationRowErrors}
                     />
                   </div>
                 )}
@@ -870,7 +950,7 @@ export function ProdukForm({
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => append({ name: "", value: "" })}
+              onClick={() => append({ name: "", values: [] })}
             >
               <Plus className="h-3.5 w-3.5" />
               Tambah Atribut
@@ -919,12 +999,12 @@ export function ProdukForm({
               <AttributeRow
                 key={field.id}
                 name={watch(`attributes.${index}.name`) ?? ""}
-                value={watch(`attributes.${index}.value`) ?? ""}
+                values={watch(`attributes.${index}.values`) ?? []}
                 onNameChange={(v) =>
                   setValue(`attributes.${index}.name`, v, { shouldDirty: true })
                 }
-                onValueChange={(v) =>
-                  setValue(`attributes.${index}.value`, v, { shouldDirty: true })
+                onValuesChange={(v) =>
+                  setValue(`attributes.${index}.values`, v, { shouldDirty: true })
                 }
                 onRemove={() => remove(index)}
                 // Atribut yang sudah jadi pembeda varian dikeluarkan dari saran,

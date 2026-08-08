@@ -19,8 +19,23 @@ export const productVariationSchema = z.object({
   salePrice: z.string().optional(),
   stockStatus: z.enum(["instock", "outofstock", "onbackorder"]),
   stockQuantity: z.number().int().min(0).optional(),
-  /** URL gambar varian. Kosong = ikut gambar utama induk. */
+  /** URL gambar varian yang sudah tersimpan. Kosong = ikut gambar utama induk. */
   imageUrl: z.string().optional(),
+  /**
+   * Berkas yang baru dipilih admin dan BELUM diunggah.
+   *
+   * Ditahan di klien sampai tombol Simpan ditekan, sama seperti galeri produk
+   * utama — mengunggahnya seketika membuat setiap gambar yang dipilih lalu
+   * dibatalkan menumpuk sebagai berkas yatim di R2.
+   *
+   * `z.custom` dipakai (bukan `z.instanceof(File)`) karena skema ini juga
+   * dievaluasi di server, tempat `File` tidak selalu ada. Nilainya tidak pernah
+   * dikirim ke API — hanya dibaca saat submit lalu ditukar dengan URL hasil
+   * unggahan.
+   */
+  imageFile: z.custom<File>(() => true).optional(),
+  /** URL objek lokal (`blob:`) untuk pratinjau berkas di atas. */
+  imagePreview: z.string().optional(),
 })
 
 export type ProductVariationValues = z.infer<typeof productVariationSchema>
@@ -52,7 +67,13 @@ const baseProductFormSchema = z.object({
   // tanpa opsi ini, menyimpan salah satunya diam-diam menurunkannya jadi draft.
   status: z.enum(["publish", "draft", "private"]),
   categoryIds: z.array(z.number()).min(1, "Pilih minimal 1 kategori"),
-  attributes: z.array(z.object({ name: z.string().min(1), value: z.string().min(1) })),
+  /**
+   * Atribut spesifikasi. `values` jamak karena satu atribut sah punya beberapa
+   * nilai sekaligus — mis. casing yang muat "ATX" dan "Micro-ATX". Baris tanpa
+   * nilai diperbolehkan di form (admin baru mengetik namanya) lalu disaring
+   * saat submit.
+   */
+  attributes: z.array(z.object({ name: z.string().min(1), values: z.array(z.string().min(1)) })),
   // Id lokal gambar (bukan id database): gambar baru belum punya id server
   // sampai benar-benar diunggah saat form disimpan. Field ini cuma dipakai
   // supaya react-hook-form ikut menandai form "berubah" ketika galeri diubah.

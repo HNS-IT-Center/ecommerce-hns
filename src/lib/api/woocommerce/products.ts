@@ -1,7 +1,7 @@
 import { revalidateTag, unstable_cache } from "next/cache";
 import { ProductStatus, ProductType, StockStatus, type Prisma } from "@prisma/client";
 import { getPrisma } from "@/lib/prisma/client";
-import { prismaProductToWoo } from "./db-mapper";
+import { prismaProductToWoo, STOCK_STATUS_TO_WOO } from "./db-mapper";
 import type {
   Product,
   GetProductsParams,
@@ -22,14 +22,24 @@ const productInclude = {
   // menambah urutan kedua akan mengubah kategori yang tampil untuk 2.861 produk
   // yang belum punya penanda, dan itu di luar cakupan perubahan ini.
   categories: { include: { category: true }, orderBy: { isPrimary: 'desc' as const } },
-  tags: { include: { tag: true } },
+  // `tags` sengaja TIDAK ditarik: relasinya tidak pernah dibaca
+  // `prismaProductToWoo` dan tipe `Product` pun tidak punya field tag. Dulu ikut
+  // di sini dan menambah ~42 ms pada setiap query 25 produk — biaya penuh untuk
+  // data yang langsung dibuang.
   images: { orderBy: { position: 'asc' as const } },
   attributes: {
     include: { attribute: true, value: true },
     orderBy: { position: 'asc' as const },
   },
+  // Varian hanya dipakai untuk dua hal oleh mapper: menghitung harga "mulai
+  // dari" (butuh harga saja) dan menandai atribut mana yang membedakan varian
+  // (butuh nama atributnya). Menarik seluruh kolom tiap anak menambah ~83 ms
+  // per 25 produk tanpa ada yang membacanya.
   variations: {
-    include: {
+    select: {
+      wooId: true,
+      regularPrice: true,
+      salePrice: true,
       attributes: { include: { attribute: true, value: true } },
     },
   },
@@ -331,63 +341,194 @@ export async function getProductById(id: number): Promise<Product | null> {
   }
 }
 
-/** Detail per varian (harga/stok/SKU spesifik) untuk produk `type: "variable"`. */
-export async function getProductVariations(productId: number): Promise<ProductVariation[]> {
-  const fetcher = unstable_cache(
-    async () => {
-      // Induk ikut ditarik lengkap: sebagian besar varian warisan Woo tidak
-      // punya gambar sendiri (877 dari 2.077) dan sebagian tidak punya harga,
-      // jadi nilainya diambil dari induk supaya kartu varian tidak tampil kosong.
+/**
+ * Versi tanpa cache dari `getProductById`, khusus form edit admin.
+ *
+ * Layar ini adalah satu-satunya tempat data yang dibaca langsung dipakai untuk
+ * MENULIS kembali: staff membuka form, mengubah satu kolom, lalu menyimpan
+ * seluruh isinya. Kalau yang termuat adalah salinan lama, penyimpanan itu
+ * mengembalikan nilai usang ke database tanpa ada yang menyadarinya — kerusakan
+ * senyap yang jauh lebih mahal daripada waktu muat yang dihemat cache.
+ *
+ * Biayanya terukur kecil: halaman ini hanya dibuka segelintir staff, dan tanpa
+ * cache waktu mautnya masih di bawah ambang yang terasa lambat. Halaman produk
+ * publik tetap memakai versi ber-cache di atas — di sana beban trafiknya nyata
+ * dan datanya tidak dipakai untuk menulis.
+ */
+export async function getProductByIdFresh(id: number): Promise<Product | null> {
+  try {
+    const product = await getPrisma().product.findUnique({
+      where: { wooId: id },
+      include: productInclude,
+    });
+    return product ? decodeProduct(prismaProductToWoo(product)) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Kolom & relasi yang benar-benar dibutuhkan sebuah `ProductVariation`.
+ *
+ * Sengaja BUKAN `productInclude`. Bentuk varian jauh lebih sempit dari produk
+ * penuh — tidak ada kategori, tag, brand, maupun deskripsi di dalamnya — dan
+ * menarik relasi itu untuk tiap anak berarti puluhan baris tambahan per
+ * permintaan yang langsung dibuang oleh pemetaan di bawah. Satu induk dengan 12
+ * varian menyeret 12 set kategori dan tag yang tak pernah dibaca.
+ *
+ * Gambar dibatasi satu: varian hanya menampilkan gambar utamanya.
+ */
+const variationSelect = {
+  wooId: true,
+  sku: true,
+  regularPrice: true,
+  salePrice: true,
+  saleEndDate: true,
+  stockStatus: true,
+  stockQty: true,
+  images: { orderBy: { position: "asc" as const }, take: 1 },
+  attributes: {
+    include: { attribute: true, value: true },
+    orderBy: { position: "asc" as const },
+  },
+};
+
+/** Isi sebenarnya dari `getProductVariations`, dipisah supaya bisa dipanggil
+ *  dengan maupun tanpa cache tanpa menduplikasi logikanya. */
+async function fetchProductVariations(productId: number): Promise<ProductVariation[]> {
+      // Dari induk hanya dibutuhkan harga & satu gambar sebagai cadangan —
+      // sebagian besar varian warisan Woo tidak punya gambar sendiri (877 dari
+      // 2.077) dan sebagian tidak punya harga. Menarik induk dengan relasi
+      // lengkap hanya untuk dua nilai itu adalah pemborosan yang terukur.
       const parent = await getPrisma().product.findUnique({
         where: { wooId: productId },
-        include: productInclude,
+        select: {
+          id: true,
+          name: true,
+          regularPrice: true,
+          salePrice: true,
+          saleEndDate: true,
+          images: { orderBy: { position: "asc" }, take: 1 },
+          variations: { select: { regularPrice: true, salePrice: true } },
+        },
       });
       if (!parent) return [];
 
-      const parentWoo = prismaProductToWoo(parent);
-      const parentImage = parentWoo.images?.[0] ?? null;
+      // Harga induk produk VARIABLE selalu "mulai dari" varian termurah — sama
+      // seperti yang dihitung `prismaProductToWoo`, dihitung ulang di sini
+      // supaya induk tidak perlu ditarik lengkap hanya demi angka ini.
+      const parentPrices = parent.variations
+        .map((v) => ({
+          regular: v.regularPrice != null ? Number(v.regularPrice) : null,
+          sale: v.salePrice != null ? Number(v.salePrice) : null,
+        }))
+        .filter((p): p is { regular: number; sale: number | null } => p.regular !== null);
+
+      const saleExpired =
+        parent.saleEndDate !== null && parent.saleEndDate.getTime() <= Date.now();
+
+      let parentRegular: string;
+      let parentSale: string;
+      if (parentPrices.length > 0) {
+        const minRegular = Math.min(...parentPrices.map((p) => p.regular));
+        const minEffective = Math.min(
+          ...parentPrices.map((p) => (p.sale && p.sale > 0 ? p.sale : p.regular)),
+        );
+        parentRegular = String(minRegular);
+        parentSale = minEffective < minRegular ? String(minEffective) : "";
+      } else {
+        parentRegular = parent.regularPrice ? String(parent.regularPrice) : "0";
+        parentSale = saleExpired || !parent.salePrice ? "" : String(parent.salePrice);
+      }
+
+      const parentImageRow = parent.images[0];
+      const parentImage = parentImageRow
+        ? { id: parentImageRow.id, src: parentImageRow.url, alt: parent.name }
+        : null;
 
       const variations = await getPrisma().product.findMany({
         where: { parentId: parent.id },
-        include: productInclude,
+        select: variationSelect,
         orderBy: { id: "asc" },
       });
 
       return variations.map((v) => {
-        const woo = prismaProductToWoo(v);
-
         // Varian tanpa harga sendiri mewarisi harga induk ("mulai dari" hasil
         // agregat varian lain). Tanpa ini, memilih varian tersebut membuat harga
         // di halaman produk berubah jadi "0".
-        const hasOwnPrice = Number(woo.regular_price) > 0;
-        const regular_price = hasOwnPrice ? woo.regular_price : parentWoo.regular_price;
-        const sale_price = hasOwnPrice ? woo.sale_price : parentWoo.sale_price;
-        const on_sale = hasOwnPrice ? woo.on_sale : parentWoo.on_sale;
+        const ownRegular = v.regularPrice != null ? Number(v.regularPrice) : 0;
+        const hasOwnPrice = ownRegular > 0;
+
+        // Obral yang tanggalnya sudah lewat diperlakukan seolah tidak ada —
+        // dihitung saat baca, sama seperti di `prismaProductToWoo`.
+        const ownSaleExpired =
+          v.saleEndDate !== null && v.saleEndDate.getTime() <= Date.now();
+        const ownSale =
+          !ownSaleExpired && v.salePrice != null && Number(v.salePrice) > 0
+            ? String(v.salePrice)
+            : "";
+
+        const regular_price = hasOwnPrice ? String(ownRegular) : parentRegular;
+        const sale_price = hasOwnPrice ? ownSale : parentSale;
         const price = sale_price || regular_price;
 
-        // Map WooProduct to ProductVariation format
+        const imageRow = v.images[0];
+
         return {
-          id: woo.id,
-          sku: woo.sku,
+          id: v.wooId,
+          sku: v.sku ?? "",
           price,
           regular_price,
           sale_price,
-          on_sale,
-          stock_status: woo.stock_status,
-          stock_quantity: woo.stock_quantity,
-          attributes: woo.attributes.map(a => ({
-            id: a.id,
-            name: a.name,
-            option: a.options[0] || "",
-          })),
-          image: woo.images?.[0] ?? parentImage,
+          on_sale: Boolean(sale_price),
+          stock_status: v.stockStatus
+            ? STOCK_STATUS_TO_WOO[v.stockStatus] ?? "instock"
+            : "instock",
+          stock_quantity: v.stockQty,
+          // Satu nilai per atribut, yang PERTAMA menurut `position`.
+          //
+          // Data warisan Woo punya baris rusak yang menyimpan dua nilai untuk
+          // atribut yang sama pada satu varian (mis. woo 15443: UKURAN="1\" dan
+          // UKURAN="5M"). Varian hanya boleh punya satu nilai per atribut —
+          // dengan dua entri bernama sama, pencocokan pilihan di halaman produk
+          // jadi ambigu. Mengambil yang pertama menyamai perilaku lama lewat
+          // `options[0]`, jadi tak ada produk yang berubah tampilannya.
+          attributes: (() => {
+            const seen = new Set<number>();
+            const result: ProductVariation["attributes"] = [];
+            for (const pa of v.attributes) {
+              if (seen.has(pa.attribute.id)) continue;
+              seen.add(pa.attribute.id);
+              result.push({
+                id: pa.attribute.id,
+                name: pa.attribute.name,
+                option: pa.value.value,
+              });
+            }
+            return result;
+          })(),
+          image: imageRow ? { id: imageRow.id, src: imageRow.url, alt: "" } : parentImage,
         };
       });
-    },
+}
+
+/** Detail per varian (harga/stok/SKU spesifik) untuk produk `type: "variable"`. */
+export async function getProductVariations(productId: number): Promise<ProductVariation[]> {
+  const fetcher = unstable_cache(
+    () => fetchProductVariations(productId),
     [`product-${productId}-variations`],
     { revalidate: 300, tags: [`product-${productId}-variations`] }
   );
   return fetcher();
+}
+
+/**
+ * Versi tanpa cache, khusus form edit admin — alasannya sama dengan
+ * `getProductByIdFresh`: isi form ini disimpan kembali ke database, jadi
+ * membacanya dari salinan lama berarti menulis ulang data usang.
+ */
+export async function getProductVariationsFresh(productId: number): Promise<ProductVariation[]> {
+  return fetchProductVariations(productId);
 }
 
 /** Daftar taxonomy atribut global (mis. "Kapasitas Storage" -> slug pa_kapasitas-storage). */
@@ -831,10 +972,19 @@ async function syncProductVariations(
   variationAttributes: string[],
   variations: NonNullable<ProductInput["variations"]>,
 ): Promise<void> {
+  // Dipetakan lewat `wooId`, BUKAN id database.
+  //
+  // `ProductVariation.id` yang dibaca form (dari `getProductVariations`) adalah
+  // wooId — identifier publik yang dipakai seluruh sistem. Sebelumnya fungsi ini
+  // mencocokkannya dengan id database, sehingga varian yang sudah ada dianggap
+  // baru: ia mencoba membuat baris duplikat dan gagal pada unique constraint
+  // SKU, atau — kalau SKU-nya kosong — diam-diam menggandakan varian lalu
+  // menghapus yang lama.
   const existing = await tx.product.findMany({
     where: { parentId: parent.id },
-    select: { id: true },
+    select: { id: true, wooId: true },
   });
+  const idByWooId = new Map(existing.map((v) => [v.wooId, v.id]));
   const existingIds = new Set(existing.map((v) => v.id));
 
   const keptIds = new Set<number>();
@@ -862,9 +1012,16 @@ async function syncProductVariations(
 
     let variationId: number;
 
-    if (variation.id && existingIds.has(variation.id)) {
-      await tx.product.update({ where: { id: variation.id }, data });
-      variationId = variation.id;
+    // Cocokkan lewat wooId lebih dulu; id database tetap diterima supaya
+    // pemanggil lama (mis. skrip) tidak ikut rusak.
+    const matchedId =
+      variation.id === undefined
+        ? undefined
+        : idByWooId.get(variation.id) ?? (existingIds.has(variation.id) ? variation.id : undefined);
+
+    if (matchedId !== undefined) {
+      await tx.product.update({ where: { id: matchedId }, data });
+      variationId = matchedId;
     } else {
       const wooId = await nextWooId(tx);
       const created = await tx.product.create({
@@ -917,17 +1074,44 @@ async function syncProductVariations(
 
   // Induk menyimpan gabungan seluruh nilai varian sebagai daftar pilihan —
   // ini yang dibaca `prismaProductToWoo` untuk menyusun tombol di halaman produk.
-  await tx.productAttribute.deleteMany({ where: { productId: parent.id } });
-  let parentPosition = 0;
+  //
+  // HANYA atribut pembeda varian yang dihapus di sini. Dulu barisnya
+  // `deleteMany({ productId: parent.id })` tanpa syarat, dan itu menghapus
+  // SELURUH atribut induk — termasuk spesifikasi yang baru saja ditulis
+  // `replaceProductRelations` beberapa langkah sebelumnya (fungsi ini berjalan
+  // sesudahnya). Akibatnya atribut seperti "Motherboard Size" yang dipakai PC
+  // Builder lenyap setiap kali produk bervariasi disimpan, tanpa pesan apa pun.
+  const variationAttributeIds: number[] = [];
+  const attributeByName = new Map<string, { id: number }>();
   for (const attributeName of variationAttributes) {
     const trimmedName = attributeName.trim();
     if (!trimmedName) continue;
-
     const attribute = await tx.attribute.upsert({
       where: { name: trimmedName },
       create: { name: trimmedName },
       update: {},
     });
+    attributeByName.set(attributeName, attribute);
+    variationAttributeIds.push(attribute.id);
+  }
+
+  if (variationAttributeIds.length > 0) {
+    await tx.productAttribute.deleteMany({
+      where: { productId: parent.id, attributeId: { in: variationAttributeIds } },
+    });
+  }
+
+  // Posisi dilanjutkan dari atribut spesifikasi yang sudah ada supaya urutannya
+  // tidak bertabrakan.
+  const lastPosition = await tx.productAttribute.aggregate({
+    where: { productId: parent.id },
+    _max: { position: true },
+  });
+  let parentPosition = (lastPosition._max.position ?? -1) + 1;
+
+  for (const attributeName of variationAttributes) {
+    const attribute = attributeByName.get(attributeName);
+    if (!attribute) continue;
 
     const seen = new Set<string>();
     for (const variation of variations) {
@@ -1109,12 +1293,16 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
           saleEndDate: input.date_on_sale_to_gmt ? new Date(input.date_on_sale_to_gmt) : null,
         }),
         ...(input.video_url !== undefined && { videoUrl: input.video_url || null }),
-        ...(stockQty !== undefined && input.stock_status === undefined && {
+        // Status diturunkan dari jumlah HANYA kalau jumlahnya benar-benar angka
+        // dan status tidak dikirim eksplisit. `null` berarti "tidak dilacak per
+        // jumlah", bukan "nol" — menurunkan status darinya akan menandai habis
+        // produk yang sebenarnya tersedia.
+        ...(typeof stockQty === "number" && input.stock_status === undefined && {
           stockQty,
           stockStatus: stockQty > 0 ? StockStatus.INSTOCK : StockStatus.OUTOFSTOCK,
         }),
         ...(input.stock_status !== undefined && {
-          stockQty: stockQty !== undefined ? stockQty : null,
+          stockQty: stockQty ?? null,
           stockStatus: input.stock_status === 'instock' ? StockStatus.INSTOCK : 
                        input.stock_status === 'outofstock' ? StockStatus.OUTOFSTOCK : 
                        StockStatus.ONBACKORDER,

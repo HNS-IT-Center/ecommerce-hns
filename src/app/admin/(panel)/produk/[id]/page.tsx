@@ -1,5 +1,9 @@
 import { notFound } from "next/navigation"
-import { getProductById, getProductAttributes, getProductVariations } from "@/lib/api/woocommerce/products"
+import {
+  getProductByIdFresh,
+  getProductAttributes,
+  getProductVariationsFresh,
+} from "@/lib/api/woocommerce/products"
 import { getAllCategories } from "@/lib/api/woocommerce/categories"
 import { getBrands } from "@/lib/api/woocommerce/brands"
 import { ProdukForm } from "../produk-form"
@@ -13,7 +17,10 @@ export default async function AdminProdukEditPage({ params }: Props) {
   const productId = Number(id)
 
   const [product, categories, attributeOptions, brands] = await Promise.all([
-    getProductById(productId),
+    // Sengaja versi "Fresh" (tanpa cache): isi form ini disimpan kembali ke
+    // database, jadi memuatnya dari salinan lama berarti menulis ulang data
+    // usang tanpa disadari. Lihat catatan di getProductByIdFresh.
+    getProductByIdFresh(productId),
     getAllCategories(),
     getProductAttributes(),
     getBrands(),
@@ -25,7 +32,7 @@ export default async function AdminProdukEditPage({ params }: Props) {
 
   // Varian hanya ditarik untuk produk yang memang bervariasi — produk simple
   // tidak punya anak, dan query tambahan di tiap halaman edit tidak gratis.
-  const variations = isVariable ? await getProductVariations(product.id) : []
+  const variations = isVariable ? await getProductVariationsFresh(product.id) : []
 
   // Atribut pembeda varian dikumpulkan dari DUA sumber lalu digabung:
   //
@@ -66,7 +73,7 @@ export default async function AdminProdukEditPage({ params }: Props) {
   }))
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-6xl pb-12">
       <h1 className="text-2xl font-bold">Edit Produk — {product.name}</h1>
       <div className="mt-6">
         <ProdukForm
@@ -117,7 +124,10 @@ export default async function AdminProdukEditPage({ params }: Props) {
               .filter((attr) => !variationAttributeKeys.has(attr.name.trim().toLowerCase()))
               .map((attr) => ({
                 name: attr.name,
-                value: attr.options[0] ?? "",
+                // Seluruh nilai dibawa, bukan `options[0]` saja — satu atribut
+                // sah punya beberapa nilai (mis. ATX + Micro-ATX), dan
+                // mengambil yang pertama memangkas sisanya saat disimpan ulang.
+                values: attr.options,
               })),
             imageIds: existingImages?.map((img) => img.id) ?? [],
             videoUrl: product.video_url ?? "",

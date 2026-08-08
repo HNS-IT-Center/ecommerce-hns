@@ -5,8 +5,8 @@ import { Footer } from "@/components/layout/footer"
 import { Breadcrumb } from "@/components/seo/breadcrumb"
 import { JsonLd } from "@/components/seo/json-ld"
 import { getProductBySlug, getProductVariations } from "@/lib/api/woocommerce/products"
-import { ProductGallery } from "@/features/product/components/product-gallery"
-import { ProductInfo } from "@/features/product/components/product-info"
+import type { GalleryImage } from "@/features/product/components/product-gallery"
+import { ProductDetail } from "@/features/product/components/product-detail"
 import { ProductTabs } from "@/features/product/components/product-tabs"
 import { RelatedProducts } from "@/features/product/components/related-products"
 import { resolveSiteUrl } from "@/lib/utils/site-url"
@@ -92,6 +92,51 @@ export default async function ProductPage({ params }: ProductPageProps) {
     }
   }
 
+  /**
+   * Galeri gabungan: foto produk induk dulu, lalu foto tiap varian.
+   *
+   * Praktik lazim di e-commerce — pembeli bisa menggulir melihat seluruh
+   * pilihan warna tanpa menekan tombolnya satu per satu. Foto varian diberi
+   * label supaya jelas milik varian mana, dan `variantImageIndex` mencatat
+   * slide keberapa milik varian mana sehingga keduanya bisa saling melompat.
+   *
+   * Varian yang gambarnya sama persis dengan gambar induk atau varian lain
+   * (877 varian mewarisi gambar induk) tidak digandakan — cukup ditunjuk ke
+   * slide yang sudah ada.
+   */
+  const galleryImages: GalleryImage[] = (product.images ?? []).map((img) => ({
+    src: img.src,
+    alt: img.alt || product.name,
+  }))
+
+  const variantImageIndex: Record<number, number> = {}
+  for (const variation of variations) {
+    const src = variation.image?.src
+    if (!src) continue
+
+    const label = variation.attributes.map((a) => a.option).filter(Boolean).join(" / ")
+    const existing = galleryImages.findIndex((img) => img.src === src)
+
+    if (existing >= 0) {
+      variantImageIndex[variation.id] = existing
+      // Slide yang dipakai bersama beberapa varian dibiarkan tanpa label:
+      // menandainya dengan satu nama varian akan menyesatkan.
+      if (galleryImages[existing].variantLabel === undefined && label) {
+        galleryImages[existing].variantLabel = label
+      } else if (galleryImages[existing].variantLabel !== label) {
+        galleryImages[existing].variantLabel = undefined
+      }
+      continue
+    }
+
+    variantImageIndex[variation.id] = galleryImages.length
+    galleryImages.push({
+      src,
+      alt: label ? `${product.name} — ${label}` : product.name,
+      variantLabel: label || undefined,
+    })
+  }
+
   const brandName = product.brands?.[0]?.name || ""
 
   // Kategori utama dicari lewat penandanya, bukan lewat posisi. Query sudah
@@ -152,37 +197,32 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
         {/* Product Content */}
         <div className="mx-auto max-w-7xl px-4 py-8 md:px-6 md:py-12">
-          <div className="grid gap-8 md:grid-cols-2 md:gap-12">
-            {/* Left: Gallery */}
-            <ProductGallery
-              images={product.images?.map((img) => ({ src: img.src, alt: img.alt || product.name })) || []}
-              videoUrl={product.video_url}
-            />
-
-            {/* Right: Product Info */}
-            <ProductInfo
-              id={product.id}
-              image={product.images?.[0]?.src}
-              name={product.name}
-              sku={product.sku}
-              brand={brandName}
-              categoryName={categoryName}
-              price={product.price}
-              regularPrice={product.regular_price}
-              salePrice={product.sale_price}
-              onSale={product.on_sale}
-              type={product.type}
-              stockStatus={product.stock_status}
-              stockQuantity={product.stock_quantity}
-              totalSales={product.total_sales}
-              averageRating={product.average_rating}
-              ratingCount={product.rating_count}
-              whatsappNumber={env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER}
-              variantAttributes={variantAttributes}
-              variations={variations}
-              siteUrl={siteUrl}
-            />
-          </div>
+          <ProductDetail
+            images={galleryImages}
+            videoUrl={product.video_url}
+            variantImageIndex={variantImageIndex}
+            info={{
+              id: product.id,
+              image: product.images?.[0]?.src,
+              name: product.name,
+              sku: product.sku,
+              brand: brandName,
+              categoryName,
+              price: product.price,
+              regularPrice: product.regular_price,
+              salePrice: product.sale_price,
+              onSale: product.on_sale,
+              type: product.type,
+              stockStatus: product.stock_status,
+              stockQuantity: product.stock_quantity,
+              averageRating: product.average_rating,
+              ratingCount: product.rating_count,
+              whatsappNumber: env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER,
+              variantAttributes,
+              variations,
+              siteUrl,
+            }}
+          />
 
           {/* Tabs: Description + Specs */}
           <ProductTabs

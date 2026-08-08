@@ -17,7 +17,9 @@ const STATUS_TO_WOO = {
   PRIVATE: "private",
 } as const satisfies Record<string, WooProduct["status"]>;
 
-const STOCK_STATUS_TO_WOO = {
+/** Diekspor supaya `getProductVariations` bisa memetakan status stok tanpa
+ *  harus melewatkan seluruh baris varian melalui `prismaProductToWoo`. */
+export const STOCK_STATUS_TO_WOO = {
   INSTOCK: "instock",
   OUTOFSTOCK: "outofstock",
   ONBACKORDER: "onbackorder",

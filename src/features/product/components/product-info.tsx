@@ -28,13 +28,19 @@ interface ProductInfoProps {
   image?: string
   stockStatus: string
   stockQuantity: number | null
-  totalSales: number
   averageRating: string
   ratingCount: number
   whatsappNumber: string
   variantAttributes: VariantAttribute[]
   variations: ProductVariation[]
   siteUrl: string
+  /**
+   * Pilihan varian dikendalikan dari luar supaya galeri dan panel ini berbagi
+   * satu sumber kebenaran — memilih warna menggeser galeri, dan menggulir
+   * galeri mengubah harga di sini. Lihat `product-detail.tsx`.
+   */
+  selected: Record<string, string>
+  onSelectedChange: (selected: Record<string, string>) => void
 }
 
 export function ProductInfo({
@@ -51,13 +57,14 @@ export function ProductInfo({
   image,
   stockStatus,
   stockQuantity,
-  totalSales,
   averageRating,
   ratingCount,
   whatsappNumber,
   variantAttributes,
   variations,
   siteUrl,
+  selected,
+  onSelectedChange,
 }: ProductInfoProps) {
   const isSimpleProduct = type === "simple"
   const hasVariants = type === "variable" && variantAttributes.length > 0 && variations.length > 0
@@ -67,7 +74,6 @@ export function ProductInfo({
   const mounted = useIsHydrated()
   const { flyToCart } = useFlyToCart()
 
-  const [selected, setSelected] = useState<Record<string, string>>({})
   const [isAdding, setIsAdding] = useState(false)
 
   const isMember = mounted && isLoggedIn
@@ -92,6 +98,27 @@ export function ProductInfo({
   const effectiveSalePrice = resolvedVariation?.sale_price ?? salePrice
   const effectiveOnSale = resolvedVariation?.on_sale ?? onSale
   const effectiveSku = resolvedVariation?.sku || sku
+
+  /**
+   * SKU yang ditampilkan di bawah nama produk.
+   *
+   * Produk biasa punya satu SKU. Produk bervariasi punya satu SKU per varian,
+   * dan sebelum pembeli memilih, semuanya relevan — jadi seluruhnya
+   * ditampilkan. Begitu satu varian dipilih, hanya SKU varian itu yang tersisa,
+   * karena itulah barang yang benar-benar akan dibeli.
+   *
+   * Varian tanpa SKU (26% katalog) dilewati, bukan ditampilkan sebagai kosong.
+   */
+  const displaySkus = (() => {
+    if (!hasVariants) return effectiveSku ? [effectiveSku] : []
+    if (resolvedVariation) return resolvedVariation.sku ? [resolvedVariation.sku] : []
+
+    const unique: string[] = []
+    for (const variation of variations) {
+      if (variation.sku && !unique.includes(variation.sku)) unique.push(variation.sku)
+    }
+    return unique.length > 0 ? unique : sku ? [sku] : []
+  })()
   const effectiveImage = resolvedVariation?.image?.src || image
 
   const {
@@ -136,7 +163,16 @@ export function ProductInfo({
   const waUrl = buildWhatsAppUrl(whatsappNumber, waMessage)
 
   const handleSelectVariant = (attributeName: string, option: string) => {
-    setSelected((prev) => ({ ...prev, [attributeName]: option }))
+    // Menekan pilihan yang sedang aktif membatalkannya — harga kembali "mulai
+    // dari" dan galeri lepas dari varian itu. Tanpa ini pembeli yang salah
+    // pilih tidak punya jalan kembali selain memuat ulang halaman.
+    if (selected[attributeName] === option) {
+      const next = { ...selected }
+      delete next[attributeName]
+      onSelectedChange(next)
+      return
+    }
+    onSelectedChange({ ...selected, [attributeName]: option })
   }
 
   const handleAddToCart = (e: React.MouseEvent) => {
@@ -198,11 +234,14 @@ export function ProductInfo({
         {name}
       </h1>
 
-      {/* SKU + Sold + Rating */}
+      {/* SKU + Rating. Jumlah terjual sengaja tidak ditampilkan — angkanya
+          berasal dari view count hasil migrasi, bukan penjualan sungguhan. */}
       <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-        {effectiveSku && <span>SKU: {effectiveSku}</span>}
-        <span>•</span>
-        <span>Terjual {totalSales}+</span>
+        {displaySkus.length > 0 && (
+          <span>
+            SKU: {displaySkus.join(", ")}
+          </span>
+        )}
         {ratingCount > 0 && (
           <>
             <span>•</span>

@@ -7,16 +7,51 @@ import { ChevronLeft, ChevronRight, X, Play } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getVideoEmbed } from "@/lib/utils/product"
 
-interface ProductGalleryProps {
-  images: Array<{ src: string; alt: string }>
-  videoUrl?: string | null
+export type GalleryImage = {
+  src: string
+  alt: string
+  /**
+   * Label varian pemilik gambar ini, mis. "MERAH". Diisi hanya untuk gambar
+   * yang berasal dari sebuah varian; gambar produk induk membiarkannya kosong.
+   */
+  variantLabel?: string
 }
 
-export function ProductGallery({ images, videoUrl }: ProductGalleryProps) {
+interface ProductGalleryProps {
+  images: GalleryImage[]
+  videoUrl?: string | null
+  /**
+   * Slide yang harus ditampilkan, dikendalikan dari luar. Dipakai halaman
+   * produk supaya memilih varian ikut melompatkan galeri ke gambarnya.
+   * `null` berarti galeri mengatur dirinya sendiri.
+   */
+  activeIndexOverride?: number | null
+  /** Dipanggil setiap slide berpindah, termasuk oleh swipe dan tombol panah. */
+  onActiveIndexChange?: (index: number) => void
+}
+
+export function ProductGallery({
+  images,
+  videoUrl,
+  activeIndexOverride = null,
+  onActiveIndexChange,
+}: ProductGalleryProps) {
   const [isVideoOpen, setIsVideoOpen] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const videoEmbed = videoUrl ? getVideoEmbed(videoUrl) : null
-  const [activeIndex, setActiveIndex] = useState(0)
+  const [internalIndex, setActiveIndex] = useState(0)
+
+  /**
+   * Nilai dari luar menang tanpa disalin ke state lewat effect.
+   *
+   * Menyalinnya akan menciptakan sumber kebenaran kedua yang bisa tertinggal
+   * satu render, dan proyek ini juga menghindari setState di dalam effect.
+   * Dibaca langsung saat render, indeksnya selalu mutakhir.
+   */
+  const activeIndex =
+    activeIndexOverride !== null && activeIndexOverride >= 0 && activeIndexOverride < images.length
+      ? activeIndexOverride
+      : internalIndex
   const [direction, setDirection] = useState(0)
   const [isLightboxOpen, setIsLightboxOpen] = useState(false)
   const [magnifierStyle, setMagnifierStyle] = useState({ display: 'none', top: 0, left: 0, bgPosX: 0, bgPosY: 0 })
@@ -73,18 +108,26 @@ export function ProductGallery({ images, videoUrl }: ProductGalleryProps) {
     setIsVideoOpen(false)
   }
 
+  /**
+   * Satu pintu untuk setiap perpindahan slide, dari sumber mana pun (tombol
+   * panah, swipe, klik thumbnail). Menyiarkan indeks barunya ke pemanggil
+   * supaya pilihan varian di luar bisa ikut menyesuaikan.
+   */
+  const goToIndex = (next: number, dir: number) => {
+    closeVideo()
+    setDirection(dir)
+    setActiveIndex(next)
+    onActiveIndexChange?.(next)
+  }
+
   const handleNext = (e?: React.MouseEvent) => {
     e?.stopPropagation()
-    closeVideo()
-    setDirection(1)
-    setActiveIndex((prev) => (prev + 1) % images.length)
+    goToIndex((activeIndex + 1) % images.length, 1)
   }
 
   const handlePrev = (e?: React.MouseEvent) => {
     e?.stopPropagation()
-    closeVideo()
-    setDirection(-1)
-    setActiveIndex((prev) => (prev - 1 + images.length) % images.length)
+    goToIndex((activeIndex - 1 + images.length) % images.length, -1)
   }
 
   const handleDragEnd = (_e: MouseEvent | TouchEvent | PointerEvent, { offset }: PanInfo) => {
@@ -156,6 +199,16 @@ export function ProductGallery({ images, videoUrl }: ProductGalleryProps) {
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
       >
+        {/* Penanda varian pemilik gambar ini. Muncul saat pembeli menggulir
+            galeri sampai ke foto sebuah varian, supaya jelas warna/ukuran mana
+            yang sedang dilihat — tanpa ini foto-foto varian tampak seperti
+            deretan foto produk yang sama. */}
+        {images[activeIndex]?.variantLabel && !isVideoOpen && (
+          <span className="absolute right-3 top-3 z-40 rounded-full bg-black/70 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-md">
+            {images[activeIndex].variantLabel}
+          </span>
+        )}
+
         {/* Bendera video di gambar utama. Hanya di indeks 0 karena video adalah
             pendamping gambar utama, bukan slide tersendiri. */}
         {videoEmbed && activeIndex === 0 && !isVideoOpen && (
@@ -282,11 +335,7 @@ export function ProductGallery({ images, videoUrl }: ProductGalleryProps) {
           {images.map((img, i) => (
             <button
               key={i}
-              onClick={() => {
-                closeVideo()
-                setDirection(i > activeIndex ? 1 : -1)
-                setActiveIndex(i)
-              }}
+              onClick={() => goToIndex(i, i > activeIndex ? 1 : -1)}
               className={cn(
                 "relative h-20 w-20 sm:h-24 sm:w-24 shrink-0 overflow-hidden rounded-xl transition-all bg-background drop-shadow-sm cursor-pointer snap-center",
                 i === activeIndex

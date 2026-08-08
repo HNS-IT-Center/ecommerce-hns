@@ -7,19 +7,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import Image from "next/image"
 import { formatRupiah } from "@/lib/utils"
 import type { Product } from "@/components/ui/product-card"
 import { Rating } from "@/components/ui/rating"
 import { ShoppingCart, ArrowRight } from "lucide-react"
 import { useCartStore } from "@/store/cart"
 import { useFlyToCart } from "@/components/providers/fly-to-cart-provider"
+import * as React from "react"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import WhatsappIcon from "@/components/icons/whatsapp-icon"
+import type { ProductVariation } from "@/types/woocommerce"
 
 import { ProductGallery } from "@/features/product/components/product-gallery"
+import {
+  ProductVariantSelector,
+  type VariantAttribute,
+} from "@/features/product/components/product-variant-selector"
 
 interface QuickViewModalProps {
   product: Product
@@ -33,17 +38,89 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
   const { flyToCart, showCartToast } = useFlyToCart()
   const [isAdding, setIsAdding] = useState(false)
 
-  const hasDiscount =
-    product.on_sale && product.regular_price != null && product.regular_price > product.price
   const isSimpleProduct = product.type === "simple"
-  const discountPercent = hasDiscount
-    ? Math.round((1 - product.price / product.regular_price!) * 100)
-    : 0
+
+  /**
+   * Varian dimuat saat modal dibuka, bukan dibawa oleh kartu produk: satu
+   * halaman katalog berisi puluhan kartu, dan menyertakan varian di semuanya
+   * berarti menarik ribuan baris untuk modal yang mungkin tak pernah dibuka.
+   */
+  const [variations, setVariations] = useState<ProductVariation[]>([])
+  const [selected, setSelected] = useState<Record<string, string>>({})
+
+  React.useEffect(() => {
+    if (!isOpen || isSimpleProduct) return
+    let cancelled = false
+
+    fetch(`/api/products/variations?id=${product.id}`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (!cancelled && Array.isArray(data)) setVariations(data)
+      })
+      .catch(() => {
+        // Gagal memuat varian tidak boleh mengunci modal — pembeli tetap bisa
+        // membuka halaman produk lewat tombol "Lihat Detail".
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isOpen, isSimpleProduct, product.id])
+
+  // Atribut pembeda diturunkan dari varian yang ada, sama seperti di halaman
+  // produk — induk warisan Woo tidak selalu mencatatnya.
+  const variantAttributes: VariantAttribute[] = (() => {
+    const byName = new Map<string, { name: string; options: string[] }>()
+    for (const variation of variations) {
+      for (const attr of variation.attributes) {
+        if (!attr.name || !attr.option) continue
+        const key = attr.name.trim().toLowerCase()
+        const entry = byName.get(key) ?? { name: attr.name, options: [] }
+        if (!entry.options.includes(attr.option)) entry.options.push(attr.option)
+        byName.set(key, entry)
+      }
+    }
+    return [...byName.values()]
+  })()
+
+  const hasVariants = !isSimpleProduct && variantAttributes.length > 0
+
+  const resolvedVariation = hasVariants
+    ? variations.find((variation) =>
+        variantAttributes.every((attr) => {
+          const chosen = selected[attr.name]
+          if (!chosen) return false
+          const match = variation.attributes.find(
+            (a) => a.name.trim().toLowerCase() === attr.name.trim().toLowerCase(),
+          )
+          return match?.option.trim().toLowerCase() === chosen.trim().toLowerCase()
+        }),
+      )
+    : undefined
+
+  // Harga mengikuti varian terpilih; sebelum dipilih tetap harga "mulai dari".
+  const displayPrice = resolvedVariation ? Number(resolvedVariation.price) : product.price
+  const displayRegular = resolvedVariation
+    ? Number(resolvedVariation.regular_price)
+    : product.regular_price
+
+  const hasDiscount = resolvedVariation
+    ? resolvedVariation.on_sale && displayRegular != null && displayRegular > displayPrice
+    : product.on_sale && product.regular_price != null && product.regular_price > product.price
+  const discountPercent =
+    hasDiscount && displayRegular ? Math.round((1 - displayPrice / displayRegular) * 100) : 0
 
   const handleAddToCart = (event: React.MouseEvent) => {
     if (isAdding) return
 
-    if (!isSimpleProduct) {
+    // Varian belum dipilih — tombolnya memang nonaktif, ini hanya penjaga
+    // kalau aksinya terpicu lewat jalan lain (mis. keyboard).
+    if (hasVariants && !resolvedVariation) return
+
+    // Produk bervariasi yang variannya gagal dimuat tidak bisa dibeli dari
+    // sini: tanpa data varian, tidak ada harga maupun SKU yang benar untuk
+    // dimasukkan ke keranjang. Pembeli diarahkan ke halaman produk.
+    if (!isSimpleProduct && !hasVariants) {
       onClose()
       router.push(`/product/${product.slug}`)
       return
@@ -53,16 +130,21 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
     event.stopPropagation()
     setIsAdding(true)
 
-    flyToCart(event.clientX, event.clientY, product.image_url)
+    const image = resolvedVariation?.image?.src ?? product.image_url
+    flyToCart(event.clientX, event.clientY, image)
 
     setTimeout(() => {
       addItem({
-        id: product.id,
+        id: resolvedVariation ? `${product.id}_${resolvedVariation.id}` : product.id,
         productId: Number(product.id),
         name: product.name,
-        price: product.price,
+        price: displayPrice,
         quantity: 1,
-        image: product.image_url,
+        sku: resolvedVariation?.sku || undefined,
+        image,
+        variationLabel: resolvedVariation
+          ? variantAttributes.map((a) => selected[a.name]).filter(Boolean).join(", ")
+          : undefined,
       })
       setIsAdding(false)
       showCartToast()
@@ -124,18 +206,20 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
                </div>
              )}
 
-             {/* 3 & 4. Status Stok & Terjual */}
+             {/* 3. Status Stok. Jumlah terjual sengaja tidak ditampilkan —
+                 angkanya berasal dari view count hasil migrasi, bukan penjualan
+                 sungguhan. */}
              <div className="space-y-3 mb-6 pb-6 border-b border-border">
                <div className="flex items-center justify-between text-sm">
                  <span className="text-muted-foreground">Status Stok</span>
                  <span className="font-semibold text-foreground">
-                   {product.stock > 0 ? "Tersedia" : "Habis"}
-                 </span>
-               </div>
-               <div className="flex items-center justify-between text-sm">
-                 <span className="text-muted-foreground">Terjual</span>
-                 <span className="font-semibold text-foreground">
-                   {product.sold > 0 ? `${product.sold}+` : "Belum ada"}
+                   {resolvedVariation
+                     ? resolvedVariation.stock_status === "instock"
+                       ? "Tersedia"
+                       : "Habis"
+                     : product.stock > 0
+                       ? "Tersedia"
+                       : "Habis"}
                  </span>
                </div>
              </div>
@@ -145,11 +229,11 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
                {hasDiscount ? (
                  <div className="flex items-end gap-3">
                    <div className="text-2xl md:text-3xl font-bold text-red-500">
-                     {formatRupiah(product.price)}
+                     {formatRupiah(displayPrice)}
                    </div>
                    <div className="flex items-center gap-2 mb-1">
                      <span className="text-sm text-muted-foreground line-through">
-                       {formatRupiah(product.regular_price!)}
+                       {formatRupiah(displayRegular!)}
                      </span>
                      <span className="rounded bg-red-500/10 px-1.5 py-0.5 text-xs font-bold text-red-500">
                        -{discountPercent}%
@@ -158,7 +242,26 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
                  </div>
                ) : (
                  <div className="text-2xl md:text-3xl font-bold text-foreground">
-                   {formatRupiah(product.price)}
+                   {hasVariants && !resolvedVariation && (
+                     <span className="mr-1.5 text-sm font-normal text-muted-foreground">
+                       Mulai dari
+                     </span>
+                   )}
+                   {formatRupiah(displayPrice)}
+                 </div>
+               )}
+
+               {/* Pilihan varian. Sengaja ditempatkan tepat di bawah harga
+                   supaya perubahan harga saat memilih langsung terlihat. */}
+               {hasVariants && (
+                 <div className="mt-4">
+                   <ProductVariantSelector
+                     attributes={variantAttributes}
+                     selected={selected}
+                     onSelect={(name, option) =>
+                       setSelected((prev) => ({ ...prev, [name]: option }))
+                     }
+                   />
                  </div>
                )}
 
@@ -173,18 +276,28 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
              <div className="flex gap-2 md:gap-3 mb-4">
                 <button
                   onClick={handleAddToCart}
-                  disabled={isAdding || product.stock === 0}
+                  // Produk bervariasi: tombol nonaktif sampai variannya dipilih.
+                  // Selector-nya sudah terlihat di atas, jadi pembeli tahu apa
+                  // yang kurang — tidak perlu dilempar ke halaman produk.
+                  disabled={
+                    isAdding ||
+                    (isSimpleProduct
+                      ? product.stock === 0
+                      : hasVariants
+                        ? !resolvedVariation || resolvedVariation.stock_status !== "instock"
+                        : false)
+                  }
                   className="flex-1 flex flex-row items-center justify-center gap-1.5 md:gap-2 rounded-lg bg-brand-green text-white px-2 py-2 md:py-3 text-[10px] sm:text-xs md:text-sm font-semibold transition-all hover:bg-brand-green/90 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed shadow-sm hover:shadow text-center leading-tight whitespace-nowrap"
                 >
-                  {isSimpleProduct ? (
+                  {hasVariants && !resolvedVariation ? (
                     <>
-                      <ShoppingCart className="h-3.5 w-3.5 md:h-5 md:w-5 shrink-0" />
-                      <span>Tambah ke Keranjang</span>
+                      <ArrowRight className="h-3.5 w-3.5 md:h-5 md:w-5 shrink-0" />
+                      <span>Pilih Varian Dulu</span>
                     </>
                   ) : (
                     <>
-                      <ArrowRight className="h-3.5 w-3.5 md:h-5 md:w-5 shrink-0" />
-                      <span>Pilih Varian</span>
+                      <ShoppingCart className="h-3.5 w-3.5 md:h-5 md:w-5 shrink-0" />
+                      <span>Tambah ke Keranjang</span>
                     </>
                   )}
                 </button>
