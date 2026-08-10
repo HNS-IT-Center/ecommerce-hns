@@ -103,28 +103,40 @@ export function AppSidebar() {
 
   /**
    * Di ponsel sidebar adalah lapisan yang menutupi halaman, jadi ia harus
-   * menyingkir begitu tautan ditekan — termasuk saat tautannya menunjuk ke
-   * halaman yang SEDANG dibuka, keadaan yang tidak mengubah pathname sama
-   * sekali sehingga tidak ada yang bisa memicu penutupan selain klik itu
-   * sendiri.
+   * menyingkir setelah tautan ditekan.
    *
-   * Penutupannya ditunda ke `requestAnimationFrame`, dan ini bukan hiasan.
-   * `Sheet` memakai `useBackToClose`, yang mendorong satu entri riwayat boneka
-   * saat panel dibuka lalu menariknya kembali dengan `history.back()` waktu
-   * panel ditutup. Kalau panel ditutup di tengah klik — sebelum Next.js sempat
-   * mendorong rute barunya — boneka itu masih jadi puncak tumpukan, sehingga
-   * `history.back()` tadi ikut MEMBATALKAN navigasinya dan orang tertahan di
-   * halaman yang sama. Menunda satu frame membuat rute barunya lebih dulu
-   * terdorong, jadi pembersihan boneka mengenali perpindahan halaman dan
-   * membiarkan navigasinya lewat.
+   * Penutupannya TIDAK boleh dilakukan di dalam `onClick`. `Sheet` memakai
+   * `useBackToClose`, yang mendorong satu entri riwayat boneka saat panel
+   * dibuka lalu menariknya kembali dengan `history.back()` saat panel ditutup.
+   * Navigasi App Router bersifat asinkron — Next.js menunggu muatan RSC dulu
+   * sebelum mendorong rute barunya — sehingga saat `onClick` (atau bahkan satu
+   * `requestAnimationFrame` sesudahnya) berjalan, boneka itu masih jadi puncak
+   * tumpukan. `history.back()` lalu memakan boneka tersebut DAN membatalkan
+   * navigasi yang belum sempat dilakukan, dan orang tertahan di halaman semula.
    *
-   * Di desktop sidebar berdampingan dengan konten — tidak ada yang ditutup,
-   * dan tidak ada entri boneka yang terlibat.
+   * Maka penutupannya digantung pada `pathname`: begitu rute barunya benar-
+   * benar terpasang, barulah panel ditutup. Saat itu URL sudah berbeda dari
+   * yang dicatat `useBackToClose`, jadi penjaganya mengenali perpindahan
+   * halaman dan tidak memanggil `history.back()` sama sekali.
    */
-  const handleNavigate = React.useCallback(() => {
-    if (!isMobile) return
-    requestAnimationFrame(() => setOpenMobile(false))
-  }, [isMobile, setOpenMobile])
+  React.useEffect(() => {
+    setOpenMobile(false)
+    // `setOpenMobile` stabil dari context; sengaja hanya bereaksi pada rute.
+  }, [pathname]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * Menekan menu halaman yang SEDANG dibuka tidak mengubah `pathname`, jadi
+   * efek di atas tidak pernah menyala dan panel akan menggantung terbuka.
+   * Hanya kasus itu yang ditutup langsung di sini — dan justru di kasus ini
+   * `history.back()` milik `useBackToClose` memang sudah benar: tidak ada
+   * navigasi untuk dibatalkan, dan entri bonekanya perlu dibereskan.
+   */
+  const handleNavigate = React.useCallback(
+    (url: string) => {
+      if (isMobile && url === pathname) setOpenMobile(false)
+    },
+    [isMobile, pathname, setOpenMobile]
+  )
 
   /**
    * HANYA berisi grup yang statusnya diubah sendiri oleh pengguna.
@@ -162,7 +174,7 @@ export function AppSidebar() {
         >
           <Link
             href="/admin"
-            onClick={handleNavigate}
+            onClick={() => handleNavigate("/admin")}
             className={`flex items-center gap-3 font-bold text-white hover:opacity-90 transition-opacity w-full min-w-0 ${
               open ? "" : "justify-center"
             }`}
@@ -235,7 +247,7 @@ export function AppSidebar() {
                       const collapsedLink = (
                         <Link
                           href={item.children[0].url}
-                          onClick={handleNavigate}
+                          onClick={() => handleNavigate(item.children![0].url)}
                           className={itemClasses(Boolean(matchedChild))}
                         >
                           {matchedChild && (
@@ -307,7 +319,7 @@ export function AppSidebar() {
                                   <Link
                                     key={child.url}
                                     href={child.url}
-                                    onClick={handleNavigate}
+                                    onClick={() => handleNavigate(child.url)}
                                     tabIndex={isGroupOpen ? undefined : -1}
                                     className={`relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors duration-150 ${
                                       isChildActive
@@ -333,7 +345,7 @@ export function AppSidebar() {
                   const linkEl = (
                     <Link
                       href={item.url}
-                      onClick={handleNavigate}
+                      onClick={() => handleNavigate(item.url)}
                       className={itemClasses(isActive)}
                     >
                       {isActive && (
