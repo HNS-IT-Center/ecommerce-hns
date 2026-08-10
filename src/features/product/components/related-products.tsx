@@ -12,7 +12,7 @@ export async function RelatedProducts({ categoryId, excludeId }: RelatedProducts
   try {
     const wooProducts = await getProducts({
       category: categoryId,
-      perPage: 4,
+      perPage: 6,
       exclude: [excludeId],
     })
     products = wooProducts.map(mapWooProductToUI)
@@ -27,7 +27,10 @@ export async function RelatedProducts({ categoryId, excludeId }: RelatedProducts
       <h2 className="mb-6 text-2xl font-extrabold tracking-tight">
         Produk Terkait
       </h2>
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:gap-6">
+      {/* 6 kartu, bukan 4 — angka ini habis dibagi 2 dan 3, jadi tidak ada
+          kartu yang menggantung sendirian di baris terakhir pada breakpoint
+          mana pun (2 kolom di mobile, 3 di tablet, 6 di layar lebar). */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6 lg:gap-6">
         {products.map((product) => (
           <ProductCard key={product.id} product={product} />
         ))}

@@ -41,7 +41,7 @@ export function ProductPriceBox({
          * untuk varian yang akhirnya dipilih pembeli.
          */
         <>
-          <span className="text-3xl font-extrabold text-foreground">
+          <span className="text-3xl font-extrabold text-sale-red">
             {priceRange.isSingle
               ? formatRupiah(priceRange.min)
               : `${formatRupiah(priceRange.min)} – ${formatRupiah(priceRange.max)}`}
@@ -83,7 +83,7 @@ export function ProductPriceBox({
           </div>
         </>
       ) : (
-        <span className="text-3xl font-extrabold text-foreground">
+        <span className="text-3xl font-extrabold text-sale-red">
           {formatRupiah(displayPrice)}
         </span>
       )}

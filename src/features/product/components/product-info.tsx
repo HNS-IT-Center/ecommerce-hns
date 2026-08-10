@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { Shield, Truck, Check } from "lucide-react"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import { useCartStore } from "@/store/cart"
@@ -12,7 +12,11 @@ import type { ProductVariation } from "@/types/woocommerce"
 import { useFlyToCart } from "@/components/providers/fly-to-cart-provider"
 import { ProductPriceBox } from "./product-price-box"
 import { ProductActions } from "./product-actions"
-import { ProductVariantSelector, type VariantAttribute } from "./product-variant-selector"
+import {
+  ProductVariantSelector,
+  VARIANT_SELECTOR_ID,
+  type VariantAttribute,
+} from "./product-variant-selector"
 import { QRCodeCanvas } from "qrcode.react"
 
 interface ProductInfoProps {
@@ -76,6 +80,15 @@ export function ProductInfo({
   const { flyToCart } = useFlyToCart()
 
   const [isAdding, setIsAdding] = useState(false)
+
+  /**
+   * Sorotan sesaat pada pemilih varian, dipicu tombol keranjang di bar
+   * mengambang saat variannya belum lengkap. Padam sendiri setelah 2 detik —
+   * cukup lama untuk tertangkap mata, cukup singkat untuk tidak jadi hiasan
+   * permanen.
+   */
+  const [isVariantHighlighted, setIsVariantHighlighted] = useState(false)
+  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const isMember = mounted && isLoggedIn
 
@@ -148,6 +161,37 @@ export function ProductInfo({
     isMember,
   })
 
+  /**
+   * Harga coret untuk bar mengambang.
+   *
+   * Mengikuti urutan yang sama dengan ProductPriceBox supaya angkanya tidak
+   * pernah berbeda antara panel dan bar: harga member dibandingkan terhadap
+   * harga normal setelah diskon toko, sedangkan produk diskon biasa
+   * dibandingkan terhadap harga aslinya. Bernilai `null` saat tidak ada
+   * potongan apa pun — bar lalu menampilkan satu harga saja tanpa coretan.
+   */
+  const barOriginalPrice = isMember
+    ? baseFinalPrice > memberPrice
+      ? baseFinalPrice
+      : null
+    : effectiveOnSale && displaySale && displayRegular > displaySale
+      ? displayRegular
+      : null
+
+  /**
+   * Ringkasan varian terpilih untuk bar mengambang, mis. "MERAH / XL".
+   *
+   * Hanya menampilkan atribut yang sudah benar-benar dipilih, jadi pilihan
+   * separuh jalan pun tetap terbaca — pembeli bisa memastikan variannya tanpa
+   * menggulir kembali ke atas.
+   */
+  const selectedVariantLabel = hasVariants
+    ? variantAttributes
+        .map((attr) => selected[attr.name])
+        .filter(Boolean)
+        .join(" / ")
+    : ""
+
   const canAddToCart = isSimpleProduct
     ? stockStatus === "instock"
     : hasVariants && resolvedVariation?.stock_status === "instock"
@@ -184,6 +228,23 @@ export function ProductInfo({
       return
     }
     onSelectedChange({ ...selected, [attributeName]: option })
+  }
+
+  /**
+   * Antar pembeli ke pemilih varian, lalu sorot sebentar.
+   *
+   * Dipanggil dari bar aksi mengambang di mobile, tempat pemilih variannya
+   * berada jauh di atas layar dan sering tidak terlihat sama sekali saat
+   * tombol keranjang ditekan.
+   */
+  const handleRequestVariantChoice = () => {
+    document
+      .getElementById(VARIANT_SELECTOR_ID)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" })
+
+    if (highlightTimer.current) clearTimeout(highlightTimer.current)
+    setIsVariantHighlighted(true)
+    highlightTimer.current = setTimeout(() => setIsVariantHighlighted(false), 2000)
   }
 
   const handleAddToCart = (e: React.MouseEvent) => {
@@ -279,6 +340,7 @@ export function ProductInfo({
           attributes={variantAttributes}
           selected={selected}
           onSelect={handleSelectVariant}
+          isHighlighted={isVariantHighlighted}
         />
       )}
 
@@ -321,10 +383,20 @@ export function ProductInfo({
         waUrl={waUrl}
         waLabel={waLabel}
         price={finalPrice}
+        originalPrice={barOriginalPrice}
+        selectedVariantLabel={selectedVariantLabel}
+        needsVariantChoice={hasVariants && !resolvedVariation}
+        onRequestVariantChoice={handleRequestVariantChoice}
       />
-      {/* Spacer: ProductActions jadi fixed di mobile, sisakan ruang agar
-          konten di bawahnya (trust badge, tabs, footer) tidak tertutup. */}
-      <div className="h-20 md:hidden" aria-hidden="true" />
+      {/* Spacer: ProductActions jadi bar mengambang di mobile. Barnya `fixed`,
+          jadi tidak memakan ruang dokumen — tanpa ganjalan ini ia akan menutupi
+          konten terakhir di halaman.
+
+          `-mt-6` membatalkan jarak bawaan `space-y-6` milik pembungkus, yang
+          sebelumnya menumpuk 24px DI ATAS tinggi spacer dan membuat celahnya
+          terlihat jauh lebih lebar dari barnya sendiri. Sisanya dipatok pas
+          setinggi bar: tombol h-10 (40px) + py-2 (16px) + pb-2 (8px) ≈ 64px. */}
+      <div className="-mt-6 h-16 md:hidden" aria-hidden="true" />
 
       {/* Trust Badges */}
       <div className="grid grid-cols-2 gap-3 pt-2">

@@ -110,6 +110,39 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
   const discountPercent =
     hasDiscount && displayRegular ? Math.round((1 - displayPrice / displayRegular) * 100) : 0
 
+  /**
+   * Menutup modal sekaligus melupakan varian yang sempat dipilih.
+   *
+   * Modal ini tidak di-unmount saat ditutup (hanya `isOpen` yang berubah),
+   * jadi tanpa pembersihan ini pembeli yang membuka ulang kartu yang sama
+   * disambut varian pilihan lamanya — lengkap dengan harga varian itu — seolah
+   * modalnya tidak pernah ditutup. Dilakukan di sini, bukan lewat effect yang
+   * mengamati `isOpen`, supaya tidak memanggil setState di dalam effect.
+   */
+  const handleClose = () => {
+    setSelected({})
+    onClose()
+  }
+
+  /**
+   * Menekan pilihan yang sedang aktif membatalkannya — harga kembali "mulai
+   * dari" dan tombol beli mengunci lagi.
+   *
+   * Perilakunya disamakan dengan halaman produk (lihat `product-info.tsx`):
+   * tanpa jalan membatalkan, pembeli yang salah menekan varian harus menutup
+   * lalu membuka ulang modal untuk mengoreksinya.
+   */
+  const handleSelectVariant = (attributeName: string, option: string) => {
+    setSelected((prev) => {
+      if (prev[attributeName] === option) {
+        const next = { ...prev }
+        delete next[attributeName]
+        return next
+      }
+      return { ...prev, [attributeName]: option }
+    })
+  }
+
   const handleAddToCart = (event: React.MouseEvent) => {
     if (isAdding) return
 
@@ -121,7 +154,7 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
     // sini: tanpa data varian, tidak ada harga maupun SKU yang benar untuk
     // dimasukkan ke keranjang. Pembeli diarahkan ke halaman produk.
     if (!isSimpleProduct && !hasVariants) {
-      onClose()
+      handleClose()
       router.push(`/product/${product.slug}`)
       return
     }
@@ -148,7 +181,7 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
       })
       setIsAdding(false)
       showCartToast()
-      onClose()
+      handleClose()
     }, 800)
   }
 
@@ -163,7 +196,7 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
     : [{ src: product.image_url, alt: product.name }]
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent className="w-[95vw] sm:max-w-[65vw] p-0 overflow-hidden bg-background border-border sm:rounded-xl">
         <DialogHeader className="sr-only">
           <DialogTitle>{product.name}</DialogTitle>
@@ -176,7 +209,7 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
           {/* Left Side - Image/Gallery */}
           <div className="w-full md:w-[40%] p-6 md:p-8 flex items-center justify-center bg-secondary/10 relative md:sticky md:top-0 shrink-0">
              <div className="w-full max-w-md">
-                <ProductGallery images={galleryImages} />
+                <ProductGallery images={galleryImages} videoUrl={product.video_url} />
              </div>
           </div>
 
@@ -258,9 +291,7 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
                    <ProductVariantSelector
                      attributes={variantAttributes}
                      selected={selected}
-                     onSelect={(name, option) =>
-                       setSelected((prev) => ({ ...prev, [name]: option }))
-                     }
+                     onSelect={handleSelectVariant}
                    />
                  </div>
                )}
@@ -318,7 +349,7 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
              <div className="flex justify-center">
                 <button
                   onClick={() => {
-                    onClose();
+                    handleClose();
                     router.push(`/product/${product.slug}`);
                   }}
                   className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4 cursor-pointer"

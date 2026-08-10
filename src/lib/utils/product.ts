@@ -41,6 +41,38 @@ export function getStockStatus(product: WooProduct): "instock" | "lowstock" | "o
 export type VideoEmbed = { kind: "iframe"; src: string } | { kind: "file"; src: string };
 
 /**
+ * Thumbnail resmi YouTube untuk dipakai sebagai poster video di galeri.
+ *
+ * Hanya YouTube yang punya thumbnail beralamat tetap tanpa perlu memanggil API.
+ * Vimeo memerlukan panggilan oEmbed dan file R2 tidak punya thumbnail sama
+ * sekali, jadi keduanya mengembalikan `null` — galeri jatuh ke foto utama
+ * produk sebagai poster.
+ *
+ * `hqdefault` dipilih, bukan `maxresdefault`: yang terakhir tidak dibuat untuk
+ * semua video dan mengembalikan 404 pada video lama/resolusi rendah, sementara
+ * `hqdefault` selalu ada.
+ */
+export function getVideoPosterUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./, "");
+
+    if (host === "youtube.com" || host === "m.youtube.com") {
+      const videoId = parsed.searchParams.get("v");
+      return videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : null;
+    }
+    if (host === "youtu.be") {
+      const videoId = parsed.pathname.slice(1);
+      return videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : null;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Video produk bisa berupa link YouTube/Vimeo (butuh <iframe> embed) atau
  * file langsung hasil upload ke R2 (bisa diputar lewat <video> biasa).
  * Deteksi dari host URL-nya, bukan dari field terpisah — form admin cuma

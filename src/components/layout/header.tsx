@@ -4,6 +4,7 @@ import Image from "next/image"
 import { Download } from "lucide-react"
 
 import { MegaMenu } from "./mega-menu"
+import { BackButton } from "./back-button"
 import { CartBadge } from "./cart-badge"
 import { SearchBar } from "./search-bar"
 import { UserMenu } from "./user-menu"
@@ -31,8 +32,11 @@ export async function Header() {
       <header className="theme-chrome fixed top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 print:hidden">
         {isChristmas && <ChristmasHeaderDecor />}
         <div className="container relative z-10 mx-auto flex h-16 items-center px-4 md:px-6">
-        {/* Mobile Layout (< md): Search - Download - Cart */}
+        {/* Mobile Layout (< md): Back - Search - Download - Cart.
+            BackButton menyembunyikan dirinya sendiri di luar halaman detail. */}
         <div className="flex w-full items-center gap-2 md:hidden">
+          <BackButton />
+
           <div className="flex-1">
             <SearchBar className="w-full max-w-none sm:hidden flex" />
           </div>

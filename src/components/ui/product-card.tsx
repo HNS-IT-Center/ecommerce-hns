@@ -2,7 +2,7 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { LayoutGrid, ShoppingCart, Percent } from "lucide-react"
+import { LayoutGrid, ShoppingCart } from "lucide-react"
 import WhatsappIcon from "@/components/icons/whatsapp-icon"
 import FlameIcon from "@/components/icons/fire-icon"
 import EyeIcon from "@/components/icons/eye-icon"
@@ -13,7 +13,8 @@ import { getBadgeColorClass } from "@/lib/utils/product"
 import { useCartStore } from "@/store/cart"
 import { Rating } from "@/components/ui/rating"
 import { useFlyToCart } from "@/components/providers/fly-to-cart-provider"
-import { useState, useEffect } from "react"
+import { useState } from "react"
+import { useIsHydrated } from "@/hooks/use-is-hydrated"
 import { QuickViewModal } from "@/components/ui/quick-view-modal"
 import { ChristmasCardDecor } from "@/components/theme/christmas-card-decor"
 
@@ -35,6 +36,11 @@ export interface Product {
   average_rating?: number
   rating_count?: number
   images?: { src: string; alt: string }[]
+  /**
+   * Video produk, dipakai Quick View untuk menampilkan slide video di galeri
+   * persis seperti halaman produk. Kartu itu sendiri tidak memakainya.
+   */
+  video_url?: string | null
 }
 
 interface ProductCardProps {
@@ -67,13 +73,20 @@ export function ProductCard({ product, priority = false }: ProductCardProps) {
     ? Math.round((1 - product.price / product.regular_price!) * 100)
     : 0
 
-  const [origin, setOrigin] = useState("")
+  /**
+   * Origin dibaca setelah hidrasi, bukan lewat `setState` di dalam effect.
+   *
+   * Pola lama (`useState("")` + effect yang mengisinya) memicu aturan
+   * `react-hooks/set-state-in-effect` karena menyebabkan render berantai.
+   * `useIsHydrated` memberi hasil yang sama tanpa itu: render server dan render
+   * klien pertama sama-sama memakai domain produksi, lalu setelah hidrasi
+   * beralih ke origin yang sedang dibuka — supaya tautan WhatsApp dari
+   * localhost atau domain preview tidak menunjuk ke produksi.
+   */
+  const isHydrated = useIsHydrated()
+  const origin = isHydrated ? window.location.origin : "https://hnsitcenter.id"
 
-  useEffect(() => {
-    setOrigin(window.location.origin)
-  }, [])
-
-  const productUrl = `${origin || 'https://hnsitcenter.id'}/product/${product.slug}`
+  const productUrl = `${origin}/product/${product.slug}`
 
   const waMessage = `${productUrl}
 

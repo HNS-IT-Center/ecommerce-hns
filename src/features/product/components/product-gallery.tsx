@@ -5,7 +5,7 @@ import { useState, useRef, useEffect } from "react"
 import { motion, AnimatePresence, type PanInfo } from "framer-motion"
 import { ChevronLeft, ChevronRight, X, Play } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { getVideoEmbed } from "@/lib/utils/product"
+import { getVideoEmbed, getVideoPosterUrl } from "@/lib/utils/product"
 
 export type GalleryImage = {
   src: string
@@ -30,6 +30,10 @@ interface ProductGalleryProps {
   onActiveIndexChange?: (index: number) => void
 }
 
+type Slide =
+  | { kind: "image"; image: GalleryImage }
+  | { kind: "video" }
+
 export function ProductGallery({
   images,
   videoUrl,
@@ -39,7 +43,36 @@ export function ProductGallery({
   const [isVideoOpen, setIsVideoOpen] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const videoEmbed = videoUrl ? getVideoEmbed(videoUrl) : null
+  const videoPoster = videoUrl ? getVideoPosterUrl(videoUrl) : null
   const [internalIndex, setActiveIndex] = useState(0)
+
+  /**
+   * Video adalah slide penuh di posisi kedua, bukan bendera di atas foto utama.
+   *
+   * Daftar slide dirakit di sini alih-alih di server supaya `images` tetap murni
+   * berisi gambar: `variantImageIndex` yang dikirim halaman produk menunjuk ke
+   * indeks array gambar, dan menyisipkan video di sana akan menggeser seluruh
+   * penunjuk varian. Dengan pemisahan ini, kedua sistem indeks hidup
+   * berdampingan dan diterjemahkan lewat sepasang fungsi di bawah.
+   */
+  const slides: Slide[] = videoEmbed
+    ? [
+        { kind: "image", image: images[0] },
+        { kind: "video" },
+        ...images.slice(1).map((image): Slide => ({ kind: "image", image })),
+      ]
+    : images.map((image): Slide => ({ kind: "image", image }))
+
+  /** Indeks gambar (dari luar) → indeks slide (di dalam galeri). */
+  const toSlideIndex = (imageIndex: number) =>
+    videoEmbed && imageIndex >= 1 ? imageIndex + 1 : imageIndex
+
+  /** Indeks slide → indeks gambar. Slide video sendiri mengembalikan `null`. */
+  const toImageIndex = (slideIndex: number): number | null => {
+    if (!videoEmbed) return slideIndex
+    if (slideIndex === 1) return null
+    return slideIndex > 1 ? slideIndex - 1 : slideIndex
+  }
 
   /**
    * Nilai dari luar menang tanpa disalin ke state lewat effect.
@@ -50,8 +83,11 @@ export function ProductGallery({
    */
   const activeIndex =
     activeIndexOverride !== null && activeIndexOverride >= 0 && activeIndexOverride < images.length
-      ? activeIndexOverride
+      ? toSlideIndex(activeIndexOverride)
       : internalIndex
+
+  const activeSlide = slides[activeIndex]
+  const isVideoSlide = activeSlide?.kind === "video"
   const [direction, setDirection] = useState(0)
   const [isLightboxOpen, setIsLightboxOpen] = useState(false)
   const [magnifierStyle, setMagnifierStyle] = useState({ display: 'none', top: 0, left: 0, bgPosX: 0, bgPosY: 0 })
@@ -117,17 +153,21 @@ export function ProductGallery({
     closeVideo()
     setDirection(dir)
     setActiveIndex(next)
-    onActiveIndexChange?.(next)
+
+    // Slide video bukan milik varian mana pun, jadi tidak ada indeks gambar yang
+    // bisa disiarkan ke luar — pilihan varian dibiarkan apa adanya.
+    const imageIndex = toImageIndex(next)
+    if (imageIndex !== null) onActiveIndexChange?.(imageIndex)
   }
 
   const handleNext = (e?: React.MouseEvent) => {
     e?.stopPropagation()
-    goToIndex((activeIndex + 1) % images.length, 1)
+    goToIndex((activeIndex + 1) % slides.length, 1)
   }
 
   const handlePrev = (e?: React.MouseEvent) => {
     e?.stopPropagation()
-    goToIndex((activeIndex - 1 + images.length) % images.length, -1)
+    goToIndex((activeIndex - 1 + slides.length) % slides.length, -1)
   }
 
   const handleDragEnd = (_e: MouseEvent | TouchEvent | PointerEvent, { offset }: PanInfo) => {
@@ -164,9 +204,9 @@ export function ProductGallery({
   }
 
   const handleImageClick = () => {
-    // Saat video sedang diputar, kanvas ini milik video — klik di atasnya tidak
-    // boleh membuka lightbox foto.
-    if (isVideoOpen) return
+    // Saat slide video sedang tampil — entah masih poster atau sudah diputar —
+    // kanvas ini milik video; klik di atasnya tidak boleh membuka lightbox foto.
+    if (isVideoOpen || isVideoSlide) return
     if (isMobile) {
       setIsLightboxOpen(true)
     }
@@ -203,27 +243,43 @@ export function ProductGallery({
             galeri sampai ke foto sebuah varian, supaya jelas warna/ukuran mana
             yang sedang dilihat — tanpa ini foto-foto varian tampak seperti
             deretan foto produk yang sama. */}
-        {images[activeIndex]?.variantLabel && !isVideoOpen && (
+        {activeSlide?.kind === "image" && activeSlide.image.variantLabel && (
           <span className="absolute right-3 top-3 z-40 rounded-full bg-black/70 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-md">
-            {images[activeIndex].variantLabel}
+            {activeSlide.image.variantLabel}
           </span>
         )}
 
-        {/* Bendera video di gambar utama. Hanya di indeks 0 karena video adalah
-            pendamping gambar utama, bukan slide tersendiri. */}
-        {videoEmbed && activeIndex === 0 && !isVideoOpen && (
+        {/* Poster slide video: pembeli melihat sampul dan menekan play dulu,
+            video tidak pernah berjalan sendiri saat digeser ke sini. Posternya
+            memakai thumbnail resmi YouTube bila ada; Vimeo dan file R2 tidak
+            punya sampul beralamat tetap, jadi jatuh ke foto utama produk yang
+            digelapkan supaya tombol play tetap terbaca di atasnya. */}
+        {isVideoSlide && !isVideoOpen && (
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation()
               setIsVideoOpen(true)
             }}
-            className="absolute left-3 top-3 z-40 flex items-center gap-1.5 rounded-full bg-black/70 py-1.5 pl-2 pr-3 text-xs font-semibold text-white backdrop-blur-md transition-colors hover:bg-black/85 cursor-pointer"
+            className="absolute inset-0 z-40 flex items-center justify-center bg-black cursor-pointer group/video"
+            aria-label="Putar video produk"
           >
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary">
-              <Play className="h-2.5 w-2.5 fill-current text-primary-foreground" />
+            <Image
+              src={videoPoster ?? images[0].src}
+              alt=""
+              fill
+              sizes="(max-width: 768px) 100vw, 50vw"
+              className={cn(
+                "pointer-events-none",
+                videoPoster ? "object-cover opacity-80" : "object-contain opacity-40",
+              )}
+            />
+            <span className="relative flex h-16 w-16 items-center justify-center rounded-full bg-white/95 shadow-xl transition-transform group-hover/video:scale-110">
+              <Play className="ml-1 h-7 w-7 fill-current text-foreground" />
             </span>
-            Video
+            <span className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/70 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-md">
+              Putar Video
+            </span>
           </button>
         )}
 
@@ -281,23 +337,26 @@ export function ProductGallery({
             }}
             className="absolute inset-0 p-6 sm:p-10 touch-pan-y"
           >
-            <Image
-              src={images[activeIndex].src}
-              alt={images[activeIndex].alt}
-              fill
-              sizes="(max-width: 768px) 100vw, 50vw"
-              className="object-contain pointer-events-none"
-              priority
-            />
+            {activeSlide?.kind === "image" && (
+              <Image
+                src={activeSlide.image.src}
+                alt={activeSlide.image.alt}
+                fill
+                sizes="(max-width: 768px) 100vw, 50vw"
+                className="object-contain pointer-events-none"
+                priority
+              />
+            )}
           </motion.div>
         </AnimatePresence>
 
-        {/* Desktop Zoom Effect */}
-        {!isMobile && magnifierStyle.display === 'block' && (
+        {/* Desktop Zoom Effect. Tidak berlaku di slide video — kacanya akan
+            menutupi poster dan pemutarnya. */}
+        {!isMobile && !isVideoSlide && magnifierStyle.display === 'block' && activeSlide?.kind === "image" && (
           <div
             className="absolute inset-0 z-30 pointer-events-none bg-background"
             style={{
-              backgroundImage: `url(${images[activeIndex].src})`,
+              backgroundImage: `url(${activeSlide.image.src})`,
               backgroundPosition: `${magnifierStyle.bgPosX}% ${magnifierStyle.bgPosY}%`,
               backgroundSize: '150%', // 1.5x zoom
               backgroundRepeat: 'no-repeat',
@@ -306,7 +365,7 @@ export function ProductGallery({
         )}
 
         {/* Hover Navigation Arrows (Desktop mostly) */}
-        {images.length > 1 && (
+        {slides.length > 1 && (
           <>
             <button
               onClick={handlePrev}
@@ -327,12 +386,12 @@ export function ProductGallery({
       </div>
 
       {/* Thumbnails */}
-      {images.length > 1 && (
-        <div 
+      {slides.length > 1 && (
+        <div
           ref={scrollContainerRef}
           className="flex gap-3 overflow-x-auto p-2 scrollbar-hide snap-x snap-mandatory scroll-smooth w-full"
         >
-          {images.map((img, i) => (
+          {slides.map((slide, i) => (
             <button
               key={i}
               onClick={() => goToIndex(i, i > activeIndex ? 1 : -1)}
@@ -342,14 +401,37 @@ export function ProductGallery({
                   ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
                   : "opacity-70 hover:opacity-100"
               )}
+              aria-label={slide.kind === "video" ? "Video produk" : undefined}
             >
-              <Image
-                src={img.src}
-                alt={img.alt}
-                fill
-                sizes="96px"
-                className="object-cover p-2 pointer-events-none"
-              />
+              {slide.kind === "video" ? (
+                <>
+                  {/* Thumbnail video sengaja gelap dan bertanda play supaya
+                      terbaca sebagai "bisa diputar", bukan sekadar foto lain. */}
+                  <Image
+                    src={videoPoster ?? images[0].src}
+                    alt=""
+                    fill
+                    sizes="96px"
+                    className={cn(
+                      "pointer-events-none",
+                      videoPoster ? "object-cover opacity-70" : "object-contain p-2 opacity-30",
+                    )}
+                  />
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/25">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/95 shadow-md">
+                      <Play className="ml-0.5 h-3.5 w-3.5 fill-current text-foreground" />
+                    </span>
+                  </span>
+                </>
+              ) : (
+                <Image
+                  src={slide.image.src}
+                  alt={slide.image.alt}
+                  fill
+                  sizes="96px"
+                  className="object-cover p-2 pointer-events-none"
+                />
+              )}
             </button>
           ))}
         </div>
@@ -394,17 +476,19 @@ export function ProductGallery({
                   }}
                   className="absolute inset-0 touch-none"
                 >
-                  <Image
-                    src={images[activeIndex].src}
-                    alt={images[activeIndex].alt}
-                    fill
-                    sizes="100vw"
-                    className="object-contain pointer-events-none"
-                  />
+                  {activeSlide?.kind === "image" && (
+                    <Image
+                      src={activeSlide.image.src}
+                      alt={activeSlide.image.alt}
+                      fill
+                      sizes="100vw"
+                      className="object-contain pointer-events-none"
+                    />
+                  )}
                 </motion.div>
               </AnimatePresence>
-              
-              {images.length > 1 && (
+
+              {slides.length > 1 && (
                 <>
                   <button
                     onClick={handlePrev}
