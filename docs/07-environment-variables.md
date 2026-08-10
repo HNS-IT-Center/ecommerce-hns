@@ -222,7 +222,24 @@ Catatan:
 - **Tanpa ini login admin tidak jalan.** `lib/auth/session.ts` melempar dengan pesan jelas saat sesi dibutuhkan tapi variabelnya kosong.
 - Pakai nilai **berbeda** antara development dan produksi. Mengganti nilainya membatalkan seluruh sesi yang sedang berjalan — berguna kalau suatu saat perlu memaksa semua orang login ulang.
 - `AUTH_URL` **tidak dipakai**. Sesi admin memakai cookie bertanda tangan sendiri (HMAC lewat Web Crypto), bukan Auth.js, jadi tidak ada URL callback yang perlu dikonfigurasi. Keputusan ini beserta alasannya ada di `notes/sprint-1-fondasi-keamanan.md`.
-- Login **pelanggan** (`/login`, `/register`) belum tersentuh dan masih simulasi client-side — cakupan terpisah.
+
+---
+
+### 2.9 OPSIONAL — Akun Pelanggan (Google OAuth)
+
+| Variable | Deskripsi | Cara Dapatnya |
+|---|---|---|
+| `GOOGLE_CLIENT_ID` | OAuth Client ID | Google Cloud Console → APIs & Services → Credentials |
+| `GOOGLE_CLIENT_SECRET` | OAuth Client Secret | Dihasilkan bersamaan dengan Client ID |
+
+Setup lengkap konsol Google Cloud (consent screen, scope, redirect URI): [`docs/09-google-oauth-setup.md`](./09-google-oauth-setup.md).
+
+Catatan:
+
+- **Terpisah total dari `AUTH_SECRET`/sesi admin.** Login pelanggan memakai cookie `hns_customer_session`, sesi admin memakai `hns_admin_session` — beda kunci, beda tabel (`customers` vs `users`), tidak boleh saling menimpa.
+- Opsional di skema Zod supaya storefront tidak fail-fast di mesin yang belum punya kredensial Google; `lib/auth/google.ts` yang menjaganya sendiri dan melempar pesan jelas saat `/api/auth/google` benar-benar dipanggil.
+- `GOOGLE_CLIENT_SECRET` **tidak boleh** diawali `NEXT_PUBLIC_` — sama seperti alasan `AUTH_SECRET`, itu akan membocorkannya ke bundel browser.
+- Rancangan lengkap (kenapa bukan Auth.js, kenapa kunci identitas `googleSub` bukan email, dst) ada di `docs/09-google-oauth-setup.md` §8.
 
 ---
 

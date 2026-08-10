@@ -34,6 +34,14 @@ const EnvSchema = z.object({
   // sendiri dan melempar dengan pesan jelas saat sesi benar-benar dibutuhkan.
   AUTH_SECRET: z.string().min(32).optional(),
 
+  // Akun pelanggan — login Google (docs/09-google-oauth-setup.md). Opsional
+  // dengan alasan yang sama seperti AUTH_SECRET: skema ini di-parse saat
+  // modul dimuat, jadi menandainya wajib mematikan storefront di mesin mana
+  // pun yang belum punya kredensial Google. `lib/auth/google.ts` yang
+  // menjaganya sendiri saat endpoint /api/auth/google benar-benar dipanggil.
+  GOOGLE_CLIENT_ID: z.string().min(1).optional(),
+  GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+
   // AI API Keys
   GEMINI_API_KEY: z.string().min(1).optional(),
   GROQ_API_KEY: z.string().min(1).optional(),
@@ -64,6 +72,8 @@ export const env = EnvSchema.parse({
   WORDPRESS_APP_PASSWORD: process.env.WP_APP_PASSWORD || process.env.WORDPRESS_APP_PASSWORD,
   DATABASE_URL: process.env.DATABASE_URL,
   AUTH_SECRET: process.env.AUTH_SECRET,
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   GROQ_API_KEY: process.env.GROQ_API_KEY,
   R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,

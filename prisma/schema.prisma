@@ -655,3 +655,51 @@ model PcBuildSubmission {
   @@index([createdAt])
   @@map("pc_build_submissions")
 }
+
+// --------------------------------------------------------------------------- akun pelanggan
+
+/**
+ * Akun pelanggan — login Google. Tabel TERPISAH dari `User` (akun admin);
+ * lihat docs/09-google-oauth-setup.md §1 kenapa keduanya tidak boleh
+ * disatukan (googleId di `users` berarti siapa pun yang membuat akun Google
+ * atas email seorang staf bisa masuk ke panel admin).
+ *
+ * Rancangan final ada di docs/09 §8 — dicatat ulang di sini karena kolomnya
+ * sengaja minim, dan alasan "kenapa tidak lebih" sama pentingnya dengan
+ * "kenapa ada":
+ * - Kunci identitas adalah `googleSub`, BUKAN email. Email bisa diganti
+ *   pemiliknya di akun Google; kalau itu jadi kunci, akun yang sudah punya
+ *   rakitan tersimpan bisa "hilang" begitu emailnya berubah.
+ * - Tidak ada access/refresh token yang disimpan — dipakai sekali saat
+ *   login lalu dibuang.
+ * - Tidak ada foto profil — halaman akun tidak memakainya, dan data pribadi
+ *   paling aman adalah yang tidak pernah disimpan.
+ *
+ * Penghapusan akun ini HARD DELETE (lihat CLAUDE.md §2.8), bukan soft
+ * delete seperti `users`/`stores`. Ini data pribadi milik pelanggan sendiri;
+ * kalau mereka minta dihapus, menyembunyikan barisnya lewat `deletedAt`
+ * berarti kita tetap menyimpan email dan nama yang sudah diminta dihapus —
+ * kebalikan dari yang diminta.
+ */
+model Customer {
+  id String @id @default(uuid())
+
+  /// Subject claim dari id_token Google (`sub`). Unik dan tidak pernah
+  /// berubah untuk satu akun Google, tidak seperti email.
+  googleSub String @unique @map("google_sub") @db.VarChar(191)
+
+  email String @db.VarChar(191)
+  name  String @db.VarChar(191)
+
+  /// Penanda pencabutan sesi, pola yang sama dengan `users.password_changed_at`
+  /// — token yang terbit sebelum waktu ini dianggap mati walau tanda tangan
+  /// dan masa berlakunya masih sah. Diisi (bukan dihapus barisnya) sesaat
+  /// sebelum akun dihapus, supaya cookie yang sudah beredar tidak "masih
+  /// login" ke akun yang sudah tidak ada.
+  sessionsRevokedAt DateTime? @map("sessions_revoked_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("customers")
+}
