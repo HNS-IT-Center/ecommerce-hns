@@ -10,13 +10,13 @@ import {
   FolderTree,
   Cpu,
   Store,
-  StoreIcon,
   ChevronLeft,
   ChevronDown,
   ClipboardList,
   Megaphone,
   Palette,
   Tags,
+  X,
 } from "lucide-react"
 
 import {
@@ -99,7 +99,32 @@ function activeChildUrl(pathname: string, item: NavItem): string | null {
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const { open, toggleSidebar } = useSidebar()
+  const { open, toggleSidebar, isMobile, setOpenMobile } = useSidebar()
+
+  /**
+   * Di ponsel sidebar adalah lapisan yang menutupi halaman, jadi ia harus
+   * menyingkir begitu tautan ditekan — termasuk saat tautannya menunjuk ke
+   * halaman yang SEDANG dibuka, keadaan yang tidak mengubah pathname sama
+   * sekali sehingga tidak ada yang bisa memicu penutupan selain klik itu
+   * sendiri.
+   *
+   * Penutupannya ditunda ke `requestAnimationFrame`, dan ini bukan hiasan.
+   * `Sheet` memakai `useBackToClose`, yang mendorong satu entri riwayat boneka
+   * saat panel dibuka lalu menariknya kembali dengan `history.back()` waktu
+   * panel ditutup. Kalau panel ditutup di tengah klik — sebelum Next.js sempat
+   * mendorong rute barunya — boneka itu masih jadi puncak tumpukan, sehingga
+   * `history.back()` tadi ikut MEMBATALKAN navigasinya dan orang tertahan di
+   * halaman yang sama. Menunda satu frame membuat rute barunya lebih dulu
+   * terdorong, jadi pembersihan boneka mengenali perpindahan halaman dan
+   * membiarkan navigasinya lewat.
+   *
+   * Di desktop sidebar berdampingan dengan konten — tidak ada yang ditutup,
+   * dan tidak ada entri boneka yang terlibat.
+   */
+  const handleNavigate = React.useCallback(() => {
+    if (!isMobile) return
+    requestAnimationFrame(() => setOpenMobile(false))
+  }, [isMobile, setOpenMobile])
 
   /**
    * HANYA berisi grup yang statusnya diubah sendiri oleh pengguna.
@@ -137,7 +162,8 @@ export function AppSidebar() {
         >
           <Link
             href="/admin"
-            className={`flex items-center gap-3 font-bold text-white hover:opacity-90 transition-opacity w-full ${
+            onClick={handleNavigate}
+            className={`flex items-center gap-3 font-bold text-white hover:opacity-90 transition-opacity w-full min-w-0 ${
               open ? "" : "justify-center"
             }`}
           >
@@ -153,12 +179,25 @@ export function AppSidebar() {
               <span className="text-[10px] font-normal text-blue-200">Administrator</span>
             </div>
           </Link>
+
+          {/* Tutup panel — hanya di ponsel. Sheet-nya keluar dari kanan, jadi
+              tombolnya duduk di ujung kanan header, sejajar hamburger yang
+              memanggilnya di `AdminMobileBar`. */}
+          <button
+            onClick={() => setOpenMobile(false)}
+            className="md:hidden flex items-center justify-center h-9 w-9 shrink-0 rounded-lg bg-white/10 text-white hover:bg-white/20 active:scale-95 transition-colors cursor-pointer"
+            aria-label="Tutup menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </SidebarHeader>
 
-        {/* Toggle button — slim tab docked to the sidebar edge */}
+        {/* Toggle button — slim tab docked to the sidebar edge.
+            Desktop saja: di ponsel panel tidak menciut jadi ikon, dan tab ini
+            akan menggantung di luar tepi kanan layar. */}
         <button
           onClick={toggleSidebar}
-          className="absolute -right-3.5 top-20 z-50 flex h-7 w-7 items-center justify-center rounded-full bg-white text-[#2166de] border border-black/5 shadow-md hover:bg-blue-50 cursor-pointer transition-colors"
+          className="hidden md:flex absolute -right-3.5 top-20 z-50 h-7 w-7 items-center justify-center rounded-full bg-white text-[#2166de] border border-black/5 shadow-md hover:bg-blue-50 cursor-pointer transition-colors"
           title={open ? "Tutup sidebar" : "Buka sidebar"}
         >
           <ChevronLeft
@@ -196,6 +235,7 @@ export function AppSidebar() {
                       const collapsedLink = (
                         <Link
                           href={item.children[0].url}
+                          onClick={handleNavigate}
                           className={itemClasses(Boolean(matchedChild))}
                         >
                           {matchedChild && (
@@ -267,6 +307,7 @@ export function AppSidebar() {
                                   <Link
                                     key={child.url}
                                     href={child.url}
+                                    onClick={handleNavigate}
                                     tabIndex={isGroupOpen ? undefined : -1}
                                     className={`relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors duration-150 ${
                                       isChildActive
@@ -292,6 +333,7 @@ export function AppSidebar() {
                   const linkEl = (
                     <Link
                       href={item.url}
+                      onClick={handleNavigate}
                       className={itemClasses(isActive)}
                     >
                       {isActive && (

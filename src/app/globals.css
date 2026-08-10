@@ -584,6 +584,17 @@
   color: #ffffff !important;
 }
 
+/* Desktop memakai satu lapis pembungkus lagi di dalam `.admin-sidebar`
+   (`sidebar-inner`), dan pembungkus itu mengecat dirinya sendiri dengan
+   `bg-sidebar` — biru rata yang MENUTUPI gradasi milik induknya. Ponsel tidak
+   punya lapisan itu, jadi gradasinya terlihat; itulah sebabnya kedua ukuran
+   layar tampak berbeda. Gradasi yang sama diturunkan ke lapisan tersebut
+   supaya keduanya seragam. */
+.admin-sidebar [data-slot="sidebar-inner"] {
+  background-image: linear-gradient(160deg, #0d2959 0%, #143d85 30%, #2166de 60%, #1b52b1 100%);
+  background-color: #2166de !important;
+}
+
 /* @tailwindcss/typography: override prose colors to match design tokens */
 .prose {
   --tw-prose-body: var(--foreground);

@@ -17,6 +17,10 @@ import { useEffect, useRef } from "react"
  * kembali dengan `history.back()` supaya tidak menumpuk; tanpa itu orang harus
  * menekan Back dua kali untuk benar-benar mundur satu halaman.
  *
+ * Pengecualiannya: kalau lapisan tertutup karena penggunanya BERPINDAH HALAMAN
+ * dari dalam lapisan itu, entri boneka tidak boleh ditarik. Alamat saat ini
+ * dibandingkan dengan alamat saat lapisan dibuka untuk mengenali keadaan itu.
+ *
  * `URL` sengaja tidak diubah — panel yang terbuka bukan alamat tersendiri, dan
  * menuliskannya ke bilah alamat akan membuat tautan yang dibagikan mengarah ke
  * keadaan UI, bukan ke halaman.
@@ -36,6 +40,10 @@ export function useBackToClose(isOpen: boolean, onClose: () => void) {
   useEffect(() => {
     if (!isOpen) return
 
+    // Alamat saat lapisan dibuka. Dipakai di pembersihan untuk membedakan dua
+    // sebab penutupan yang menuntut perlakuan berlawanan — lihat di bawah.
+    const openedAt = window.location.href
+
     window.history.pushState({ overlay: true }, "")
     pushedRef.current = true
 
@@ -52,10 +60,18 @@ export function useBackToClose(isOpen: boolean, onClose: () => void) {
       window.removeEventListener("popstate", handlePopState)
 
       // Ditutup TANPA lewat tombol Back — bereskan entri boneka yang tertinggal.
-      if (pushedRef.current) {
-        pushedRef.current = false
-        window.history.back()
-      }
+      if (!pushedRef.current) return
+      pushedRef.current = false
+
+      // Menutup karena PINDAH HALAMAN — misalnya menekan tautan di dalam
+      // sidebar admin. Halaman baru sudah didorong di ATAS entri boneka, jadi
+      // boneka itu bukan lagi puncak tumpukan: `history.back()` di sini tidak
+      // membereskan apa-apa, melainkan memundurkan orang ke halaman yang baru
+      // saja ia tinggalkan. Entri boneka dibiarkan terkubur — satu entri
+      // berlebih jauh lebih murah daripada navigasi yang dibatalkan sendiri.
+      if (window.location.href !== openedAt) return
+
+      window.history.back()
     }
   }, [isOpen])
 }
