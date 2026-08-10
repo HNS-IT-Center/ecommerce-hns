@@ -15,6 +15,17 @@ export type ComboboxOption = {
 type ComboboxProps = {
   value: string
   onValueChange: (value: string) => void
+  /**
+   * Dipanggil hanya saat pilihan benar-benar DITETAPKAN — klik saran, tekan
+   * Enter, atau meninggalkan input dengan teks terisi. Berbeda dari
+   * `onValueChange` yang menyala di setiap ketikan.
+   *
+   * Pakai ini untuk aksi yang tidak boleh berulang per huruf. Tanpa pemisahan
+   * ini, pemanggil yang "menambah sesuatu" di `onValueChange` akan menambah
+   * satu entri untuk tiap huruf: mengetik "WARNA" menghasilkan W, WA, WAR,
+   * WARN, WARNA.
+   */
+  onCommit?: (value: string) => void
   options: ComboboxOption[]
   placeholder?: string
   /** Ditampilkan di bawah daftar saat teks yang diketik tidak cocok dengan opsi manapun. */
@@ -24,7 +35,10 @@ type ComboboxProps = {
   disabled?: boolean
 }
 
-const MAX_VISIBLE_OPTIONS = 30
+// Cukup untuk menampung seluruh master atribut (61 saat ini) tanpa memotong
+// diam-diam. Sebelumnya 30, dan itu membuat separuh atribut yang ada di sistem
+// tidak pernah muncul di daftar saran — terlihat seperti datanya hilang.
+const MAX_VISIBLE_OPTIONS = 200
 // Sesuai `max-h-52` (13rem = 208px) pada dropdown + margin 4px terhadap input.
 const DROPDOWN_MAX_HEIGHT = 212
 
@@ -44,6 +58,7 @@ const DROPDOWN_MAX_HEIGHT = 212
 export function Combobox({
   value,
   onValueChange,
+  onCommit,
   options,
   placeholder,
   createHint,
@@ -115,7 +130,24 @@ export function Combobox({
         placeholder={placeholder}
         onChange={(e) => onValueChange(e.target.value)}
         onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
+        onBlur={() => {
+          setOpen(false)
+          // Teks yang sudah diketik ikut ditetapkan saat meninggalkan input,
+          // supaya admin tidak kehilangan isian karena lupa menekan Enter.
+          if (onCommit && value.trim()) onCommit(value.trim())
+        }}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return
+          // Enter di dalam form ini berarti "pakai nilai ini", bukan submit —
+          // submit tak sengaja akan menyimpan produk yang belum selesai diisi.
+          e.preventDefault()
+          const first = filtered[0]
+          const chosen = first && !value.trim() ? first.label : value.trim()
+          if (!chosen) return
+          onValueChange(chosen)
+          onCommit?.(chosen)
+          setOpen(false)
+        }}
         autoComplete="off"
         className={inputClassName}
       />
@@ -143,6 +175,7 @@ export function Combobox({
                   onMouseDown={(e) => {
                     e.preventDefault()
                     onValueChange(option.label)
+                    onCommit?.(option.label)
                     setOpen(false)
                   }}
                   className={cn(

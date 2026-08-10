@@ -1,13 +1,12 @@
 "use client";
 
-import Image from "next/image";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ArrowRight, ShoppingCart, Percent } from "lucide-react";
-import WhatsappIcon from "@/components/icons/whatsapp-icon";
-import FlameIcon from "@/components/icons/fire-icon";
-import EyeIcon from "@/components/icons/eye-icon";
-import { buildWhatsAppUrl } from "@/lib/api/whatsapp";
+import Image from "next/image"
+import Link from "next/link"
+import { LayoutGrid, ShoppingCart, Percent } from "lucide-react"
+import WhatsappIcon from "@/components/icons/whatsapp-icon"
+import FlameIcon from "@/components/icons/fire-icon"
+import EyeIcon from "@/components/icons/eye-icon"
+import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 
 import { formatRupiah } from "@/lib/utils";
 import { getBadgeColorClass } from "@/lib/utils/product";
@@ -54,7 +53,6 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product, priority = false }: ProductCardProps) {
-  const router = useRouter()
   const addItem = useCartStore((state) => state.addItem)
   const { flyToCart, showCartToast } = useFlyToCart()
   const [isAdding, setIsAdding] = useState(false)
@@ -84,9 +82,16 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
   const handleAddToCart = (event: React.MouseEvent) => {
     if (isAdding) return;
 
+    // Produk bervariasi tidak bisa langsung masuk keranjang dari kartu —
+    // variannya harus dipilih dulu. Quick View dibuka di tempat, bukan
+    // memindahkan pembeli ke halaman produk: pilihan varian, harga, dan tombol
+    // keranjang sudah lengkap di sana, jadi ia bisa menyelesaikan pembelian
+    // tanpa kehilangan posisi di daftar katalog.
     if (!isSimpleProduct) {
-      router.push(`/product/${product.slug}`);
-      return;
+      event.preventDefault()
+      event.stopPropagation()
+      setIsQuickViewOpen(true)
+      return
     }
 
     event.preventDefault();
@@ -258,17 +263,13 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
               pernah bisa didapat siapa pun — tidak ada mekanisme member di situs
               ini, dan sekarang tidak ada akun sama sekali. Lihat CLAUDE.md §2.7. */}
 
-            {/* Footer of Card: Sold count and Cart icon */}
-            <div className="mt-2 flex items-center justify-between pt-2">
-              <span className="text-[10px] text-muted-foreground">
-                {product.sold > 0 ? `Terjual ${product.sold}+` : ""}
-              </span>
+            {/* Footer of Card: Cart icon. Jumlah terjual sengaja tidak ditampilkan
+                — angkanya berasal dari view count hasil migrasi, bukan penjualan
+                sungguhan, jadi menampilkannya menyesatkan pembeli. */}
+            <div className="mt-2 flex items-center justify-end pt-2">
               <div className="flex items-center gap-1.5">
                 <a
-                  href={buildWhatsAppUrl(
-                    process.env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER || "",
-                    waMessage,
-                  )}
+                  href={buildWhatsAppUrl(process.env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER || "", waMessage)}
                   target="_blank"
                   rel="noopener noreferrer"
                   title="Pesan via WhatsApp"
@@ -284,20 +285,16 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
                 <button
                   onClick={handleAddToCart}
                   disabled={isAdding}
-                  title={
-                    isSimpleProduct ? "Tambah ke keranjang" : "Pilih varian"
-                  }
+                  title={isSimpleProduct ? "Tambah ke keranjang" : "Pilih varian"}
                   className="relative z-20 flex h-7 w-7 items-center justify-center rounded-full bg-secondary text-foreground transition-all duration-300 ease-in-out group-hover:bg-brand-green group-hover:text-white cursor-pointer hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed"
-                  aria-label={
-                    isSimpleProduct
-                      ? "Tambah ke keranjang"
-                      : "Lihat pilihan varian"
-                  }
+                  aria-label={isSimpleProduct ? "Tambah ke keranjang" : "Lihat pilihan varian"}
                 >
                   {isSimpleProduct ? (
                     <ShoppingCart className="h-3.5 w-3.5" />
                   ) : (
-                    <ArrowRight className="h-3.5 w-3.5" />
+                    // Ikon kisi, bukan panah: panah berarti "pergi ke halaman
+                    // lain", padahal tombol ini membuka pilihan varian di tempat.
+                    <LayoutGrid className="h-3.5 w-3.5" />
                   )}
                 </button>
               </div>

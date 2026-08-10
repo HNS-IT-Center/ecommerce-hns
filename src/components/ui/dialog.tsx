@@ -6,9 +6,72 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
+import { useBackToClose } from "@/hooks/use-back-to-close"
 
-function Dialog({ ...props }: DialogPrimitive.Root.Props) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+/**
+ * Dipasang di akar, bukan di tiap pemanggil: dengan begitu SEMUA dialog —
+ * quick view, pilih komponen PC, konfirmasi hapus — ikut tertutup oleh tombol
+ * Back tanpa perlu diingat satu per satu saat dialog baru dibuat nanti.
+ */
+function Dialog({
+  open,
+  onOpenChange,
+  actionsRef,
+  ...props
+}: DialogPrimitive.Root.Props) {
+  // Dialog tak terkendali mengurus keadaan bukanya sendiri. Keadaan itu diikuti
+  // di sini supaya kedua gaya pemakaian sama-sama tertangani — untuk dialog
+  // terkendali, prop `open` yang menjadi sumber kebenaran dan state ini hanya
+  // dipakai sebagai cadangan.
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false)
+  const isOpen = open !== undefined ? open : uncontrolledOpen
+
+  const handleOpenChange: NonNullable<DialogPrimitive.Root.Props["onOpenChange"]> = (
+    nextOpen,
+    eventDetails
+  ) => {
+    setUncontrolledOpen(nextOpen)
+    onOpenChange?.(nextOpen, eventDetails)
+  }
+
+  /**
+   * Penutupan dijalankan lewat `actionsRef.close()` milik Base UI, bukan dengan
+   * memanggil `onOpenChange` sendiri: memanggilnya langsung berarti harus
+   * mengarang objek `eventDetails` yang tidak punya asal-usul, dan itu akan
+   * berbohong kepada pemanggil tentang APA yang menutup dialognya. Aksi
+   * imperatif ini memang disediakan persis untuk keperluan seperti ini, dan
+   * bekerja sama benarnya untuk dialog terkendali maupun tidak.
+   */
+  const internalActionsRef = React.useRef<DialogPrimitive.Root.Actions | null>(null)
+  const closeFromBackButton = React.useCallback(() => {
+    internalActionsRef.current?.close()
+  }, [])
+
+  useBackToClose(isOpen, closeFromBackButton)
+
+  // Callback ref: menyimpan ke ref internal DAN meneruskan ke milik pemanggil.
+  // Tanpa penerusan itu, memasang ref sendiri akan diam-diam mematikan
+  // `actionsRef` yang mungkin sudah dipakai di tempat lain.
+  //
+  // Base UI meneruskan prop ini ke `useImperativeHandle`, yang menerima callback
+  // ref sama seperti objek ref — tipenya saja yang dipersempit ke RefObject.
+  const setActionsRef = React.useCallback(
+    (value: DialogPrimitive.Root.Actions | null) => {
+      internalActionsRef.current = value
+      if (actionsRef) actionsRef.current = value
+    },
+    [actionsRef]
+  )
+
+  return (
+    <DialogPrimitive.Root
+      data-slot="dialog"
+      open={open}
+      onOpenChange={handleOpenChange}
+      actionsRef={setActionsRef as unknown as typeof actionsRef}
+      {...props}
+    />
+  )
 }
 
 function DialogTrigger({ ...props }: DialogPrimitive.Trigger.Props) {

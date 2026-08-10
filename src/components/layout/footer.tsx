@@ -68,6 +68,11 @@ export async function Footer() {
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li><Link href="/support" className="hover:text-foreground hover:underline">Pusat Bantuan & Klaim Garansi</Link></li>
               <li><Link href="/faq" className="hover:text-foreground hover:underline">FAQ</Link></li>
+              {/* Footer dirender di setiap halaman, jadi tautan ini sekaligus
+                  jalan masuk crawler ke /tools. Sebelumnya halaman itu tidak
+                  ditaut dari mana pun — dan halaman tanpa tautan masuk praktis
+                  tidak pernah ditelusuri mesin pencari. */}
+              <li><Link href="/tools" className="hover:text-foreground hover:underline">Tes Keyboard, Mouse & Gamepad</Link></li>
               <li><Link href="/kebijakan/pengembalian-barang" className="hover:text-foreground hover:underline">Kebijakan Pengembalian Barang</Link></li>
               <li><Link href="/kebijakan/pengembalian-dana" className="hover:text-foreground hover:underline">Kebijakan Pengembalian Dana</Link></li>
               <li><Link href="/kebijakan/pembatalan-pesanan" className="hover:text-foreground hover:underline">Kebijakan Pembatalan Pesanan</Link></li>

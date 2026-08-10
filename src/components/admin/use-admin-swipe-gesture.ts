@@ -5,7 +5,12 @@ import { useSidebar } from "@/components/ui/sidebar"
 
 /**
  * Admin Swipe Gesture hook
- * Opens sidebar on confident left-to-right swipe.
+ * Opens sidebar on confident right-to-left swipe.
+ *
+ * Arahnya mengikuti sisi munculnya panel (`mobileSide="right"` di AppSidebar):
+ * panel yang masuk dari kanan ditarik dengan usapan KE KIRI, seolah menyeret
+ * panelnya keluar. Usapan ke arah berlawanan akan terasa seperti mendorong
+ * panel menjauh justru untuk memunculkannya.
  *
  * Rules:
  * - Gesture must start anywhere on screen (not just edge)
@@ -54,21 +59,23 @@ export function useAdminSwipeGesture() {
       const dy = touch.clientY - touchStart.current.y
       const duration = e.timeStamp - (e as any).startTime || 300
 
-      // Must be moving right
-      if (dx < 0) {
+      // Must be moving left (panel masuk dari kanan)
+      if (dx > 0) {
         touchStart.current = null
         return
       }
 
+      const distance = Math.abs(dx)
+
       // Angle check: horizontal must dominate
-      const angleRatio = Math.abs(dy) / Math.abs(dx)
+      const angleRatio = Math.abs(dy) / distance
       if (angleRatio > MAX_ANGLE_RATIO) {
         touchStart.current = null
         return
       }
 
       // Distance check
-      if (dx < MIN_SWIPE_DISTANCE) {
+      if (distance < MIN_SWIPE_DISTANCE) {
         touchStart.current = null
         return
       }

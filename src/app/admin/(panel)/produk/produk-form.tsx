@@ -1,5 +1,6 @@
 "use client"
 
+import * as React from "react"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useForm, useFieldArray } from "react-hook-form"
@@ -13,6 +14,7 @@ import {
   PackageSearch,
   Wallet,
   Layers,
+  Lock,
   FolderTree,
   Images,
   CheckCircle2,
@@ -30,6 +32,7 @@ import { AttributeRow } from "./attribute-row"
 import { ImageUploader, type ProductImageItem } from "./image-uploader"
 import { VideoUploader } from "./video-uploader"
 import { SpecEditor } from "./spec-editor"
+import { VariationEditor } from "./variation-editor"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -129,11 +132,14 @@ export function ProdukForm({
     resolver: zodResolver(productFormSchema),
     defaultValues: {
       name: "",
+      type: "simple",
       description: "",
       shortDescription: "",
       regularPrice: "",
       salePrice: "",
       salePriceDateEnd: "",
+      variationAttributes: [],
+      variations: [],
       manageStock: false,
       stockStatus: "instock",
       stockQuantity: undefined,
@@ -149,11 +155,55 @@ export function ProdukForm({
 
   const { fields, append, remove } = useFieldArray({ control, name: "attributes" })
   const selectedCategoryIds = watch("categoryIds")
+  const productType = watch("type")
+  const variationAttributes = watch("variationAttributes") ?? []
+  const variations = watch("variations") ?? []
+  const isVariableProduct = productType === "variable"
+  const hasExistingVariations = (defaultValues?.variations?.length ?? 0) > 0
+
+  /**
+   * Pesan galat per baris varian, dikunci indeksnya.
+   *
+   * `errors.variations` dari react-hook-form adalah array JARANG (sparse):
+   * indeks yang barisnya tidak bermasalah berisi lubang, dan `Array.prototype.map`
+   * mempertahankan lubang itu apa adanya. Melewatkannya langsung ke
+   * `Object.fromEntries` melempar "Iterator value undefined is not an entry
+   * object" — persis yang terjadi saat admin menambah baris varian baru, karena
+   * baris kosong itu membuat sebagian indeks bermasalah dan sebagian tidak.
+   *
+   * Karena itu dirakit dengan perulangan biasa yang melewati entri kosong,
+   * bukan `map` + `fromEntries`.
+   */
+  const variationRowErrors = React.useMemo(() => {
+    const rows = errors.variations
+    if (!Array.isArray(rows)) return {}
+
+    const result: Record<number, string | undefined> = {}
+    rows.forEach((rowError, index) => {
+      if (!rowError) return
+      const message =
+        rowError.message ??
+        rowError.regularPrice?.message ??
+        rowError.attributes?.message
+      if (message) result[index] = message
+    })
+    return result
+  }, [errors.variations])
+
+  // Saran untuk baris Spesifikasi, tanpa atribut yang sedang dipakai sebagai
+  // pembeda varian — perannya per produk, jadi penyaringan ini juga per produk
+  // dan tidak mengubah master atribut.
+  const selectableAttributeOptions = React.useMemo(() => {
+    if (!isVariableProduct || variationAttributes.length === 0) return attributeOptions
+    const taken = new Set(variationAttributes.map((name) => name.trim().toLowerCase()))
+    return attributeOptions.filter((attr) => !taken.has(attr.name.trim().toLowerCase()))
+  }, [isVariableProduct, variationAttributes, attributeOptions])
   const description = watch("description") ?? ""
   const regularPrice = watch("regularPrice") ?? ""
   const salePrice = watch("salePrice") ?? ""
   const salePriceDateEnd = watch("salePriceDateEnd") ?? ""
   const stockStatus = watch("stockStatus")
+  const stockQuantity = watch("stockQuantity")
   const videoUrl = watch("videoUrl") ?? ""
   const status = watch("status")
   const brand = watch("brand") ?? ""
@@ -177,6 +227,46 @@ export function ProdukForm({
    * dalam urutan yang sama persis dengan yang terlihat di galeri — urutan itu
    * yang menentukan gambar utama di sisi pembeli.
    */
+  /**
+   * Unggah gambar varian yang masih ditahan di klien.
+   *
+   * Mengembalikan URL per indeks varian; indeks yang gambarnya tidak diganti
+   * bernilai `undefined` sehingga pemanggil bisa mempertahankan URL lama.
+   *
+   * Dijalankan bersama unggahan galeri utama saat Simpan ditekan — bukan saat
+   * berkas dipilih — supaya membatalkan form tidak meninggalkan berkas yatim
+   * di R2.
+   */
+  async function uploadPendingVariationImages(
+    variations: ProductFormValues["variations"],
+  ): Promise<(string | undefined)[]> {
+    const pending = variations.filter((v) => v.imageFile).length
+    if (pending === 0) return variations.map(() => undefined)
+
+    const urls: (string | undefined)[] = []
+    let uploaded = 0
+
+    for (const variation of variations) {
+      if (!variation.imageFile) {
+        urls.push(undefined)
+        continue
+      }
+
+      uploaded += 1
+      setUploadProgress(`Mengunggah gambar varian ${uploaded} dari ${pending}…`)
+
+      const formData = new FormData()
+      formData.append("file", variation.imageFile)
+      const res = await fetch("/api/admin/media", { method: "POST", body: formData })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Upload gambar varian gagal")
+      urls.push(data.source_url as string)
+    }
+
+    setUploadProgress(null)
+    return urls
+  }
+
   async function uploadPendingImages(): Promise<string[]> {
     const urls: string[] = []
     let uploaded = 0
@@ -219,10 +309,14 @@ export function ProdukForm({
 
     try {
       const imageUrls = await uploadPendingImages()
+      const variationImageUrls = await uploadPendingVariationImages(values.variations)
 
       const payload = {
         name: values.name,
-        type: "simple" as const,
+        // Dulu dipatok "simple". Saat admin menyimpan produk bervariasi, tipenya
+        // ikut turun jadi simple dan seluruh varian kehilangan induk — data
+        // rusak diam-diam tanpa pesan error. Sekarang tipenya ikut pilihan form.
+        type: values.type,
         status: values.status,
         description: values.description || "",
         short_description: values.shortDescription || "",
@@ -237,13 +331,43 @@ export function ProdukForm({
             : "",
         manage_stock: values.stockStatus === "instock" && values.stockQuantity !== undefined,
         stock_status: values.stockStatus,
-        stock_quantity: values.stockStatus === "instock" ? values.stockQuantity : 0,
+        // `null`, bukan 0, saat jumlah tidak diisi.
+        //
+        // "Tersedia" tanpa angka berarti stok TIDAK dilacak per jumlah — barang
+        // ada, jumlahnya saja yang tidak dihitung. Mengirim 0 membuat server
+        // membacanya sebagai "stok nol" lalu menurunkan statusnya jadi habis,
+        // sehingga produk yang baru saja ditandai tersedia langsung tampil
+        // "Stok Habis" di toko.
+        stock_quantity: values.stockStatus === "instock" ? values.stockQuantity ?? null : null,
         categories: values.categoryIds.map((id) => ({ id })),
-        attributes: values.attributes.map((attr) => ({
-          name: attr.name,
-          options: [attr.value],
-          visible: true,
-        })),
+        // Baris tanpa nilai disaring: admin bisa saja mengetik nama atribut
+        // lalu berpindah tanpa mengisinya, dan atribut kosong tidak punya arti
+        // di halaman produk.
+        attributes: values.attributes
+          .filter((attr) => attr.name.trim() && attr.values.length > 0)
+          .map((attr) => ({
+            name: attr.name,
+            options: attr.values,
+            visible: true,
+          })),
+        // Dikirim hanya untuk produk bervariasi. Pada produk simple, field ini
+        // sengaja dibiarkan undefined supaya server tidak menyentuh varian sama
+        // sekali — mengirim array kosong justru berarti "hapus semua varian".
+        ...(values.type === "variable" && {
+          variation_attributes: values.variationAttributes,
+          variations: values.variations.map((variation, index) => ({
+            id: variation.id,
+            attributes: variation.attributes,
+            sku: variation.sku || "",
+            regular_price: variation.regularPrice,
+            sale_price: variation.salePrice || "",
+            stock_status: variation.stockStatus,
+            stock_quantity: variation.stockQuantity,
+            // URL hasil unggahan menang atas URL lama: kalau admin mengganti
+            // gambar varian, berkas baru itulah yang dipakai.
+            image_url: variationImageUrls[index] ?? variation.imageUrl ?? null,
+          })),
+        }),
         images: imageUrls.map((url) => ({ url })),
         video_url: values.videoUrl || null,
         brand: values.brand || null,
@@ -551,7 +675,89 @@ export function ProdukForm({
                 <SectionHeading icon={Wallet} title="Harga & Stok" accent="bg-success/10 text-success" />
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <Label className="mb-2">Tipe Produk</Label>
+                  <RadioGroup
+                    value={productType}
+                    onValueChange={(val) =>
+                      setValue("type", val as ProductFormValues["type"], {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      })
+                    }
+                    className="flex flex-col gap-2 sm:flex-row sm:gap-3"
+                  >
+                    {[
+                      { value: "simple", label: "Produk Biasa", hint: "Satu harga, satu stok" },
+                      {
+                        value: "variable",
+                        label: "Produk Bervariasi",
+                        hint: "Punya pilihan (warna/ukuran) dengan harga & stok sendiri",
+                      },
+                    ].map((option) => (
+                      <label
+                        key={option.value}
+                        className={cn(
+                          "flex flex-1 cursor-pointer items-start gap-2 rounded-lg border p-2.5 transition-colors",
+                          productType === option.value
+                            ? "border-primary bg-primary/5"
+                            : "border-input hover:border-primary/50",
+                        )}
+                      >
+                        <RadioGroupItem value={option.value} className="mt-0.5" />
+                        <span>
+                          <span className="block text-xs font-semibold">{option.label}</span>
+                          <span className="block text-[11px] text-muted-foreground">{option.hint}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </RadioGroup>
+                  {isVariableProduct && hasExistingVariations && (
+                    <p className="mt-1.5 text-[11px] text-muted-foreground">
+                      Produk ini punya {defaultValues?.variations?.length} varian. Untuk mengubahnya jadi
+                      produk biasa, hapus semua varian dulu di tabel di bawah.
+                    </p>
+                  )}
+                </div>
+
+                {isVariableProduct && (
+                  <div className="rounded-xl border border-border p-3">
+                    <Label className="mb-2 block">Varian Produk</Label>
+                    <VariationEditor
+                      attributes={variationAttributes}
+                      onAttributesChange={(next) =>
+                        setValue("variationAttributes", next, { shouldDirty: true, shouldValidate: true })
+                      }
+                      variations={variations}
+                      onVariationsChange={(next) =>
+                        setValue("variations", next, { shouldDirty: true, shouldValidate: true })
+                      }
+                      attributeOptions={attributeOptions}
+                      // Hanya gambar yang sudah punya URL: berkas yang masih
+                      // menunggu diunggah belum bisa dirujuk varian.
+                      galleryImages={images
+                        .filter((img) => img.uploadedUrl)
+                        .map((img) => ({ id: img.id, url: img.uploadedUrl! }))}
+                      attributesError={errors.variationAttributes?.message}
+                      variationsError={
+                        Array.isArray(errors.variations)
+                          ? undefined
+                          : errors.variations?.message
+                      }
+                      errors={variationRowErrors}
+                    />
+                  </div>
+                )}
+
+                <div
+                  className={cn(
+                    "grid grid-cols-1 gap-4 sm:grid-cols-2",
+                    // Produk bervariasi tidak punya harga sendiri — harganya nempel
+                    // di tiap varian, dan halaman produk menampilkan "mulai dari"
+                    // varian termurah.
+                    isVariableProduct && "hidden",
+                  )}
+                >
                   <div>
                     <Label htmlFor="regularPrice" className="mb-1.5">
                       Harga Normal
@@ -657,14 +863,26 @@ export function ProdukForm({
                       <Label htmlFor="stockQuantity" className="mb-1.5">
                         Jumlah Stok (opsional)
                       </Label>
+                      {/* `value` dikendalikan eksplisit, bukan diserahkan ke
+                          `register` — lihat catatan yang sama di
+                          quick-edit-modal.tsx. Input di sini komponen Base UI,
+                          yang mengubah `value: undefined` pada input number
+                          menjadi 0, sehingga "belum diisi" tampil sebagai stok
+                          nol. */}
                       <Input
                         id="stockQuantity"
                         type="number"
+                        min={0}
                         className={FIELD_TEXT}
                         placeholder="Kosongkan jika tidak dilacak per jumlah"
-                        {...register("stockQuantity", {
-                          setValueAs: (v) => (v === "" || v === null ? undefined : Number(v)),
-                        })}
+                        value={stockQuantity ?? ""}
+                        onChange={(e) =>
+                          setValue(
+                            "stockQuantity",
+                            e.target.value === "" ? undefined : Number(e.target.value),
+                            { shouldDirty: true, shouldValidate: true },
+                          )
+                        }
                         onWheel={(e) => e.currentTarget.blur()}
                       />
                     </div>
@@ -740,36 +958,72 @@ export function ProdukForm({
             dropdown bersebelahan, yang tidak muat di kolom kanan. */}
         <Card>
           <CardHeader className="flex-row items-center justify-between">
-            <SectionHeading icon={Layers} title="Spesifikasi / Atribut" accent="bg-info/10 text-info" />
+            <SectionHeading icon={Layers} title="Spesifikasi Produk" accent="bg-info/10 text-info" />
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => append({ name: "", value: "" })}
+              onClick={() => append({ name: "", values: [] })}
             >
               <Plus className="h-3.5 w-3.5" />
               Tambah Atribut
             </Button>
           </CardHeader>
           <CardContent className="space-y-2">
+            <p className="text-[11px] leading-relaxed text-muted-foreground">
+              Spesifikasi berlaku untuk <strong>semua varian</strong> produk ini — mis. &ldquo;DDR 5&rdquo;
+              atau &ldquo;16 GB&rdquo;, yang sama di tiap pilihan warna.
+            </p>
+
+            {/* Atribut pembeda varian ikut ditampilkan tapi dikunci.
+                Menyembunyikannya sama sekali membuat admin bingung kenapa WARNA
+                "tidak ada" di spesifikasi padahal tampil di halaman produk;
+                membiarkannya bisa diedit membuat dua sumber kebenaran yang akan
+                berselisih dengan tabel varian. */}
+            {isVariableProduct && variationAttributes.length > 0 && (
+              <div className="rounded-xl border border-info/30 bg-info/5 px-3 py-2.5">
+                <p className="mb-1.5 text-[11px] font-semibold text-info">
+                  Dipakai sebagai pembeda varian
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {variationAttributes.map((name) => (
+                    <span
+                      key={name}
+                      className="inline-flex items-center gap-1 rounded-md bg-info/10 px-2 py-1 text-[11px] font-medium text-info"
+                    >
+                      <Lock className="h-3 w-3" />
+                      {name}
+                    </span>
+                  ))}
+                </div>
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  Nilainya diatur per varian di bagian <strong>Harga &amp; Stok</strong> di atas, jadi
+                  tidak bisa diubah dari sini.
+                </p>
+              </div>
+            )}
+
             {fields.length === 0 && (
               <p className="rounded-xl border border-dashed border-input px-3 py-3 text-center text-xs text-muted-foreground">
-                Belum ada atribut. Klik &quot;Tambah Atribut&quot; untuk menambahkan.
+                Belum ada spesifikasi. Klik &quot;Tambah Atribut&quot; untuk menambahkan.
               </p>
             )}
             {fields.map((field, index) => (
               <AttributeRow
                 key={field.id}
                 name={watch(`attributes.${index}.name`) ?? ""}
-                value={watch(`attributes.${index}.value`) ?? ""}
+                values={watch(`attributes.${index}.values`) ?? []}
                 onNameChange={(v) =>
                   setValue(`attributes.${index}.name`, v, { shouldDirty: true })
                 }
-                onValueChange={(v) =>
-                  setValue(`attributes.${index}.value`, v, { shouldDirty: true })
+                onValuesChange={(v) =>
+                  setValue(`attributes.${index}.values`, v, { shouldDirty: true })
                 }
                 onRemove={() => remove(index)}
-                attributeOptions={attributeOptions}
+                // Atribut yang sudah jadi pembeda varian dikeluarkan dari saran,
+                // supaya admin tidak memilihnya lagi di sini dan membuat nilai
+                // spesifikasi yang bertabrakan dengan nilai per varian.
+                attributeOptions={selectableAttributeOptions}
               />
             ))}
           </CardContent>

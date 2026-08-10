@@ -1,7 +1,7 @@
 import { revalidateTag, unstable_cache } from "next/cache";
 import { ProductStatus, ProductType, StockStatus, type Prisma } from "@prisma/client";
 import { getPrisma } from "@/lib/prisma/client";
-import { prismaProductToWoo } from "./db-mapper";
+import { prismaProductToWoo, STOCK_STATUS_TO_WOO } from "./db-mapper";
 import type {
   Product,
   GetProductsParams,
@@ -22,14 +22,24 @@ const productInclude = {
   // menambah urutan kedua akan mengubah kategori yang tampil untuk 2.861 produk
   // yang belum punya penanda, dan itu di luar cakupan perubahan ini.
   categories: { include: { category: true }, orderBy: { isPrimary: 'desc' as const } },
-  tags: { include: { tag: true } },
+  // `tags` sengaja TIDAK ditarik: relasinya tidak pernah dibaca
+  // `prismaProductToWoo` dan tipe `Product` pun tidak punya field tag. Dulu ikut
+  // di sini dan menambah ~42 ms pada setiap query 25 produk — biaya penuh untuk
+  // data yang langsung dibuang.
   images: { orderBy: { position: 'asc' as const } },
   attributes: {
     include: { attribute: true, value: true },
     orderBy: { position: 'asc' as const },
   },
+  // Varian hanya dipakai untuk dua hal oleh mapper: menghitung harga "mulai
+  // dari" (butuh harga saja) dan menandai atribut mana yang membedakan varian
+  // (butuh nama atributnya). Menarik seluruh kolom tiap anak menambah ~83 ms
+  // per 25 produk tanpa ada yang membacanya.
   variations: {
-    include: {
+    select: {
+      wooId: true,
+      regularPrice: true,
+      salePrice: true,
       attributes: { include: { attribute: true, value: true } },
     },
   },
@@ -71,6 +81,19 @@ const STATUS_FROM_PARAM = {
   publish: ProductStatus.PUBLISHED,
   draft: ProductStatus.DRAFT,
   private: ProductStatus.PRIVATE,
+} as const;
+
+const STOCK_STATUS_FROM_PARAM = {
+  instock: StockStatus.INSTOCK,
+  outofstock: StockStatus.OUTOFSTOCK,
+  onbackorder: StockStatus.ONBACKORDER,
+} as const;
+
+const TYPE_FROM_PARAM = {
+  simple: ProductType.SIMPLE,
+  variable: ProductType.VARIABLE,
+  grouped: ProductType.GROUPED,
+  external: ProductType.EXTERNAL,
 } as const;
 
 function buildPrismaWhere(params: GetProductsParams): Prisma.ProductWhereInput {
@@ -170,6 +193,17 @@ function buildPrismaWhere(params: GetProductsParams): Prisma.ProductWhereInput {
     where.featured = true;
   }
 
+  // Sebelumnya `stock_status` diteruskan pemanggil tapi tidak pernah dibaca di
+  // sini, sehingga filter "Stok Kosong" di admin tidak menyaring apa pun —
+  // daftar tetap menampilkan seluruh produk.
+  if (params.stock_status) {
+    where.stockStatus = STOCK_STATUS_FROM_PARAM[params.stock_status];
+  }
+
+  if (params.type) {
+    where.type = TYPE_FROM_PARAM[params.type];
+  }
+
   if (params.minPrice !== undefined || params.maxPrice !== undefined) {
     where.regularPrice = {};
     if (params.minPrice !== undefined) where.regularPrice.gte = params.minPrice;
@@ -215,6 +249,42 @@ export async function getProducts(
 
   const products = await fetcher();
   return products.map(decodeProduct);
+}
+
+/** Satu entri produk untuk peta situs — hanya yang dibutuhkan `<url>`. */
+export type ProductSitemapEntry = {
+  slug: string;
+  updatedAt: Date;
+};
+
+/**
+ * Daftar slug produk terbit untuk peta situs.
+ *
+ * Sengaja TIDAK memakai `getProducts`: fungsi itu ikut menarik gambar, atribut,
+ * variasi, dan deskripsi lengkap tiap produk. Untuk ~2.800 produk hasilnya
+ * sekitar 8 MB — melewati batas 2 MB data cache Next.js, sehingga cache-nya
+ * gagal diam-diam dan seluruh query berat itu diulang setiap peta situs
+ * dibangun ulang. Peta situs hanya perlu dua kolom, dan dua kolom itu muat
+ * dengan sangat lapang.
+ */
+export async function getProductsForSitemap(
+  limit: number
+): Promise<ProductSitemapEntry[]> {
+  const fetcher = unstable_cache(
+    async () => {
+      const products = await getPrisma().product.findMany({
+        where: { parentId: null, status: ProductStatus.PUBLISHED },
+        select: { slug: true, updatedAt: true },
+        orderBy: { id: "desc" },
+        take: limit,
+      });
+      return products;
+    },
+    [`products-sitemap-${limit}`],
+    { revalidate: 3600, tags: ["products", "all-products"] }
+  );
+
+  return fetcher();
 }
 
 export type GetProductsPaginatedResult = {
@@ -295,44 +365,194 @@ export async function getProductById(id: number): Promise<Product | null> {
   }
 }
 
-/** Detail per varian (harga/stok/SKU spesifik) untuk produk `type: "variable"`. */
-export async function getProductVariations(productId: number): Promise<ProductVariation[]> {
-  const fetcher = unstable_cache(
-    async () => {
-      // Find the parent's internal ID
-      const parent = await getPrisma().product.findUnique({ where: { wooId: productId }});
+/**
+ * Versi tanpa cache dari `getProductById`, khusus form edit admin.
+ *
+ * Layar ini adalah satu-satunya tempat data yang dibaca langsung dipakai untuk
+ * MENULIS kembali: staff membuka form, mengubah satu kolom, lalu menyimpan
+ * seluruh isinya. Kalau yang termuat adalah salinan lama, penyimpanan itu
+ * mengembalikan nilai usang ke database tanpa ada yang menyadarinya — kerusakan
+ * senyap yang jauh lebih mahal daripada waktu muat yang dihemat cache.
+ *
+ * Biayanya terukur kecil: halaman ini hanya dibuka segelintir staff, dan tanpa
+ * cache waktu mautnya masih di bawah ambang yang terasa lambat. Halaman produk
+ * publik tetap memakai versi ber-cache di atas — di sana beban trafiknya nyata
+ * dan datanya tidak dipakai untuk menulis.
+ */
+export async function getProductByIdFresh(id: number): Promise<Product | null> {
+  try {
+    const product = await getPrisma().product.findUnique({
+      where: { wooId: id },
+      include: productInclude,
+    });
+    return product ? decodeProduct(prismaProductToWoo(product)) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Kolom & relasi yang benar-benar dibutuhkan sebuah `ProductVariation`.
+ *
+ * Sengaja BUKAN `productInclude`. Bentuk varian jauh lebih sempit dari produk
+ * penuh — tidak ada kategori, tag, brand, maupun deskripsi di dalamnya — dan
+ * menarik relasi itu untuk tiap anak berarti puluhan baris tambahan per
+ * permintaan yang langsung dibuang oleh pemetaan di bawah. Satu induk dengan 12
+ * varian menyeret 12 set kategori dan tag yang tak pernah dibaca.
+ *
+ * Gambar dibatasi satu: varian hanya menampilkan gambar utamanya.
+ */
+const variationSelect = {
+  wooId: true,
+  sku: true,
+  regularPrice: true,
+  salePrice: true,
+  saleEndDate: true,
+  stockStatus: true,
+  stockQty: true,
+  images: { orderBy: { position: "asc" as const }, take: 1 },
+  attributes: {
+    include: { attribute: true, value: true },
+    orderBy: { position: "asc" as const },
+  },
+};
+
+/** Isi sebenarnya dari `getProductVariations`, dipisah supaya bisa dipanggil
+ *  dengan maupun tanpa cache tanpa menduplikasi logikanya. */
+async function fetchProductVariations(productId: number): Promise<ProductVariation[]> {
+      // Dari induk hanya dibutuhkan harga & satu gambar sebagai cadangan —
+      // sebagian besar varian warisan Woo tidak punya gambar sendiri (877 dari
+      // 2.077) dan sebagian tidak punya harga. Menarik induk dengan relasi
+      // lengkap hanya untuk dua nilai itu adalah pemborosan yang terukur.
+      const parent = await getPrisma().product.findUnique({
+        where: { wooId: productId },
+        select: {
+          id: true,
+          name: true,
+          regularPrice: true,
+          salePrice: true,
+          saleEndDate: true,
+          images: { orderBy: { position: "asc" }, take: 1 },
+          variations: { select: { regularPrice: true, salePrice: true } },
+        },
+      });
       if (!parent) return [];
+
+      // Harga induk produk VARIABLE selalu "mulai dari" varian termurah — sama
+      // seperti yang dihitung `prismaProductToWoo`, dihitung ulang di sini
+      // supaya induk tidak perlu ditarik lengkap hanya demi angka ini.
+      const parentPrices = parent.variations
+        .map((v) => ({
+          regular: v.regularPrice != null ? Number(v.regularPrice) : null,
+          sale: v.salePrice != null ? Number(v.salePrice) : null,
+        }))
+        .filter((p): p is { regular: number; sale: number | null } => p.regular !== null);
+
+      const saleExpired =
+        parent.saleEndDate !== null && parent.saleEndDate.getTime() <= Date.now();
+
+      let parentRegular: string;
+      let parentSale: string;
+      if (parentPrices.length > 0) {
+        const minRegular = Math.min(...parentPrices.map((p) => p.regular));
+        const minEffective = Math.min(
+          ...parentPrices.map((p) => (p.sale && p.sale > 0 ? p.sale : p.regular)),
+        );
+        parentRegular = String(minRegular);
+        parentSale = minEffective < minRegular ? String(minEffective) : "";
+      } else {
+        parentRegular = parent.regularPrice ? String(parent.regularPrice) : "0";
+        parentSale = saleExpired || !parent.salePrice ? "" : String(parent.salePrice);
+      }
+
+      const parentImageRow = parent.images[0];
+      const parentImage = parentImageRow
+        ? { id: parentImageRow.id, src: parentImageRow.url, alt: parent.name }
+        : null;
 
       const variations = await getPrisma().product.findMany({
         where: { parentId: parent.id },
-        include: productInclude,
+        select: variationSelect,
+        orderBy: { id: "asc" },
       });
 
       return variations.map((v) => {
-        const woo = prismaProductToWoo(v);
-        // Map WooProduct to ProductVariation format
+        // Varian tanpa harga sendiri mewarisi harga induk ("mulai dari" hasil
+        // agregat varian lain). Tanpa ini, memilih varian tersebut membuat harga
+        // di halaman produk berubah jadi "0".
+        const ownRegular = v.regularPrice != null ? Number(v.regularPrice) : 0;
+        const hasOwnPrice = ownRegular > 0;
+
+        // Obral yang tanggalnya sudah lewat diperlakukan seolah tidak ada —
+        // dihitung saat baca, sama seperti di `prismaProductToWoo`.
+        const ownSaleExpired =
+          v.saleEndDate !== null && v.saleEndDate.getTime() <= Date.now();
+        const ownSale =
+          !ownSaleExpired && v.salePrice != null && Number(v.salePrice) > 0
+            ? String(v.salePrice)
+            : "";
+
+        const regular_price = hasOwnPrice ? String(ownRegular) : parentRegular;
+        const sale_price = hasOwnPrice ? ownSale : parentSale;
+        const price = sale_price || regular_price;
+
+        const imageRow = v.images[0];
+
         return {
-          id: woo.id,
-          sku: woo.sku,
-          price: woo.price,
-          regular_price: woo.regular_price,
-          sale_price: woo.sale_price,
-          on_sale: woo.on_sale,
-          stock_status: woo.stock_status,
-          stock_quantity: woo.stock_quantity,
-          attributes: woo.attributes.map(a => ({
-            id: a.id,
-            name: a.name,
-            option: a.options[0] || "",
-          })),
-          image: woo.images?.[0] || null,
+          id: v.wooId,
+          sku: v.sku ?? "",
+          price,
+          regular_price,
+          sale_price,
+          on_sale: Boolean(sale_price),
+          stock_status: v.stockStatus
+            ? STOCK_STATUS_TO_WOO[v.stockStatus] ?? "instock"
+            : "instock",
+          stock_quantity: v.stockQty,
+          // Satu nilai per atribut, yang PERTAMA menurut `position`.
+          //
+          // Data warisan Woo punya baris rusak yang menyimpan dua nilai untuk
+          // atribut yang sama pada satu varian (mis. woo 15443: UKURAN="1\" dan
+          // UKURAN="5M"). Varian hanya boleh punya satu nilai per atribut —
+          // dengan dua entri bernama sama, pencocokan pilihan di halaman produk
+          // jadi ambigu. Mengambil yang pertama menyamai perilaku lama lewat
+          // `options[0]`, jadi tak ada produk yang berubah tampilannya.
+          attributes: (() => {
+            const seen = new Set<number>();
+            const result: ProductVariation["attributes"] = [];
+            for (const pa of v.attributes) {
+              if (seen.has(pa.attribute.id)) continue;
+              seen.add(pa.attribute.id);
+              result.push({
+                id: pa.attribute.id,
+                name: pa.attribute.name,
+                option: pa.value.value,
+              });
+            }
+            return result;
+          })(),
+          image: imageRow ? { id: imageRow.id, src: imageRow.url, alt: "" } : parentImage,
         };
       });
-    },
+}
+
+/** Detail per varian (harga/stok/SKU spesifik) untuk produk `type: "variable"`. */
+export async function getProductVariations(productId: number): Promise<ProductVariation[]> {
+  const fetcher = unstable_cache(
+    () => fetchProductVariations(productId),
     [`product-${productId}-variations`],
     { revalidate: 300, tags: [`product-${productId}-variations`] }
   );
   return fetcher();
+}
+
+/**
+ * Versi tanpa cache, khusus form edit admin — alasannya sama dengan
+ * `getProductByIdFresh`: isi form ini disimpan kembali ke database, jadi
+ * membacanya dari salinan lama berarti menulis ulang data usang.
+ */
+export async function getProductVariationsFresh(productId: number): Promise<ProductVariation[]> {
+  return fetchProductVariations(productId);
 }
 
 /** Daftar taxonomy atribut global (mis. "Kapasitas Storage" -> slug pa_kapasitas-storage). */
@@ -356,8 +576,11 @@ export async function getProductAttributes(): Promise<ProductAttributeTaxonomy[]
 export async function getProductAttributeTerms(attributeId: number): Promise<ProductAttributeTerm[]> {
   const fetcher = unstable_cache(
     async () => {
+      // Diurutkan supaya daftar saran terbaca konsisten — tanpa ini urutannya
+      // mengikuti urutan sisip, dan 296 nilai WARNA tampil acak.
       const terms = await getPrisma().attributeValue.findMany({
         where: { attributeId },
+        orderBy: { value: "asc" },
       });
       return terms.map(t => ({
         id: t.id,
@@ -607,8 +830,15 @@ export async function bulkAssignCategory(
   });
 }
 
-async function nextWooId(): Promise<number> {
-  const result = await getPrisma().product.aggregate({ _max: { wooId: true } });
+/**
+ * `client` sengaja bisa diisi transaction client: saat membuat banyak varian
+ * sekaligus, id harus dihitung dari data DI DALAM transaksi yang sedang
+ * berjalan. Membacanya lewat koneksi lain akan melewatkan baris yang baru
+ * dibuat beberapa langkah sebelumnya, dan seluruh varian berebut wooId yang
+ * sama sampai unique constraint-nya gagal.
+ */
+async function nextWooId(client: Prisma.TransactionClient | ReturnType<typeof getPrisma> = getPrisma()): Promise<number> {
+  const result = await client.product.aggregate({ _max: { wooId: true } });
   return (result._max.wooId ?? 0) + 1;
 }
 
@@ -667,29 +897,304 @@ async function replaceProductRelations(
     if (input.attributes.length) {
       let position = 0;
       for (const attr of input.attributes) {
-        const value = attr.options[0];
-        if (!attr.name?.trim() || !value?.trim()) continue;
+        if (!attr.name?.trim()) continue;
 
         const attribute = await tx.attribute.upsert({
           where: { name: attr.name.trim() },
           create: { name: attr.name.trim() },
           update: {},
         });
-        const attributeValue = await tx.attributeValue.upsert({
-          where: { attributeId_value: { attributeId: attribute.id, value: value.trim() } },
-          create: { attributeId: attribute.id, value: value.trim() },
-          update: {},
-        });
-        await tx.productAttribute.create({
-          data: {
-            productId,
-            attributeId: attribute.id,
-            valueId: attributeValue.id,
-            position: position++,
-          },
-        });
+
+        // SELURUH nilai disimpan, bukan cuma `options[0]` seperti sebelumnya.
+        // Atribut spek memang hanya punya satu nilai, tapi atribut pembeda
+        // varian membawa seluruh pilihan (mis. 9 warna) — mengambil elemen
+        // pertama saja akan memangkasnya jadi satu dan menghapus pilihan
+        // pembeli di halaman produk.
+        const seen = new Set<string>();
+        for (const rawValue of attr.options) {
+          const value = rawValue?.trim();
+          if (!value || seen.has(value.toLowerCase())) continue;
+          seen.add(value.toLowerCase());
+
+          const valueId = await resolveAttributeValueId(tx, attribute.id, value);
+          await tx.productAttribute.create({
+            data: {
+              productId,
+              attributeId: attribute.id,
+              valueId,
+              position: position++,
+            },
+          });
+        }
       }
     }
+  }
+}
+
+/**
+ * Operasi varian yang ditolak karena akan merusak relasi induk-anak.
+ * Dibedakan dari Error biasa supaya route API bisa membalas 400 dengan pesan
+ * yang bisa dibaca admin, bukan 500 "Gagal menyimpan produk" yang buntu.
+ */
+export class ProductVariationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProductVariationError";
+  }
+}
+
+const STOCK_STATUS_FROM_INPUT = {
+  instock: StockStatus.INSTOCK,
+  outofstock: StockStatus.OUTOFSTOCK,
+  onbackorder: StockStatus.ONBACKORDER,
+} as const;
+
+/**
+ * Cari-atau-buat nilai atribut ("MERAH", "XL", "2 Meter").
+ *
+ * CATATAN KAPITALISASI: kolom `attribute_values.value` memakai kolasi bawaan
+ * MySQL/MariaDB yang mengabaikan besar-kecil huruf, dan unique constraint
+ * `attribute_values_attribute_id_value_key` ikut memakainya. Konsekuensinya
+ * "HITAM" dan "Hitam" TIDAK bisa hidup berdampingan sebagai dua baris — dan
+ * nilai yang lebih dulu ada yang menang.
+ *
+ * Jadi kalau admin mengetik "HITAM" sedangkan database sudah menyimpan "Hitam"
+ * dari data warisan WooCommerce, yang tampil di toko tetap "Hitam". Ini
+ * disengaja dibiarkan: menyeragamkan ejaan lintas 892 nilai atribut yang ada
+ * adalah pekerjaan pembersihan data tersendiri, dan mengubah kolasi kolom
+ * berisiko memecah nilai yang selama ini dianggap sama.
+ *
+ * Perilaku ini identik dengan `upsert`, tapi ditulis eksplisit supaya alasannya
+ * terbaca dan tidak "diperbaiki" jadi sesuatu yang tidak bisa bekerja.
+ */
+async function resolveAttributeValueId(
+  tx: Prisma.TransactionClient,
+  attributeId: number,
+  value: string,
+): Promise<number> {
+  const existing = await tx.attributeValue.findFirst({ where: { attributeId, value } });
+  if (existing) return existing.id;
+
+  const created = await tx.attributeValue.create({ data: { attributeId, value } });
+  return created.id;
+}
+
+/**
+ * Samakan daftar varian di database dengan yang dikirim form.
+ *
+ * Tiap varian disimpan sebagai baris `products` tersendiri bertipe VARIATION
+ * yang menunjuk induk lewat `parentId` — struktur warisan WooCommerce yang
+ * sudah dipakai 2.077 varian yang ada, jadi varian baru mengikuti pola sama
+ * dan tetap terbaca oleh mapper maupun halaman produk.
+ *
+ * Varian lama yang tidak lagi ada di input akan DIHAPUS, jadi pemanggil wajib
+ * mengirim daftar varian yang lengkap, bukan sebagian.
+ */
+async function syncProductVariations(
+  tx: Prisma.TransactionClient,
+  parent: { id: number; name: string; status: ProductStatus },
+  variationAttributes: string[],
+  variations: NonNullable<ProductInput["variations"]>,
+): Promise<void> {
+  // Dipetakan lewat `wooId`, BUKAN id database.
+  //
+  // `ProductVariation.id` yang dibaca form (dari `getProductVariations`) adalah
+  // wooId — identifier publik yang dipakai seluruh sistem. Sebelumnya fungsi ini
+  // mencocokkannya dengan id database, sehingga varian yang sudah ada dianggap
+  // baru: ia mencoba membuat baris duplikat dan gagal pada unique constraint
+  // SKU, atau — kalau SKU-nya kosong — diam-diam menggandakan varian lalu
+  // menghapus yang lama.
+  const existing = await tx.product.findMany({
+    where: { parentId: parent.id },
+    select: { id: true, wooId: true },
+  });
+  const idByWooId = new Map(existing.map((v) => [v.wooId, v.id]));
+  const existingIds = new Set(existing.map((v) => v.id));
+
+  const keptIds = new Set<number>();
+
+  for (const variation of variations) {
+    // Label varian ikut di nama supaya baris VARIATION tetap bisa dikenali saat
+    // dilihat langsung di database atau di log produk.
+    const label = variationAttributes
+      .map((name) => variation.attributes[name])
+      .filter(Boolean)
+      .join(" / ");
+    const name = label ? `${parent.name} - ${label}` : parent.name;
+
+    const data = {
+      name,
+      // Varian mewarisi status induk: varian terbit di bawah induk draft tidak
+      // punya arti, karena halamannya sendiri tidak pernah tampil.
+      status: parent.status,
+      sku: variation.sku?.trim() || null,
+      regularPrice: variation.regular_price || null,
+      salePrice: variation.sale_price || null,
+      stockStatus: STOCK_STATUS_FROM_INPUT[variation.stock_status ?? "instock"],
+      stockQty: variation.stock_quantity ?? null,
+    };
+
+    let variationId: number;
+
+    // Cocokkan lewat wooId lebih dulu; id database tetap diterima supaya
+    // pemanggil lama (mis. skrip) tidak ikut rusak.
+    const matchedId =
+      variation.id === undefined
+        ? undefined
+        : idByWooId.get(variation.id) ?? (existingIds.has(variation.id) ? variation.id : undefined);
+
+    if (matchedId !== undefined) {
+      await tx.product.update({ where: { id: matchedId }, data });
+      variationId = matchedId;
+    } else {
+      const wooId = await nextWooId(tx);
+      const created = await tx.product.create({
+        data: {
+          ...data,
+          wooId,
+          type: ProductType.VARIATION,
+          parentId: parent.id,
+          slug: slugify(name, wooId),
+        },
+      });
+      variationId = created.id;
+    }
+
+    keptIds.add(variationId);
+
+    // Gambar & atribut ditulis ulang seluruhnya — jumlahnya sedikit per varian,
+    // dan cara ini menghindari penelusuran beda yang rumit tanpa manfaat nyata.
+    await tx.productImage.deleteMany({ where: { productId: variationId } });
+    if (variation.image_url?.trim()) {
+      await tx.productImage.create({
+        data: { productId: variationId, url: variation.image_url.trim(), position: 0, isPrimary: true },
+      });
+    }
+
+    await tx.productAttribute.deleteMany({ where: { productId: variationId } });
+    let position = 0;
+    for (const attributeName of variationAttributes) {
+      const value = variation.attributes[attributeName]?.trim();
+      if (!attributeName.trim() || !value) continue;
+
+      const attribute = await tx.attribute.upsert({
+        where: { name: attributeName.trim() },
+        create: { name: attributeName.trim() },
+        update: {},
+      });
+      const valueId = await resolveAttributeValueId(tx, attribute.id, value);
+      await tx.productAttribute.create({
+        data: { productId: variationId, attributeId: attribute.id, valueId, position: position++ },
+      });
+    }
+  }
+
+  // Varian yang dibuang admin ikut dihapus beserta relasinya (onDelete: Cascade
+  // di schema menangani gambar & atribut).
+  const removed = [...existingIds].filter((id) => !keptIds.has(id));
+  if (removed.length) {
+    await tx.product.deleteMany({ where: { id: { in: removed } } });
+  }
+
+  // Induk menyimpan gabungan seluruh nilai varian sebagai daftar pilihan —
+  // ini yang dibaca `prismaProductToWoo` untuk menyusun tombol di halaman produk.
+  //
+  // HANYA atribut pembeda varian yang dihapus di sini. Dulu barisnya
+  // `deleteMany({ productId: parent.id })` tanpa syarat, dan itu menghapus
+  // SELURUH atribut induk — termasuk spesifikasi yang baru saja ditulis
+  // `replaceProductRelations` beberapa langkah sebelumnya (fungsi ini berjalan
+  // sesudahnya). Akibatnya atribut seperti "Motherboard Size" yang dipakai PC
+  // Builder lenyap setiap kali produk bervariasi disimpan, tanpa pesan apa pun.
+  const variationAttributeIds: number[] = [];
+  const attributeByName = new Map<string, { id: number }>();
+  for (const attributeName of variationAttributes) {
+    const trimmedName = attributeName.trim();
+    if (!trimmedName) continue;
+    const attribute = await tx.attribute.upsert({
+      where: { name: trimmedName },
+      create: { name: trimmedName },
+      update: {},
+    });
+    attributeByName.set(attributeName, attribute);
+    variationAttributeIds.push(attribute.id);
+  }
+
+  if (variationAttributeIds.length > 0) {
+    await tx.productAttribute.deleteMany({
+      where: { productId: parent.id, attributeId: { in: variationAttributeIds } },
+    });
+  }
+
+  // Posisi dilanjutkan dari atribut spesifikasi yang sudah ada supaya urutannya
+  // tidak bertabrakan.
+  const lastPosition = await tx.productAttribute.aggregate({
+    where: { productId: parent.id },
+    _max: { position: true },
+  });
+  let parentPosition = (lastPosition._max.position ?? -1) + 1;
+
+  for (const attributeName of variationAttributes) {
+    const attribute = attributeByName.get(attributeName);
+    if (!attribute) continue;
+
+    const seen = new Set<string>();
+    for (const variation of variations) {
+      const value = variation.attributes[attributeName]?.trim();
+      if (!value || seen.has(value.toLowerCase())) continue;
+      seen.add(value.toLowerCase());
+
+      const valueId = await resolveAttributeValueId(tx, attribute.id, value);
+      await tx.productAttribute.create({
+        data: { productId: parent.id, attributeId: attribute.id, valueId, position: parentPosition++ },
+      });
+    }
+  }
+}
+
+/**
+ * Profil kedaluwarsa untuk `revalidateTag`: entri yang ditandai basi langsung
+ * dibuang, bukan disajikan lagi sambil disegarkan di belakang. Ini setara
+ * dengan yang dilakukan `updateTag` secara internal — dipakai lewat
+ * `revalidateTag` karena `updateTag` melempar kalau dipanggil dari route
+ * handler, dan form produk menyimpan lewat /api/admin/products.
+ */
+const EXPIRE_NOW = { expire: 0 } as const;
+
+/**
+ * Buang seluruh cache yang menyangkut satu produk, seketika.
+ *
+ * Dua hal penting yang dulu salah di sini:
+ *
+ * 1. Profil `"max"`. Di Next 16 argumen kedua `revalidateTag` adalah masa hidup
+ *    entri yang sudah ditandai basi — `"max"` justru memberi umur PALING PANJANG,
+ *    sehingga permintaan berikutnya tetap disajikan dari cache lama. Halaman edit
+ *    admin karena itu masih menampilkan harga sebelum penyuntingan. Menghilangkan
+ *    argumennya berarti kedaluwarsa segera, yaitu perilaku `updateTag` —
+ *    yang sendirinya tidak bisa dipakai karena melempar kalau dipanggil dari
+ *    route handler, dan form produk memang menyimpan lewat /api/admin/products.
+ *
+ * 2. Tag varian tidak pernah ikut dibuang, jadi daftar varian bisa basi sampai
+ *    300 detik walau produknya baru saja disunting.
+ *
+ * Slug ikut diterima karena halaman produk publik di-cache per slug, dan slug
+ * berubah setiap kali nama produk diganti — tanpa membuang slug LAMA, halaman
+ * dengan alamat sebelumnya tetap menyajikan isi usang.
+ */
+function invalidateProductCaches(options: {
+  wooId?: number;
+  slugs?: (string | null | undefined)[];
+}): void {
+  // Daftar & katalog selalu ikut, karena harga/nama/stok tampil di sana juga.
+  revalidateTag("products", EXPIRE_NOW);
+  revalidateTag("all-products", EXPIRE_NOW);
+
+  if (options.wooId !== undefined) {
+    revalidateTag(`product-id-${options.wooId}`, EXPIRE_NOW);
+    revalidateTag(`product-${options.wooId}-variations`, EXPIRE_NOW);
+  }
+
+  for (const slug of options.slugs ?? []) {
+    if (slug) revalidateTag(`product-${slug}`, EXPIRE_NOW);
   }
 }
 
@@ -718,13 +1223,16 @@ export async function createProduct(input: ProductInput): Promise<Product> {
         ? StockStatus.ONBACKORDER
         : StockStatus.INSTOCK;
 
+  const isVariable = input.type === "variable";
+  const status = STATUS_FROM_PARAM[input.status ?? "draft"];
+
   const created = await prisma.$transaction(async (tx) => {
     const brandId = await resolveBrandId(tx, input.brand);
     const product = await tx.product.create({
       data: {
         wooId,
-        type: ProductType.SIMPLE,
-        status: STATUS_FROM_PARAM[input.status ?? "draft"],
+        type: isVariable ? ProductType.VARIABLE : ProductType.SIMPLE,
+        status,
         name: input.name,
         slug,
         shortDescription: input.short_description || null,
@@ -739,12 +1247,24 @@ export async function createProduct(input: ProductInput): Promise<Product> {
       },
     });
     await replaceProductRelations(tx, product.id, input);
+
+    // Dijalankan SETELAH replaceProductRelations: fungsi itu menulis atribut
+    // biasa milik induk, sedangkan sinkronisasi varian menulis ulang atribut
+    // induk sebagai daftar pilihan varian. Urutan terbalik akan membuat daftar
+    // pilihan tertimpa dan selector di halaman produk kosong.
+    if (isVariable) {
+      await syncProductVariations(
+        tx,
+        { id: product.id, name: product.name, status },
+        input.variation_attributes ?? [],
+        input.variations ?? [],
+      );
+    }
     return product;
   }, { timeout: 30000 });
 
   const result = await refetchAsWoo(created.id);
-  revalidateTag("products", "max");
-  revalidateTag("all-products", "max");
+  invalidateProductCaches({ wooId, slugs: [slug] });
   return result;
 }
 
@@ -756,6 +1276,27 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
 
   const stockQty = input.stock_quantity;
 
+  // Produk yang punya anak tidak boleh diturunkan jadi SIMPLE begitu saja —
+  // anak-anaknya akan menggantung dengan parentId yang tidak lagi bermakna
+  // (schema memakai onDelete: SetNull, jadi kerusakannya senyap). Admin harus
+  // menghapus varian lebih dulu kalau memang mau mengubahnya jadi produk biasa.
+  if (input.type === "simple" && existing.type === ProductType.VARIABLE) {
+    const variationCount = await prisma.product.count({ where: { parentId: existing.id } });
+    if (variationCount > 0) {
+      throw new ProductVariationError(
+        `Produk ini punya ${variationCount} varian. Hapus semua varian dulu sebelum mengubahnya jadi produk biasa.`,
+      );
+    }
+  }
+
+  const nextStatus = input.status !== undefined ? STATUS_FROM_PARAM[input.status] ?? ProductStatus.DRAFT : existing.status;
+  const nextType =
+    input.type === undefined
+      ? existing.type
+      : input.type === "variable"
+        ? ProductType.VARIABLE
+        : ProductType.SIMPLE;
+
   const updated = await prisma.$transaction(async (tx) => {
     const brandId =
       input.brand !== undefined ? await resolveBrandId(tx, input.brand) : undefined;
@@ -763,6 +1304,7 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
       where: { id: existing.id },
       data: {
         ...(brandId !== undefined && { brandId }),
+        ...(input.type !== undefined && { type: nextType }),
         ...(input.name !== undefined && { name: input.name, slug: slugify(input.name, existing.wooId) }),
         ...(input.status !== undefined && {
           status: STATUS_FROM_PARAM[input.status] ?? ProductStatus.DRAFT,
@@ -775,12 +1317,16 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
           saleEndDate: input.date_on_sale_to_gmt ? new Date(input.date_on_sale_to_gmt) : null,
         }),
         ...(input.video_url !== undefined && { videoUrl: input.video_url || null }),
-        ...(stockQty !== undefined && input.stock_status === undefined && {
+        // Status diturunkan dari jumlah HANYA kalau jumlahnya benar-benar angka
+        // dan status tidak dikirim eksplisit. `null` berarti "tidak dilacak per
+        // jumlah", bukan "nol" — menurunkan status darinya akan menandai habis
+        // produk yang sebenarnya tersedia.
+        ...(typeof stockQty === "number" && input.stock_status === undefined && {
           stockQty,
           stockStatus: stockQty > 0 ? StockStatus.INSTOCK : StockStatus.OUTOFSTOCK,
         }),
         ...(input.stock_status !== undefined && {
-          stockQty: stockQty !== undefined ? stockQty : null,
+          stockQty: stockQty ?? null,
           stockStatus: input.stock_status === 'instock' ? StockStatus.INSTOCK : 
                        input.stock_status === 'outofstock' ? StockStatus.OUTOFSTOCK : 
                        StockStatus.ONBACKORDER,
@@ -791,16 +1337,25 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
     if (input.categories || input.images || input.attributes) {
       await replaceProductRelations(tx, product.id, input as ProductInput);
     }
+
+    // Sama seperti createProduct: harus setelah replaceProductRelations supaya
+    // daftar pilihan varian di induk tidak tertimpa atribut biasa.
+    if (nextType === ProductType.VARIABLE && input.variations !== undefined) {
+      await syncProductVariations(
+        tx,
+        { id: product.id, name: product.name, status: nextStatus },
+        input.variation_attributes ?? [],
+        input.variations,
+      );
+    }
     return product;
   }, { timeout: 30000 });
 
   const result = await refetchAsWoo(updated.id);
-  revalidateTag("products", "max");
-  revalidateTag("all-products", "max");
-  revalidateTag(`product-${existing.slug}`, "max");
-  if (id) {
-    revalidateTag(`product-id-${id}`, "max");
-  }
+  // Slug lama DAN baru dibuang: mengganti nama produk mengubah slug, dan tanpa
+  // membuang yang lama, alamat sebelumnya tetap menyajikan isi usang sampai
+  // masa cache-nya habis.
+  invalidateProductCaches({ wooId: id, slugs: [existing.slug, updated.slug] });
   return result;
 }
 
@@ -831,9 +1386,6 @@ export async function deleteProduct(id: number): Promise<void> {
     await tx.product.delete({ where: { id: product.id } });
   });
 
-  revalidateTag("products", "max");
-  revalidateTag("all-products", "max");
-  revalidateTag(`product-${product.slug}`, "max");
-  revalidateTag(`product-id-${id}`, "max");
+  invalidateProductCaches({ wooId: id, slugs: [product.slug] });
 }
 

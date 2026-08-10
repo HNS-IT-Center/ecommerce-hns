@@ -137,7 +137,17 @@ export function themeToCss(theme: Theme, scope: "chrome" | "card"): string {
      */
     const reset =
       scope === "chrome"
-        ? "--background:initial;--foreground:initial;--muted:initial;--muted-foreground:initial;--border:initial;--accent:initial;--accent-foreground:initial;--chrome-decor:initial;"
+        ? // Menunjuk RANTAI variabelnya (`--background-50`, `--text-950`, …),
+          // bukan warna literal. Rantai itulah yang didefinisikan ulang oleh
+          // `.dark` di globals.css, jadi header/footer/dock ikut berganti
+          // gelap-terang seperti sisa halaman. Warna yang dibekukan di sini
+          // akan terlihat benar di mode terang lalu salah di mode gelap.
+          //
+          // `--chrome-decor` tetap `initial`: itu sakelar dekorasi, bukan
+          // warna, dan pemakainya sudah menulis fallback sendiri
+          // (`var(--chrome-decor, 0)`) sehingga guaranteed-invalid justru
+          // perilaku yang benar untuknya.
+          "--background:var(--background-50);--foreground:var(--text-950);--muted:var(--background-100);--muted-foreground:var(--background-600);--border:var(--background-200);--accent:var(--accent-100);--accent-foreground:var(--accent-900);--chrome-decor:initial;"
         : "--card:initial;--card-foreground:initial;--muted-foreground:initial;--border:initial;--accent:initial;--accent-foreground:initial;--card-decor:initial;" +
           "--card-price:var(--card-price-default);--card-badge-sale:var(--card-badge-sale-default);--card-badge-sale-fold:var(--card-badge-sale-fold-default);--card-badge-hot:var(--card-badge-hot-default);--card-badge-hot-fold:var(--card-badge-hot-fold-default);--card-badge-new:var(--card-badge-new-default);"
     return `${selector}{${reset}}`

@@ -1,6 +1,6 @@
 "use server"
 
-import { revalidatePath, revalidateTag } from "next/cache"
+import { revalidatePath, updateTag } from "next/cache"
 import { UnauthorizedError, requireAuth } from "@/lib/auth"
 import { CategoryOperationError } from "@/lib/api/woocommerce/categories"
 import {
@@ -12,6 +12,8 @@ import {
 } from "@/lib/api/woocommerce/products"
 import type { BulkApplyState, BulkPreviewState } from "./state"
 import { getPrisma } from "@/lib/prisma/client"
+import { buildProductLogEntries, diffProductChanges } from "@/lib/logs/product-log"
+import type { ProductInput } from "@/types/woocommerce"
 
 /**
  * Pembersihan cache tinggal di sini, bukan di `lib/api` — lapisan data tidak
@@ -19,9 +21,32 @@ import { getPrisma } from "@/lib/prisma/client"
  * dalam konteks request. Itu juga yang membuat fungsi bulk bisa diuji dari
  * script di luar server.
  */
-function refresh() {
-  revalidateTag("products", "max")
-  revalidateTag("categories", "max")
+/**
+ * `updateTag`, bukan `revalidateTag(tag, "max")`.
+ *
+ * Argumen kedua `revalidateTag` di Next 16 adalah masa hidup entri yang sudah
+ * ditandai basi, dan `"max"` memberi umur paling panjang — permintaan
+ * berikutnya masih disajikan dari cache lama, sehingga staff yang baru saja
+ * mengubah harga tetap melihat angka sebelumnya. `updateTag` membuang entrinya
+ * seketika. Berkas ini "use server", jadi syarat updateTag terpenuhi (fungsi itu
+ * melempar kalau dipanggil dari route handler).
+ *
+ * `productIds` diisi kalau perubahannya menyangkut produk tertentu, supaya
+ * halaman edit dan halaman produk publiknya ikut segar — bukan cuma daftar.
+ */
+function refresh(productIds: number[] = [], slugs: string[] = []) {
+  updateTag("products")
+  updateTag("all-products")
+  updateTag("categories")
+
+  for (const id of productIds) {
+    updateTag(`product-id-${id}`)
+    updateTag(`product-${id}-variations`)
+  }
+  for (const slug of slugs) {
+    if (slug) updateTag(`product-${slug}`)
+  }
+
   revalidatePath("/admin/produk")
 }
 
@@ -78,7 +103,7 @@ export async function applyBulkCategoryAction(
   try {
     await requireAuth()
     await bulkAssignCategory(ids, categoryId, mode, acknowledged)
-    refresh()
+    refresh(ids)
     return {
       error: null,
       ok:
@@ -117,8 +142,8 @@ export async function deleteProductAction(id: number) {
         }
       })
     }
-    
-    refresh()
+
+    refresh(product ? [product.wooId] : [], product ? [product.slug] : [])
     return { error: null }
   } catch (error) {
     if (error instanceof UnauthorizedError) {
@@ -135,34 +160,46 @@ export async function updateProductPriceAction(id: number, regularPrice: number,
   try {
     const authUser = await requireAuth()
     const userName = (authUser && typeof authUser === 'object' && 'name' in authUser) ? String(authUser.name) : "Admin"
-    
+
     const prisma = getPrisma()
     const product = await prisma.product.findUnique({ where: { wooId: id } })
     if (!product) throw new Error("Produk tidak ditemukan")
-    
-    const oldRegular = product.regularPrice?.toNumber() || 0
-    const oldSale = product.salePrice?.toNumber() || 0
-    
-    const updatePayload: any = { regular_price: String(regularPrice) }
+
+    const updatePayload: ProductInput = {
+      name: product.name,
+      regular_price: String(regularPrice),
+    }
     if (salePrice !== undefined) {
       updatePayload.sale_price = salePrice === null ? "" : String(salePrice)
     }
 
     await updateProduct(id, updatePayload)
-    
-    await prisma.productLog.create({
-      data: {
-        userName,
-        productId: product.wooId,
-        productName: product.name,
-        action: "UPDATE_PRICE",
-        fieldAffected: "price",
-        oldValue: `Regular: ${oldRegular}, Sale: ${oldSale}`,
-        newValue: `Regular: ${regularPrice}, Sale: ${salePrice !== undefined ? (salePrice || 0) : oldSale}`,
-      }
-    })
-    
-    refresh()
+
+    // Lewat helper yang sama dengan form edit produk, bukan string rakitan
+    // sendiri. Sebelumnya jalur ini menulis `fieldAffected: "price"` dengan
+    // nilai `"Regular: 100, Sale: 0"` — nama dan format yang tidak dikenali
+    // penyaring maupun tampilan detail log, sehingga perubahan harga dari
+    // daftar produk tidak bisa dibandingkan dengan yang dari form edit.
+    //
+    // `name` ikut dikirim ke Woo karena wajib, tapi nilainya diambil dari
+    // produk yang sama sehingga tidak pernah terhitung sebagai perubahan.
+    const entries = buildProductLogEntries(diffProductChanges(
+      { ...product, categories: [], images: [] },
+      updatePayload
+    ))
+
+    if (entries.length > 0) {
+      await prisma.productLog.createMany({
+        data: entries.map((entry) => ({
+          userName,
+          productId: product.wooId,
+          productName: product.name,
+          ...entry,
+        })),
+      })
+    }
+
+    refresh([id], [product.slug])
     return { error: null }
   } catch (error) {
     if (error instanceof UnauthorizedError) {
@@ -183,7 +220,7 @@ export async function bulkUpdateProductStatusAction(ids: number[], actionType: s
     if (ids.length === 0) return { error: "Belum ada produk yang dipilih." }
     
     // Determine the field and value based on actionType
-    let updateData: Record<string, any> = {}
+    let updateData: Partial<ProductInput> = {}
     let fieldAffected = ""
     let newValueStr = ""
     
@@ -243,7 +280,7 @@ export async function bulkUpdateProductStatusAction(ids: number[], actionType: s
       await prisma.productLog.createMany({ data: logsData })
     }
 
-    refresh()
+    refresh(ids, products.map((p) => p.slug))
     return { error: null }
   } catch (error) {
     if (error instanceof UnauthorizedError) {

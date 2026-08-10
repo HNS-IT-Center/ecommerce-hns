@@ -17,11 +17,25 @@ const STATUS_TO_WOO = {
   PRIVATE: "private",
 } as const satisfies Record<string, WooProduct["status"]>;
 
-const STOCK_STATUS_TO_WOO = {
+/** Diekspor supaya `getProductVariations` bisa memetakan status stok tanpa
+ *  harus melewatkan seluruh baris varian melalui `prismaProductToWoo`. */
+export const STOCK_STATUS_TO_WOO = {
   INSTOCK: "instock",
   OUTOFSTOCK: "outofstock",
   ONBACKORDER: "onbackorder",
 } as const satisfies Record<string, WooProduct["stock_status"]>;
+
+/**
+ * Kunci pembanding nama atribut, bukan untuk ditampilkan.
+ *
+ * Data warisan WooCommerce menulis atribut yang sama dengan bentuk berbeda —
+ * "WARNA", "Warna", dan "Warna " dianggap tiga atribut berbeda kalau dibanding
+ * mentah. Pencocokan induk↔varian memakai kunci ini supaya pilihan varian tetap
+ * ketemu; nama aslinya tetap dipakai apa adanya di UI.
+ */
+export function normalizeAttributeName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
 
 export function prismaProductToWoo(prismaProduct: any): WooProduct {
   // Produk VARIABLE (induk) tidak punya harga sendiri di database - harga
@@ -99,22 +113,62 @@ export function prismaProductToWoo(prismaProduct: any): WooProduct {
       }))
     : [];
 
+  // Atribut mana yang benar-benar membedakan varian, diturunkan dari data:
+  // sebuah atribut disebut atribut varian kalau anak-anak produk ini memakainya.
+  // Sebelumnya `variation` dipatok `false`, dan itu mematikan seluruh fitur —
+  // halaman produk memfilter `attributes.filter(a => a.variation)`, sehingga
+  // daftar pilihannya selalu kosong dan selector varian tidak pernah tampil
+  // walau produknya punya 9 varian di database.
+  //
+  // Diturunkan (bukan disimpan sebagai kolom) supaya tidak perlu migrasi di
+  // database produksi dan tidak ada flag yang bisa basi saat varian berubah.
+  // Perbandingan lewat `normalizeAttributeName` karena data warisan Woo menulis
+  // nama yang sama dengan kapitalisasi/spasi berbeda ("WARNA" vs "Warna").
+  const variationAttributeNames = new Set<string>();
+  if (prismaProduct.variations) {
+    for (const variation of prismaProduct.variations) {
+      for (const pa of variation.attributes ?? []) {
+        if (!pa.attribute) continue;
+        variationAttributeNames.add(normalizeAttributeName(pa.attribute.name));
+      }
+    }
+  }
+
+  // Baris VARIATION tidak punya anak, jadi aturan di atas tidak pernah menandai
+  // apa pun untuknya — atribut sebuah varian SELALU atribut pembeda, karena
+  // itulah yang membedakannya dari saudaranya. Tanpa cabang ini, form edit admin
+  // yang membaca `attr.variation` dari objek varian tidak menemukan satu pun
+  // nama atribut, dan 85 produk induk yang tidak mencatat atribut di barisnya
+  // sendiri tampil dengan daftar varian kosong seolah varian-nya hilang.
+  if (prismaProduct.type === "VARIATION" && prismaProduct.attributes) {
+    for (const pa of prismaProduct.attributes) {
+      if (!pa.attribute) continue;
+      variationAttributeNames.add(normalizeAttributeName(pa.attribute.name));
+    }
+  }
+
   // Map attributes (group by attribute ID to match Woo structure)
   const attributesMap = new Map<number, ProductAttribute>();
   if (prismaProduct.attributes) {
     for (const pa of prismaProduct.attributes) {
       if (!pa.attribute || !pa.value) continue;
-      
+
       if (!attributesMap.has(pa.attribute.id)) {
         attributesMap.set(pa.attribute.id, {
           id: pa.attribute.id,
           name: pa.attribute.name,
           slug: pa.attribute.name.toLowerCase().replace(/\s+/g, '-'),
           options: [],
-          variation: false, // In complete implementation, we'd check if it's used for variations
+          variation: variationAttributeNames.has(normalizeAttributeName(pa.attribute.name)),
         });
       }
-      attributesMap.get(pa.attribute.id)!.options.push(pa.value.value);
+      // Nilai ganda pada atribut yang sama disaring: induk warisan Woo kadang
+      // menyimpan nilai identik berulang, dan itu memunculkan tombol pilihan
+      // kembar di selector varian.
+      const bucket = attributesMap.get(pa.attribute.id)!;
+      if (!bucket.options.includes(pa.value.value)) {
+        bucket.options.push(pa.value.value);
+      }
     }
   }
   const attributes = Array.from(attributesMap.values());

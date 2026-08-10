@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useTransition, useEffect } from "react"
+import { useState, useTransition, useEffect, useCallback } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
-import { ChevronDown, ChevronUp, ChevronsUpDown, Edit, Pencil, Search, Trash2, TriangleAlert, Loader2, Check } from "lucide-react"
+import { ChevronDown, ChevronUp, ChevronsUpDown, Edit, Layers, Pencil, Search, Trash2, TriangleAlert, Loader2, Check } from "lucide-react"
 
 import { formatRupiah } from "@/lib/utils"
 import { parseRupiah } from "@/lib/utils"
@@ -43,8 +43,79 @@ export type BulkProductRow = {
   categories: { id: number; name: string }[]
   brands: { name: string }[]
   dateCreated: string | Date
+  /** "variable" = produk induk yang punya varian; harga tampil "mulai dari". */
+  type: Product["type"]
+  variationCount: number
   /** Produk WooCommerce apa adanya — dipakai Quick Edit untuk mengisi form. */
   rawProduct: Product
+}
+
+/**
+ * Penanda produk bervariasi di daftar admin.
+ *
+ * Tanpa ini, produk induk terlihat sama persis dengan produk biasa — padahal
+ * harganya "mulai dari", stoknya ditentukan varian, dan menyuntingnya ikut
+ * memengaruhi seluruh anak. Jumlah varian ikut ditampilkan supaya staff tahu
+ * seberapa besar dampaknya sebelum membuka form.
+ */
+function VariableBadge({ count }: { count: number }) {
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-info/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-info">
+      <Layers className="h-3 w-3" />
+      {count > 0 ? `${count} Varian` : "Variable"}
+    </span>
+  )
+}
+
+/**
+ * Kolom harga untuk produk bervariasi.
+ *
+ * Sengaja TIDAK bisa disunting inline. Induk produk bervariasi tidak punya
+ * harga sendiri — angka yang tampil di sini adalah "mulai dari", hasil hitungan
+ * dari varian termurah. Menulis harga ke induk lewat suntingan inline tidak
+ * mengubah apa pun yang dilihat pembeli (storefront tetap membaca harga varian)
+ * tapi meninggalkan angka di induk yang tidak sinkron dengan varian mana pun —
+ * kerusakan senyap yang baru ketahuan jauh di kemudian hari.
+ *
+ * Jalur yang benar sudah ada: Quick Edit membawa tabel varian lengkap, jadi
+ * tombol di sini mengarah ke sana alih-alih menawarkan input yang menyesatkan.
+ */
+function VariablePriceCell({
+  product,
+  onOpenQuickEdit,
+  compact = false,
+}: {
+  product: BulkProductRow
+  onOpenQuickEdit: () => void
+  compact?: boolean
+}) {
+  const from = Number(product.price || 0)
+
+  return (
+    <Tooltip>
+      <TooltipTrigger render={
+        <button
+          type="button"
+          onClick={onOpenQuickEdit}
+          className="group flex w-full flex-col items-start gap-0.5 rounded p-1 -m-1 text-left transition-colors hover:bg-muted/50"
+        >
+          <span className="text-[9px] uppercase tracking-wide text-muted-foreground">
+            Mulai dari
+          </span>
+          <span className={compact ? "text-sm font-bold" : "font-bold"}>
+            {formatRupiah(from)}
+          </span>
+          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-info">
+            <Layers className="h-3 w-3" />
+            Atur per varian
+          </span>
+        </button>
+      } />
+      <TooltipContent>
+        Harga produk ini ditentukan per varian. Klik untuk membukanya di Quick Edit.
+      </TooltipContent>
+    </Tooltip>
+  )
 }
 
 type Props = {
@@ -72,6 +143,7 @@ export function ProductDataTable({ products, categories, rawCategories, attribut
 
   // Sort
   const statusFilter = searchParams.get("status_filter") || ""
+  const typeFilter = searchParams.get("type_filter") || ""
   const currentSort = searchParams.get("sort") || "date"
   const currentOrder = searchParams.get("order") || "desc"
 
@@ -98,26 +170,42 @@ export function ProductDataTable({ products, categories, rawCategories, attribut
   const [bulkActionType, setBulkActionType] = useState("")
   const [confirmBulkAction, setConfirmBulkAction] = useState(false)
   const [isBulkUpdating, setIsBulkUpdating] = useState(false)
+  /**
+   * Mengubah satu parameter di URL dan mengembalikan daftar ke halaman 1.
+   *
+   * Dipakai bersama oleh pencarian dan kedua dropdown filter — ketiganya butuh
+   * perlakuan yang sama persis, jadi tidak ada gunanya menduplikasi logikanya.
+   *
+   * Reset halaman itu wajib: kriteria baru hampir selalu memperkecil jumlah
+   * hasil, dan bertahan di halaman 7 setelahnya menampilkan tabel kosong yang
+   * terbaca seperti "tidak ada produk" padahal hasilnya ada di halaman awal.
+   *
+   * Dideklarasikan sebelum `useEffect` di bawah supaya efek pencarian bisa
+   * memanggilnya tanpa mengakses binding yang belum terdefinisi.
+   */
+  const handleFilterChange = useCallback(
+    (key: string, value: string) => {
+      const params = new URLSearchParams(searchParams)
+      if (value) params.set(key, value)
+      else params.delete(key)
+      params.delete("page")
+
+      startTransition(() => {
+        router.push(`${pathname}?${params.toString()}`)
+      })
+    },
+    [searchParams, pathname, router]
+  )
+
   // Debounced search
   useEffect(() => {
     const timer = setTimeout(() => {
       if (searchValue !== q) {
-        handleSearch(searchValue)
+        handleFilterChange("q", searchValue)
       }
     }, 500)
     return () => clearTimeout(timer)
-  }, [searchValue, q])
-
-  const handleSearch = (value: string) => {
-    const params = new URLSearchParams(searchParams)
-    if (value) params.set("q", value)
-    else params.delete("q")
-    params.delete("page") // Reset to page 1 on search
-    
-    startTransition(() => {
-      router.push(`${pathname}?${params.toString()}`)
-    })
-  }
+  }, [searchValue, q, handleFilterChange])
 
   const handleSort = (field: string) => {
     const params = new URLSearchParams(searchParams)
@@ -167,8 +255,6 @@ export function ProductDataTable({ products, categories, rawCategories, attribut
   const toggleAll = () =>
     setSelected(allOnPageSelected ? new Set() : new Set(products.map((p) => p.id)))
 
-  const ids = Array.from(selected).join(",")
-
   const handleBulkAction = () => {
     if (!bulkActionType || selected.size === 0) return
     setIsBulkUpdating(true)
@@ -194,15 +280,8 @@ export function ProductDataTable({ products, categories, rawCategories, attribut
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
         <select
           value={statusFilter}
-          onChange={(e) => {
-            const params = new URLSearchParams(searchParams)
-            if (e.target.value) params.set("status_filter", e.target.value)
-            else params.delete("status_filter")
-            params.delete("page")
-            startTransition(() => {
-              router.push(`${pathname}?${params.toString()}`)
-            })
-          }}
+          onChange={(e) => handleFilterChange("status_filter", e.target.value)}
+          aria-label="Filter status produk"
           className="rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
         >
           <option value="">Semua Status</option>
@@ -210,6 +289,21 @@ export function ProductDataTable({ products, categories, rawCategories, attribut
           <option value="draft">Draft</option>
           <option value="private">Private</option>
           <option value="empty_stock">Stok Kosong</option>
+        </select>
+
+        {/* Tipe sengaja jadi dropdown sendiri, bukan opsi tambahan di dropdown
+            status: keduanya dimensi berbeda, sehingga "Draft" + "Bervariasi"
+            bisa dipakai bersamaan. Digabung jadi satu, memilih salah satu akan
+            mematikan yang lain. */}
+        <select
+          value={typeFilter}
+          onChange={(e) => handleFilterChange("type_filter", e.target.value)}
+          aria-label="Filter tipe produk"
+          className="rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+        >
+          <option value="">Semua Tipe</option>
+          <option value="variable">Produk Bervariasi</option>
+          <option value="simple">Produk Simple</option>
         </select>
 
         <div className="flex-1 flex items-center gap-2 rounded-xl border border-input bg-background px-3 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary overflow-hidden">
@@ -356,6 +450,11 @@ export function ProductDataTable({ products, categories, rawCategories, attribut
                   <p className="font-medium text-foreground text-xs leading-tight mb-1">
                     {product.name}
                   </p>
+                  {product.type === "variable" && (
+                    <span className="mr-1.5 inline-block align-middle">
+                      <VariableBadge count={product.variationCount} />
+                    </span>
+                  )}
                   <span className={`text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded ${
                     product.status === 'publish' ? 'bg-green-100 text-green-800' :
                     product.status === 'draft' ? 'bg-amber-100 text-amber-800' :
@@ -376,7 +475,12 @@ export function ProductDataTable({ products, categories, rawCategories, attribut
                   </span>
                 </td>
                 <td className="px-4 py-3 align-middle font-semibold text-foreground text-xs">
-                  {editingPriceId === product.id ? (
+                  {product.type === "variable" ? (
+                    <VariablePriceCell
+                      product={product}
+                      onOpenQuickEdit={() => setQuickEditProduct(product)}
+                    />
+                  ) : editingPriceId === product.id ? (
                     <div className="flex flex-col gap-1.5 w-[140px]">
                       <div className="flex flex-col gap-0.5">
                         <label className="text-[9px] text-muted-foreground uppercase">Normal</label>
@@ -532,6 +636,7 @@ export function ProductDataTable({ products, categories, rawCategories, attribut
                   {product.name}
                 </p>
                 <div className="flex flex-wrap gap-1.5 items-center mb-1">
+                  {product.type === "variable" && <VariableBadge count={product.variationCount} />}
                   <span className={`text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded ${
                     product.status === 'publish' ? 'bg-green-100 text-green-800' :
                     product.status === 'draft' ? 'bg-amber-100 text-amber-800' :
@@ -555,7 +660,13 @@ export function ProductDataTable({ products, categories, rawCategories, attribut
             <div className="flex items-center justify-between border-t border-border pt-3">
               <div className="flex-1 max-w-[150px]">
                 <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block mb-0.5">Harga</span>
-                {editingPriceId === product.id ? (
+                {product.type === "variable" ? (
+                  <VariablePriceCell
+                    product={product}
+                    onOpenQuickEdit={() => setQuickEditProduct(product)}
+                    compact
+                  />
+                ) : editingPriceId === product.id ? (
                   <div className="flex flex-col gap-1 mt-1">
                     <input 
                       type="text" 

@@ -51,7 +51,8 @@ export function PcBuildLogsTable({ quotes, totalPages, currentPage }: Props) {
 
   return (
     <>
-      <div className="overflow-x-auto rounded-xl border border-border bg-background shadow-sm">
+      {/* Desktop Table View */}
+      <div className="hidden md:block overflow-x-auto rounded-xl border border-border bg-background shadow-sm">
         <table className="w-full text-sm">
           <thead className="border-b border-border bg-muted/40">
             <tr className="text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">
@@ -104,6 +105,54 @@ export function PcBuildLogsTable({ quotes, totalPages, currentPage }: Props) {
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile Card View — tabel enam kolom di atas hanya bisa dibaca dengan
+          menggeser ke samping di layar ponsel, dan kolom yang tergeser keluar
+          layar praktis tidak terbaca. Susunan kartu menampilkan medan yang sama
+          secara menurun, mengikuti pola `logs-table.tsx`. */}
+      <div className="md:hidden flex flex-col gap-4">
+        {quotes.map((quote) => (
+          <div
+            key={quote.id}
+            className="rounded-xl border border-border bg-background p-4 shadow-sm flex flex-col gap-3"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <span className="font-mono text-xs font-bold">{quote.code}</span>
+              <span className="text-sm font-black tabular-nums text-sale-red">
+                {formatRupiah(quote.total)}
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+              <span>{quote.itemCount} komponen</span>
+              <span>
+                Dibuat: {format(quote.createdAt, "d MMM yyyy, HH:mm", { locale: localeId })}
+              </span>
+              <span>
+                Diperbarui: {format(quote.updatedAt, "d MMM yyyy, HH:mm", { locale: localeId })}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-border pt-3">
+              <button
+                onClick={() => setSelected(quote)}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-muted px-3 text-xs font-semibold text-foreground transition-colors hover:bg-muted/70 cursor-pointer"
+              >
+                <Eye className="h-3.5 w-3.5" />
+                Rincian
+              </button>
+              <Link
+                href={`/verify/${quote.code}`}
+                target="_blank"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-semibold transition-colors hover:bg-muted cursor-pointer"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Verifikasi
+              </Link>
+            </div>
+          </div>
+        ))}
       </div>
 
       {totalPages > 1 && (

@@ -6,9 +6,55 @@ import { Dialog as SheetPrimitive } from "@base-ui/react/dialog"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
+import { useBackToClose } from "@/hooks/use-back-to-close"
 
-function Sheet({ ...props }: SheetPrimitive.Root.Props) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />
+/**
+ * Sama seperti `Dialog`: tombol Back menutup panel, bukan meninggalkan halaman.
+ * Ini yang membuat keranjang, menu mobile, dan sidebar admin berperilaku
+ * seperti aplikasi ponsel pada umumnya. Lihat `useBackToClose` untuk alasannya.
+ */
+function Sheet({
+  open,
+  onOpenChange,
+  actionsRef,
+  ...props
+}: SheetPrimitive.Root.Props) {
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false)
+  const isOpen = open !== undefined ? open : uncontrolledOpen
+
+  const handleOpenChange: NonNullable<SheetPrimitive.Root.Props["onOpenChange"]> = (
+    nextOpen,
+    eventDetails
+  ) => {
+    setUncontrolledOpen(nextOpen)
+    onOpenChange?.(nextOpen, eventDetails)
+  }
+
+  const internalActionsRef = React.useRef<SheetPrimitive.Root.Actions | null>(null)
+  const closeFromBackButton = React.useCallback(() => {
+    internalActionsRef.current?.close()
+  }, [])
+
+  useBackToClose(isOpen, closeFromBackButton)
+
+  /** Lihat catatan yang sama di `dialog.tsx`. */
+  const setActionsRef = React.useCallback(
+    (value: SheetPrimitive.Root.Actions | null) => {
+      internalActionsRef.current = value
+      if (actionsRef) actionsRef.current = value
+    },
+    [actionsRef]
+  )
+
+  return (
+    <SheetPrimitive.Root
+      data-slot="sheet"
+      open={open}
+      onOpenChange={handleOpenChange}
+      actionsRef={setActionsRef as unknown as typeof actionsRef}
+      {...props}
+    />
+  )
 }
 
 function SheetTrigger({ ...props }: SheetPrimitive.Trigger.Props) {
