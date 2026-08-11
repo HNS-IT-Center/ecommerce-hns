@@ -96,7 +96,7 @@ export function MobileMenu({ categories = [] }: MobileMenuProps) {
               nativeButton={false}
               className={navLinkClassName}
             >
-              Login / Akun
+              Masuk / Akun Saya
             </SheetClose>
           </div>
         </nav>
