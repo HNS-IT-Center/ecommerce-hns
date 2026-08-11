@@ -7,6 +7,8 @@ import { Footer } from "@/components/layout/footer";
 import { getCurrentCustomer } from "@/lib/auth/customer";
 import { listSavedBuilds } from "@/lib/api/saved-pc-builds";
 import { SavedBuildCard } from "@/features/account/components/saved-build-card";
+import { buildWhatsAppUrl } from "@/lib/api/whatsapp";
+import { env } from "@/config/env";
 import { customerLogoutAction } from "./actions";
 
 export const metadata = {
@@ -25,6 +27,11 @@ export default async function Page() {
   if (!customer) redirect("/login");
 
   const builds = await listSavedBuilds(customer.id);
+
+  const deleteAccountWaUrl = buildWhatsAppUrl(
+    env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER,
+    "Halo HNS IT Center, saya ingin menghapus akun saya beserta data yang tersimpan."
+  );
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -76,6 +83,20 @@ export default async function Page() {
               </div>
             )}
           </div>
+
+          {/* Bukan tombol hapus, bukan alur self-service — penghapusan akun
+              hanya dieksekusi staff. Baris ini tetap harus ada: aplikasi ini
+              mengumpulkan data dari akun Google pelanggan, dan review
+              publikasi OAuth Google memeriksa apakah pengguna punya JALAN
+              untuk meminta datanya dihapus — jalan lewat CS tetap sah,
+              menghapus baris ini sama sekali yang tidak. */}
+          <p className="text-center text-xs text-muted-foreground">
+            Ingin menghapus akun?{" "}
+            <a href={deleteAccountWaUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-foreground">
+              Hubungi kami lewat WhatsApp
+            </a>
+            .
+          </p>
         </div>
       </main>
       <Footer />
