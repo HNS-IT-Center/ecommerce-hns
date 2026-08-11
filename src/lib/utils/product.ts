@@ -1,35 +1,50 @@
 import type { Product as WooProduct } from "@/types/woocommerce";
-import { HOT_PRODUCT_THRESHOLD } from "@/lib/constants/product";
+import { HOT_PRODUCT_THRESHOLD, NEW_PRODUCT_MAX_AGE_DAYS } from "@/lib/constants/product";
 
 type ProductBadge = "Hot" | "Deal" | "New" | null;
 
-export function getProductBadge(product: WooProduct): ProductBadge {
-  if (product.on_sale) return "Deal";
-  if ((product.total_sales ?? 0) > HOT_PRODUCT_THRESHOLD) return "Hot";
-  return null;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * Apakah produk masih di dalam jendela "New" (lihat `NEW_PRODUCT_MAX_AGE_DAYS`).
+ *
+ * `date_created` dari WooCommerce adalah waktu LOKAL toko tanpa penanda zona
+ * (`"2026-08-11T09:30:00"`), yang di JavaScript diurai sebagai waktu lokal
+ * mesin yang menjalankannya. Server produksi lazim berjalan di UTC sementara
+ * tokonya di WIB, jadi selisihnya sampai 7 jam — tidak berarti pada ambang
+ * 15 hari, dan tetap tidak berarti selama pembandingnya juga waktu lokal.
+ *
+ * Tanggal yang tidak bisa diurai menghasilkan `NaN`; perbandingan apapun
+ * dengan `NaN` bernilai false, jadi produk itu otomatis tidak ber-badge —
+ * gagal ke sisi aman, bukan memberi "New" pada produk lama.
+ */
+function isNewProduct(product: WooProduct): boolean {
+  if (!product.date_created) return false;
+
+  const createdAt = new Date(product.date_created).getTime();
+  const ageInDays = (Date.now() - createdAt) / MS_PER_DAY;
+
+  return ageInDays >= 0 && ageInDays <= NEW_PRODUCT_MAX_AGE_DAYS;
 }
 
 /**
- * Warna badge dialirkan lewat token `--card-badge-*` supaya Theme Editor bisa
- * menimpanya per-scope (lihat `.theme-card` di globals.css). Nilai defaultnya
- * disetel sama persis dengan warna sebelumnya, jadi tanpa tema aktif tampilannya
- * tidak berubah.
+ * Kartu hanya menampilkan SATU badge, jadi urutan di bawah adalah urutan
+ * prioritas — bukan sekadar rangkaian `if`.
  *
- * Kelasnya ditulis utuh sebagai string literal, bukan dirangkai (`bg-${x}`),
- * karena pemindai Tailwind hanya mengenali kelas yang tertulis lengkap.
+ * "Deal" tetap di atas "New": diskon adalah alasan beli yang lebih kuat
+ * daripada kebaruan, dan mendahulukan "New" akan menyembunyikan badge diskon
+ * pada produk baru yang sedang promo — persis kartu yang paling ingin dijual.
+ * Konsekuensinya produk baru yang sedang diskon tampil "Deal", bukan "New".
+ *
+ * "New" ditaruh di atas "Hot" karena keduanya nyaris tidak pernah bentrok:
+ * "Hot" butuh penjualan di atas ambang, yang sulit dicapai produk berumur
+ * di bawah 15 hari.
  */
-export function getBadgeColorClass(badge: "Hot" | "Deal" | "New"): string {
-  switch (badge) {
-    // Tetap `bg-sale-red` (ramp accent), BUKAN `--card-badge-sale` yang dipakai
-    // badge terlipat. Keduanya memang beda warna sejak awal, dan menyamakannya
-    // di sini akan mengubah tampilan — di luar lingkup refactor ini.
-    case "Deal":
-      return "bg-sale-red";
-    case "Hot":
-      return "bg-(--card-badge-hot)";
-    case "New":
-      return "bg-(--card-badge-new)";
-  }
+export function getProductBadge(product: WooProduct): ProductBadge {
+  if (product.on_sale) return "Deal";
+  if (isNewProduct(product)) return "New";
+  if ((product.total_sales ?? 0) > HOT_PRODUCT_THRESHOLD) return "Hot";
+  return null;
 }
 
 export function getStockStatus(product: WooProduct): "instock" | "lowstock" | "outofstock" {

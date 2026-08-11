@@ -127,13 +127,45 @@ export function GamepadTest({ onAction }: { onAction: (action: string) => void }
       onAction("Disconnected");
     }
 
-    requestRef.current = requestAnimationFrame(pollGamepads);
   }, [layout, onAction]);
 
+  /**
+   * Jembatan agar loop animasi selalu memanggil `pollGamepads` versi TERBARU.
+   *
+   * Dulu `pollGamepads` menjadwalkan dirinya sendiri di baris terakhirnya.
+   * Itu memanggil variabel yang belum selesai dideklarasikan — persis yang
+   * dikeluhkan aturan `react-hooks/immutability`, dan build Vercel menolaknya.
+   *
+   * Cacatnya bukan sekadar formalitas lint. `pollGamepads` dibuat ulang tiap
+   * kali `layout` atau `onAction` berubah, sedangkan loop yang sudah berjalan
+   * memegang salinan LAMA dan terus memanggil salinan itu selamanya. Akibat
+   * nyatanya: berganti tata letak Xbox ⇄ PlayStation saat gamepad tersambung
+   * tetap mencatat nama tombol dengan penamaan yang lama.
+   *
+   * Ref ini selalu menunjuk versi terkini, sehingga loop membaca yang benar
+   * pada setiap frame tanpa perlu dimulai ulang.
+   */
+  const pollGamepadsRef = useRef(pollGamepads);
   useEffect(() => {
-    requestRef.current = requestAnimationFrame(pollGamepads);
-    return () => cancelAnimationFrame(requestRef.current);
+    pollGamepadsRef.current = pollGamepads;
   }, [pollGamepads]);
+
+  /**
+   * Efek ini sengaja berdependensi kosong: loop dinyalakan SEKALI selama
+   * komponen hidup. Menjadikannya bergantung pada `pollGamepads` akan
+   * membatalkan lalu menyalakan ulang loop tiap kali tata letak diganti —
+   * kedipan yang tidak perlu, dan sekarang tidak perlu pula karena versi
+   * terbaru sudah dijangkau lewat ref.
+   */
+  useEffect(() => {
+    const tick = () => {
+      pollGamepadsRef.current();
+      requestRef.current = requestAnimationFrame(tick);
+    };
+
+    requestRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(requestRef.current);
+  }, []);
 
   const active: GamepadLayout = layout === "xbox" ? XBOX_LAYOUT : PS_LAYOUT;
 
@@ -167,12 +199,12 @@ export function GamepadTest({ onAction }: { onAction: (action: string) => void }
     <div className="flex flex-col h-full bg-muted/10 p-6 sm:p-10 min-h-[500px]">
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h2 className="text-2xl font-bold">Gamepad Tester</h2>
+          <h2 className="text-2xl font-bold">Tes Gamepad</h2>
           <p
             className="text-muted-foreground text-sm truncate max-w-[200px] sm:max-w-md"
             title={controllerName}
           >
-            {isConnected ? controllerName : "Connect a controller and press any button to begin"}
+            {isConnected ? controllerName : "Sambungkan gamepad, lalu tekan tombol apa saja untuk memulai"}
           </p>
         </div>
 

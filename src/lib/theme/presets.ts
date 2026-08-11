@@ -60,6 +60,7 @@ export const PRESET_THEMES: readonly Theme[] = [
       cardBadgeHot: "#1f4d3a",
       cardBadgeHotFold: "#143528",
       cardBadgeNew: "#ec3013",
+      cardBadgeNewFold: "#b5240e",
       // Menyalakan hiasan hover di kartu produk. Hanya tema INI yang
       // menyalakannya — preset musiman lain tetap memakai kartu polos.
       cardDecor: true,
@@ -90,6 +91,7 @@ export const PRESET_THEMES: readonly Theme[] = [
       cardBadgeHot: "#7b2cbf",
       cardBadgeHotFold: "#4a1a73",
       cardBadgeNew: "#33204a",
+      cardBadgeNewFold: "#1f1330",
     },
   },
   {
@@ -117,6 +119,7 @@ export const PRESET_THEMES: readonly Theme[] = [
       cardBadgeHot: "#d4a017",
       cardBadgeHotFold: "#8a6810",
       cardBadgeNew: "#a82020",
+      cardBadgeNewFold: "#6d1515",
     },
   },
   {
@@ -144,6 +147,7 @@ export const PRESET_THEMES: readonly Theme[] = [
       cardBadgeHot: "#d4af37",
       cardBadgeHotFold: "#8a7124",
       cardBadgeNew: "#177a72",
+      cardBadgeNewFold: "#0f504a",
     },
   },
   {
@@ -171,6 +175,7 @@ export const PRESET_THEMES: readonly Theme[] = [
       cardBadgeHot: "#b8860b",
       cardBadgeHotFold: "#7a5807",
       cardBadgeNew: "#e04555",
+      cardBadgeNewFold: "#932d38",
     },
   },
 ] as const

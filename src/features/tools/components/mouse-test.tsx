@@ -100,8 +100,8 @@ export function MouseTest({ onAction }: { onAction: (action: string) => void }) 
   return (
     <div className="flex flex-col h-full bg-muted/10 p-6 sm:p-10">
       <div className="mb-8">
-        <h2 className="text-2xl font-bold">Mouse Tester</h2>
-        <p className="text-muted-foreground text-sm">Click, scroll, and move within the area below. Browser shortcuts are disabled here.</p>
+        <h2 className="text-2xl font-bold">Tes Mouse</h2>
+        <p className="text-muted-foreground text-sm">Klik, scroll, dan gerakkan mouse di area bawah ini. Pintasan browser dinonaktifkan di sini.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 h-[400px]">
@@ -124,7 +124,7 @@ export function MouseTest({ onAction }: { onAction: (action: string) => void }) 
             <p className="font-mono text-xl font-bold text-primary">
               X: {Math.round(coords.x)} Y: {Math.round(coords.y)}
             </p>
-            <p className="text-muted-foreground mt-2">Test Area</p>
+            <p className="text-muted-foreground mt-2">Area Tes</p>
           </div>
           
           {/* Mouse follower */}
@@ -180,7 +180,7 @@ export function MouseTest({ onAction }: { onAction: (action: string) => void }) 
           </div>
           
           <div className="text-center text-sm text-muted-foreground">
-            <p>Physical Button Feedback</p>
+            <p>Respons Tombol Fisik</p>
           </div>
         </div>
       </div>

@@ -9,7 +9,7 @@ import EyeIcon from "@/components/icons/eye-icon"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 
 import { formatRupiah } from "@/lib/utils"
-import { getBadgeColorClass } from "@/lib/utils/product"
+import { FoldedBadge } from "@/components/ui/folded-badge"
 import { useCartStore } from "@/store/cart"
 import { Rating } from "@/components/ui/rating"
 import { useFlyToCart } from "@/components/providers/fly-to-cart-provider"
@@ -143,31 +143,35 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
         <span className="sr-only">{product.name}</span>
       </Link>
 
-      {/* Folded Discount Badge */}
+      {/* Badge sudut. Diskon menang atas badge apa pun, lalu Hot, lalu New —
+          urutan yang sama dengan `getProductBadge`. Semuanya memakai
+          `FoldedBadge` supaya gayanya tidak bisa berpisah lagi. */}
       {hasDiscount && (
-        <div className="absolute -left-1.5 top-3 z-[40] drop-shadow-sm pointer-events-none">
-          <div className="rounded-r-md rounded-tl-md bg-(--card-badge-sale) px-2 py-0.5 text-xs font-bold text-white tracking-wide">
-            {discountPercent}%
-          </div>
-          <div
-             className="h-1.5 w-1.5 bg-(--card-badge-sale-fold)"
-             style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%)' }}
-          />
-        </div>
+        <FoldedBadge
+          colorClass="bg-(--card-badge-sale)"
+          foldColorClass="bg-(--card-badge-sale-fold)"
+        >
+          {discountPercent}%
+        </FoldedBadge>
       )}
 
-      {/* Hot Badge Folded (when not on sale) */}
       {!hasDiscount && product.badge === "Hot" && (
-        <div className="absolute -left-1.5 top-3 z-[40] drop-shadow-sm pointer-events-none">
-          <div className="flex items-center gap-0.5 rounded-r-md rounded-tl-md bg-(--card-badge-hot) px-1.5 py-0.5 text-xs font-bold text-white tracking-wide">
-            <FlameIcon size={14} className="text-white" />
-            HOT
-          </div>
-          <div
-             className="h-1.5 w-1.5 bg-(--card-badge-hot-fold)"
-             style={{ clipPath: 'polygon(0 0, 100% 0, 100% 100%)' }}
-          />
-        </div>
+        <FoldedBadge
+          colorClass="bg-(--card-badge-hot)"
+          foldColorClass="bg-(--card-badge-hot-fold)"
+          icon={<FlameIcon size={14} className="text-white" />}
+        >
+          HOT
+        </FoldedBadge>
+      )}
+
+      {!hasDiscount && product.badge === "New" && (
+        <FoldedBadge
+          colorClass="bg-(--card-badge-new)"
+          foldColorClass="bg-(--card-badge-new-fold)"
+        >
+          NEW
+        </FoldedBadge>
       )}
 
       {/* Image Container */}
@@ -212,15 +216,6 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
         >
           <EyeIcon size={18} />
         </button>
-        
-        {/* Regular Badge */}
-        {!hasDiscount && product.badge && product.badge !== "Hot" && (
-          <span
-            className={`absolute left-2 top-2 z-[40] rounded-md px-2 py-1 text-[10px] font-bold tracking-wider text-white uppercase shadow-sm ${getBadgeColorClass(product.badge)} pointer-events-none`}
-          >
-            {product.badge}
-          </span>
-        )}
         
         {/* Out of Stock Overlay */}
         {product.stock === 0 && (

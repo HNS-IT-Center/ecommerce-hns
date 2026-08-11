@@ -1,4 +1,53 @@
+import type { Prisma } from "@prisma/client";
 import type { Product as WooProduct, ProductCategory as WooCategory, ProductImage, ProductAttribute } from "@/types/woocommerce";
+
+/**
+ * Relasi yang WAJIB ikut ditarik supaya `prismaProductToWoo` bisa bekerja.
+ *
+ * Didefinisikan di sini, bukan di `products.ts`, supaya bentuk query dan mapper
+ * yang membacanya tidak bisa berpisah diam-diam: menghapus relasi di sini
+ * langsung memunculkan error tipe di mapper, bukan `undefined` saat runtime.
+ */
+export const productInclude = {
+  brand: true,
+  // Kategori bertanda utama ditarik ke depan supaya konsumen yang mengambil
+  // elemen pertama (breadcrumb, label kategori, produk terkait) mendapat jalur
+  // yang memang dipilih, bukan urutan bawaan DB. Sengaja tanpa tiebreaker:
+  // menambah urutan kedua akan mengubah kategori yang tampil untuk 2.861 produk
+  // yang belum punya penanda, dan itu di luar cakupan perubahan ini.
+  categories: { include: { category: true }, orderBy: { isPrimary: "desc" as const } },
+  // `tags` sengaja TIDAK ditarik: relasinya tidak pernah dibaca
+  // `prismaProductToWoo` dan tipe `Product` pun tidak punya field tag. Dulu ikut
+  // di sini dan menambah ~42 ms pada setiap query 25 produk — biaya penuh untuk
+  // data yang langsung dibuang.
+  images: { orderBy: { position: "asc" as const } },
+  attributes: {
+    include: { attribute: true, value: true },
+    orderBy: { position: "asc" as const },
+  },
+  // Varian hanya dipakai untuk dua hal oleh mapper: menghitung harga "mulai
+  // dari" (butuh harga saja) dan menandai atribut mana yang membedakan varian
+  // (butuh nama atributnya). Menarik seluruh kolom tiap anak menambah ~83 ms
+  // per 25 produk tanpa ada yang membacanya.
+  variations: {
+    select: {
+      wooId: true,
+      regularPrice: true,
+      salePrice: true,
+      attributes: { include: { attribute: true, value: true } },
+    },
+  },
+} satisfies Prisma.ProductInclude;
+
+/** Baris produk lengkap dengan relasi `productInclude` — masukan mapper. */
+export type PrismaProductWithRelations = Prisma.ProductGetPayload<{
+  include: typeof productInclude;
+}>;
+
+/** Baris kategori beserta jumlah produknya — masukan `prismaCategoryToWoo`. */
+export type PrismaCategoryWithCount = Prisma.CategoryGetPayload<{
+  include: { _count: { select: { products: true } } };
+}>;
 
 /**
  * Enum Prisma -> nilai status ala WooCommerce.
@@ -37,7 +86,7 @@ export function normalizeAttributeName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-export function prismaProductToWoo(prismaProduct: any): WooProduct {
+export function prismaProductToWoo(prismaProduct: PrismaProductWithRelations): WooProduct {
   // Produk VARIABLE (induk) tidak punya harga sendiri di database - harga
   // nempel di tiap VARIATION (child). Tampilkan "mulai dari" harga variasi
   // termurah, bukan field harga induk yang memang kosong (lihat diskusi
@@ -45,20 +94,22 @@ export function prismaProductToWoo(prismaProduct: any): WooProduct {
   const variationPrices =
     prismaProduct.type === "VARIABLE" && prismaProduct.variations
       ? prismaProduct.variations
-          .map((v: any) => ({
+          .map((v) => ({
             regular: v.regularPrice != null ? Number(v.regularPrice) : null,
             sale: v.salePrice != null ? Number(v.salePrice) : null,
           }))
-          .filter((p: { regular: number | null }) => p.regular !== null)
+          // Predikat tipe: tanpa ini `regular` tetap `number | null` setelah
+          // filter, dan `Math.min` di bawah kehilangan jaminan non-null-nya.
+          .filter((p): p is { regular: number; sale: number | null } => p.regular !== null)
       : [];
 
   let regularPrice: string;
   let salePrice: string;
 
   if (variationPrices.length > 0) {
-    const minRegular = Math.min(...variationPrices.map((p: { regular: number }) => p.regular));
+    const minRegular = Math.min(...variationPrices.map((p) => p.regular));
     const minEffective = Math.min(
-      ...variationPrices.map((p: { regular: number; sale: number | null }) => (p.sale && p.sale > 0 ? p.sale : p.regular))
+      ...variationPrices.map((p) => (p.sale && p.sale > 0 ? p.sale : p.regular))
     );
     regularPrice = String(minRegular);
     salePrice = minEffective < minRegular ? String(minEffective) : "";
@@ -83,7 +134,7 @@ export function prismaProductToWoo(prismaProduct: any): WooProduct {
 
   // Map categories
   const categories = prismaProduct.categories
-    ? prismaProduct.categories.map((pc: any) => ({
+    ? prismaProduct.categories.map((pc) => ({
         id: pc.category.id,
         name: pc.category.name,
         slug: pc.category.slug,
@@ -106,7 +157,7 @@ export function prismaProductToWoo(prismaProduct: any): WooProduct {
 
   // Map images
   const images: ProductImage[] = prismaProduct.images
-    ? prismaProduct.images.map((img: any) => ({
+    ? prismaProduct.images.map((img) => ({
         id: img.id,
         src: img.url,
         alt: prismaProduct.name,
@@ -175,7 +226,7 @@ export function prismaProductToWoo(prismaProduct: any): WooProduct {
 
   // Map variations
   const variations = prismaProduct.variations
-    ? prismaProduct.variations.map((v: any) => v.wooId)
+    ? prismaProduct.variations.map((v) => v.wooId)
     : [];
 
   return {
@@ -188,8 +239,20 @@ export function prismaProductToWoo(prismaProduct: any): WooProduct {
     description: prismaProduct.description || "",
     short_description: prismaProduct.shortDescription || "",
     sku: prismaProduct.sku || "",
-    date_created: prismaProduct.createdAt?.toISOString() || new Date().toISOString(),
-    date_modified: prismaProduct.updatedAt?.toISOString() || new Date().toISOString(),
+    // `importedAt` (@default(now())) adalah kapan baris ini masuk ke katalog
+    // HNS: tanggal impor massal untuk produk warisan Woo, dan waktu simpan
+    // untuk produk yang dibuat lewat admin panel — keduanya tidak pernah
+    // diisi manual. Tidak ada kolom `createdAt` di model Product; kode lama
+    // membacanya, selalu dapat `undefined`, lalu jatuh ke `new Date()`
+    // sehingga setiap produk tampak baru dibuat DETIK ITU JUGA setiap kali
+    // dibaca — badge "New" tidak pernah kedaluwarsa dan pengurutan menurut
+    // tanggal ikut kacau.
+    //
+    // Fallback ke string kosong, BUKAN `new Date()`: tanggal yang tak
+    // diketahui tidak boleh menyamar jadi produk baru. `isNewProduct`
+    // memperlakukan nilai kosong sebagai "tanpa badge" — gagal ke sisi aman.
+    date_created: prismaProduct.importedAt?.toISOString() ?? "",
+    date_modified: prismaProduct.updatedAt?.toISOString() ?? "",
     price,
     regular_price: regularPrice,
     sale_price: salePrice,
@@ -213,7 +276,7 @@ export function prismaProductToWoo(prismaProduct: any): WooProduct {
   };
 }
 
-export function prismaCategoryToWoo(prismaCategory: any): WooCategory {
+export function prismaCategoryToWoo(prismaCategory: PrismaCategoryWithCount): WooCategory {
   return {
     id: prismaCategory.id,
     name: prismaCategory.name,
