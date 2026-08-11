@@ -701,5 +701,47 @@ model Customer {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  savedBuilds SavedPcBuild[]
+
   @@map("customers")
+}
+
+/**
+ * Rakitan PC yang disimpan pelanggan dari /build-pc. TIDAK berhubungan dengan
+ * `PcBuildQuote`/`PcBuildSubmission` — dua sistem itu adalah snapshot harga
+ * BEKU untuk dokumen penawaran cetak (harganya sengaja tidak pernah berubah
+ * setelah dicetak, demi `/verify/[code]`).
+ *
+ * Rakitan tersimpan berbeda: harga yang DIBAYAR selalu harga katalog
+ * TERKINI (dibaca ulang dari `Product` setiap kali ditampilkan — nama,
+ * gambar, ketersediaan pun begitu; lihat CLAUDE.md §2.7), TAPI `items` juga
+ * menyimpan harga acuan PER KOMPONEN pada saat disimpan/terakhir
+ * "diperbarui", supaya pelanggan bisa melihat berapa yang naik/turun sejak
+ * ia terakhir melihat rakitannya — pola yang sama seperti `/verify/[code]`
+ * membandingkan `PcBuildQuote.items[].price` dengan harga sekarang. Harga
+ * acuan ini murni pembanding tampilan, bukan angka yang pernah dipakai
+ * sebagai dasar pembayaran/checkout.
+ *
+ * Layer pembaca (lib/api/saved-pc-builds.ts) yang menghitung selisihnya dan
+ * menandai komponen yang sudah dihapus/di-draft-kan staff sebagai "tidak
+ * tersedia" — bukan kolom di sini.
+ */
+model SavedPcBuild {
+  id         String @id @default(uuid())
+  customerId String @map("customer_id")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  name String @db.VarChar(120)
+
+  /// [{ stepId, stepName, productId, quantity, price }]. `price` = harga
+  /// acuan per satuan saat disimpan/terakhir diperbarui — lihat catatan di
+  /// atas model.
+  items Json
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([customerId, updatedAt])
+  @@map("saved_pc_builds")
 }

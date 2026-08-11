@@ -35,6 +35,14 @@ interface NewBuilderState {
   setBudget: (budget: string) => void
   getTotalPrice: () => number
   clearSelections: () => void
+  /**
+   * Timpa seluruh `selections` sekaligus, dipakai tombol "Lanjutkan di
+   * Builder" dari rakitan tersimpan (lib/api/saved-pc-builds.ts) — beda dari
+   * `selectProduct` yang menambah satu per satu dan menjalankan pemeriksaan
+   * kompatibilitas antar step. Rakitan tersimpan sudah pernah lolos
+   * pemeriksaan itu saat pertama disusun, jadi tidak diulang di sini.
+   */
+  hydrateSelections: (selections: Record<string, BuilderSelection[]>) => void
   reset: () => void
 }
 
@@ -167,6 +175,13 @@ export const useNewBuilderStore = create<NewBuilderState>()(
   },
 
   clearSelections: () => set({ selections: {} }),
+
+  hydrateSelections: (selections) => {
+    set((state) => ({
+      selections,
+      activeStepId: state.steps.length > 0 ? state.steps[0].id : null,
+    }))
+  },
 
   reset: () => {
     set((state) => ({

@@ -6,7 +6,9 @@ import { PcBuilderStepConfig } from "@/lib/pc-builder/config"
 import { formatRupiah } from "@/lib/utils"
 import { fetchBuilderProducts } from "../actions"
 import { prepareBuildWhatsApp } from "../actions-whatsapp"
+import { saveBuildAction } from "../actions-save"
 import { ProductCardBuilder } from "./product-card-builder"
+import { SaveBuildDialog } from "./save-build-dialog"
 import { Check, Edit2, MessageCircle, Printer, Search, X, Loader2, AlertTriangle, RotateCcw, Menu, XCircle } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -18,13 +20,15 @@ import SaveIcon from "@/components/icons/save-icon"
 
 type DynamicBuilderViewProps = {
   stepsConfig: PcBuilderStepConfig[]
+  /** Dari sesi customer di server — menentukan tombol Simpan aktif atau mengarah ke /login. */
+  isLoggedIn: boolean
 }
 
 /**
  * Nomor WhatsApp tidak lagi dioper dari env: tujuan dan harganya sama-sama
  * dibaca di server lewat `prepareBuildWhatsApp`, dari tabel stores.
  */
-export function DynamicBuilderView({ stepsConfig }: DynamicBuilderViewProps) {
+export function DynamicBuilderView({ stepsConfig, isLoggedIn }: DynamicBuilderViewProps) {
   const { 
     steps, setSteps, selections, activeStepId, setActiveStep, 
     selectProduct, removeProduct, updateQuantity, getTotalPrice, clearSelections
@@ -42,6 +46,7 @@ export function DynamicBuilderView({ stepsConfig }: DynamicBuilderViewProps) {
   const [sortMode, setSortMode] = useState<"default" | "name_asc" | "name_desc" | "price_asc" | "price_desc">("default")
   const [isMobileStepsOpen, setIsMobileStepsOpen] = useState(false)
   const [isMobileMyBuildOpen, setIsMobileMyBuildOpen] = useState(false)
+  const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false)
   const toastManager = useToastManager()
 
   useEffect(() => {
@@ -240,6 +245,44 @@ export function DynamicBuilderView({ stepsConfig }: DynamicBuilderViewProps) {
     } finally {
       setSendingWA(false)
     }
+  }
+
+  /**
+   * Sama pola dengan `handlePrint`/`handleCheckoutWA`: klien hanya mengirim id,
+   * kuantitas, dan label — harga tidak pernah dikirim atau disimpan. Lihat
+   * `actions-save.ts` dan CLAUDE.md §2.7.
+   */
+  const buildLineItems = () =>
+    steps.flatMap((step) => {
+      const stepSels = selections[step.id]
+      if (!Array.isArray(stepSels)) return []
+      return stepSels.map((sel) => ({
+        productId: Number(sel.product.id),
+        quantity: sel.quantity,
+        stepId: step.id,
+        stepName: step.name,
+      }))
+    })
+
+  const handleOpenSaveDialog = () => {
+    if (buildLineItems().length === 0) {
+      toastManager.add({
+        title: "Build Kosong",
+        description: "Belum ada komponen yang dipilih.",
+      })
+      return
+    }
+
+    if (!isLoggedIn) {
+      window.location.href = "/login?next=/build-pc"
+      return
+    }
+
+    setIsSaveDialogOpen(true)
+  }
+
+  const handleConfirmSaveBuild = async (name: string) => {
+    return saveBuildAction(name, buildLineItems())
   }
 
   const selectedStepsCount = steps.filter(s => Array.isArray(selections[s.id]) && selections[s.id].length > 0).length
@@ -465,13 +508,22 @@ export function DynamicBuilderView({ stepsConfig }: DynamicBuilderViewProps) {
           </Button>
         </div>
 
-        <button
-          onClick={handlePrint}
-          className="mt-2 w-full cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-foreground/15 bg-foreground text-background hover:bg-foreground/85 active:bg-foreground/75 h-10 text-sm font-semibold transition-colors"
-        >
-          <Printer className="w-3.5 h-3.5" />
-          Print / Save PDF
-        </button>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <button
+            onClick={handlePrint}
+            className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-foreground/15 bg-foreground text-background hover:bg-foreground/85 active:bg-foreground/75 h-10 text-sm font-semibold transition-colors"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            Print
+          </button>
+          <button
+            onClick={handleOpenSaveDialog}
+            className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-foreground/15 bg-background text-foreground hover:bg-muted h-10 text-sm font-semibold transition-colors"
+          >
+            <SaveIcon size={14} />
+            Simpan
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -733,6 +785,18 @@ export function DynamicBuilderView({ stepsConfig }: DynamicBuilderViewProps) {
         </div>
       </div>
 
+      <SaveBuildDialog
+        open={isSaveDialogOpen}
+        onOpenChange={setIsSaveDialogOpen}
+        onConfirm={handleConfirmSaveBuild}
+        onSaved={() => {
+          toastManager.add({
+            title: "Rakitan tersimpan",
+            description: "Bisa dilihat kembali di halaman akun Anda.",
+            data: { variant: "success" },
+          })
+        }}
+      />
     </div>
   )
 }
