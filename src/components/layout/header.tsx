@@ -4,16 +4,23 @@ import Image from "next/image";
 import { MegaMenu } from "./mega-menu";
 import { CartBadge } from "./cart-badge";
 import { SearchBar } from "./search-bar";
+import { AccountNav } from "./account-nav";
+import { MobileMenu } from "./mobile-menu";
 import { getCategories } from "@/lib/api/woocommerce/categories";
 import { getThemeSettings } from "@/lib/theme/settings";
+import { customerLogoutAction } from "@/app/akun/actions";
 import {
   ChristmasHeaderDecor,
   ChristmasHeaderPattern,
 } from "@/components/theme/christmas-decor";
 
 export async function Header() {
-  // Dua pembacaan ini independen, jadi dijalankan berbarengan — tema tidak perlu
-  // menunggu kategori selesai diambil.
+  // Dua pembacaan ini independen, jadi dijalankan berbarengan. Status login
+  // SENGAJA TIDAK dibaca di sini — lihat komentar panjang di
+  // `hooks/use-customer.ts`: `getCurrentCustomer()` memanggil `cookies()`, dan
+  // itu menandai SETIAP halaman yang me-render Header (yaitu semuanya) sebagai
+  // dynamic, termasuk yang sebelumnya statis (/cart, /faq, dst). `AccountNav`
+  // dan `MobileMenu` membaca statusnya sendiri lewat `/api/auth/me` di klien.
   const [categories, theme] = await Promise.all([
     getCategories({ hideEmpty: true, perPage: 100 }),
     getThemeSettings(),
@@ -31,8 +38,12 @@ export async function Header() {
       <header className="theme-chrome fixed top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 print:hidden">
         {isChristmas && <ChristmasHeaderDecor />}
         <div className="container relative z-10 mx-auto flex h-16 items-center px-4 md:px-6">
-          {/* Mobile Layout (< md): Search - Download - Cart */}
+          {/* Mobile Layout (< md): Menu - Search - Cart */}
           <div className="flex w-full items-center gap-2 md:hidden">
+            <div className="shrink-0">
+              <MobileMenu categories={categories} />
+            </div>
+
             <div className="flex-1">
               <SearchBar className="w-full max-w-none sm:hidden flex" />
             </div>
@@ -69,10 +80,8 @@ export async function Header() {
               <SearchBar />
             </div>
 
-            {/* Menu akun dihapus bersama autentikasi simulasi — lihat commit yang
-              membuang store/auth.ts. Akan kembali kalau akun pelanggan yang
-              sungguhan dibangun. */}
-            <nav className="flex items-center gap-4">
+            <nav className="flex items-center gap-2">
+              <AccountNav logoutAction={customerLogoutAction} />
               <CartBadge />
             </nav>
           </div>

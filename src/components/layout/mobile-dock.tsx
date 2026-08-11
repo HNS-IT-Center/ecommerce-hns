@@ -2,19 +2,23 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Monitor, ShoppingBag, ShoppingCart } from "lucide-react"
+import { Home, Monitor, ShoppingBag, ShoppingCart, User } from "lucide-react"
 import { useCartStore } from "@/store/cart"
 import { useIsHydrated } from "@/hooks/use-is-hydrated"
+import { useCustomer } from "@/hooks/use-customer"
 import { cn } from "@/lib/utils"
 import { ChristmasDockDecor } from "@/components/theme/christmas-decor"
 
 /**
  * `isChristmas` dioper sebagai prop dari root layout, bukan dibaca sendiri —
- * komponen ini berjalan di klien dan tidak bisa menyentuh database.
+ * komponen ini berjalan di klien dan tidak bisa menyentuh database. Status
+ * login TIDAK dioper sebagai prop server (lihat hooks/use-customer.ts) —
+ * membaca cookies() di RootLayout akan menandai seluruh storefront dynamic.
  */
 export function MobileDock({ isChristmas = false }: { isChristmas?: boolean }) {
   const pathname = usePathname()
   const mounted = useIsHydrated()
+  const { customer } = useCustomer()
   const totalItems = useCartStore((state) => state.getTotalItems())
   
   // Hide dock if on desktop or admin routes
@@ -57,10 +61,12 @@ export function MobileDock({ isChristmas = false }: { isChristmas?: boolean }) {
       href: "/cart",
       isActive: pathname === "/cart",
     },
-    // Entri "Account" dihapus bersama autentikasi simulasi. Mengarahkan orang ke
-    // halaman yang cuma bisa mengatakan "belum tersedia" adalah jalan buntu yang
-    // memakan satu dari lima slot dock. Akan kembali kalau akun pelanggan yang
-    // sungguhan dibangun.
+    {
+      label: "Akun",
+      icon: <User className="h-6 w-6" />,
+      href: customer ? "/akun" : "/login",
+      isActive: pathname.startsWith("/akun") || pathname === "/login",
+    },
   ]
 
   return (
