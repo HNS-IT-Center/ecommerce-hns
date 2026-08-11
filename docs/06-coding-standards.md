@@ -314,6 +314,21 @@ Detail testing akan didokumentasikan terpisah. Aturan minimum:
 - E2E test (Playwright) untuk critical flow: browse → add to cart → checkout.
 - Coverage target: tidak diwajibkan angka, tapi setiap PR yang menambah logic wajib menambah test.
 
+### 9.1 `tsc`, lint, dan build TIDAK cukup untuk komponen interaktif ATAU layout
+
+Empat kasus nyata di project ini, di mana `npx tsc --noEmit`, `npm run lint`, dan `next build` semuanya lolos hijau — tapi fiturnya rusak begitu benar-benar dipakai di browser:
+
+1. **Entri "Akun" hilang dari dock mobile.** Kode-nya valid TypeScript, tidak ada error lint. Hanya kelihatan salah kalau dock-nya dibuka di layar mobile dan slotnya dihitung manual.
+2. **Popup Leaflet tertutup elemen lain (z-index).** Style-nya valid CSS, tidak ada warning build. Hanya kelihatan kalau peta benar-benar dirender dan popup-nya diklik.
+3. **`AccountNav` melempar runtime error "MenuGroupContext is missing" setiap kali dropdown dibuka** (2026-08-11) — `DropdownMenuLabel` (Base UI `Menu.GroupLabel`) dipakai tanpa pembungkus `Menu.Group`. TypeScript tidak menangkap ini karena secara tipe komponennya valid; error-nya baru terlempar saat `useMenuGroupRootContext()` dipanggil di runtime, persis ketika popup-nya benar-benar ter-mount. Build sukses karena Next.js tidak menjalankan interaksi apa pun saat build, hanya merender pohon komponen sekali secara statis.
+4. **Banner "rakitan lama" di `/build-pc` merusak seluruh layout tiga kolom** (2026-08-12) — `basis-full order-first` ditambahkan pada anak baru sebuah container `flex flex-col lg:flex-row` (tanpa `flex-wrap`) dengan asumsi itu akan membuat "pita selebar penuh di baris sendiri" di atas tiga kolom. TypeScript, lint, dan build semuanya valid — className adalah string yang sah, tidak ada yang salah secara tipe. Kenyataannya, tanpa `flex-wrap`, `basis-full` pada sebuah flex-item hanya berarti "ambil 100% lebar di **sumbu utama yang sama**" — item itu tetap berbagi baris horizontal dengan sidebar kiri/kanan yang sudah ada, bukan pindah ke baris sendiri. Hasilnya: kotak besar menimpa kolom sidebar, judul halaman tertutup. Kesalahan ini murni soal *mental model* CSS Flexbox penulis vs kenyataan struktur DOM — sesuatu yang hanya kelihatan kalau layout-nya benar-benar dirender.
+
+**Pola dari keempatnya:** kegagalan yang HANYA terlihat setelah sebuah aksi pengguna (klik, buka menu, geser peta) ATAU setelah layout benar-benar dirender di viewport nyata, tidak akan pernah tertangkap oleh pemeriksaan statis — karena pemeriksaan statis tidak pernah men-trigger aksi itu, dan tidak pernah "melihat" hasil render seperti mata manusia. Verifikasi browser bukan langkah opsional untuk komponen interaktif (dropdown, modal, dock, peta) ATAU untuk perubahan layout (menambah/memindah elemen dalam struktur flex/grid yang sudah ada) — itu satu-satunya cara memastikan komponennya benar-benar berfungsi DAN terlihat benar, bukan cuma valid secara tipe/sintaks.
+
+**Untuk agent (termasuk AI agent) yang tidak punya akses klik manual:** pakai Playwright untuk memicu interaksi itu secara terprogram (klik elemen, baca `console` untuk error React, `page.locator(...).click()` untuk membuka dropdown/modal) — jangan berhenti di "sudah lolos tsc/lint/build, silakan tes sendiri" untuk bug yang jelas-jelas butuh interaksi untuk muncul. Sesi login pelanggan/admin bisa disuntikkan langsung sebagai cookie ke browser context tanpa perlu login manual berulang.
+
+**Untuk perubahan layout secara khusus:** ambil screenshot Playwright **sebelum** menyentuh kode (baseline) di minimal tiga breakpoint (mobile ~375px, tablet ~768px, desktop ~1440px — breakpoint yang relevan dengan komponen yang disentuh), lalu screenshot lagi di ketiganya **setelah** perubahan, dan bandingkan. Ini bukan langkah tambahan opsional — laporan "perubahan layout selesai" tanpa perbandingan sebelum/sesudah di semua breakpoint yang terkena dampak tidak lengkap. Sebelum menambah elemen ke container flex/grid yang sudah ada, periksa dulu `flex-direction` sungguhan di breakpoint yang relevan (lewat `getComputedStyle`, bukan menebak dari className) dan apakah container itu `wrap` — jangan asumsikan struktur dari nama class saja.
+
 ---
 
 ## 10. Git & Commit

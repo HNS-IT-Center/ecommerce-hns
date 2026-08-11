@@ -9,7 +9,8 @@ import { prepareBuildWhatsApp } from "../actions-whatsapp"
 import { saveBuildAction } from "../actions-save"
 import { ProductCardBuilder } from "./product-card-builder"
 import { SaveBuildDialog } from "./save-build-dialog"
-import { Check, Edit2, MessageCircle, Printer, Search, X, Loader2, AlertTriangle, RotateCcw, Menu, XCircle } from "lucide-react"
+import { StartNewBuildDialog } from "./start-new-build-dialog"
+import { Check, Edit2, MessageCircle, Printer, Search, X, Loader2, AlertTriangle, RotateCcw, Menu, XCircle, History } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useToastManager } from "@/components/ui/toast"
@@ -47,11 +48,37 @@ export function DynamicBuilderView({ stepsConfig, isLoggedIn }: DynamicBuilderVi
   const [isMobileStepsOpen, setIsMobileStepsOpen] = useState(false)
   const [isMobileMyBuildOpen, setIsMobileMyBuildOpen] = useState(false)
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false)
+  // `true` kalau SaveBuildDialog dibuka lewat "Simpan Dulu" di
+  // StartNewBuildDialog — menentukan apakah rakitan dikosongkan otomatis
+  // setelah simpan sukses. Direset begitu SaveBuildDialog ditutup.
+  const [saveDialogIsForNewBuild, setSaveDialogIsForNewBuild] = useState(false)
+  const [isStartNewDialogOpen, setIsStartNewDialogOpen] = useState(false)
+  // `null` = belum dievaluasi (sebelum hydration selesai). Dievaluasi TEPAT
+  // SEKALI saat `mounted` pertama kali jadi true — lihat efek di bawah.
+  // Bukan `useMemo` dari `selections`: kalau begitu, banner ini akan
+  // muncul lagi setiap kali `hydrateSelections` dipanggil ("Lanjutkan di
+  // Builder" dari rakitan tersimpan) padahal itu bukan kasus "rakitan lama
+  // yang belum disentuh" — itu rakitan yang justru sengaja sedang dimuat.
+  const [showPreviousBuildBanner, setShowPreviousBuildBanner] = useState(false)
   const toastManager = useToastManager()
 
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  // Sengaja bergantung pada `mounted` saja, BUKAN `selections` — supaya cek
+  // "ada rakitan lama" hanya jalan sekali di titik hydration selesai, tidak
+  // setiap kali `selections` berubah karena pilihan baru di sesi ini.
+  useEffect(() => {
+    if (mounted && Object.keys(useNewBuilderStore.getState().selections).length > 0) {
+      // Deteksi "ada rakitan lama" HARUS menunggu hydration Zustand persist
+      // selesai (ditandai `mounted`), yang hanya diketahui lewat efek; tidak
+      // ada nilai untuk dibaca saat render pertama karena localStorage belum
+      // terbaca saat itu.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setShowPreviousBuildBanner(true)
+    }
+  }, [mounted])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -278,11 +305,35 @@ export function DynamicBuilderView({ stepsConfig, isLoggedIn }: DynamicBuilderVi
       return
     }
 
+    setSaveDialogIsForNewBuild(false)
     setIsSaveDialogOpen(true)
   }
 
   const handleConfirmSaveBuild = async (name: string) => {
     return saveBuildAction(name, buildLineItems())
+  }
+
+  /**
+   * Rakitan dikosongkan HANYA di sini dan di tombol Reset yang sudah ada —
+   * tidak pernah otomatis. Dipanggil dari `StartNewBuildDialog` setelah
+   * pelanggan memilih "Mulai Tanpa Simpan"/"Mulai Rakitan Baru" secara
+   * eksplisit. Banner-nya sendiri ikut ditutup: begitu rakitan dikosongkan,
+   * tidak ada lagi "rakitan sebelumnya" untuk diberitahukan.
+   */
+  const handleDiscardAndStartNew = () => {
+    clearSelections()
+    setShowPreviousBuildBanner(false)
+  }
+
+  /**
+   * "Simpan Dulu" dari dalam StartNewBuildDialog membuka SaveBuildDialog yang
+   * sama seperti tombol Simpan biasa — TIDAK ada form simpan kedua. Begitu
+   * simpan sukses, rakitan lama otomatis dikosongkan (lewat `onSaved` di
+   * bawah) karena niat awalnya memang "mulai baru", bukan sekadar menyimpan.
+   */
+  const handleSaveFirst = () => {
+    setSaveDialogIsForNewBuild(true)
+    setIsSaveDialogOpen(true)
   }
 
   const selectedStepsCount = steps.filter(s => Array.isArray(selections[s.id]) && selections[s.id].length > 0).length
@@ -530,7 +581,7 @@ export function DynamicBuilderView({ stepsConfig, isLoggedIn }: DynamicBuilderVi
 
   return (
     <div className="flex flex-col lg:flex-row gap-8 max-w-[1600px] mx-auto w-full pb-4 md:pb-0">
-      
+
       {/* MOBILE DRAWER TOGGLES (Hidden on Desktop) */}
       <div className="fixed bottom-24 right-4 z-[60] md:hidden print:hidden flex flex-col gap-4">
         {/* Save/My Build Button */}
@@ -616,6 +667,52 @@ export function DynamicBuilderView({ stepsConfig, isLoggedIn }: DynamicBuilderVi
 
       {/* MAIN CONTENT: Products */}
       <div className="flex-1 min-w-0 print:w-full">
+        {/* Banner "rakitan lama" — SENGAJA di dalam kolom konten, bukan
+            selebar 3 kolom (root flex tidak wrap; elemen basis-full di sana
+            ikut berbagi baris horizontal dengan sidebar, bukan membuat baris
+            sendiri — lihat docs/06-coding-standards.md §9.2). Ditempatkan di
+            paling atas kolom ini, sebelum judul, supaya di mobile (di mana
+            root sudah flex-col dan kolom ini render setelah "Build
+            Progress") banner tetap jadi hal pertama dari isi builder yang
+            terlihat — bukan terselip di antara grid produk.
+
+            `mt-[112px] md:mt-0`: berbeda dari `<h1>` desktop di bawah (yang
+            `hidden md:block` karena judulnya pindah ke bar mengambang di
+            mobile), banner ini SELALU dirender, termasuk di mobile. Bar
+            mengambang itu `fixed top-0` dan menimpa apa pun yang duduk di
+            posisi dokumen normal di bawahnya — tanpa kompensasi ini banner
+            ada di DOM (terverifikasi lewat getBoundingClientRect) tapi
+            sepenuhnya tertutup, persis seperti alasan grid produk di bawah
+            memakai jarak yang sama.
+
+            HANYA hilang lewat tombol x manual: pelanggan yang iseng mengubah
+            satu komponen sebelum sadar "ini bukan yang mau saya lanjutkan"
+            harus tetap melihatnya, bukan kehilangan jejaknya setelah
+            perubahan pertama. */}
+        {showPreviousBuildBanner && (
+          <div className="mb-6 mt-[112px] md:mt-0 flex flex-col items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm dark:border-blue-900 dark:bg-blue-950/30 print:hidden sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+            <div className="flex items-center gap-2 text-blue-800 dark:text-blue-300">
+              <History className="h-4 w-4 shrink-0" />
+              <span className="font-medium">Melanjutkan rakitan sebelumnya</span>
+            </div>
+            <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
+              <button
+                onClick={() => setIsStartNewDialogOpen(true)}
+                className="cursor-pointer rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-100 dark:text-blue-300 dark:hover:bg-blue-900/40"
+              >
+                Mulai Rakitan Baru
+              </button>
+              <button
+                onClick={() => setShowPreviousBuildBanner(false)}
+                aria-label="Tutup pemberitahuan"
+                className="cursor-pointer rounded-lg p-1.5 text-blue-800 hover:bg-blue-100 dark:text-blue-300 dark:hover:bg-blue-900/40"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Judul versi desktop. Di mobile judulnya pindah ke dalam bar
             mengambang di bawah, supaya tetap terlihat saat menggulir. */}
         <div className="mb-6 hidden md:block print:hidden">
@@ -787,15 +884,20 @@ export function DynamicBuilderView({ stepsConfig, isLoggedIn }: DynamicBuilderVi
 
       <SaveBuildDialog
         open={isSaveDialogOpen}
-        onOpenChange={setIsSaveDialogOpen}
-        onConfirm={handleConfirmSaveBuild}
-        onSaved={() => {
-          toastManager.add({
-            title: "Rakitan tersimpan",
-            description: "Bisa dilihat kembali di halaman akun Anda.",
-            data: { variant: "success" },
-          })
+        onOpenChange={(next) => {
+          setIsSaveDialogOpen(next)
+          if (!next) setSaveDialogIsForNewBuild(false)
         }}
+        onConfirm={handleConfirmSaveBuild}
+        onSaved={saveDialogIsForNewBuild ? handleDiscardAndStartNew : undefined}
+      />
+
+      <StartNewBuildDialog
+        open={isStartNewDialogOpen}
+        onOpenChange={setIsStartNewDialogOpen}
+        isLoggedIn={isLoggedIn}
+        onSaveFirst={handleSaveFirst}
+        onDiscard={handleDiscardAndStartNew}
       />
     </div>
   )
