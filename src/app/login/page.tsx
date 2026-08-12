@@ -1,8 +1,9 @@
 import Link from "next/link";
 
-import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
+import { Header } from "@/components/layout/header";
 import { sanitizeNextPath } from "@/lib/auth/safe-redirect";
+import { LoginForm } from "./login-form";
 
 export const metadata = {
   title: "Masuk — HNS IT Center",
@@ -10,13 +11,15 @@ export const metadata = {
 };
 
 /**
- * Login pelanggan lewat Google — docs/09-google-oauth-setup.md.
+ * Dua jalur masuk: Google (docs/09-google-oauth-setup.md) dan email+password
+ * (2026-08-12, di samping Google — bukan pengganti). Keduanya menghasilkan
+ * baris `Customer` yang sama, tapi tidak pernah tergabung: satu akun cuma
+ * pernah punya SATU jalur identitas, lihat catatan di schema.prisma pada
+ * model Customer.
  *
- * Menggantikan `RegistrationUnavailable` yang sebelumnya dipakai di sini
- * (masih dipakai `/register` dan `/account`, dua rute lama yang belum masuk
- * cakupan Sprint 1 ini). Akun hanya menambah kemampuan menyimpan rakitan —
- * browsing, PC builder, keranjang, dan checkout WhatsApp tetap terbuka tanpa
- * akun, jadi halaman ini tidak menutup jalan pemesanan langsung.
+ * Akun hanya menambah kemampuan menyimpan rakitan — browsing, PC builder,
+ * keranjang, dan checkout WhatsApp tetap terbuka tanpa akun, jadi halaman
+ * ini tidak menutup jalan pemesanan langsung.
  */
 export default async function Page({
   searchParams,
@@ -32,12 +35,9 @@ export default async function Page({
     <div className="flex min-h-screen flex-col bg-background">
       <Header />
       <main className="flex flex-1 items-center justify-center p-4 py-12 sm:px-6 lg:px-8">
-        <div className="w-full max-w-md space-y-6 rounded-2xl border bg-card p-8 text-center shadow-sm">
-          <div>
+        <div className="w-full max-w-md space-y-6 rounded-2xl border bg-card p-8 shadow-sm">
+          <div className="text-center">
             <h1 className="text-2xl font-extrabold tracking-tight">Masuk</h1>
-            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-              Masuk dengan akun Google untuk menyimpan rakitan PC dan melihatnya kembali kapan saja.
-            </p>
           </div>
 
           <a
@@ -47,6 +47,26 @@ export default async function Page({
             <GoogleIcon className="h-5 w-5" />
             Masuk dengan Google
           </a>
+
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs font-semibold text-muted-foreground">
+              atau
+            </span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+
+          <LoginForm nextPath={nextPath} />
+
+          <p className="text-center text-sm text-muted-foreground">
+            Belum punya akun?{" "}
+            <Link
+              href="/register"
+              className="font-semibold text-foreground underline"
+            >
+              Daftar
+            </Link>
+          </p>
 
           <Link
             href="/shop"

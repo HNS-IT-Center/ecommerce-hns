@@ -173,15 +173,33 @@ Cara: buat project di [sentry.io](https://sentry.io) → Settings → Client Key
 
 ### 2.6 OPSIONAL — Email (SMTP)
 
-Dibutuhkan jika mengirim email booking service, notifikasi order, dll. Fase 1 bisa pakai email pribadi lewat SMTP Gmail; produksi sebaiknya pakai SendGrid/Postmark/Amazon SES.
+Dipakai `lib/email/send.ts` untuk mengirim email verifikasi akun & reset password pelanggan yang daftar manual di `/register` (lihat §8 dokumen ini soal keputusan login email+password, dan `docs/09-google-oauth-setup.md` untuk jalur Google). Tersedia juga untuk kebutuhan lain nanti (booking service, notifikasi order).
 
-| Variable | Contoh |
+Dikonfigurasi memakai SMTP Gmail (keputusan 2026-08-12: mulai cepat, tanpa perlu daftar/verifikasi domain penyedia transaksional dulu). Produksi jangka panjang sebaiknya pindah ke penyedia transaksional (SendGrid/Postmark/Resend) kalau volume kirim sudah melebihi batas wajar Gmail.
+
+**Cara dapat App Password Gmail:**
+1. Aktifkan 2-Step Verification di akun Gmail HNS (myaccount.google.com/security) — App Password tidak bisa dibuat tanpa ini.
+2. Buka [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords), buat password baru untuk "Mail".
+3. Salin **persis 16 karakter** yang muncul, **buang spasi pemisahnya** — itu `SMTP_PASSWORD`, **bukan** password login Gmail biasa. (Google menampilkannya sebagai 4 grup berspasi, mis. `abcd efgh ijkl mnop`; yang disimpan adalah `abcdefghijklmnop`, tanpa spasi.)
+
+| Variable | Contoh (Gmail) |
 |---|---|
-| `SMTP_HOST` | `smtp.sendgrid.net` |
+| `SMTP_HOST` | `smtp.gmail.com` |
 | `SMTP_PORT` | `587` |
-| `SMTP_USER` | `apikey` |
-| `SMTP_PASSWORD` | `SG.xxxxx` |
-| `SMTP_FROM` | `noreply@hnsitcenter.id` |
+| `SMTP_USER` | akun Gmail yang App Password-nya dipakai, mis. `developer.hns@gmail.com` |
+| `SMTP_PASSWORD` | App Password 16 karakter tanpa spasi, BUKAN password akun |
+| `SMTP_FROM` | `"Nama <alamat>"` atau email polos — **alamatnya HARUS sama dengan `SMTP_USER`** |
+| `EMAIL_REPLY_TO` | opsional — alamat CS yang dipantau untuk balasan, mis. `cs@hnsitcenter.co.id` |
+
+**`SMTP_FROM` wajib memakai alamat yang sama dengan `SMTP_USER`.** Gmail SMTP relay menimpa header `From` ke alamat akun yang login SMTP kalau diisi alamat lain yang belum didaftarkan sebagai "Send mail as" alias terverifikasi di akun itu — mengisi `noreply@hnsitcenter.id` di sini **tidak akan bekerja** sampai salah satu dari dua hal disiapkan (belum dikerjakan, task terpisah menuju go-live):
+- daftarkan `noreply@hnsitcenter.id` sebagai alias terverifikasi di akun Gmail yang dipakai, atau
+- pindah ke penyedia transaksional (SendGrid/Postmark/Resend) dengan domain `hnsitcenter.id` diverifikasi SPF+DKIM+DMARC.
+
+Nama tampilan boleh apa saja — cuma bagian alamat email di dalam `< >` yang harus sama dengan `SMTP_USER`. Format: `SMTP_FROM="HNS IT Center <developer.hns@gmail.com>"`.
+
+**`EMAIL_REPLY_TO`** mengarahkan balasan pelanggan ke alamat yang benar-benar dipantau tim (CS), bukan ke `SMTP_USER` yang cuma dipakai untuk mengirim. Kalau kosong, balasan default ke `SMTP_FROM`.
+
+Tanpa `SMTP_*` terisi, `/register` dan alur lupa-password membalas error yang jelas ("Pengiriman email belum dikonfigurasi...") — sisa aplikasi (termasuk login Google) tetap berjalan normal.
 
 ---
 

@@ -686,24 +686,84 @@ model Customer {
 
   /// Subject claim dari id_token Google (`sub`). Unik dan tidak pernah
   /// berubah untuk satu akun Google, tidak seperti email.
-  googleSub String @unique @map("google_sub") @db.VarChar(191)
+  ///
+  /// NULLABLE sejak login email+password ditambahkan (2026-08-12) — akun
+  /// yang daftar manual tidak pernah punya ini. Satu akun cuma pernah punya
+  /// SATU jalur identitas (Google ATAU email+password), tidak pernah
+  /// digabung: kalau email yang sama sudah terdaftar lewat Google, daftar
+  /// manual dengan email itu ditolak dan diarahkan pakai Google — bukan
+  /// menambahkan password ke akun Google yang sudah ada. Ini sengaja
+  /// menghindari alur "hubungkan akun" yang jauh lebih rumit dan rawan
+  /// salah untuk tim tanpa peninjau keamanan khusus.
+  googleSub String? @unique @map("google_sub") @db.VarChar(191)
 
-  email String @db.VarChar(191)
+  /// `scrypt`: "salt:hash" heksadesimal — pola SAMA PERSIS dengan
+  /// `users.password_hash` (lihat lib/auth/password.ts). NULL untuk akun
+  /// yang cuma pernah masuk lewat Google.
+  passwordHash String? @map("password_hash") @db.VarChar(255)
+
+  /// UNIK sejak password ditambahkan — jadi kunci pencarian akun saat masuk
+  /// manual. Sebelumnya (Google-only) sengaja TIDAK unik karena identitas
+  /// sebenarnya adalah `googleSub`; sekarang harus unik supaya satu email
+  /// tidak bisa dipakai mendaftar dua kali dengan cara berbeda tanpa
+  /// disadari menjadi dua akun terpisah.
+  email String @unique @db.VarChar(191)
   name  String @db.VarChar(191)
+
+  /// NULL = akun daftar-manual yang belum mengklik link verifikasi, dan
+  /// BELUM BOLEH dipakai masuk. Akun dari Google selalu langsung terisi
+  /// (Google sudah membuktikan kepemilikan email itu, tidak perlu verifikasi
+  /// kedua) — lihat exchangeCodeForIdentity di lib/auth/google.ts yang
+  /// menolak id_token dengan email_verified != true.
+  emailVerifiedAt DateTime? @map("email_verified_at")
 
   /// Penanda pencabutan sesi, pola yang sama dengan `users.password_changed_at`
   /// — token yang terbit sebelum waktu ini dianggap mati walau tanda tangan
   /// dan masa berlakunya masih sah. Diisi (bukan dihapus barisnya) sesaat
   /// sebelum akun dihapus, supaya cookie yang sudah beredar tidak "masih
-  /// login" ke akun yang sudah tidak ada.
+  /// login" ke akun yang sudah tidak ada. Juga diisi saat reset password
+  /// berhasil, supaya sesi yang mungkin sudah dibajak lewat password lama
+  /// langsung mati.
   sessionsRevokedAt DateTime? @map("sessions_revoked_at")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   savedBuilds SavedPcBuild[]
+  verificationTokens CustomerVerificationToken[]
 
   @@map("customers")
+}
+
+/**
+ * Token sekali pakai untuk verifikasi email dan reset password — dua
+ * kebutuhan yang bentuknya identik (kirim link ke email, klik, tervalidasi
+ * sekali, kedaluwarsa), jadi satu tabel dengan `purpose`, bukan dua tabel
+ * kembar.
+ */
+model CustomerVerificationToken {
+  id String @id @default(uuid())
+
+  customerId String   @map("customer_id")
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  /// SHA-256 dari token mentah, BUKAN token itu sendiri — pola sama seperti
+  /// cookie sesi (lib/auth/customer-session.ts): kalau tabel ini pernah
+  /// bocor (dump database, log query), penyerang tidak bisa langsung
+  /// memakai isinya untuk verifikasi/reset. Token mentah hanya pernah ada
+  /// di URL yang dikirim ke email pemilik akun.
+  tokenHash String @unique @map("token_hash") @db.VarChar(64)
+
+  /// "verify_email" | "reset_password". String biasa (bukan enum Prisma) —
+  /// lihat docs/06-coding-standards.md §1.4, project ini menghindari enum
+  /// Prisma untuk union kecil semacam ini.
+  purpose String @db.VarChar(32)
+
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([customerId, purpose])
+  @@map("customer_verification_tokens")
 }
 
 /**

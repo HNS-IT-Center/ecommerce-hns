@@ -57,6 +57,33 @@ const EnvSchema = z.object({
   R2_SECRET_ACCESS_KEY: z.string().min(1).optional(),
   R2_BUCKET_NAME: z.string().min(1).optional(),
   NEXT_PUBLIC_R2_PUBLIC_URL: z.string().url().optional(),
+
+  // SMTP — kirim email verifikasi akun & reset password pelanggan (daftar
+  // manual, docs/09 §8 tidak mencakup ini karena awalnya cuma Google).
+  // Opsional dengan alasan yang sama seperti AUTH_SECRET/GOOGLE_CLIENT_ID:
+  // skema ini di-parse saat modul dimuat, menandainya wajib mematikan
+  // seluruh storefront di mesin yang belum punya kredensial SMTP.
+  // `lib/email/send.ts` yang menjaganya sendiri dan melempar pesan jelas
+  // saat pengiriman benar-benar dipanggil.
+  SMTP_HOST: z.string().min(1).optional(),
+  SMTP_PORT: z.coerce.number().int().positive().optional(),
+  SMTP_USER: z.string().min(1).optional(),
+  SMTP_PASSWORD: z.string().min(1).optional(),
+  // Boleh email polos ("a@b.com") ATAU berformat "Nama <a@b.com>" (RFC 5322)
+  // — makanya BUKAN z.string().email(), yang menolak bentuk kedua.
+  // nodemailer menerima keduanya apa adanya.
+  SMTP_FROM: z
+    .string()
+    .refine(
+      (value) => z.string().email().safeParse(value).success || /^.+<[^<>@\s]+@[^<>@\s]+\.[^<>@\s]+>$/.test(value),
+      "Harus berupa email (a@b.com) atau format \"Nama <a@b.com>\""
+    )
+    .optional(),
+  // Alamat balasan pelanggan diarahkan ke sini (CS), BUKAN ke SMTP_USER
+  // (developer.hns@gmail.com) yang cuma dipakai kirim, tidak dipantau untuk
+  // balasan. Opsional — kalau kosong, replyTo tidak disetel dan balasan
+  // default ke SMTP_FROM seperti biasa.
+  EMAIL_REPLY_TO: z.string().email().optional(),
 });
 
 export const env = EnvSchema.parse({
@@ -81,4 +108,10 @@ export const env = EnvSchema.parse({
   R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
   R2_BUCKET_NAME: process.env.R2_BUCKET_NAME,
   NEXT_PUBLIC_R2_PUBLIC_URL: process.env.NEXT_PUBLIC_R2_PUBLIC_URL,
+  SMTP_HOST: process.env.SMTP_HOST,
+  SMTP_PORT: process.env.SMTP_PORT,
+  SMTP_USER: process.env.SMTP_USER,
+  SMTP_PASSWORD: process.env.SMTP_PASSWORD,
+  SMTP_FROM: process.env.SMTP_FROM,
+  EMAIL_REPLY_TO: process.env.EMAIL_REPLY_TO,
 });
