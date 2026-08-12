@@ -65,6 +65,28 @@ model User {
   /// sesi yang perlu dicabut.
   passwordChangedAt DateTime? @map("password_changed_at")
 
+  /// "owner" | "staff" — lihat `AdminRole` di lib/auth/roles.ts.
+  ///
+  /// String biasa, bukan enum Prisma: docs/06-coding-standards.md §1.4, pola
+  /// yang sama dipakai `customer_verification_tokens.purpose`.
+  ///
+  /// Bedanya cuma satu hal hari ini — `owner` boleh menghapus akun pelanggan
+  /// secara permanen, `staff` tidak. Penghapusan itu tidak bisa dibatalkan
+  /// (CLAUDE.md §2.8: hard delete, cascade ke rakitan tersimpan), jadi ia tidak
+  /// pantas tersedia untuk setiap orang yang kebetulan bisa masuk panel.
+  ///
+  /// `@default("owner")`, BUKAN "staff". Kolom ini lahir di database yang sudah
+  /// berisi admin aktif; kalau baris lama jatuh ke `staff`, tidak ada satu pun
+  /// owner tersisa dan panel mengunci dirinya sendiri — termasuk mengunci
+  /// kemampuan menaikkan orang kembali. Default longgar di sini adalah pilihan
+  /// sadar: menurunkan orang lewat panel itu mudah, memulihkan panel yang
+  /// terkunci butuh akses SQL langsung.
+  ///
+  /// Penjaga terkait ada di `assertNotLastOwner` (lib/api/admin-users.ts):
+  /// owner terakhir tidak boleh menurunkan dirinya sendiri, dengan alasan yang
+  /// sama persis.
+  role String @default("owner") @db.VarChar(16)
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
