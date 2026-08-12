@@ -231,10 +231,16 @@ export function ProductGallery({
 
   return (
     <div className="space-y-8 min-w-0 w-full">
-      {/* Main Image Container */}
-      <div 
+      {/* Main Image Container.
+
+          Di mobile kanvas ini melebar sampai tepi layar dan melepas sudut
+          membulatnya — halaman produk menaikkannya sampai menyentuh puncak
+          layar dengan header melayang di atasnya, dan sudut membulat di sana
+          akan menyisakan celah latar di kedua pojok atas. Dari `sm` ke atas
+          bentuknya kembali seperti semula: kartu membulat di dalam grid. */}
+      <div
         ref={imageRef}
-        className="group relative w-full aspect-square max-h-[350px] sm:max-h-[500px] overflow-hidden rounded-2xl bg-background drop-shadow-sm flex items-center justify-center cursor-pointer sm:cursor-crosshair"
+        className="group relative w-full aspect-square max-h-[350px] sm:max-h-[500px] overflow-hidden rounded-none sm:rounded-2xl bg-background drop-shadow-sm flex items-center justify-center cursor-pointer sm:cursor-crosshair"
         onClick={handleImageClick}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
@@ -383,13 +389,34 @@ export function ProductGallery({
             </button>
           </>
         )}
+
+        {/* Penghitung slide, mis. "3/7".
+
+            Ini pengganti peran deretan thumbnail yang di mobile sudah diganti
+            oleh pemilih varian: tanpa sesuatu yang memberi tahu jumlah foto,
+            pembeli tidak punya alasan untuk mencoba menggeser sama sekali.
+            Videonya ikut dihitung karena ia memang satu slide penuh di sini,
+            jadi angkanya cocok dengan yang benar-benar bisa digeser. */}
+        {slides.length > 1 && (
+          <span
+            className="absolute bottom-3 right-3 z-40 rounded-full bg-black/60 px-2.5 py-1 text-xs font-semibold tabular-nums text-white backdrop-blur-md sm:hidden"
+            aria-hidden="true"
+          >
+            {activeIndex + 1}/{slides.length}
+          </span>
+        )}
       </div>
 
-      {/* Thumbnails */}
+      {/* Thumbnails — desktop saja.
+
+          Di mobile tempat ini diambil alih pemilih varian: barisnya cuma muat
+          satu deret, dan memilih varian lebih berharga daripada melompat antar
+          foto yang toh bisa digeser langsung di kanvas. Penghitung "3/7" di
+          sudut gambar yang menggantikan perannya sebagai penunjuk jumlah foto. */}
       {slides.length > 1 && (
         <div
           ref={scrollContainerRef}
-          className="flex gap-3 overflow-x-auto p-2 scrollbar-hide snap-x snap-mandatory scroll-smooth w-full"
+          className="hidden sm:flex gap-3 overflow-x-auto p-2 scrollbar-hide snap-x snap-mandatory scroll-smooth w-full"
         >
           {slides.map((slide, i) => (
             <button

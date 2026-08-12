@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { Header } from "@/components/layout/header"
+import { TransparentHeaderProvider } from "@/components/layout/transparent-header-provider"
 import { Footer } from "@/components/layout/footer"
 import { Breadcrumb } from "@/components/seo/breadcrumb"
 import { JsonLd } from "@/components/seo/json-ld"
@@ -182,21 +183,37 @@ export default async function ProductPage({ params }: ProductPageProps) {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <JsonLd data={productJsonLd} />
-      <Header />
-      <main className="flex-1">
-        <Breadcrumb
-          items={[
-            { label: "Beranda", href: "/" },
-            { label: "Katalog", href: "/shop" },
-            ...(primaryCategory
-              ? [{ label: categoryName, href: `/shop?category=${primaryCategory.slug}` }]
-              : []),
-            { label: product.name },
-          ]}
-        />
+      {/* Header melayang di atas galeri sampai pembeli menggulir.
 
-        {/* Product Content */}
-        <div className="mx-auto max-w-7xl px-4 py-8 md:px-6 md:py-12">
+          Hanya halaman ini yang membungkus dirinya begitu; di halaman lain
+          Header membaca nilai bawaan provider-nya dan tampil seperti biasa. */}
+      <TransparentHeaderProvider>
+        <Header />
+      </TransparentHeaderProvider>
+      <main className="flex-1">
+        {/* Breadcrumb desktop saja. Di mobile ia berdiri persis di tempat yang
+            dibutuhkan galeri untuk naik sampai puncak layar, dan jejak navigasi
+            itu sendiri sudah diwakili tombol kembali di header. */}
+        <div className="hidden md:block">
+          <Breadcrumb
+            items={[
+              { label: "Beranda", href: "/" },
+              { label: "Katalog", href: "/shop" },
+              ...(primaryCategory
+                ? [{ label: categoryName, href: `/shop?category=${primaryCategory.slug}` }]
+                : []),
+              { label: product.name },
+            ]}
+          />
+        </div>
+
+        {/* Product Content.
+
+            Padding kiri-kanan sengaja tidak dipasang di mobile: galerinya harus
+            menyentuh kedua tepi layar. Blok-blok di bawahnya memasang paddingnya
+            sendiri, dan strip varian ikut begitu supaya kotak pertamanya sejajar
+            dengan teks di bawahnya. */}
+        <div className="mx-auto max-w-7xl py-0 md:px-6 md:py-12">
           <ProductDetail
             images={galleryImages}
             videoUrl={product.video_url}
@@ -224,21 +241,25 @@ export default async function ProductPage({ params }: ProductPageProps) {
             }}
           />
 
-          {/* Tabs: Description + Specs */}
-          <ProductTabs
-            name={product.name}
-            description={product.description || ""}
-            shortDescription={product.short_description || ""}
-            attributes={product.attributes || []}
-          />
-
-          {/* Related Products */}
-          {primaryCategory && (
-            <RelatedProducts
-              categoryId={primaryCategory.id}
-              excludeId={product.id}
+          {/* Sisa halaman memasang paddingnya sendiri di mobile — wadah di atas
+              sudah melepasnya demi galeri yang menyentuh tepi layar. */}
+          <div className="px-4 md:px-0">
+            {/* Tabs: Description + Specs */}
+            <ProductTabs
+              name={product.name}
+              description={product.description || ""}
+              shortDescription={product.short_description || ""}
+              attributes={product.attributes || []}
             />
-          )}
+
+            {/* Related Products */}
+            {primaryCategory && (
+              <RelatedProducts
+                categoryId={primaryCategory.id}
+                excludeId={product.id}
+              />
+            )}
+          </div>
         </div>
       </main>
       <Footer />
