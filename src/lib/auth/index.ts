@@ -17,14 +17,17 @@ import {
   verifySession,
   type SessionPayload,
 } from "./session"
+import { parseAdminRole, type AdminRole } from "./roles"
 
 export { SESSION_COOKIE, SESSION_MAX_AGE_SECONDS, verifySession, type SessionPayload }
+export { type AdminRole }
 
 export type AdminUser = {
   id: string
   email: string
   name: string
   image: string | null
+  role: AdminRole
 }
 
 /** Dilempar saat aksi dipanggil tanpa sesi yang sah. */
@@ -32,6 +35,21 @@ export class UnauthorizedError extends Error {
   constructor(message = "Anda harus masuk untuk melakukan tindakan ini.") {
     super(message)
     this.name = "UnauthorizedError"
+  }
+}
+
+/**
+ * Dilempar saat pemanggilnya sudah masuk, tapi rolenya tidak cukup.
+ *
+ * Sengaja dibedakan dari `UnauthorizedError`: yang satu berarti "silakan
+ * masuk", yang ini berarti "masuk lagi pun tidak akan menolong". Memakai satu
+ * galat untuk keduanya membuat panel mengarahkan orang ke halaman login yang
+ * tidak menyelesaikan apa pun.
+ */
+export class ForbiddenError extends Error {
+  constructor(message = "Tindakan ini hanya untuk akun owner.") {
+    super(message)
+    this.name = "ForbiddenError"
   }
 }
 
@@ -59,7 +77,7 @@ export async function getCurrentUser(): Promise<AdminUser | null> {
 
   const user = await getPrisma().user.findUnique({
     where: { id: session.sub },
-    select: { id: true, email: true, name: true, image: true, passwordChangedAt: true },
+    select: { id: true, email: true, name: true, image: true, passwordChangedAt: true, role: true },
   })
   if (!user) return null
 
@@ -85,13 +103,47 @@ export async function getCurrentUser(): Promise<AdminUser | null> {
   // Dibentuk ulang secara eksplisit, bukan disebar dengan spread: `AdminUser`
   // adalah yang dilihat seluruh panel, dan `passwordChangedAt` tidak ada
   // urusannya di sana.
-  return { id: user.id, email: user.email, name: user.name, image: user.image }
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    image: user.image,
+    // Dibaca dari database, TIDAK dari cookie. Role sengaja tidak pernah masuk
+    // payload sesi: kalau ia ikut ditandatangani di token, menurunkan seseorang
+    // jadi staff baru berlaku setelah cookienya kedaluwarsa — sampai tujuh hari
+    // kemudian. Dengan dibaca ulang tiap kali, pencabutan izin langsung berlaku.
+    role: parseAdminRole(user.role),
+  }
 }
 
 /** Sama seperti `getCurrentUser`, tapi melempar kalau tidak ada sesi. */
 export async function requireAuth(): Promise<AdminUser> {
   const user = await getCurrentUser()
   if (!user) throw new UnauthorizedError()
+  return user
+}
+
+/**
+ * Sama seperti `requireAuth`, tapi menuntut role `owner`.
+ *
+ * WAJIB dipanggil DI DALAM setiap server action yang butuh owner — satu
+ * pemanggilan per action, bukan satu pemeriksaan terpusat di layout atau
+ * middleware.
+ *
+ * Alasannya: pemeriksaan di layer atas melindungi HALAMAN, sedangkan server
+ * action adalah endpoint HTTP tersendiri yang bisa dipanggil langsung tanpa
+ * pernah memuat halaman itu. Menyembunyikan tombolnya di UI juga bukan
+ * pengamanan — ia cuma menyembunyikan tombol. Yang menahan permintaan hanyalah
+ * pemeriksaan yang berjalan di server, di dalam action itu sendiri.
+ *
+ * Konsekuensi yang disengaja: action baru yang lupa memanggil ini TIDAK
+ * otomatis terlindungi. Itu memang pertukarannya — penjaga terpusat yang bisa
+ * terlewat diam-diam justru lebih berbahaya, karena ia memberi rasa aman tanpa
+ * ada yang benar-benar memeriksa.
+ */
+export async function requireOwner(): Promise<AdminUser> {
+  const user = await requireAuth()
+  if (user.role !== "owner") throw new ForbiddenError()
   return user
 }
 
