@@ -16,6 +16,7 @@ import {
   Megaphone,
   Palette,
   Tags,
+  Users,
   X,
 } from "lucide-react"
 
@@ -69,6 +70,7 @@ const adminNavItems: NavItem[] = [
   { title: "PC Builder",   url: "/admin/pc-builder", icon: Cpu },
   { title: "Banner Promo", url: "/admin/banner",   icon: Megaphone },
   { title: "Toko & Lokasi", url: "/admin/toko",    icon: Store },
+  { title: "Pelanggan",    url: "/admin/pelanggan", icon: Users },
   { title: "Tema",         url: "/admin/theme",    icon: Palette },
   { title: "Logs",         url: "/admin/logs",     icon: ClipboardList },
 ]

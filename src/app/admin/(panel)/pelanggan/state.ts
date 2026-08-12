@@ -22,5 +22,17 @@ export const EMPTY_CUSTOMER_STATE: CustomerActionState = { error: null, success:
 export const MIN_REASON_WORDS = 3
 export const MAX_REASON_LENGTH = 500
 
-/** Yang harus diketik ulang staff untuk mengonfirmasi penghapusan. */
-export const DELETE_CONFIRMATION_WORD = "HAPUS PERMANEN"
+/**
+ * Konfirmasi penghapusan menuntut staff mengetik ulang EMAIL pelanggan, jadi
+ * tidak ada kata sandi seragam yang disimpan di sini.
+ *
+ * Sempat ada `DELETE_CONFIRMATION_WORD = "HAPUS PERMANEN"`, lalu diganti: kata
+ * seragam cuma menguji ketelitian mengetik, sedangkan mengetik email yang benar
+ * memaksa staff memastikan ia menghapus ORANG YANG TEPAT. Kekeliruan yang
+ * paling mungkin di sini bukan menekan tombol tanpa sengaja, melainkan
+ * menghapus baris yang salah dari daftar.
+ *
+ * Pembandingnya dibaca dari database di dalam server action, BUKAN dikirim
+ * lewat formulir — kalau ikut formulir, pengirim bisa mengubah keduanya
+ * sekaligus dan konfirmasinya cuma mencocokkan dirinya sendiri.
+ */

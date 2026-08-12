@@ -2,13 +2,12 @@
 
 import { revalidatePath } from "next/cache"
 import { ForbiddenError, UnauthorizedError, requireOwner } from "@/lib/auth"
-import { CustomerNotFoundError, deleteCustomerPermanently } from "@/lib/api/customers"
 import {
-  DELETE_CONFIRMATION_WORD,
-  MAX_REASON_LENGTH,
-  MIN_REASON_WORDS,
-  type CustomerActionState,
-} from "./state"
+  CustomerNotFoundError,
+  deleteCustomerPermanently,
+  getCustomerForDeletion,
+} from "@/lib/api/customers"
+import { MAX_REASON_LENGTH, MIN_REASON_WORDS, type CustomerActionState } from "./state"
 
 /**
  * Hapus akun pelanggan secara permanen.
@@ -38,11 +37,23 @@ export async function deleteCustomer(
       return { error: "Akun yang mau dihapus tidak dikenali.", success: null }
     }
 
-    // Ketik ulang, pola yang sama seperti hapus toko. Bukan sekadar formalitas:
-    // penghapusan ini tidak bisa dibatalkan, jadi satu klik tidak boleh cukup.
-    if (confirmation !== DELETE_CONFIRMATION_WORD) {
+    /**
+     * Yang diketik ulang adalah EMAIL pelanggan, dicocokkan ke email yang
+     * TERSIMPAN DI DATABASE — bukan ke nilai yang ikut dikirim formulir.
+     * Kalau pembandingnya datang dari formulir juga, pengirim bisa mengubah
+     * keduanya sekaligus dan konfirmasinya cuma mencocokkan dirinya sendiri.
+     *
+     * Ini juga sekaligus memastikan akunnya masih ada sebelum apa pun
+     * dikerjakan.
+     */
+    const target = await getCustomerForDeletion(customerId)
+    if (!target) {
+      return { error: "Akun pelanggan tidak ditemukan — mungkin sudah dihapus.", success: null }
+    }
+
+    if (confirmation.toLowerCase() !== target.email.toLowerCase()) {
       return {
-        error: `Ketik "${DELETE_CONFIRMATION_WORD}" persis untuk mengonfirmasi penghapusan.`,
+        error: "Email konfirmasi tidak cocok dengan akun yang dipilih.",
         success: null,
       }
     }
@@ -70,12 +81,26 @@ export async function deleteCustomer(
 
     revalidatePath("/admin/pelanggan")
 
+    /**
+     * Keterangannya menyebut SIAPA yang terhapus, bukan sekadar "berhasil".
+     *
+     * Nama dan emailnya diambil dari `target` yang dibaca SEBELUM penghapusan —
+     * sesudah ini barisnya sudah tidak ada, dan memang tidak disalin ke tabel
+     * audit (justru data itu yang diminta hilang). Kalimat ini hidup di layar
+     * staff saja, tidak tersimpan di mana pun.
+     *
+     * Gunanya: staff bisa langsung membalas CS dengan yakin bahwa yang terhapus
+     * benar orang yang diminta, tanpa harus mengingat baris mana yang tadi
+     * ditekan.
+     */
+    const buildNote =
+      savedBuildCount > 0
+        ? ` beserta ${savedBuildCount} rakitan tersimpan`
+        : " (tidak ada rakitan tersimpan)"
+
     return {
       error: null,
-      success:
-        savedBuildCount > 0
-          ? `Akun dihapus permanen, beserta ${savedBuildCount} rakitan tersimpan.`
-          : "Akun dihapus permanen.",
+      success: `Akun ${target.name} (${target.email}) sudah dihapus permanen${buildNote}.`,
     }
   } catch (error) {
     if (
