@@ -141,7 +141,7 @@ Sebelum bekerja di area tertentu, baca dokumen terkait di folder `docs/`:
 | [`docs/05-data-fetching.md`](./docs/05-data-fetching.md) | Menambah pemanggilan API, caching, revalidation. |
 | [`docs/06-coding-standards.md`](./docs/06-coding-standards.md) | Menulis kode apapun (naming, format, TypeScript). |
 | [`docs/07-environment-variables.md`](./docs/07-environment-variables.md) | Menambah integrasi baru, konfigurasi environment. |
-| [`docs/08-database-migrations.md`](./docs/08-database-migrations.md) | Mengubah `prisma/schema.prisma`. **`prisma migrate dev` dilarang di project ini** — alasannya di dokumen itu. |
+| [`docs/08-database-migrations.md`](./docs/08-database-migrations.md) | Mengubah `prisma/schema.prisma`. **`prisma migrate dev` DAN `prisma db push` dua-duanya dilarang di project ini** — sejak 5 Agustus 2026 skema dilacak lewat berkas migrasi di `prisma/migrations/`. Alasan masing-masing ada di dokumen itu. |
 
 ---
 
