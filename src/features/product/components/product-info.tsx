@@ -1,7 +1,8 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useState } from "react"
 import { Shield, Truck, Check } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import { useCartStore } from "@/store/cart"
 import { useAuthStore } from "@/store/auth"
@@ -12,11 +13,7 @@ import type { ProductVariation } from "@/types/woocommerce"
 import { useFlyToCart } from "@/components/providers/fly-to-cart-provider"
 import { ProductPriceBox } from "./product-price-box"
 import { ProductActions } from "./product-actions"
-import {
-  ProductVariantSelector,
-  VARIANT_SELECTOR_ID,
-  type VariantAttribute,
-} from "./product-variant-selector"
+import { ProductVariantSelector, type VariantAttribute } from "./product-variant-selector"
 import { QRCodeCanvas } from "qrcode.react"
 
 interface ProductInfoProps {
@@ -46,6 +43,12 @@ interface ProductInfoProps {
    */
   selected: Record<string, string>
   onSelectedChange: (selected: Record<string, string>) => void
+  /** Memilih/membatalkan satu atribut. Dibagi dengan strip varian di mobile. */
+  onSelectAttribute: (attributeName: string, option: string) => void
+  /** Sorotan sesaat saat pembeli menekan keranjang tanpa varian lengkap. */
+  isVariantHighlighted: boolean
+  onRequestVariantChoice: () => void
+  className?: string
 }
 
 export function ProductInfo({
@@ -69,7 +72,10 @@ export function ProductInfo({
   variations,
   siteUrl,
   selected,
-  onSelectedChange,
+  onSelectAttribute,
+  isVariantHighlighted,
+  onRequestVariantChoice,
+  className,
 }: ProductInfoProps) {
   const isSimpleProduct = type === "simple"
   const hasVariants = type === "variable" && variantAttributes.length > 0 && variations.length > 0
@@ -80,15 +86,6 @@ export function ProductInfo({
   const { flyToCart } = useFlyToCart()
 
   const [isAdding, setIsAdding] = useState(false)
-
-  /**
-   * Sorotan sesaat pada pemilih varian, dipicu tombol keranjang di bar
-   * mengambang saat variannya belum lengkap. Padam sendiri setelah 2 detik —
-   * cukup lama untuk tertangkap mata, cukup singkat untuk tidak jadi hiasan
-   * permanen.
-   */
-  const [isVariantHighlighted, setIsVariantHighlighted] = useState(false)
-  const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const isMember = mounted && isLoggedIn
 
@@ -217,36 +214,6 @@ export function ProductInfo({
   const waMessage = `Halo HNS IT Center, saya tertarik dengan produk: ${name}${variantSuffix} (SKU: ${effectiveSku}). Apakah tersedia?`
   const waUrl = buildWhatsAppUrl(whatsappNumber, waMessage)
 
-  const handleSelectVariant = (attributeName: string, option: string) => {
-    // Menekan pilihan yang sedang aktif membatalkannya — harga kembali "mulai
-    // dari" dan galeri lepas dari varian itu. Tanpa ini pembeli yang salah
-    // pilih tidak punya jalan kembali selain memuat ulang halaman.
-    if (selected[attributeName] === option) {
-      const next = { ...selected }
-      delete next[attributeName]
-      onSelectedChange(next)
-      return
-    }
-    onSelectedChange({ ...selected, [attributeName]: option })
-  }
-
-  /**
-   * Antar pembeli ke pemilih varian, lalu sorot sebentar.
-   *
-   * Dipanggil dari bar aksi mengambang di mobile, tempat pemilih variannya
-   * berada jauh di atas layar dan sering tidak terlihat sama sekali saat
-   * tombol keranjang ditekan.
-   */
-  const handleRequestVariantChoice = () => {
-    document
-      .getElementById(VARIANT_SELECTOR_ID)
-      ?.scrollIntoView({ behavior: "smooth", block: "center" })
-
-    if (highlightTimer.current) clearTimeout(highlightTimer.current)
-    setIsVariantHighlighted(true)
-    highlightTimer.current = setTimeout(() => setIsVariantHighlighted(false), 2000)
-  }
-
   const handleAddToCart = (e: React.MouseEvent) => {
     if (isAdding) return
 
@@ -290,9 +257,16 @@ export function ProductInfo({
   }
 
   return (
-    <div className="space-y-6">
+    /* `flex` + `order-*`, bukan dua salinan markup.
+
+       Di mobile harganya naik ke paling atas — pola marketplace, tempat angka
+       adalah hal pertama yang dicari pembeli — sementara desktop tetap pada
+       urutan lamanya: merek, nama, SKU, baru harga. Satu DOM dengan urutan
+       visual berbeda membuat keduanya mustahil berbeda isi, dan pembaca layar
+       tetap membacanya dalam urutan sumber yang masuk akal. */
+    <div className={cn("flex flex-col space-y-6", className)}>
       {/* Brand + Category */}
-      <div className="flex items-center gap-2 text-sm">
+      <div className="order-2 flex items-center gap-2 text-sm md:order-1">
         {brand && (
           <span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold uppercase tracking-wider">
             {brand}
@@ -302,13 +276,13 @@ export function ProductInfo({
       </div>
 
       {/* Product Name */}
-      <h1 className="text-2xl font-extrabold leading-tight tracking-tight md:text-3xl">
+      <h1 className="order-3 text-2xl font-extrabold leading-tight tracking-tight md:order-2 md:text-3xl">
         {name}
       </h1>
 
       {/* SKU + Rating. Jumlah terjual sengaja tidak ditampilkan — angkanya
           berasal dari view count hasil migrasi, bukan penjualan sungguhan. */}
-      <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+      <div className="order-4 flex flex-wrap items-center gap-3 text-sm text-muted-foreground md:order-3">
         {displaySkus.length > 0 && (
           <span>
             SKU: {displaySkus.join(", ")}
@@ -322,30 +296,37 @@ export function ProductInfo({
         )}
       </div>
 
-      <ProductPriceBox
-        isMember={isMember}
-        mounted={mounted}
-        memberPrice={memberPrice}
-        baseFinalPrice={baseFinalPrice}
-        onSale={effectiveOnSale}
-        displaySale={displaySale}
-        discountPercent={discountPercent}
-        displayRegular={displayRegular}
-        displayPrice={displayPrice}
-        priceRange={priceRange}
-      />
-
-      {hasVariants && (
-        <ProductVariantSelector
-          attributes={variantAttributes}
-          selected={selected}
-          onSelect={handleSelectVariant}
-          isHighlighted={isVariantHighlighted}
+      <div className="order-1 md:order-4">
+        <ProductPriceBox
+          isMember={isMember}
+          mounted={mounted}
+          memberPrice={memberPrice}
+          baseFinalPrice={baseFinalPrice}
+          onSale={effectiveOnSale}
+          displaySale={displaySale}
+          discountPercent={discountPercent}
+          displayRegular={displayRegular}
+          displayPrice={displayPrice}
+          priceRange={priceRange}
         />
+      </div>
+
+      {/* Desktop saja: di mobile pemilih variannya sudah berdiri sebagai strip
+          berfoto tepat di bawah galeri. Dua pemilih untuk satu hal yang sama di
+          satu layar hanya membuat pembeli ragu mana yang berlaku. */}
+      {hasVariants && (
+        <div className="order-5 hidden md:block">
+          <ProductVariantSelector
+            attributes={variantAttributes}
+            selected={selected}
+            onSelect={onSelectAttribute}
+            isHighlighted={isVariantHighlighted}
+          />
+        </div>
       )}
 
       {/* Stock Status */}
-      <div className="flex items-center gap-2">
+      <div className="order-6 flex items-center gap-2">
         {isSimpleProduct ? (
           stockStatus === "instock" ? (
             <>
@@ -375,19 +356,21 @@ export function ProductInfo({
         )}
       </div>
 
-      <ProductActions
-        onAddToCart={handleAddToCart}
-        canAddToCart={canAddToCart && !isAdding}
-        showCartButton={showCartButton}
-        addToCartHint={addToCartHint}
-        waUrl={waUrl}
-        waLabel={waLabel}
-        price={finalPrice}
-        originalPrice={barOriginalPrice}
-        selectedVariantLabel={selectedVariantLabel}
-        needsVariantChoice={hasVariants && !resolvedVariation}
-        onRequestVariantChoice={handleRequestVariantChoice}
-      />
+      <div className="order-7">
+        <ProductActions
+          onAddToCart={handleAddToCart}
+          canAddToCart={canAddToCart && !isAdding}
+          showCartButton={showCartButton}
+          addToCartHint={addToCartHint}
+          waUrl={waUrl}
+          waLabel={waLabel}
+          price={finalPrice}
+          originalPrice={barOriginalPrice}
+          selectedVariantLabel={selectedVariantLabel}
+          needsVariantChoice={hasVariants && !resolvedVariation}
+          onRequestVariantChoice={onRequestVariantChoice}
+        />
+      </div>
       {/* Spacer: ProductActions jadi bar mengambang di mobile. Barnya `fixed`,
           jadi tidak memakan ruang dokumen — tanpa ganjalan ini ia akan menutupi
           konten terakhir di halaman.
@@ -396,10 +379,10 @@ export function ProductInfo({
           sebelumnya menumpuk 24px DI ATAS tinggi spacer dan membuat celahnya
           terlihat jauh lebih lebar dari barnya sendiri. Sisanya dipatok pas
           setinggi bar: tombol h-10 (40px) + py-2 (16px) + pb-2 (8px) ≈ 64px. */}
-      <div className="-mt-6 h-16 md:hidden" aria-hidden="true" />
+      <div className="order-8 -mt-6 h-16 md:hidden" aria-hidden="true" />
 
       {/* Trust Badges */}
-      <div className="grid grid-cols-2 gap-3 pt-2">
+      <div className="order-9 grid grid-cols-2 gap-3 pt-2">
         <div className="flex items-center gap-2 rounded-lg border border-border p-3 text-sm">
           <Shield className="h-5 w-5 text-brand-green shrink-0" />
           <span>Garansi Resmi</span>
@@ -416,7 +399,7 @@ export function ProductInfo({
       </div>
 
       {/* QR Code */}
-      <div className="mt-4 flex items-center justify-between rounded-lg border border-border bg-muted/20 p-4">
+      <div className="order-10 mt-4 flex items-center justify-between rounded-lg border border-border bg-muted/20 p-4">
         <div className="space-y-1">
           <p className="text-sm font-semibold text-primary">Scan QR Produk</p>
           <p className="text-xs text-muted-foreground max-w-[200px]">
