@@ -3,6 +3,7 @@
 import Image from "next/image"
 
 import { cn } from "@/lib/utils"
+import { optionKey } from "@/features/product/lib/get-unavailable-options"
 import type { VariantAttribute } from "./product-variant-selector"
 import type { ProductVariation } from "@/types/woocommerce"
 
@@ -16,6 +17,11 @@ type ProductVariantStripProps = {
   onSelect: (attributeName: string, option: string) => void
   /** Gambar produk induk, dipakai varian yang tidak punya fotonya sendiri. */
   fallbackImage?: string
+  /**
+   * Kombinasi yang tidak ada di katalog, dari `getUnavailableOptions`. Dihitung
+   * di induk supaya strip ini dan pemilih desktop memakai hasil yang sama.
+   */
+  unavailableOptions?: Set<string>
   isHighlighted?: boolean
 }
 
@@ -43,6 +49,7 @@ export function ProductVariantStrip({
   selected,
   onSelect,
   fallbackImage,
+  unavailableOptions,
   isHighlighted = false,
 }: ProductVariantStripProps) {
   if (attributes.length === 0) return null
@@ -110,24 +117,37 @@ export function ProductVariantStrip({
 
         {/* Padding horizontalnya dipasang di dalam wadah yang menggulung, bukan
             di luarnya, supaya kotak pertama dan terakhir tetap punya jarak dari
-            tepi layar saat digulung sampai mentok. */}
-        <div className="mt-2 flex gap-3 overflow-x-auto px-4 pb-1 scrollbar-hide">
+            tepi layar saat digulung sampai mentok.
+
+            `py-2` (bukan `pb-1`) memberi ruang di ATAS kotak juga. Wadah ini
+            `overflow-x-auto`, yang ikut memotong luapan vertikal — jadi cincin
+            pilihan (`ring-2` + `ring-offset-2`, total 4px di luar tepi kotak)
+            terpotong rata di sisi atas begitu sebuah varian dipilih. */}
+        <div className="mt-2 flex gap-3 overflow-x-auto px-4 py-2 scrollbar-hide">
           {primary.options.map((option) => {
             const isActive = selected[primary.name] === option
             const src = imageForOption(option)
+            const isUnavailable =
+              unavailableOptions?.has(optionKey(primary.name, option)) ?? false
 
             return (
               <button
                 key={option}
                 type="button"
                 onClick={() => onSelect(primary.name, option)}
+                disabled={isUnavailable}
                 aria-pressed={isActive}
-                aria-label={`${primary.name}: ${option}`}
+                aria-label={`${primary.name}: ${option}${isUnavailable ? " (tidak tersedia)" : ""}`}
+                /* Kotak yang kombinasinya tidak ada dipudarkan dan diberi garis
+                   miring — foto yang cuma diredupkan masih terbaca sebagai
+                   pilihan yang sah di layar kecil. */
                 className={cn(
                   "relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-background drop-shadow-sm transition-all",
-                  isActive
-                    ? "ring-2 ring-brand-green ring-offset-2 ring-offset-background"
-                    : "opacity-80 ring-1 ring-border",
+                  isUnavailable
+                    ? "cursor-not-allowed opacity-40 ring-1 ring-border"
+                    : isActive
+                      ? "ring-2 ring-brand-green ring-offset-2 ring-offset-background"
+                      : "opacity-80 ring-1 ring-border",
                 )}
               >
                 {src ? (
@@ -144,6 +164,20 @@ export function ProductVariantStrip({
                   <span className="flex h-full w-full items-center justify-center px-1 text-center text-[10px] font-semibold leading-tight text-muted-foreground">
                     {option}
                   </span>
+                )}
+
+                {/* Garis miring dari pojok ke pojok, digambar dengan gradien
+                    supaya tidak perlu elemen SVG tambahan per kotak.
+
+                    Warnanya menunjuk `var(--muted-foreground)` langsung, bukan
+                    lewat `theme()`: proyek ini memakai Tailwind v4, tempat
+                    warna memang sudah berupa custom property dan helper
+                    `theme()` gaya v3 tidak lagi dievaluasi. */}
+                {isUnavailable && (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_top_right,transparent_calc(50%-1px),var(--muted-foreground)_50%,transparent_calc(50%+1px))] opacity-60"
+                  />
                 )}
               </button>
             )
@@ -164,17 +198,23 @@ export function ProductVariantStrip({
           <div className="mt-2 flex flex-wrap gap-2">
             {attr.options.map((option) => {
               const isActive = selected[attr.name] === option
+              const isUnavailable =
+                unavailableOptions?.has(optionKey(attr.name, option)) ?? false
+
               return (
                 <button
                   key={option}
                   type="button"
                   onClick={() => onSelect(attr.name, option)}
+                  disabled={isUnavailable}
                   aria-pressed={isActive}
                   className={cn(
                     "rounded-lg border px-4 py-2 text-sm font-medium transition-colors",
-                    isActive
-                      ? "border-brand-green bg-brand-green/10 text-brand-green"
-                      : "border-border text-foreground hover:border-brand-green/50",
+                    isUnavailable
+                      ? "cursor-not-allowed border-border/60 bg-muted/40 text-muted-foreground/50 line-through"
+                      : isActive
+                        ? "border-brand-green bg-brand-green/10 text-brand-green"
+                        : "border-border text-foreground hover:border-brand-green/50",
                   )}
                 >
                   {option}

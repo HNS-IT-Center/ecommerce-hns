@@ -120,16 +120,25 @@ export function SearchBar({ className }: SearchBarProps = {}) {
    * manual meninggalkan satu entry yatim, dan tekan Back berikutnya hanya
    * "memakan" entry itu tanpa berpindah halaman.
    *
-   * Pelepasan itu terjadi di sini, SEBELUM pemanggil sempat berpindah halaman.
-   * Urutan tersebut kritis: `history.back()` yang menyusul sebuah `router.push`
-   * (atau push dari `<Link>`) akan membatalkannya — pembeli sekilas melihat
-   * halaman tujuan lalu terlempar kembali ke halaman asalnya. Semua pemanggil
-   * yang ikut bernavigasi memanggil fungsi ini lebih dulu, baru push.
+   * `isNavigating` menandai bahwa pemanggil akan berpindah halaman setelah ini,
+   * dan di situ entry-nya justru TIDAK boleh di-pop. `history.back()` bersifat
+   * asinkron: browser mengantrekan pop-nya, tidak menjalankannya inline. Jadi
+   * `router.push` yang menyusul sempat menimpa entry teratas lebih dulu, lalu
+   * pop yang tadi diantrekan memakan entry hasil push itu — pembeli melihat
+   * halaman tujuan sekejap lalu terlempar balik ke halaman asal. Itulah sebab
+   * pencarian mobile dulu terlihat "tidak bereaksi" saat ditekan Enter atau
+   * hasilnya diketuk; memanggil `closeDropdown()` lebih dulu tidak menolong,
+   * karena kedua operasi berakhir di antrean yang sama.
+   *
+   * Saat bernavigasi, entry overlay cukup dibiarkan tertimpa oleh push-nya.
+   * Hasilnya juga yang paling masuk akal buat pembeli: dari halaman produk,
+   * Back mengembalikannya ke halaman asal — bukan membuka ulang overlay
+   * pencarian yang sudah selesai ia pakai.
    *
    * Penandanya dimatikan sebelum `history.back()` supaya listener `popstate`
    * yang ikut terpanggil tahu pop ini sudah ditangani dan tidak menutup ulang.
    */
-  const closeDropdown = () => {
+  const closeDropdown = (options?: { isNavigating?: boolean }) => {
     setIsFocused(false)
     setIsMobileSearchOpen(false)
     setHighlightedIndex(-1)
@@ -137,7 +146,9 @@ export function SearchBar({ className }: SearchBarProps = {}) {
 
     if (historyEntryRef.current) {
       historyEntryRef.current = false
-      window.history.back()
+      if (!options?.isNavigating) {
+        window.history.back()
+      }
     }
   }
 
@@ -173,8 +184,9 @@ export function SearchBar({ className }: SearchBarProps = {}) {
 
     if (!target) return
 
-    // Tutup dulu, baru berpindah — lihat `closeDropdown` soal urutannya.
-    closeDropdown()
+    // `isNavigating` supaya entry history overlay tidak di-pop dan membatalkan
+    // push di bawahnya — lihat `closeDropdown`.
+    closeDropdown({ isNavigating: true })
     router.push(target)
   }
 
@@ -255,7 +267,9 @@ export function SearchBar({ className }: SearchBarProps = {}) {
               query={query}
               highlightedIndex={highlightedIndex}
               onHoverIndex={setHighlightedIndex}
-              onSelect={closeDropdown}
+              // Kedua tautan di dropdown berpindah halaman lewat <Link>, jadi
+              // entry overlay dibiarkan tertimpa push-nya, bukan di-pop.
+              onSelect={() => closeDropdown({ isNavigating: true })}
               getOptionId={getOptionId}
               className={isMobileSearchOpen ? "static shadow-none border-none mt-0 max-h-none overflow-visible rounded-none" : undefined}
             />
@@ -291,8 +305,8 @@ export function SearchBar({ className }: SearchBarProps = {}) {
     <>
       {isOpen && !isMobileSearchOpen && typeof document !== 'undefined' && createPortal(
         <div 
-          className="fixed top-16 inset-x-0 bottom-0 z-40 bg-black/60 backdrop-blur-sm" 
-          onClick={closeDropdown}
+          className="fixed top-16 inset-x-0 bottom-0 z-40 bg-black/60 backdrop-blur-sm"
+          onClick={() => closeDropdown()}
         />,
         document.body
       )}

@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { Header } from "@/components/layout/header"
 import { TransparentHeaderProvider } from "@/components/layout/transparent-header-provider"
+import { ShareTargetProvider } from "@/components/layout/share-target-provider"
 import { Footer } from "@/components/layout/footer"
 import { Breadcrumb } from "@/components/seo/breadcrumb"
 import { JsonLd } from "@/components/seo/json-ld"
@@ -11,6 +12,8 @@ import { ProductDetail } from "@/features/product/components/product-detail"
 import { ProductTabs } from "@/features/product/components/product-tabs"
 import { RelatedProducts } from "@/features/product/components/related-products"
 import { resolveSiteUrl } from "@/lib/utils/site-url"
+import { calculateProductPrice } from "@/features/product/lib/calculate-product-price"
+import { formatRupiah } from "@/lib/utils"
 import { env } from "@/config/env"
 
 type ProductPageProps = {
@@ -42,6 +45,15 @@ export default async function ProductPage({ params }: ProductPageProps) {
   // QR produk ikut host yang sedang dibuka, bukan nilai tetap dari env —
   // supaya kode yang dipindai dari halaman production tidak menunjuk localhost.
   const siteUrl = await resolveSiteUrl()
+
+  // Harga untuk teks berbagi. Dibaca dari katalog lewat helper yang sama dengan
+  // panel harga — bukan dihitung ulang di sini. Lihat CLAUDE.md §2.7.
+  const { finalPrice: shareFinalPrice } = calculateProductPrice({
+    price: product.price,
+    regularPrice: product.regular_price,
+    salePrice: product.sale_price,
+    onSale: product.on_sale,
+  })
 
   const variations =
     product.type === "variable" && product.variations.length > 0
@@ -188,7 +200,24 @@ export default async function ProductPage({ params }: ProductPageProps) {
           Hanya halaman ini yang membungkus dirinya begitu; di halaman lain
           Header membaca nilai bawaan provider-nya dan tampil seperti biasa. */}
       <TransparentHeaderProvider>
-        <Header />
+        {/* Tombol bagikan di bilah mobile membaca produk ini dari sini.
+
+            Harganya diambil lewat `calculateProductPrice` — sumber yang sama
+            dengan panel harga dan bar aksi — supaya angka yang dibagikan pembeli
+            tidak pernah berbeda dari yang dilihatnya di halaman. Produk
+            bervariasi sengaja tidak menyertakan harga sama sekali: sebelum
+            varian dipilih harganya berupa rentang, dan mengirim satu angka dari
+            rentang itu berarti menjanjikan harga yang belum tentu berlaku. */}
+        <ShareTargetProvider
+          value={{
+            title: product.name,
+            priceLabel:
+              product.type === "simple" ? formatRupiah(shareFinalPrice) : undefined,
+            url: `${siteUrl}/p/${product.id}`,
+          }}
+        >
+          <Header />
+        </ShareTargetProvider>
       </TransparentHeaderProvider>
       <main className="flex-1">
         {/* Breadcrumb desktop saja. Di mobile ia berdiri persis di tempat yang

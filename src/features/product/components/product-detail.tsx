@@ -1,7 +1,8 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 
+import { getUnavailableOptions } from "@/features/product/lib/get-unavailable-options"
 import { ProductGallery, type GalleryImage } from "./product-gallery"
 import { ProductInfo } from "./product-info"
 import { ProductVariantStrip, VARIANT_STRIP_ID } from "./product-variant-strip"
@@ -25,6 +26,7 @@ type ProductDetailProps = {
     | "onSelectAttribute"
     | "isVariantHighlighted"
     | "onRequestVariantChoice"
+    | "unavailableOptions"
     | "className"
   >
 }
@@ -55,6 +57,20 @@ export function ProductDetail({ images, videoUrl, variantImageIndex, info }: Pro
 
   const hasVariants =
     info.type === "variable" && info.variantAttributes.length > 0 && info.variations.length > 0
+
+  /**
+   * Kombinasi varian yang tidak ada di katalog, dihitung sekali di sini.
+   *
+   * Tempatnya di induk bersama, bukan di masing-masing pemilih: strip mobile
+   * dan pemilih desktop harus meredupkan tombol yang sama persis, dan
+   * menghitungnya dua kali membuka peluang keduanya berbeda pendapat. Ikut
+   * `selected` karena ketersediaan sebuah warna bergantung pada ukuran yang
+   * sedang dipilih — lihat `getUnavailableOptions`.
+   */
+  const unavailableOptions = useMemo(
+    () => getUnavailableOptions(info.variantAttributes, info.variations, selected),
+    [info.variantAttributes, info.variations, selected],
+  )
 
   /**
    * Slide yang diminta pilihan varian, sekali jalan.
@@ -141,12 +157,32 @@ export function ProductDetail({ images, videoUrl, variantImageIndex, info }: Pro
   }
 
   return (
-    <div className="grid gap-8 md:grid-cols-2 md:gap-12">
+    <div className="grid gap-4 md:grid-cols-2 md:gap-12">
       {/* Galeri dan strip varian menempel jadi satu blok di mobile: strip
           berdiri tepat di bawah foto, seperti di aplikasi marketplace. `gap-8`
           milik grid akan menyisipkan celah di antara keduanya, jadi keduanya
-          dibungkus satu wadah dengan jarak sendiri yang lebih rapat. */}
-      <div className="space-y-4 md:space-y-8">
+          dibungkus satu wadah dengan jarak sendiri yang lebih rapat.
+
+          Dari `md` ke atas blok ini MENEMPEL saat halaman digulir. Panel kanan
+          jauh lebih tinggi daripada galeri — varian, stok, tombol, trust badge,
+          QR — jadi tanpa ini pembeli yang menggulir ke tombol beli sudah
+          kehilangan fotonya sama sekali dari layar.
+
+          `self-start` wajib ada: sel grid secara bawaan meregang setinggi baris
+          (`align-items: stretch`), dan elemen yang tingginya sudah sama dengan
+          wadah gulungnya tidak akan pernah menempel. Dengan `self-start` ia
+          menyusut setinggi isinya sendiri, barulah `sticky` punya ruang untuk
+          bekerja.
+
+          `top-20` = tinggi header `fixed` (h-16 = 64px) + 16px napas, supaya
+          galeri berhenti tepat di bawah header, bukan tersembunyi di baliknya.
+
+          Menempelnya berhenti sendiri saat wadah ini mencapai dasar kolom grid
+          — dan karena kedua kolom berakhir di baris yang sama, ujungnya jatuh
+          sejajar dengan blok QR di dasar panel kanan, persis seperti diminta.
+          Tidak ada perhitungan tinggi di JavaScript untuk itu; cukup sifat
+          bawaan `position: sticky` di dalam grid. */}
+      <div className="space-y-4 md:sticky md:top-20 md:self-start md:space-y-8">
         <ProductGallery
           images={images}
           videoUrl={videoUrl}
@@ -162,6 +198,7 @@ export function ProductDetail({ images, videoUrl, variantImageIndex, info }: Pro
               selected={selected}
               onSelect={handleSelectAttribute}
               fallbackImage={info.image}
+              unavailableOptions={unavailableOptions}
               isHighlighted={isVariantHighlighted}
             />
           </div>
@@ -179,6 +216,7 @@ export function ProductDetail({ images, videoUrl, variantImageIndex, info }: Pro
         onSelectAttribute={handleSelectAttribute}
         isVariantHighlighted={isVariantHighlighted}
         onRequestVariantChoice={handleRequestVariantChoice}
+        unavailableOptions={unavailableOptions}
       />
     </div>
   )
