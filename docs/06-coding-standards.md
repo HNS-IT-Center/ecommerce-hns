@@ -316,7 +316,7 @@ Detail testing akan didokumentasikan terpisah. Aturan minimum:
 
 ### 9.1 `tsc`, lint, dan build TIDAK cukup untuk komponen interaktif ATAU layout
 
-Empat kasus nyata di project ini, di mana `npx tsc --noEmit`, `npm run lint`, dan `next build` semuanya lolos hijau — tapi fiturnya rusak begitu benar-benar dipakai di browser:
+Empat kasus nyata di project ini, di mana `npm run typecheck`, `npm run lint`, dan `next build` semuanya lolos hijau — tapi fiturnya rusak begitu benar-benar dipakai di browser:
 
 1. **Entri "Akun" hilang dari dock mobile.** Kode-nya valid TypeScript, tidak ada error lint. Hanya kelihatan salah kalau dock-nya dibuka di layar mobile dan slotnya dihitung manual.
 2. **Popup Leaflet tertutup elemen lain (z-index).** Style-nya valid CSS, tidak ada warning build. Hanya kelihatan kalau peta benar-benar dirender dan popup-nya diklik.

@@ -168,11 +168,13 @@ Perubahan tech stack **HARUS** didiskusikan dan disetujui user, tidak boleh sepi
 
 > **PENTING UNTUK DEPLOYMENT:** Project ini memakai konfigurasi TypeScript dan ESLint yang ketat (strict). Vercel dan environment deployment lain **AKAN GAGAL BUILD** kalau ada error TypeScript (misalnya implicit `any`) atau error ESLint yang tidak tertangani. Jalankan typecheck sebelum commit, jangan menunggu pipeline yang memberitahu.
 >
-> Perintahnya `npx tsc --noEmit` — **tidak ada script `npm run typecheck`** di project ini. Kalau menemukan dokumen atau catatan yang menyebut `npm run typecheck`, itu warisan yang salah dan perlu dibetulkan.
+> Perintahnya **`npm run typecheck`** (script `"typecheck": "tsc --noEmit"` di `package.json`). Pakai bentuk ini di semua dokumen dan catatan supaya cuma ada satu perintah yang beredar.
+>
+> Catatan sejarah: baris ini dulu menyatakan sebaliknya — bahwa script itu *tidak ada* dan yang benar `npx tsc --noEmit`. Pernyataan itu sempat betul, lalu scriptnya ditambahkan ke `package.json` dan baris ini tidak ikut diperbarui, sehingga aturan yang seharusnya menyeragamkan justru menyuruh orang membetulkan yang sudah benar.
 
 Setiap commit harus lolos checklist berikut:
 
-- [ ] Kode lolos `npx tsc --noEmit` (no TypeScript error). **Build produksi gagal kalau ini gagal.**
+- [ ] Kode lolos `npm run typecheck` (no TypeScript error). **Build produksi gagal kalau ini gagal.**
 - [ ] Kode lolos `npm run lint` (no ESLint error).
 - [ ] Tidak ada `console.log` yang tertinggal (kecuali di file yang eksplisit).
 - [ ] Tidak ada `any` tanpa justifikasi.

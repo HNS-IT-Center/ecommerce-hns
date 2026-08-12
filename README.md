@@ -83,11 +83,11 @@ Detail penuh → [`docs/02-architecture.md`](./docs/02-architecture.md).
 | `npm run build` | Production build |
 | `npm start` | Jalankan production build |
 | `npm run lint` | ESLint check |
-| `npx tsc --noEmit` | TypeScript check |
-| `npm run format` | Format kode dengan Prettier |
-| `npm test` | Unit + integration test (Vitest) |
-| `npm run test:watch` | Vitest dalam watch mode |
-| `npm run test:e2e` | E2E test (Playwright) |
+| `npm run typecheck` | TypeScript check |
+| ~~`npm run format`~~ | **BELUM ADA** di `package.json` — rencana, bukan perintah yang bisa dijalankan |
+| ~~`npm test`~~ | **BELUM ADA** — Vitest belum terpasang |
+| ~~`npm run test:watch`~~ | **BELUM ADA** |
+| ~~`npm run test:e2e`~~ | **BELUM ADA** — Playwright belum terpasang |
 | `npm run env:check` | Validasi env vars |
 
 > **Catatan:** per 2026-07-31, script yang benar-benar ada di `package.json` baru `dev`, `build`, `start`, `lint`, dan `postinstall`.
@@ -119,7 +119,7 @@ File [`CLAUDE.md`](./CLAUDE.md) adalah entry point wajib. Semua agent HARUS memb
 
 Sebelum push, pastikan:
 
-- [ ] `npx tsc --noEmit` lulus
+- [ ] `npm run typecheck` lulus
 - [ ] `npm run lint` lulus
 - [ ] `npm test` lulus (setelah Vitest terpasang)
 - [ ] Tidak ada `console.log`, `any`, atau credential di kode
