@@ -848,3 +848,65 @@ model SavedPcBuild {
   @@index([customerId, updatedAt])
   @@map("saved_pc_builds")
 }
+
+/**
+ * Jejak penghapusan akun pelanggan.
+ *
+ * Penghapusan akun pelanggan bersifat permanen (CLAUDE.md §2.8: hard delete,
+ * cascade ke rakitan tersimpan). Tanpa tabel ini, tindakan yang paling tidak
+ * bisa dibatalkan di seluruh panel justru satu-satunya yang tidak meninggalkan
+ * bekas apa pun — tidak ada cara menjawab "siapa yang menghapus akun ini, dan
+ * atas dasar apa" beberapa bulan kemudian.
+ *
+ * YANG SENGAJA TIDAK DISIMPAN: email, nama, nomor HP, username. Justru itulah
+ * data yang pelanggan minta dihapus. Menyalinnya ke tabel audit berarti
+ * penghapusannya tidak pernah benar-benar terjadi — persis masalah yang dibahas
+ * §2.8 soal kenapa akun pelanggan tidak boleh soft delete. Yang tersisa di sini
+ * hanyalah UUID tak bermakna, angka, dan kalimat yang ditulis staff sendiri.
+ *
+ * TIDAK ADA foreign key ke `customers`. Bukan kelalaian: barisnya sudah tidak
+ * ada saat log ini ditulis, jadi FK justru akan menolak penyimpanannya. Relasi
+ * apa pun ke tabel itu juga berisiko menahan penghapusan yang seharusnya jalan.
+ */
+model CustomerDeletionLog {
+  id String @id @default(uuid())
+
+  /// UUID akun yang dihapus. Sengaja `String` biasa tanpa relasi — lihat
+  /// catatan di atas. Berguna untuk mencocokkan kalau id-nya masih tercatat di
+  /// tempat lain (mis. tiket CS), tapi dengan sendirinya tidak mengungkap
+  /// siapa pun.
+  deletedCustomerId String @map("deleted_customer_id") @db.VarChar(191)
+
+  /// Admin yang menekan tombolnya. Diambil dari sesi server, TIDAK PERNAH dari
+  /// formulir — jejak audit yang bisa dipalsukan oleh pelakunya sendiri tidak
+  /// ada gunanya sebagai jejak (pola sama seperti `deletedBy` di `stores`).
+  ///
+  /// Tanpa FK juga: admin bisa dihapus (soft delete) belakangan, dan log ini
+  /// harus tetap utuh meski begitu.
+  deletedByUserId String @map("deleted_by_user_id") @db.VarChar(191)
+
+  /// Berapa rakitan tersimpan yang ikut terhapus lewat cascade. Dihitung
+  /// SEBELUM penghapusan, karena sesudahnya barisnya sudah tidak ada dan angka
+  /// ini tidak bisa direkonstruksi dari mana pun.
+  ///
+  /// Bukan data pribadi — cuma angka — tapi menjawab pertanyaan yang wajar
+  /// muncul belakangan: "pelanggan bilang kehilangan rakitannya, memang ada
+  /// berapa?"
+  savedBuildCount Int @map("saved_build_count")
+
+  /// Alasan singkat yang diketik staff (mis. "permintaan hapus data via CS
+  /// WhatsApp 12 Agt"). Wajib diisi — kolomnya NOT NULL dan server action
+  /// menolak string kosong.
+  ///
+  /// Ini satu-satunya kolom yang bisa memuat teks bebas, jadi satu-satunya yang
+  /// bisa kemasukan data pribadi kalau staff menuliskannya. Antarmukanya
+  /// memberi peringatan; secara teknis tidak ada yang bisa mencegahnya, dan
+  /// membatasinya lebih jauh akan membuat alasannya tidak berguna.
+  reason String @db.VarChar(500)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([deletedByUserId])
+  @@map("customer_deletion_logs")
+}
