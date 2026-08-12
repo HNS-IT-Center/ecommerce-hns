@@ -13,12 +13,12 @@ export function ActivityLog({ logs, onClear }: { logs: LogEntry[]; onClear: () =
   return (
     <div className="flex flex-col h-full bg-muted/20 border border-border rounded-2xl overflow-hidden">
       <div className="flex items-center justify-between p-4 border-b border-border bg-background">
-        <h3 className="font-semibold">Activity Log</h3>
+        <h3 className="font-semibold">Log Aktivitas</h3>
         <button
           onClick={onClear}
           disabled={logs.length === 0}
           className="text-muted-foreground hover:text-accent disabled:opacity-50 transition-colors p-1"
-          aria-label="Clear logs"
+          aria-label="Hapus log"
         >
           <Trash2 className="w-4 h-4" />
         </button>
@@ -27,7 +27,7 @@ export function ActivityLog({ logs, onClear }: { logs: LogEntry[]; onClear: () =
       <div className="flex-1 overflow-y-auto p-4 space-y-2 font-mono">
         {logs.length === 0 ? (
           <div className="h-full flex items-center justify-center text-muted-foreground opacity-50 text-sm">
-            Waiting for input...
+            Menunggu input...
           </div>
         ) : (
           logs.map((log) => (

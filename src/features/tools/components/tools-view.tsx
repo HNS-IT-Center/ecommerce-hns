@@ -36,10 +36,10 @@ export function ToolsView() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] text-center p-6 bg-muted/30 rounded-2xl border border-border">
         <Monitor className="w-12 h-12 text-muted-foreground mb-4" />
-        <h2 className="text-xl font-bold mb-2">Desktop or Tablet Required</h2>
-        <p className="text-muted-foreground">
-          The hardware testing tools require a physical keyboard, mouse, or gamepad to function properly. 
-          Please access this page on a desktop or large tablet device.
+        <h2 className="text-xl font-bold mb-2">Hanya Tersedia di Desktop</h2>
+        <p className="text-muted-foreground max-w-md">
+          Alat tes hardware ini membutuhkan keyboard, mouse, atau gamepad fisik agar bisa
+          berfungsi. Silakan buka halaman ini lewat komputer atau laptop.
         </p>
       </div>
     );

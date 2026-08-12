@@ -92,8 +92,19 @@ export function ProductTabs({
 
   return (
     <div className="mt-12">
-      {/* Tab Headers */}
-      <div className="flex border-b border-border">
+      {/*
+        Deretan tab menempel di bawah header selama pembeli masih membaca.
+        `top-16` = tinggi header yang `fixed` (lihat header.tsx), supaya tab
+        berhenti tepat di bawahnya, bukan tersembunyi di baliknya.
+
+        Sticky-nya lepas dengan sendirinya begitu isi selesai dibaca: elemen
+        sticky hanya menempel selama INDUKNYA masih melewati viewport, dan
+        induk di sini adalah blok tabs yang tingginya persis setinggi
+        header + area isi. Jadi saat area isi sudah tergulung habis, blok ini
+        ikut keluar layar dan tab-nya naik pergi — tanpa satu pun listener
+        scroll atau pengukuran manual.
+      */}
+      <div className="sticky top-16 z-20 flex border-b border-border bg-background">
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -109,7 +120,9 @@ export function ProductTabs({
         ))}
       </div>
 
-      {/* Tab Content */}
+      {/* Isi mengalir apa adanya dan ikut gulungan halaman — tidak ada kotak
+          scroll tersendiri. Deretan tab di atas tetap menempel selama blok ini
+          masih terlihat, lalu ikut naik pergi saat isinya habis. */}
       <div className="py-6">
         {activeTab === "desc" && descriptionContent}
         {activeTab === "spec" && specContent}

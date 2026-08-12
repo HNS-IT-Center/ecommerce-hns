@@ -112,7 +112,19 @@ export default async function RootLayout({
           pembungkus halaman transparan, supaya pola salju di belakangnya
           terlihat. Ditaruh di `body` agar berlaku untuk seluruh halaman tanpa
           satu pun dari mereka perlu disunting. */}
-      <body className="min-h-full flex flex-col">
+      {/* `suppressHydrationWarning` HANYA untuk atribut `<body>` itu sendiri,
+          bukan isinya: ekstensi browser (ColorZilla menulis `cz-shortcut-listen`,
+          Grammarly dan LastPass punya penanda serupa) menyuntikkan atribut ke
+          `<body>` sebelum React sempat hidrasi, dan React melaporkannya sebagai
+          ketidakcocokan server/klien. Suntikan itu tidak berasal dari kode ini
+          dan tidak ada di browser pengunjung, jadi yang dibungkam murni
+          kebisingan di mesin developer.
+
+          Cakupannya sengaja satu level — anak-anak `<body>` tetap diperiksa
+          seperti biasa, sehingga bug hidrasi asli di dalam aplikasi tetap
+          terdeteksi. Jangan menyebarkan atribut ini ke komponen lain untuk
+          "mendiamkan" peringatan hidrasi: di sana ia menyembunyikan bug sungguhan. */}
+      <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <NextTopLoader color="#0000FF" showSpinner={false} />
         <JsonLd data={organizationJsonLd} />
         <JsonLd data={websiteJsonLd} />

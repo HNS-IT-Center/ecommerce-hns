@@ -173,7 +173,19 @@
     --card-badge-sale-fold-default: oklch(44.4% 0.177 26.899);
     --card-badge-hot-default: oklch(70.5% 0.213 47.604);
     --card-badge-hot-fold-default: oklch(47% 0.157 37.304);
-    --card-badge-new-default: oklch(62.3% 0.214 259.815);
+    /* Hijau. Sebelumnya biru (oklch 62.3% 0.214 259.815) — warna itu tabrakan
+       dengan `--primary-500`, yang dipakai tautan dan tombol, jadi badge "New"
+       terbaca seperti elemen yang bisa diklik.
+
+       Lightness 55% dipilih supaya teks putih di atasnya lolos WCAG AA (~4.9:1).
+       Nilai `--text-500` (#30cf85) yang sudah ada di ramp hanya mencapai ~1.9:1
+       dengan putih, jadi tidak dipakai di sini meski nadanya sama. */
+    --card-badge-new-default: oklch(55% 0.14 155);
+    /* Sisi lipatan badge "New". Mengikuti perlakuan `sale`/`hot`: hue sama,
+       lightness diturunkan supaya terbaca sebagai bagian badge yang jatuh ke
+       bayangan, bukan warna kedua. Tidak perlu lolos kontras teks — tidak ada
+       teks di atasnya. */
+    --card-badge-new-fold-default: oklch(36% 0.1 155);
     --card-price-default: oklch(63.7% 0.237 25.331);
 
     --card-badge-sale: var(--card-badge-sale-default);
@@ -181,6 +193,7 @@
     --card-badge-hot: var(--card-badge-hot-default);
     --card-badge-hot-fold: var(--card-badge-hot-fold-default);
     --card-badge-new: var(--card-badge-new-default);
+    --card-badge-new-fold: var(--card-badge-new-fold-default);
     --card-price: var(--card-price-default);
   }
   .dark {
@@ -593,6 +606,18 @@
 .admin-sidebar [data-slot="sidebar-inner"] {
   background-image: linear-gradient(160deg, #0d2959 0%, #143d85 30%, #2166de 60%, #1b52b1 100%);
   background-color: #2166de !important;
+}
+
+/* Bilah atas ponsel. Sudutnya dibuat sama dengan sidebar (160deg) supaya arah
+   gelap-ke-terangnya sinambung saat panel meluncur keluar dari bawah bilah —
+   biru rata di sini akan terlihat sebagai warna yang berbeda, bukan permukaan
+   yang sama. Ukurannya dikunci ke tinggi sidebar agar potongan gradasi yang
+   tampil di bilah sepadan dengan potongan teratas panel. */
+.admin-topbar {
+  background-image: linear-gradient(160deg, #0d2959 0%, #143d85 30%, #2166de 60%, #1b52b1 100%);
+  background-color: #2166de;
+  background-size: auto 100vh;
+  background-repeat: no-repeat;
 }
 
 /* @tailwindcss/typography: override prose colors to match design tokens */

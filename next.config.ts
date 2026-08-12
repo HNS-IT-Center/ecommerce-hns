@@ -25,6 +25,13 @@ const nextConfig: NextConfig = {
         hostname: "media.hnsitcenter.com",
         pathname: "/**",
       },
+      // Thumbnail video YouTube, dipakai sebagai poster slide video di galeri
+      // produk (lihat `getVideoPosterUrl`). Dibatasi ke path thumbnail saja.
+      {
+        protocol: "https",
+        hostname: "i.ytimg.com",
+        pathname: "/vi/**",
+      },
     ],
   },
 };

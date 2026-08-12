@@ -48,6 +48,8 @@ export type ThemeTokens = {
   cardBadgeHotFold?: string
   /** Isi badge "NEW". */
   cardBadgeNew?: string
+  /** Bayangan lipatan badge "NEW" — versi lebih gelap dari `cardBadgeNew`. */
+  cardBadgeNewFold?: string
   /**
    * Menyalakan hiasan hover di kartu produk (untaian, pohon, manusia salju).
    *

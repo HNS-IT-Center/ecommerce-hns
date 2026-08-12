@@ -2,38 +2,44 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { LayoutGrid, ShoppingCart, Percent } from "lucide-react"
+import { LayoutGrid, ShoppingCart } from "lucide-react"
 import WhatsappIcon from "@/components/icons/whatsapp-icon"
 import FlameIcon from "@/components/icons/fire-icon"
 import EyeIcon from "@/components/icons/eye-icon"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 
-import { formatRupiah } from "@/lib/utils";
-import { getBadgeColorClass } from "@/lib/utils/product";
-import { useCartStore } from "@/store/cart";
-import { Rating } from "@/components/ui/rating";
-import { useFlyToCart } from "@/components/providers/fly-to-cart-provider";
-import { useState, useEffect } from "react";
-import { QuickViewModal } from "@/components/ui/quick-view-modal";
-import { ChristmasCardDecor } from "@/components/theme/christmas-card-decor";
+import { formatRupiah } from "@/lib/utils"
+import { FoldedBadge } from "@/components/ui/folded-badge"
+import { useCartStore } from "@/store/cart"
+import { Rating } from "@/components/ui/rating"
+import { useFlyToCart } from "@/components/providers/fly-to-cart-provider"
+import { useState } from "react"
+import { useIsHydrated } from "@/hooks/use-is-hydrated"
+import { QuickViewModal } from "@/components/ui/quick-view-modal"
+import { ChristmasCardDecor } from "@/components/theme/christmas-card-decor"
 
 export interface Product {
-  id: string;
-  slug: string;
-  name: string;
-  brand: string;
-  category: string;
-  price: number;
-  regular_price?: number;
-  on_sale?: boolean;
-  image_url: string;
-  sold: number;
-  badge?: "Hot" | "Deal" | "New" | null;
-  stock: number;
-  type: "simple" | "variable" | "grouped" | "external";
-  average_rating?: number;
-  rating_count?: number;
-  images?: { src: string; alt: string }[];
+  id: string
+  slug: string
+  name: string
+  brand: string
+  category: string
+  price: number
+  regular_price?: number
+  on_sale?: boolean
+  image_url: string
+  sold: number
+  badge?: "Hot" | "Deal" | "New" | null
+  stock: number
+  type: "simple" | "variable" | "grouped" | "external"
+  average_rating?: number
+  rating_count?: number
+  images?: { src: string; alt: string }[]
+  /**
+   * Video produk, dipakai Quick View untuk menampilkan slide video di galeri
+   * persis seperti halaman produk. Kartu itu sendiri tidak memakainya.
+   */
+  video_url?: string | null
 }
 
 interface ProductCardProps {
@@ -67,13 +73,20 @@ export function ProductCard({ product, priority = false }: ProductCardProps) {
     ? Math.round((1 - product.price / product.regular_price!) * 100)
     : 0;
 
-  const [origin, setOrigin] = useState("");
+  /**
+   * Origin dibaca setelah hidrasi, bukan lewat `setState` di dalam effect.
+   *
+   * Pola lama (`useState("")` + effect yang mengisinya) memicu aturan
+   * `react-hooks/set-state-in-effect` karena menyebabkan render berantai.
+   * `useIsHydrated` memberi hasil yang sama tanpa itu: render server dan render
+   * klien pertama sama-sama memakai domain produksi, lalu setelah hidrasi
+   * beralih ke origin yang sedang dibuka — supaya tautan WhatsApp dari
+   * localhost atau domain preview tidak menunjuk ke produksi.
+   */
+  const isHydrated = useIsHydrated()
+  const origin = isHydrated ? window.location.origin : "https://hnsitcenter.id"
 
-  useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
-
-  const productUrl = `${origin || "https://hnsitcenter.id"}/product/${product.slug}`;
+  const productUrl = `${origin}/product/${product.slug}`
 
   const waMessage = `${productUrl}
 
@@ -130,31 +143,35 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
           <span className="sr-only">{product.name}</span>
         </Link>
 
-        {/* Folded Discount Badge */}
+        {/* Badge sudut. Diskon menang atas badge apa pun, lalu Hot, lalu New —
+            urutan yang sama dengan `getProductBadge`. Semuanya memakai
+            `FoldedBadge` supaya gayanya tidak bisa berpisah lagi. */}
         {hasDiscount && (
-          <div className="absolute -left-1.5 top-3 z-[40] drop-shadow-sm pointer-events-none">
-            <div className="rounded-r-md rounded-tl-md bg-(--card-badge-sale) px-2 py-0.5 text-xs font-bold text-white tracking-wide">
-              {discountPercent}%
-            </div>
-            <div
-              className="h-1.5 w-1.5 bg-(--card-badge-sale-fold)"
-              style={{ clipPath: "polygon(0 0, 100% 0, 100% 100%)" }}
-            />
-          </div>
+          <FoldedBadge
+            colorClass="bg-(--card-badge-sale)"
+            foldColorClass="bg-(--card-badge-sale-fold)"
+          >
+            {discountPercent}%
+          </FoldedBadge>
         )}
 
-        {/* Hot Badge Folded (when not on sale) */}
         {!hasDiscount && product.badge === "Hot" && (
-          <div className="absolute -left-1.5 top-3 z-[40] drop-shadow-sm pointer-events-none">
-            <div className="flex items-center gap-0.5 rounded-r-md rounded-tl-md bg-(--card-badge-hot) px-1.5 py-0.5 text-xs font-bold text-white tracking-wide">
-              <FlameIcon size={14} className="text-white" />
-              HOT
-            </div>
-            <div
-              className="h-1.5 w-1.5 bg-(--card-badge-hot-fold)"
-              style={{ clipPath: "polygon(0 0, 100% 0, 100% 100%)" }}
-            />
-          </div>
+          <FoldedBadge
+            colorClass="bg-(--card-badge-hot)"
+            foldColorClass="bg-(--card-badge-hot-fold)"
+            icon={<FlameIcon size={14} className="text-white" />}
+          >
+            HOT
+          </FoldedBadge>
+        )}
+
+        {!hasDiscount && product.badge === "New" && (
+          <FoldedBadge
+            colorClass="bg-(--card-badge-new)"
+            foldColorClass="bg-(--card-badge-new-fold)"
+          >
+            NEW
+          </FoldedBadge>
         )}
 
         {/* Image Container */}
@@ -201,15 +218,6 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
           >
             <EyeIcon size={18} />
           </button>
-
-          {/* Regular Badge */}
-          {!hasDiscount && product.badge && product.badge !== "Hot" && (
-            <span
-              className={`absolute left-2 top-2 z-[40] rounded-md px-2 py-1 text-[10px] font-bold tracking-wider text-white uppercase shadow-sm ${getBadgeColorClass(product.badge)} pointer-events-none`}
-            >
-              {product.badge}
-            </span>
-          )}
 
           {/* Out of Stock Overlay */}
           {product.stock === 0 && (

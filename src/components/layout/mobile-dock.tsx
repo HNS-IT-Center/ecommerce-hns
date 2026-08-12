@@ -25,7 +25,16 @@ export function MobileDock({ isChristmas = false }: { isChristmas?: boolean }) {
   const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768
   const isAdmin = pathname.startsWith('/admin')
 
-  if (isDesktop || isAdmin) return null
+  /**
+   * Halaman produk punya bar aksinya sendiri (harga + keranjang + WhatsApp)
+   * yang mengambang di dasar layar. Menumpuknya dengan dock membuat sepertiga
+   * layar mobile habis untuk kontrol. Akses keranjang tidak hilang: header
+   * `fixed` di atas tetap membawa CartBadge, dan tombol kembali di header
+   * menggantikan peran navigasi dock di halaman ini.
+   */
+  const isProductPage = pathname.startsWith('/product/')
+
+  if (isDesktop || isAdmin || isProductPage) return null
 
   const items = [
     {

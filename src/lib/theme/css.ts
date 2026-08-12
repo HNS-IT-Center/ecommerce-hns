@@ -83,6 +83,7 @@ export function themeToCss(theme: Theme, scope: "chrome" | "card"): string {
           declare("--card-badge-hot", tokens.cardBadgeHot),
           declare("--card-badge-hot-fold", tokens.cardBadgeHotFold),
           declare("--card-badge-new", tokens.cardBadgeNew),
+          declare("--card-badge-new-fold", tokens.cardBadgeNewFold),
           // Sakelar, bukan warna — nilainya tidak pernah berasal dari input
           // bebas, jadi tidak perlu (dan tidak bisa) lewat validasi warna.
           tokens.cardDecor === true ? "--card-decor:1;" : "",
@@ -149,7 +150,7 @@ export function themeToCss(theme: Theme, scope: "chrome" | "card"): string {
           // perilaku yang benar untuknya.
           "--background:var(--background-50);--foreground:var(--text-950);--muted:var(--background-100);--muted-foreground:var(--background-600);--border:var(--background-200);--accent:var(--accent-100);--accent-foreground:var(--accent-900);--chrome-decor:initial;"
         : "--card:initial;--card-foreground:initial;--muted-foreground:initial;--border:initial;--accent:initial;--accent-foreground:initial;--card-decor:initial;" +
-          "--card-price:var(--card-price-default);--card-badge-sale:var(--card-badge-sale-default);--card-badge-sale-fold:var(--card-badge-sale-fold-default);--card-badge-hot:var(--card-badge-hot-default);--card-badge-hot-fold:var(--card-badge-hot-fold-default);--card-badge-new:var(--card-badge-new-default);"
+          "--card-price:var(--card-price-default);--card-badge-sale:var(--card-badge-sale-default);--card-badge-sale-fold:var(--card-badge-sale-fold-default);--card-badge-hot:var(--card-badge-hot-default);--card-badge-hot-fold:var(--card-badge-hot-fold-default);--card-badge-new:var(--card-badge-new-default);--card-badge-new-fold:var(--card-badge-new-fold-default);"
     return `${selector}{${reset}}`
   }
 

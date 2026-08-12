@@ -38,5 +38,6 @@ export function mapWooProductToUI(woo: WooProduct): UIProduct {
     images:
       woo.images?.map((img) => ({ src: img.src, alt: img.alt || woo.name })) ||
       [],
+    video_url: woo.video_url ?? null,
   };
 }
