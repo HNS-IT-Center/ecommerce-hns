@@ -1,11 +1,22 @@
-// Skema database admin panel (data non-produk: toko/lokasi, kebijakan/FAQ).
-// Data produk TETAP di WooCommerce (lihat CLAUDE.md §2.2) — tabel di sini
-// khusus untuk konten yang sebelumnya hardcode di kode.
+// Skema database project ini. Sejak 25 Juli 2026 data produk ikut di sini —
+// Prisma DB adalah source of truth untuk produk/kategori/brand (CLAUDE.md
+// §2.2), bukan lagi WooCommerce REST API. WordPress tinggal dipakai untuk blog
+// dan sebagai file host gambar produk.
+//
+// (Baris ini sebelumnya masih menyatakan "data produk TETAP di WooCommerce" —
+// keterangan yang sudah tidak benar sejak keputusan itu.)
 //
 // Setup:
 //   1. Isi DATABASE_URL di .env.local (mysql://user:password@host:port/dbname)
-//   2. npx prisma migrate dev --name init
+//   2. npx prisma migrate deploy
 //   3. npx prisma db seed   (isi konten kebijakan/FAQ yang sudah final)
+//
+// `migrate deploy`, BUKAN `migrate dev` — perintah itu dilarang di repo ini
+// dan alasannya ada di docs/08-database-migrations.md. Singkatnya: user
+// MariaDB Hostinger tidak punya izin CREATE DATABASE untuk shadow database,
+// dan kalau riwayat migrasi dianggap tidak cocok, `migrate dev` menawarkan
+// me-reset database — yang berarti menghapus katalog produk beserta akun
+// admin. `db push` juga tidak dipakai lagi sejak 5 Agustus 2026.
 
 generator client {
   provider = "prisma-client-js"

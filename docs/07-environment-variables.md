@@ -215,9 +215,15 @@ Tanpa `SMTP_*` terisi, `/register` dan alur lupa-password membalas error yang je
 
 **Setup database setelah `DATABASE_URL` diisi:**
 ```bash
-npx prisma migrate dev --name init   # bikin tabel + apply migrasi
+npx prisma migrate deploy            # apply migrasi yang belum tercatat
 npx prisma db seed                   # isi konten kebijakan/FAQ/toko yang sudah final
 ```
+
+> **Jangan `prisma migrate dev` atau `prisma db push`.** Dua-duanya dilarang di
+> repo ini — lihat [`docs/08-database-migrations.md`](./08-database-migrations.md).
+> `migrate dev` butuh shadow database (user MariaDB Hostinger tidak punya izin
+> `CREATE DATABASE`) dan menawarkan me-reset database kalau riwayat migrasi
+> dianggap tidak cocok; menyetujuinya menghapus katalog produk beserta akun admin.
 
 Storefront utama (halaman kebijakan/FAQ/toko publik) tetap jalan tanpa `DATABASE_URL` — fallback ke konten di `lib/constants/policy-content.ts`/`stores.ts`. Yang butuh `DATABASE_URL` cuma menu edit di `/admin`.
 

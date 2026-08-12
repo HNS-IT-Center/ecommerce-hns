@@ -225,7 +225,7 @@ member, tidak ada diskon khusus akun. Status login tidak pernah masuk ke jalur
 perhitungan harga.
 
 Migrasi tabelnya mengikuti [`docs/08-database-migrations.md`](./08-database-migrations.md);
-ingat `prisma migrate dev` dilarang di repo ini.
+ingat `prisma migrate dev` dan `prisma db push` dua-duanya dilarang di repo ini.
 
 ---
 

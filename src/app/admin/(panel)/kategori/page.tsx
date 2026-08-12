@@ -7,7 +7,7 @@ export default async function AdminKategoriPage() {
     return (
       <div className="mx-auto max-w-2xl rounded-xl border border-warning/30 bg-warning/10 p-6 text-sm text-warning">
         Database belum dikonfigurasi — isi <code>DATABASE_URL</code> di <code>.env.local</code> lalu
-        jalankan <code>npx prisma migrate dev</code>.
+        jalankan <code>npx prisma migrate deploy</code>.
       </div>
     )
   }

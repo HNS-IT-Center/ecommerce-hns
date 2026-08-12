@@ -7,7 +7,11 @@ import { env } from "@/config/env"
 export class DatabaseNotConfiguredError extends Error {
   constructor() {
     super(
-      "Database belum dikonfigurasi — isi DATABASE_URL di .env.local lalu jalankan `npx prisma migrate dev`"
+      // `migrate deploy`, BUKAN `migrate dev`. Pesan ini muncul persis saat
+      // orang sedang panik menghadapi error database, dan itu keadaan paling
+      // buruk untuk menyodorkan perintah yang menawarkan reset — lihat
+      // docs/08-database-migrations.md.
+      "Database belum dikonfigurasi — isi DATABASE_URL di .env.local lalu jalankan `npx prisma migrate deploy`"
     )
     this.name = "DatabaseNotConfiguredError"
   }
