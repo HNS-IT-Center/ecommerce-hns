@@ -17,7 +17,16 @@ export function FloatingWhatsAppButton({ whatsappNumber }: FloatingWhatsAppButto
   // (lihat ProductActions) — tombol mengambang ini akan tumpang tindih
   // dengannya di mobile, jadi disembunyikan khusus di sana.
   // We also hide it on /build-pc on mobile because it has its own floating UI.
-  const hasOwnWhatsAppCta = pathname?.startsWith("/product/") || pathname?.startsWith("/build-pc") || false
+  //
+  // /register dan /login juga disembunyikan: formnya sudah punya tombol aksi
+  // sendiri (Daftar/Masuk) yang sempat tertutup bubble ini di layar sempit —
+  // bubble WA di sini cuma menambah ramai, bukan menambah jalan yang berguna.
+  const hasOwnWhatsAppCta =
+    pathname?.startsWith("/product/") ||
+    pathname?.startsWith("/build-pc") ||
+    pathname === "/register" ||
+    pathname === "/login" ||
+    false
 
   const waUrl = buildWhatsAppUrl(
     whatsappNumber,

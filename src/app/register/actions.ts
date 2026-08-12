@@ -61,14 +61,21 @@ export async function registerAction(_prev: RegisterState, formData: FormData): 
   const name = String(formData.get("name") ?? "").trim()
   const email = String(formData.get("email") ?? "").trim()
   const password = String(formData.get("password") ?? "")
+  const confirmPassword = String(formData.get("confirmPassword") ?? "")
   const username = String(formData.get("username") ?? "").trim()
   const phoneNumber = String(formData.get("phoneNumber") ?? "").trim()
 
-  if (!name || !email || !password || !username || !phoneNumber) {
+  if (!name || !email || !password || !confirmPassword || !username || !phoneNumber) {
     return { error: "Semua kolom wajib diisi.", ok: false }
   }
   if (password.length < MIN_PASSWORD_LENGTH) {
     return { error: `Password minimal ${MIN_PASSWORD_LENGTH} karakter.`, ok: false }
+  }
+  // Pola sama seperti resetPasswordAction (login/actions.ts) — dicek SETELAH
+  // panjang minimum supaya pengguna yang password-nya juga terlalu pendek
+  // dapat pesan yang lebih dasar dulu.
+  if (password !== confirmPassword) {
+    return { error: "Konfirmasi password tidak sama.", ok: false }
   }
   const usernameError = validateUsername(username)
   if (usernameError) {

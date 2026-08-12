@@ -29,7 +29,17 @@ export default async function Page() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <Header />
-      <main className="flex flex-1 items-center justify-center p-4 py-12 sm:px-6 lg:px-8">
+      {/* `items-start` di mobile, BUKAN `items-center`: form ini 6 field,
+          seringkali lebih tinggi dari viewport. `items-center` pada flex
+          container membuat kelebihan tingginya ter-crop simetris ke ATAS
+          dan BAWAH viewport alih-alih mendorong scroll wajar ke bawah —
+          jadi `pb` sendirian tidak cukup, dokumen tidak pernah "merasa"
+          lebih tinggi dari viewport. `md:items-center` mengembalikan
+          tampilan center seperti semula di desktop, tempat card ini nyaris
+          selalu muat dalam satu layar.
+          `pb-24` mengganjal MobileDock (fixed, 60px + safe-area) yang tidak
+          ikut dihitung tinggi dokumen. */}
+      <main className="flex flex-1 items-start justify-center p-4 pb-24 pt-12 sm:px-6 md:items-center md:pb-12 lg:px-8">
         <div className="w-full max-w-sm rounded-2xl border border-border bg-background p-6 shadow-sm">
           <h1 className="text-xl font-bold">Daftar Akun</h1>
           <p className="mt-1 text-sm text-muted-foreground">
