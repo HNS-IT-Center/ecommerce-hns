@@ -21,7 +21,7 @@ export async function Header() {
   // `hooks/use-customer.ts`: `getCurrentCustomer()` memanggil `cookies()`, dan
   // itu menandai SETIAP halaman yang me-render Header (yaitu semuanya) sebagai
   // dynamic, termasuk yang sebelumnya statis (/cart, /faq, dst). `AccountNav`
-  // dan `MobileMenu` membaca statusnya sendiri lewat `/api/auth/me` di klien.
+  // membaca statusnya sendiri lewat `/api/auth/me` di klien.
   const [categories, theme] = await Promise.all([
     getCategories({ hideEmpty: true, perPage: 100 }),
     getThemeSettings(),
@@ -39,9 +39,9 @@ export async function Header() {
       <HeaderShell>
         {isChristmas && <ChristmasHeaderDecor />}
         <div className="container relative z-10 mx-auto flex h-16 items-center px-4 md:px-6">
-          {/* Mobile Layout (< md): Menu - Back - Search - Cart.
+          {/* Mobile Layout (< md): Back - Search - Cart.
               BackButton menyembunyikan dirinya sendiri di luar halaman detail. */}
-          <HeaderMobileBar categories={categories} />
+          <HeaderMobileBar />
 
           {/* Desktop Layout (>= md), tidak berubah dari sebelumnya */}
           <div className="hidden w-full items-center md:flex">

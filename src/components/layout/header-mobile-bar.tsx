@@ -3,10 +3,8 @@
 import { BackButton } from "./back-button"
 import { CartBadge } from "./cart-badge"
 import { SearchBar } from "./search-bar"
-import { MobileMenu } from "./mobile-menu"
 import { useTransparentHeader } from "./transparent-header-provider"
 import { cn } from "@/lib/utils"
-import type { ProductCategory } from "@/types/woocommerce"
 
 /**
  * Kelas untuk tombol yang sedang melayang di atas foto produk.
@@ -22,14 +20,18 @@ const GLASS_BUTTON =
   "bg-black/35 text-white backdrop-blur-md [&_button]:text-white [&_button]:hover:bg-transparent [&_button]:hover:text-white"
 
 /**
- * Baris atas versi mobile: Menu — Back — Pencarian — Keranjang.
+ * Baris atas versi mobile: Back — Pencarian — Keranjang.
  *
  * Dipisah dari `Header` karena wujudnya bergantung pada gulungan, dan itu butuh
  * state klien — sementara `Header` sendiri Server Component yang mengambil
- * kategori dan tema. Isinya tidak berubah dari sebelumnya; yang baru hanya
- * kemampuan tampil melayang di atas galeri produk.
+ * kategori dan tema.
+ *
+ * Tidak ada tombol menu di sini: navigasi utama mobile hidup di `MobileDock`
+ * yang menempel di bawah layar (Home / PC Build / Shop / Cart / Akun), dan
+ * penelusuran kategori dilakukan lewat filter di `/shop`. Bilah atas yang
+ * sempit ini cukup memuat yang berkaitan dengan halaman yang sedang dibuka.
  */
-export function HeaderMobileBar({ categories }: { categories?: ProductCategory[] }) {
+export function HeaderMobileBar() {
   const { isTransparent } = useTransparentHeader()
 
   return (
@@ -37,15 +39,6 @@ export function HeaderMobileBar({ categories }: { categories?: ProductCategory[]
       {/* Bungkus kaca dipasang di pembungkus, bukan di komponen tombolnya,
           supaya masing-masing tetap netral dan bisa dipakai halaman lain tanpa
           membawa gaya khusus halaman produk. */}
-      <div
-        className={cn(
-          "shrink-0 rounded-full transition-all duration-300",
-          isTransparent && GLASS_BUTTON,
-        )}
-      >
-        <MobileMenu categories={categories} />
-      </div>
-
       <div
         className={cn(
           "shrink-0 rounded-full transition-all duration-300",
