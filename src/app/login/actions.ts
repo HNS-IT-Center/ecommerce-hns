@@ -2,7 +2,13 @@
 
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { findCustomerByEmail, verifyPassword, hashPassword, MIN_PASSWORD_LENGTH } from "@/lib/auth/customer-password"
+import {
+  findCustomerByEmail,
+  findCustomerByEmailOrUsername,
+  verifyPassword,
+  hashPassword,
+  MIN_PASSWORD_LENGTH,
+} from "@/lib/auth/customer-password"
 import { createCustomerSession } from "@/lib/auth/customer"
 import { createVerificationToken, consumeVerificationToken } from "@/lib/auth/verification-token"
 import { sendEmail } from "@/lib/email/send"
@@ -18,19 +24,19 @@ import type { LoginState, ForgotPasswordState, ResetPasswordState } from "./stat
  * (`admin/login/actions.ts`): membedakan ketiganya memberi tahu penebak
  * separuh jalan lebih cepat.
  */
-const GAGAL = "Email atau password salah."
+const GAGAL = "Email/username atau password salah."
 const BELUM_VERIFIKASI = "Akun belum diverifikasi. Cek email Anda, atau kirim ulang tautan verifikasi."
 
 export async function loginAction(_prev: LoginState, formData: FormData): Promise<LoginState> {
-  const email = String(formData.get("email") ?? "")
+  const identifier = String(formData.get("identifier") ?? "")
   const password = String(formData.get("password") ?? "")
   const nextPath = sanitizeNextPath(String(formData.get("next") ?? ""))
 
-  if (!email.trim() || !password) {
-    return { error: "Email dan password wajib diisi." }
+  if (!identifier.trim() || !password) {
+    return { error: "Email/username dan password wajib diisi." }
   }
 
-  const customer = await findCustomerByEmail(email)
+  const customer = await findCustomerByEmailOrUsername(identifier)
 
   // Tetap jalankan verifikasi walau akun tidak ada ATAU tidak punya
   // password (Google-only) — pola sama seperti admin: kalau langsung

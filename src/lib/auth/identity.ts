@@ -70,6 +70,26 @@ export function validateUsername(username: string): string | null {
   return null
 }
 
+/** Angka saja, boleh diawali `+`. 9–15 digit — cakupan longgar nomor HP Indonesia
+ * (dengan atau tanpa kode negara) tanpa memaksa format tertentu. */
+const PHONE_PATTERN = /^\+?\d{9,15}$/
+
+/**
+ * Kembalikan pesan kesalahan, atau null kalau nomornya sah.
+ *
+ * Cuma cek bentuk (angka, panjang wajar) — TIDAK ada verifikasi OTP.
+ * Project ini belum punya integrasi SMS/WhatsApp API untuk itu; kalau nanti
+ * dibutuhkan, itu pekerjaan terpisah yang lebih besar, bukan tambahan kecil
+ * di sini. Lihat CLAUDE.md §2.1.
+ */
+export function validatePhoneNumber(phoneNumber: string): string | null {
+  const trimmed = phoneNumber.trim()
+  if (!PHONE_PATTERN.test(trimmed)) {
+    return "Nomor HP tidak valid — isi angka saja (boleh diawali +), 9–15 digit."
+  }
+  return null
+}
+
 export type IdentityLookup = {
   id: string
   email: string

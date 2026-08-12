@@ -1,7 +1,13 @@
 "use server"
 
 import { headers } from "next/headers"
-import { registerCustomer, findCustomerByEmail, MIN_PASSWORD_LENGTH } from "@/lib/auth/customer-password"
+import {
+  registerCustomer,
+  findCustomerByEmail,
+  MIN_PASSWORD_LENGTH,
+  validateUsername,
+  validatePhoneNumber,
+} from "@/lib/auth/customer-password"
 import { createVerificationToken, consumeVerificationToken } from "@/lib/auth/verification-token"
 import { sendEmail, EmailSendError } from "@/lib/email/send"
 import { checkRateLimit, clientIpFrom } from "@/lib/auth/registration-rate-limit"
@@ -55,21 +61,33 @@ export async function registerAction(_prev: RegisterState, formData: FormData): 
   const name = String(formData.get("name") ?? "").trim()
   const email = String(formData.get("email") ?? "").trim()
   const password = String(formData.get("password") ?? "")
+  const username = String(formData.get("username") ?? "").trim()
+  const phoneNumber = String(formData.get("phoneNumber") ?? "").trim()
 
-  if (!name || !email || !password) {
+  if (!name || !email || !password || !username || !phoneNumber) {
     return { error: "Semua kolom wajib diisi.", ok: false }
   }
   if (password.length < MIN_PASSWORD_LENGTH) {
     return { error: `Password minimal ${MIN_PASSWORD_LENGTH} karakter.`, ok: false }
   }
+  const usernameError = validateUsername(username)
+  if (usernameError) {
+    return { error: usernameError, ok: false }
+  }
+  const phoneError = validatePhoneNumber(phoneNumber)
+  if (phoneError) {
+    return { error: phoneError, ok: false }
+  }
 
-  const result = await registerCustomer(email, name, password)
+  const result = await registerCustomer(email, name, password, username, phoneNumber)
   if (!result.ok) {
     return {
       error:
         result.reason === "email_taken_google"
           ? "Email ini sudah terdaftar lewat Google. Masuk dengan Google."
-          : "Email ini sudah terdaftar. Masuk, atau gunakan \"Lupa password\" kalau lupa.",
+          : result.reason === "username_taken"
+            ? "Username ini sudah dipakai. Coba yang lain."
+            : "Email ini sudah terdaftar. Masuk, atau gunakan \"Lupa password\" kalau lupa.",
       ok: false,
     }
   }

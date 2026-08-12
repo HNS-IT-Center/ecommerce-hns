@@ -26,6 +26,12 @@ export default async function Page() {
   const customer = await getCurrentCustomer();
   if (!customer) redirect("/login");
 
+  // Akun Google yang belum melengkapi username/nomor HP tidak boleh memakai
+  // halaman ini dulu — lihat catatan di schema.prisma pada Customer.username.
+  // Akun daftar-manual tidak pernah transit lewat kondisi ini karena
+  // registerAction mewajibkan keduanya sejak awal.
+  if (!customer.username || !customer.phoneNumber) redirect("/akun/lengkapi-profil");
+
   const builds = await listSavedBuilds(customer.id);
 
   const deleteAccountWaUrl = buildWhatsAppUrl(

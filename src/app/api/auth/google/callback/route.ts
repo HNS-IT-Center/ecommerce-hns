@@ -61,12 +61,21 @@ export async function GET(request: NextRequest) {
     // Email/nama Google bisa berubah antar login — selalu disegarkan supaya
     // tidak menyimpan data yang sudah usang.
     update: { email: identity.email, name: identity.name },
-    select: { id: true, email: true },
+    select: { id: true, email: true, username: true, phoneNumber: true },
   })
 
   await createCustomerSession(customer)
 
-  const response = NextResponse.redirect(new URL(nextPath, request.nextUrl.origin))
+  // Google tidak pernah memberi username atau nomor HP — akun yang belum
+  // melengkapi keduanya WAJIB mampir ke /akun/lengkapi-profil dulu sebelum
+  // ke tujuan aslinya (lihat catatan di schema.prisma pada Customer.username).
+  // `next` dibawa serta supaya redirect asli tidak hilang setelah dilengkapi.
+  const redirectTarget =
+    !customer.username || !customer.phoneNumber
+      ? `/akun/lengkapi-profil?next=${encodeURIComponent(nextPath)}`
+      : nextPath
+
+  const response = NextResponse.redirect(new URL(redirectTarget, request.nextUrl.origin))
   // Cookie state sekali pakai — buang setelah dipakai, sukses maupun gagal.
   response.cookies.set(GOOGLE_STATE_COOKIE, "", { path: "/", maxAge: 0 })
   return response

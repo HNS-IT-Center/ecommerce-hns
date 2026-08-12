@@ -710,6 +710,27 @@ model Customer {
   email String @unique @db.VarChar(191)
   name  String @db.VarChar(191)
 
+  /// Nama masuk alternatif, dipakai bareng email saat login manual — lihat
+  /// findCustomerByEmailOrUsername di lib/auth/customer-password.ts.
+  ///
+  /// NULLABLE: akun Google tidak pernah mengisi ini saat login pertama
+  /// (Google tidak memberi username). Wajib diisi lewat /akun/lengkapi-profil
+  /// sebelum akun itu bisa dipakai lebih lanjut — lihat requireCompleteProfile
+  /// di lib/auth/customer.ts. Akun daftar-manual mengisinya sejak awal, jadi
+  /// baris itu tidak pernah transit lewat NULL.
+  username String? @unique @db.VarChar(32)
+
+  /// Wajib untuk keperluan follow-up CS (checkout WhatsApp, konfirmasi
+  /// pesanan). Sama seperti `username`: NULLABLE hanya karena akun Google
+  /// tidak pernah mengisinya di langkah OAuth itu sendiri — wajib dilengkapi
+  /// lewat /akun/lengkapi-profil, TIDAK boleh dilewati (skip). Tidak diberi
+  /// `@unique`: satu nomor HP yang sama dipakai beberapa anggota keluarga
+  /// untuk akun terpisah adalah kasus wajar, tidak seperti email/username.
+  /// Format disimpan apa adanya (string), validasi angka+panjang di server
+  /// action — tanpa verifikasi OTP (belum ada integrasi SMS/WA di project
+  /// ini, lihat CLAUDE.md §2.1 kalau ini mau ditambah nanti).
+  phoneNumber String? @map("phone_number") @db.VarChar(20)
+
   /// NULL = akun daftar-manual yang belum mengklik link verifikasi, dan
   /// BELUM BOLEH dipakai masuk. Akun dari Google selalu langsung terisi
   /// (Google sudah membuktikan kepemilikan email itu, tidak perlu verifikasi

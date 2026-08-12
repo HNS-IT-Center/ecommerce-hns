@@ -24,10 +24,17 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
       <input type="hidden" name="next" value={nextPath} />
 
       <div>
-        <label className="mb-1 block text-xs font-semibold" htmlFor="login-email">
-          Email
+        <label className="mb-1 block text-xs font-semibold" htmlFor="login-identifier">
+          Email atau Username
         </label>
-        <input id="login-email" name="email" type="email" autoComplete="email" required className={inputClass} />
+        <input
+          id="login-identifier"
+          name="identifier"
+          type="text"
+          autoComplete="username"
+          required
+          className={inputClass}
+        />
       </div>
 
       <div>

@@ -26,6 +26,8 @@ export type CurrentCustomer = {
   id: string
   email: string
   name: string
+  username: string | null
+  phoneNumber: string | null
 }
 
 /** Payload sesi dari cookie, atau null. Tidak menyentuh database. */
@@ -46,7 +48,7 @@ export async function getCurrentCustomer(): Promise<CurrentCustomer | null> {
 
   const customer = await getPrisma().customer.findUnique({
     where: { id: session.sub },
-    select: { id: true, email: true, name: true, sessionsRevokedAt: true },
+    select: { id: true, email: true, name: true, username: true, phoneNumber: true, sessionsRevokedAt: true },
   })
   if (!customer) return null
 
@@ -57,7 +59,13 @@ export async function getCurrentCustomer(): Promise<CurrentCustomer | null> {
     return null
   }
 
-  return { id: customer.id, email: customer.email, name: customer.name }
+  return {
+    id: customer.id,
+    email: customer.email,
+    name: customer.name,
+    username: customer.username,
+    phoneNumber: customer.phoneNumber,
+  }
 }
 
 /** Pasang cookie sesi. Dipanggil setelah id_token Google terverifikasi. */
