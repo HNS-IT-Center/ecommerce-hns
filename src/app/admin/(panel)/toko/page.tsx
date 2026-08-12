@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, TriangleAlert } from "lucide-react";
 import { isDatabaseConfigured } from "@/lib/prisma/client";
-import { getStores } from "@/lib/api/stores";
+import { getActiveStores } from "@/lib/api/stores";
 import { StoreList } from "./store-list";
 
 export default async function AdminTokoPage() {
@@ -18,7 +18,7 @@ export default async function AdminTokoPage() {
   // Lewat `lib/api/stores`, bukan `getPrisma()` langsung. Di situlah saringan
   // `deletedAt` tinggal — satu tempat, sehingga halaman berikutnya yang dibuat
   // orang lain tidak bisa melewatkannya tanpa sengaja.
-  const stores = await getStores();
+  const stores = await getActiveStores();
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -32,6 +32,23 @@ export default async function AdminTokoPage() {
           Tambah Toko
         </Link>
       </div>
+
+      {/*
+        Tanpa peringatan ini, panel yang kosong terlihat seperti keadaan awal yang
+        wajar — padahal artinya halaman lokasi dan halaman kontak sedang tidak
+        menampilkan satu cabang pun ke pelanggan. Keadaan itu pernah terjadi tanpa
+        ada yang menyadarinya sampai halamannya dibuka sendiri.
+      */}
+      {stores.length === 0 && (
+        <p className="mt-6 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Tidak ada toko aktif. Halaman <strong>Lokasi Toko</strong> dan{" "}
+            <strong>Kontak</strong> sedang tidak menampilkan cabang apa pun ke
+            pelanggan. Tambahkan minimal satu toko.
+          </span>
+        </p>
+      )}
 
       <div className="mt-6">
         <StoreList stores={stores} />

@@ -28,6 +28,12 @@ const StoresOverviewMap = dynamic(
   },
 );
 
-export function StoresOverviewMapLoader({ stores }: { stores: MapStore[] }) {
-  return <StoresOverviewMap stores={stores} />;
+export function StoresOverviewMapLoader({
+  stores,
+  showLabels,
+}: {
+  stores: MapStore[];
+  showLabels?: boolean;
+}) {
+  return <StoresOverviewMap stores={stores} showLabels={showLabels} />;
 }

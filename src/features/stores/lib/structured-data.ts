@@ -58,10 +58,15 @@ export function buildStoreJsonLd(
 
   return {
     "@context": "https://schema.org",
-    // Tipe yang lebih sempit dari LocalBusiness. Google memakainya untuk
-    // memahami jenis usaha, dan "toko elektronik" jauh lebih berguna bagi orang
-    // yang mencari "toko komputer Batam" daripada "bisnis lokal".
-    "@type": "ElectronicsStore",
+    // Tipe paling sempit yang masih benar. Google memakainya untuk memahami jenis
+    // usaha, dan "toko komputer" jauh lebih berguna bagi orang yang mencari
+    // "toko komputer Batam" daripada "bisnis lokal" — atau bahkan "toko
+    // elektronik", yang juga mencakup kulkas dan mesin cuci.
+    //
+    // TIDAK ada `aggregateRating` maupun `review` di sini, dan jangan
+    // ditambahkan: ulasan yang dikumpulkan dari platform lain melanggar pedoman
+    // structured data Google, dan sanksinya menimpa seluruh markup halaman.
+    "@type": "ComputerStore",
     "@id": `${siteUrl}/stores#${store.id}`,
     name: store.name,
     url: `${siteUrl}/stores`,

@@ -296,11 +296,6 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
                  </div>
                )}
 
-               {product.member_price != null && product.member_price < product.price && (
-                 <div className="mt-2 text-sm font-medium text-foreground p-2 bg-muted rounded-md inline-block">
-                   Member: <span className="font-bold">{formatRupiah(product.member_price)}</span>
-                 </div>
-               )}
              </div>
 
              {/* 6. Buttons Add to Cart and WhatsApp in 1 row */}

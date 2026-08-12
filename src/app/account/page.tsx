@@ -1,15 +1,15 @@
-import { Header } from "@/components/layout/header"
-import { Footer } from "@/components/layout/footer"
-import { AccountView } from "@/features/auth/components/account-view"
+import { redirect } from "next/navigation";
 
-export default function AccountPage() {
-  return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <Header />
-      <main className="flex-1 bg-muted/20 py-12">
-        <AccountView />
-      </main>
-      <Footer />
-    </div>
-  )
+/**
+ * Peninggalan halaman akun lama (pra-Sprint-1, sebelum login Google ada) yang
+ * cuma bisa mengatakan "belum tersedia" — lihat `features/auth/components/
+ * registration-unavailable.tsx`. Halaman akun pelanggan yang sungguhan ada di
+ * /akun (proteksi sesi, rakitan tersimpan).
+ *
+ * Redirect ke /akun, BUKAN ke /login: /akun sendiri yang memutuskan apakah
+ * pengunjung perlu login (redirect ke /login kalau belum ada sesi) — jangan
+ * duplikasi keputusan itu di sini.
+ */
+export default function Page() {
+  redirect("/akun");
 }

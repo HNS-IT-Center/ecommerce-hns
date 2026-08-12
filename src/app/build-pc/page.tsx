@@ -1,8 +1,8 @@
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { DynamicBuilderView } from "@/features/builder/components/dynamic-builder-view"
-import { env } from "@/config/env"
 import { getPcBuilderConfig } from "@/lib/pc-builder/config"
+import { getCurrentCustomer } from "@/lib/auth/customer"
 
 export const metadata = {
   title: "PC Builder Custom — HNS IT Center",
@@ -10,7 +10,7 @@ export const metadata = {
 }
 
 export default async function BuildPcPage() {
-  const stepsConfig = await getPcBuilderConfig()
+  const [stepsConfig, customer] = await Promise.all([getPcBuilderConfig(), getCurrentCustomer()])
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -19,7 +19,7 @@ export default async function BuildPcPage() {
       </div>
       <main className="flex-1 bg-muted/20 print:bg-white print:m-0 print:p-0">
         <div className="mx-auto px-4 py-8 md:px-6 md:py-12 print:max-w-none print:p-8">
-          <DynamicBuilderView stepsConfig={stepsConfig} whatsappNumber={env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER} />
+          <DynamicBuilderView stepsConfig={stepsConfig} isLoggedIn={!!customer} />
         </div>
       </main>
       <div className="print:hidden">

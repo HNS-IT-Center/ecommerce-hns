@@ -1,26 +1,29 @@
-import { ProductCard, type Product } from "@/components/ui/product-card"
-import { getProducts } from "@/lib/api/woocommerce/products"
-import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper"
+import { ProductCard, type Product } from "@/components/ui/product-card";
+import { getProducts } from "@/lib/api/woocommerce/products";
+import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper";
 
 interface RelatedProductsProps {
-  categoryId: number
-  excludeId: number
+  categoryId: number;
+  excludeId: number;
 }
 
-export async function RelatedProducts({ categoryId, excludeId }: RelatedProductsProps) {
-  let products: Product[] = []
+export async function RelatedProducts({
+  categoryId,
+  excludeId,
+}: RelatedProductsProps) {
+  let products: Product[] = [];
   try {
     const wooProducts = await getProducts({
       category: categoryId,
       perPage: 6,
       exclude: [excludeId],
-    })
-    products = wooProducts.map(mapWooProductToUI)
+    });
+    products = wooProducts.map(mapWooProductToUI);
   } catch {
     // silently fail
   }
 
-  if (products.length === 0) return null
+  if (products.length === 0) return null;
 
   return (
     <section className="mt-16 border-t border-border/50 pt-12">
@@ -36,5 +39,5 @@ export async function RelatedProducts({ categoryId, excludeId }: RelatedProducts
         ))}
       </div>
     </section>
-  )
+  );
 }

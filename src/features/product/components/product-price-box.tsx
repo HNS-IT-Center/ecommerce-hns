@@ -1,29 +1,27 @@
-import { formatRupiah } from "@/lib/utils"
-import { Shield } from "lucide-react"
-import type { VariationPriceRange } from "@/features/product/lib/calculate-variation-price-range"
+import { formatRupiah } from "@/lib/utils";
+import type { VariationPriceRange } from "@/features/product/lib/calculate-variation-price-range";
 
+/**
+ * Harga produk. Menampilkan apa yang ada di katalog, tidak menghitung apa pun.
+ *
+ * Pernah ada cabang "Harga Member" di sini beserta tautan "Daftar member untuk
+ * harga khusus" — keduanya dihapus. Diskonnya dikarang di sisi klien dan
+ * menjanjikan sesuatu yang tidak pernah ada di katalog. Lihat CLAUDE.md §2.7.
+ */
 type ProductPriceBoxProps = {
-  isMember: boolean
-  mounted: boolean
-  memberPrice: number
-  baseFinalPrice: number
-  onSale: boolean
-  displaySale: number | null
-  discountPercent: number
-  displayRegular: number
-  displayPrice: number
+  onSale: boolean;
+  displaySale: number | null;
+  discountPercent: number;
+  displayRegular: number;
+  displayPrice: number;
   /**
    * Terisi hanya untuk produk bervariasi yang varian-nya BELUM dipilih. Saat
    * ada, rentang ini menggantikan harga tunggal — lihat `calculateVariationPriceRange`.
    */
-  priceRange?: VariationPriceRange | null
-}
+  priceRange?: VariationPriceRange | null;
+};
 
 export function ProductPriceBox({
-  isMember,
-  mounted,
-  memberPrice,
-  baseFinalPrice,
   onSale,
   displaySale,
   discountPercent,
@@ -52,20 +50,6 @@ export function ProductPriceBox({
             </div>
           )}
         </>
-      ) : isMember ? (
-        <>
-          <div className="flex items-baseline gap-3">
-            <span className="text-3xl font-extrabold text-sale-red">
-              {formatRupiah(memberPrice)}
-            </span>
-            <span className="flex items-center gap-1 rounded-md bg-brand-green/10 px-2 py-0.5 text-sm font-bold text-brand-green">
-              <Shield className="h-4 w-4" /> Harga Member
-            </span>
-          </div>
-          <div className="mt-1 text-sm text-muted-foreground line-through">
-            {formatRupiah(baseFinalPrice)}
-          </div>
-        </>
       ) : onSale && displaySale ? (
         <>
           <div className="flex items-baseline gap-3">
@@ -87,16 +71,6 @@ export function ProductPriceBox({
           {formatRupiah(displayPrice)}
         </span>
       )}
-
-      {/* Member Price Hint — disembunyikan saat menampilkan rentang, karena
-          harga member baru bermakna setelah varian tertentu dipilih. */}
-      {!isMember && mounted && !priceRange && (
-        <div className="mt-3 text-sm">
-          <a href="/register" className="font-semibold text-brand-green hover:underline">
-            Daftar member untuk harga khusus
-          </a>
-        </div>
-      )}
     </div>
-  )
+  );
 }

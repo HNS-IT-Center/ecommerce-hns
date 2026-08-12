@@ -2,23 +2,56 @@
 
 import { useCartStore } from "@/store/cart"
 import { formatRupiah } from "@/lib/utils"
-import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
-import { generateOrderMessage } from "@/features/checkout/lib/generate-order-message"
-import { Trash2, Plus, Minus, MessageCircle, ShoppingBag } from "lucide-react"
+import { Trash2, Plus, Minus, MessageCircle, ShoppingBag, Loader2 } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
 import { useState } from "react"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { useCatalogPricing } from "@/features/checkout/hooks/use-catalog-pricing"
+import {
+  PriceChangedBadge,
+  UnavailableNotice,
+} from "./price-change-notice"
 
-type CartViewProps = {
-  whatsappNumber: string
-}
-
-export function CartView({ whatsappNumber }: CartViewProps) {
-  const { items, removeItem, updateQuantity, getTotalPrice, clearCart } = useCartStore()
-  const totalUnits = items.reduce((sum, item) => sum + item.quantity, 0)
+/**
+ * Prop `whatsappNumber` dihapus: nomor tujuan sekarang dibaca dari tabel stores
+ * di server, bersama harganya. Membiarkan nomor env tetap masuk ke sini berarti
+ * dua sumber nomor hidup berdampingan, dan yang satu pasti akan basi.
+ */
+export function CartView() {
+  const { items, removeItem, updateQuantity, clearCart } = useCartStore()
   const [clearOpen, setClearOpen] = useState(false)
+
+  /**
+   * Harga dibaca dari katalog begitu halaman dibuka — bukan menunggu tombol.
+   *
+   * Di sinilah barang benar-benar mengendap: keranjang bertahan di localStorage
+   * berhari-hari, dan harga yang tersimpan bisa sudah lama berubah. Halaman
+   * checkout memeriksa saat tombol ditekan karena di sana orang sudah siap
+   * mengirim; di sini orang masih menimbang, jadi angkanya harus benar sejak
+   * pertama dilihat.
+   *
+   * Satu kueri per kunjungan, tidak diulang saat kuantitas diubah.
+   */
+  const { pricing, loading, error, refresh } = useCatalogPricing({ auto: true })
+
+  const unitPriceOf = (item: { id: string; price: number }) =>
+    pricing?.unitPriceByCartItemId[item.id] ?? item.price
+
+  const isUnavailable = (item: { id: string }) =>
+    pricing?.unavailableCartItemIds.includes(item.id) ?? false
+
+  const changeOf = (item: { id: string }) =>
+    pricing?.changes.find((c) => c.cartItemId === item.id)
+
+  // Barang yang sudah tidak terbit tidak ikut dihitung — ia juga tidak ikut
+  // dikirim ke CS.
+  const availableItems = items.filter((i) => !isUnavailable(i))
+  const totalUnits = availableItems.reduce((sum, item) => sum + item.quantity, 0)
+  const displayedTotal =
+    pricing?.total ??
+    items.reduce((sum, i) => sum + i.price * i.quantity, 0)
   /**
    * Item yang menunggu konfirmasi hapus. Sama seperti di panel keranjang:
    * tombol `−` berubah jadi ikon hapus saat kuantitas tinggal 1, jadi keduanya
@@ -47,9 +80,19 @@ export function CartView({ whatsappNumber }: CartViewProps) {
     )
   }
 
-  const handleCheckoutWA = () => {
-    const message = generateOrderMessage(items, getTotalPrice())
-    window.open(buildWhatsAppUrl(whatsappNumber, message), "_blank")
+  /**
+   * Dulu di sini `generateOrderMessage(items, getTotalPrice())` — pesan disusun
+   * dari harga di localStorage, jadi siapa pun bisa menyunting keranjangnya dan
+   * mengirim total karangan ke CS. Sekarang URL-nya datang dari server bersama
+   * harganya. Lihat CLAUDE.md §2.7.
+   *
+   * Katalog dibaca ulang di sini, tidak memakai hasil saat halaman dibuka:
+   * kuantitas mungkin sudah diubah sejak itu, dan yang dikirim ke CS harus
+   * mencerminkan keranjang pada detik tombol ditekan.
+   */
+  const handleCheckoutWA = async () => {
+    const hasil = await refresh()
+    if (hasil) window.open(hasil.waUrl, "_blank", "noopener,noreferrer")
   }
 
   return (
@@ -106,9 +149,32 @@ export function CartView({ whatsappNumber }: CartViewProps) {
                       )}
                     </div>
                     <div className="text-right font-bold text-foreground sm:text-lg">
-                      {formatRupiah(item.price)}
+                      {isUnavailable(item) ? "—" : formatRupiah(unitPriceOf(item))}
                     </div>
                   </div>
+
+                  {/* Perubahan disebut di baris barangnya sendiri, bukan hanya
+                      terlihat sebagai total yang bergeser. */}
+                  {(() => {
+                    const perubahan = changeOf(item)
+                    if (isUnavailable(item)) {
+                      return (
+                        <UnavailableNotice
+                          name={item.name}
+                          onRemove={() => removeItem(item.id)}
+                        />
+                      )
+                    }
+                    if (perubahan) {
+                      return (
+                        <PriceChangedBadge
+                          oldUnitPrice={perubahan.oldUnitPrice}
+                          newUnitPrice={perubahan.newUnitPrice}
+                        />
+                      )
+                    }
+                    return null
+                  })()}
 
                   <div className="mt-4 flex flex-wrap items-center gap-3">
                     <div className="flex items-center rounded-lg border bg-background">
@@ -183,27 +249,61 @@ export function CartView({ whatsappNumber }: CartViewProps) {
           <div className="mt-6 space-y-4">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Total Harga ({totalUnits} Barang)</span>
-              <span className="font-medium">{formatRupiah(getTotalPrice())}</span>
+              <span className="font-medium">{formatRupiah(displayedTotal)}</span>
             </div>
 
             <div className="my-4 border-t border-dashed" />
-            
+
             <div className="flex justify-between">
               <span className="font-bold">Total Belanja</span>
               <span className="text-lg font-extrabold text-sale-red">
-                {formatRupiah(getTotalPrice())}
+                {formatRupiah(displayedTotal)}
               </span>
             </div>
+
+            {loading && (
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                Memeriksa harga terbaru…
+              </p>
+            )}
+
+            {/* Menyebut sebabnya, bukan sekadar menampilkan angka lain. */}
+            {!loading && pricing && pricing.changes.length > 0 && (
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {pricing.changes.length === 1 ? "Satu barang" : `${pricing.changes.length} barang`}{" "}
+                berubah harganya sejak terakhir Anda lihat. Perubahannya ditandai
+                di daftar sebelah.
+              </p>
+            )}
+
+            {!loading && pricing && pricing.unavailableCartItemIds.length > 0 && (
+              <p className="text-xs leading-relaxed text-sale-red">
+                {pricing.unavailableCartItemIds.length} barang sudah tidak
+                tersedia dan tidak ikut dihitung.
+              </p>
+            )}
+
+            {error && (
+              <p className="text-xs leading-relaxed text-sale-red" role="alert">
+                {error}
+              </p>
+            )}
           </div>
 
           <Button
             variant="default"
             size="lg"
             onClick={handleCheckoutWA}
+            disabled={loading || availableItems.length === 0}
             className="mt-6 h-14 w-full bg-[#25D366] hover:bg-[#128C7E] text-white shadow-lg shadow-whatsapp/20"
           >
-            <MessageCircle className="h-5 w-5" />
-            Checkout via WhatsApp
+            {loading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <MessageCircle className="h-5 w-5" />
+            )}
+            {loading ? "Memeriksa harga…" : "Checkout via WhatsApp"}
           </Button>
           
           <p className="mt-4 text-center text-xs text-muted-foreground">

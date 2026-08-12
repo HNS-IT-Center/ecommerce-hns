@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Menu } from "lucide-react"
+import { LogOut, Menu, Wrench } from "lucide-react"
 
 import {
   Sheet,
@@ -18,6 +18,8 @@ import {
   AccordionPanel,
 } from "@/components/ui/accordion"
 import { buildCategoryTree } from "@/lib/utils/category-tree"
+import { customerLogoutAction } from "@/app/akun/actions"
+import { useCustomer } from "@/hooks/use-customer"
 
 import type { ProductCategory } from "@/types/woocommerce"
 
@@ -33,6 +35,10 @@ interface MobileMenuProps {
 
 export function MobileMenu({ categories = [] }: MobileMenuProps) {
   const categoryTree = buildCategoryTree(categories)
+  // Status login dibaca dari /api/auth/me, bukan prop server — lihat catatan
+  // di hooks/use-customer.ts kenapa membaca cookies() di Header/RootLayout
+  // membuat seluruh storefront jadi dynamic.
+  const { customer } = useCustomer()
 
   return (
     <Sheet>
@@ -91,13 +97,39 @@ export function MobileMenu({ categories = [] }: MobileMenuProps) {
             >
               Shop
             </SheetClose>
-            <SheetClose
-              render={<Link href="/login" />}
-              nativeButton={false}
-              className={navLinkClassName}
-            >
-              Login / Akun
-            </SheetClose>
+
+            {customer ? (
+              <>
+                <SheetClose
+                  render={<Link href="/akun" />}
+                  nativeButton={false}
+                  className={`${navLinkClassName} flex items-center gap-2`}
+                >
+                  <Wrench className="h-4 w-4 shrink-0" />
+                  Rakitan Tersimpan
+                </SheetClose>
+                {/* Bukan SheetClose: logout adalah server action yang me-redirect
+                    ke "/", jadi sheet-nya otomatis hilang mengikuti navigasi
+                    halaman — tidak perlu ditutup lebih dulu secara terpisah. */}
+                <form action={customerLogoutAction}>
+                  <button
+                    type="submit"
+                    className={`${navLinkClassName} flex w-full items-center gap-2 text-left text-destructive hover:bg-destructive/10`}
+                  >
+                    <LogOut className="h-4 w-4 shrink-0" />
+                    Keluar
+                  </button>
+                </form>
+              </>
+            ) : (
+              <SheetClose
+                render={<Link href="/login" />}
+                nativeButton={false}
+                className={navLinkClassName}
+              >
+                Masuk
+              </SheetClose>
+            )}
           </div>
         </nav>
       </SheetContent>

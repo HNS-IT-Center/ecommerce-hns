@@ -1,54 +1,55 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Shield, Truck, Check } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
-import { useCartStore } from "@/store/cart"
-import { useAuthStore } from "@/store/auth"
-import { useIsHydrated } from "@/hooks/use-is-hydrated"
-import { calculateProductPrice } from "@/features/product/lib/calculate-product-price"
-import { calculateVariationPriceRange } from "@/features/product/lib/calculate-variation-price-range"
-import type { ProductVariation } from "@/types/woocommerce"
-import { useFlyToCart } from "@/components/providers/fly-to-cart-provider"
-import { ProductPriceBox } from "./product-price-box"
-import { ProductActions } from "./product-actions"
-import { ProductVariantSelector, type VariantAttribute } from "./product-variant-selector"
-import { QRCodeCanvas } from "qrcode.react"
+import { useState } from "react";
+import { Shield, Truck, Check } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { buildWhatsAppUrl } from "@/lib/api/whatsapp";
+import { useCartStore } from "@/store/cart";
+import { calculateProductPrice } from "@/features/product/lib/calculate-product-price";
+import { calculateVariationPriceRange } from "@/features/product/lib/calculate-variation-price-range";
+import type { ProductVariation } from "@/types/woocommerce";
+import { useFlyToCart } from "@/components/providers/fly-to-cart-provider";
+import { ProductPriceBox } from "./product-price-box";
+import { ProductActions } from "./product-actions";
+import {
+  ProductVariantSelector,
+  type VariantAttribute,
+} from "./product-variant-selector";
+import { QRCodeCanvas } from "qrcode.react";
 
 interface ProductInfoProps {
-  id: number
-  name: string
-  sku: string
-  brand: string
-  categoryName: string
-  price: string
-  regularPrice: string
-  salePrice: string
-  onSale: boolean
-  type: "simple" | "variable" | "grouped" | "external"
-  image?: string
-  stockStatus: string
-  stockQuantity: number | null
-  averageRating: string
-  ratingCount: number
-  whatsappNumber: string
-  variantAttributes: VariantAttribute[]
-  variations: ProductVariation[]
-  siteUrl: string
+  id: number;
+  name: string;
+  sku: string;
+  brand: string;
+  categoryName: string;
+  price: string;
+  regularPrice: string;
+  salePrice: string;
+  onSale: boolean;
+  type: "simple" | "variable" | "grouped" | "external";
+  image?: string;
+  stockStatus: string;
+  stockQuantity: number | null;
+  averageRating: string;
+  ratingCount: number;
+  whatsappNumber: string;
+  variantAttributes: VariantAttribute[];
+  variations: ProductVariation[];
+  siteUrl: string;
   /**
    * Pilihan varian dikendalikan dari luar supaya galeri dan panel ini berbagi
    * satu sumber kebenaran — memilih warna menggeser galeri, dan menggulir
    * galeri mengubah harga di sini. Lihat `product-detail.tsx`.
    */
-  selected: Record<string, string>
-  onSelectedChange: (selected: Record<string, string>) => void
+  selected: Record<string, string>;
+  onSelectedChange: (selected: Record<string, string>) => void;
   /** Memilih/membatalkan satu atribut. Dibagi dengan strip varian di mobile. */
-  onSelectAttribute: (attributeName: string, option: string) => void
+  onSelectAttribute: (attributeName: string, option: string) => void;
   /** Sorotan sesaat saat pembeli menekan keranjang tanpa varian lengkap. */
-  isVariantHighlighted: boolean
-  onRequestVariantChoice: () => void
-  className?: string
+  isVariantHighlighted: boolean;
+  onRequestVariantChoice: () => void;
+  className?: string;
 }
 
 export function ProductInfo({
@@ -77,32 +78,34 @@ export function ProductInfo({
   onRequestVariantChoice,
   className,
 }: ProductInfoProps) {
-  const isSimpleProduct = type === "simple"
-  const hasVariants = type === "variable" && variantAttributes.length > 0 && variations.length > 0
+  const isSimpleProduct = type === "simple";
+  const hasVariants =
+    type === "variable" &&
+    variantAttributes.length > 0 &&
+    variations.length > 0;
 
-  const addItem = useCartStore((state) => state.addItem)
-  const { isLoggedIn } = useAuthStore()
-  const mounted = useIsHydrated()
-  const { flyToCart } = useFlyToCart()
+  const addItem = useCartStore((state) => state.addItem);
+  const { flyToCart } = useFlyToCart();
 
-  const [isAdding, setIsAdding] = useState(false)
-
-  const isMember = mounted && isLoggedIn
+  const [isAdding, setIsAdding] = useState(false);
 
   // Varian yang cocok dengan kombinasi pilihan saat ini — undefined selama
   // belum semua atribut dipilih, atau kombinasinya memang tidak ada.
   const resolvedVariation = hasVariants
     ? variations.find((variation) =>
         variantAttributes.every((attr) => {
-          const chosen = selected[attr.name]
-          if (!chosen) return false
+          const chosen = selected[attr.name];
+          if (!chosen) return false;
           const match = variation.attributes.find(
-            (a) => a.name.trim().toLowerCase() === attr.name.trim().toLowerCase()
-          )
-          return match?.option.trim().toLowerCase() === chosen.trim().toLowerCase()
-        })
+            (a) =>
+              a.name.trim().toLowerCase() === attr.name.trim().toLowerCase(),
+          );
+          return (
+            match?.option.trim().toLowerCase() === chosen.trim().toLowerCase()
+          );
+        }),
       )
-    : undefined
+    : undefined;
 
   /**
    * Rentang harga varian, hanya selama belum ada varian yang dipilih.
@@ -112,13 +115,13 @@ export function ProductInfo({
    * harga coretnya.
    */
   const priceRange =
-    hasVariants && !resolvedVariation ? calculateVariationPriceRange(variations) : null
+    hasVariants && !resolvedVariation ? calculateVariationPriceRange(variations) : null;
 
-  const effectivePrice = resolvedVariation?.price ?? price
-  const effectiveRegularPrice = resolvedVariation?.regular_price ?? regularPrice
-  const effectiveSalePrice = resolvedVariation?.sale_price ?? salePrice
-  const effectiveOnSale = resolvedVariation?.on_sale ?? onSale
-  const effectiveSku = resolvedVariation?.sku || sku
+  const effectivePrice = resolvedVariation?.price ?? price;
+  const effectiveRegularPrice = resolvedVariation?.regular_price ?? regularPrice;
+  const effectiveSalePrice = resolvedVariation?.sale_price ?? salePrice;
+  const effectiveOnSale = resolvedVariation?.on_sale ?? onSale;
+  const effectiveSku = resolvedVariation?.sku || sku;
 
   /**
    * SKU yang ditampilkan di bawah nama produk.
@@ -131,23 +134,21 @@ export function ProductInfo({
    * Varian tanpa SKU (26% katalog) dilewati, bukan ditampilkan sebagai kosong.
    */
   const displaySkus = (() => {
-    if (!hasVariants) return effectiveSku ? [effectiveSku] : []
-    if (resolvedVariation) return resolvedVariation.sku ? [resolvedVariation.sku] : []
+    if (!hasVariants) return effectiveSku ? [effectiveSku] : [];
+    if (resolvedVariation) return resolvedVariation.sku ? [resolvedVariation.sku] : [];
 
-    const unique: string[] = []
+    const unique: string[] = [];
     for (const variation of variations) {
-      if (variation.sku && !unique.includes(variation.sku)) unique.push(variation.sku)
+      if (variation.sku && !unique.includes(variation.sku)) unique.push(variation.sku);
     }
-    return unique.length > 0 ? unique : sku ? [sku] : []
-  })()
-  const effectiveImage = resolvedVariation?.image?.src || image
+    return unique.length > 0 ? unique : sku ? [sku] : [];
+  })();
+  const effectiveImage = resolvedVariation?.image?.src || image;
 
   const {
     displayPrice,
     displayRegular,
     displaySale,
-    baseFinalPrice,
-    memberPrice,
     finalPrice,
     discountPercent,
   } = calculateProductPrice({
@@ -155,25 +156,19 @@ export function ProductInfo({
     regularPrice: effectiveRegularPrice,
     salePrice: effectiveSalePrice,
     onSale: effectiveOnSale,
-    isMember,
-  })
+  });
 
   /**
    * Harga coret untuk bar mengambang.
    *
    * Mengikuti urutan yang sama dengan ProductPriceBox supaya angkanya tidak
-   * pernah berbeda antara panel dan bar: harga member dibandingkan terhadap
-   * harga normal setelah diskon toko, sedangkan produk diskon biasa
-   * dibandingkan terhadap harga aslinya. Bernilai `null` saat tidak ada
+   * pernah berbeda antara panel dan bar. Bernilai `null` saat tidak ada
    * potongan apa pun — bar lalu menampilkan satu harga saja tanpa coretan.
    */
-  const barOriginalPrice = isMember
-    ? baseFinalPrice > memberPrice
-      ? baseFinalPrice
-      : null
-    : effectiveOnSale && displaySale && displayRegular > displaySale
+  const barOriginalPrice =
+    effectiveOnSale && displaySale && displayRegular > displaySale
       ? displayRegular
-      : null
+      : null;
 
   /**
    * Ringkasan varian terpilih untuk bar mengambang, mis. "MERAH / XL".
@@ -187,13 +182,13 @@ export function ProductInfo({
         .map((attr) => selected[attr.name])
         .filter(Boolean)
         .join(" / ")
-    : ""
+    : "";
 
   const canAddToCart = isSimpleProduct
     ? stockStatus === "instock"
-    : hasVariants && resolvedVariation?.stock_status === "instock"
+    : hasVariants && resolvedVariation?.stock_status === "instock";
 
-  const showCartButton = isSimpleProduct || hasVariants
+  const showCartButton = isSimpleProduct || hasVariants;
 
   const addToCartHint = isSimpleProduct
     ? undefined
@@ -203,26 +198,28 @@ export function ProductInfo({
         ? "Pilih semua opsi di atas untuk melihat harga & stok."
         : resolvedVariation.stock_status !== "instock"
           ? "Varian ini sedang habis."
-          : undefined
+          : undefined;
 
-  const waLabel = canAddToCart ? "Beli via WhatsApp" : "Tanya via WhatsApp"
+  const waLabel = canAddToCart ? "Beli via WhatsApp" : "Tanya via WhatsApp";
 
   const variantSuffix =
     type === "variable" && Object.keys(selected).length > 0
       ? ` (${variantAttributes.map((a) => `${a.name}: ${selected[a.name] ?? "?"}`).join(", ")})`
-      : ""
-  const waMessage = `Halo HNS IT Center, saya tertarik dengan produk: ${name}${variantSuffix} (SKU: ${effectiveSku}). Apakah tersedia?`
-  const waUrl = buildWhatsAppUrl(whatsappNumber, waMessage)
+      : "";
+  const waMessage = `Halo HNS IT Center, saya tertarik dengan produk: ${name}${variantSuffix} (SKU: ${effectiveSku}). Apakah tersedia?`;
+  const waUrl = buildWhatsAppUrl(whatsappNumber, waMessage);
 
   const handleAddToCart = (e: React.MouseEvent) => {
-    if (isAdding) return
+    if (isAdding) return;
 
     if (type === "variable") {
-      if (!resolvedVariation) return
-      setIsAdding(true)
-      flyToCart(e.clientX, e.clientY, effectiveImage)
-      const variantLabel = variantAttributes.map((a) => selected[a.name]).join(", ")
-      
+      if (!resolvedVariation) return;
+      setIsAdding(true);
+      flyToCart(e.clientX, e.clientY, effectiveImage);
+      const variantLabel = variantAttributes
+        .map((a) => selected[a.name])
+        .join(", ");
+
       setTimeout(() => {
         addItem({
           id: `${id}_${resolvedVariation.id}`,
@@ -233,15 +230,15 @@ export function ProductInfo({
           sku: effectiveSku,
           image: effectiveImage,
           variationLabel: variantLabel,
-        })
-        setIsAdding(false)
-      }, 800)
-      return
+        });
+        setIsAdding(false);
+      }, 800);
+      return;
     }
 
-    setIsAdding(true)
-    flyToCart(e.clientX, e.clientY, image)
-    
+    setIsAdding(true);
+    flyToCart(e.clientX, e.clientY, image);
+
     setTimeout(() => {
       addItem({
         id: id.toString(),
@@ -251,10 +248,10 @@ export function ProductInfo({
         quantity: 1,
         sku,
         image,
-      })
-      setIsAdding(false)
-    }, 800)
-  }
+      });
+      setIsAdding(false);
+    }, 800);
+  };
 
   return (
     /* `flex` + `order-*`, bukan dua salinan markup.
@@ -272,7 +269,9 @@ export function ProductInfo({
             {brand}
           </span>
         )}
-        <span className="text-sale-red font-bold uppercase tracking-wider">{categoryName}</span>
+        <span className="text-sale-red font-bold uppercase tracking-wider">
+          {categoryName}
+        </span>
       </div>
 
       {/* Product Name */}
@@ -291,17 +290,15 @@ export function ProductInfo({
         {ratingCount > 0 && (
           <>
             <span>•</span>
-            <span>⭐ {averageRating} ({ratingCount} ulasan)</span>
+            <span>
+              ⭐ {averageRating} ({ratingCount} ulasan)
+            </span>
           </>
         )}
       </div>
 
       <div className="order-1 md:order-4">
         <ProductPriceBox
-          isMember={isMember}
-          mounted={mounted}
-          memberPrice={memberPrice}
-          baseFinalPrice={baseFinalPrice}
           onSale={effectiveOnSale}
           displaySale={displaySale}
           discountPercent={discountPercent}
@@ -333,14 +330,20 @@ export function ProductInfo({
               <Check className="h-4 w-4 text-success" />
               <span className="text-sm font-semibold text-success">
                 Tersedia
-                {stockQuantity != null && stockQuantity <= 5 && ` (Sisa ${stockQuantity})`}
+                {stockQuantity != null &&
+                  stockQuantity <= 5 &&
+                  ` (Sisa ${stockQuantity})`}
               </span>
             </>
           ) : (
-            <span className="text-sm font-semibold text-sale-red">Stok Habis</span>
+            <span className="text-sm font-semibold text-sale-red">
+              Stok Habis
+            </span>
           )
         ) : !hasVariants ? null : !resolvedVariation ? (
-          <span className="text-sm text-muted-foreground">Pilih varian untuk melihat ketersediaan stok</span>
+          <span className="text-sm text-muted-foreground">
+            Pilih varian untuk melihat ketersediaan stok
+          </span>
         ) : resolvedVariation.stock_status === "instock" ? (
           <>
             <Check className="h-4 w-4 text-success" />
@@ -352,7 +355,9 @@ export function ProductInfo({
             </span>
           </>
         ) : (
-          <span className="text-sm font-semibold text-sale-red">Stok Habis</span>
+          <span className="text-sm font-semibold text-sale-red">
+            Stok Habis
+          </span>
         )}
       </div>
 
@@ -391,7 +396,10 @@ export function ProductInfo({
           <Truck className="h-5 w-5 text-brand-green shrink-0" />
           <span>
             Gratis ongkir Batam (syarat berlaku) —{" "}
-            <a href="/kebijakan/pengiriman" className="underline hover:text-brand-green">
+            <a
+              href="/kebijakan/pengiriman"
+              className="underline hover:text-brand-green"
+            >
               lihat kebijakan
             </a>
           </span>
@@ -416,5 +424,5 @@ export function ProductInfo({
         </div>
       </div>
     </div>
-  )
+  );
 }

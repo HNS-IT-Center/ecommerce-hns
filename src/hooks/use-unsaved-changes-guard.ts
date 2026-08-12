@@ -1,6 +1,6 @@
-"use client"
+"use client";
 
-import { useEffect } from "react"
+import { useEffect } from "react";
 
 /**
  * Peringatkan sebelum perubahan yang belum disimpan hilang.
@@ -30,74 +30,91 @@ import { useEffect } from "react"
  * itu. Dikoreksi di sini supaya tidak ada yang mengandalkannya.
  */
 
-/**
- * Peramban modern MENGABAIKAN teks kustom pada dialog `beforeunload` dan selalu
- * memakai kalimatnya sendiri. Teks ini hanya dipakai untuk dialog klik tautan,
- * yang memang bisa kita kendalikan.
- */
-const PESAN = "Ada perubahan yang belum disimpan. Tinggalkan halaman ini?"
-
-export function useUnsavedChangesGuard(isDirty: boolean): void {
+export function useUnsavedChangesGuard(
+  isDirty: boolean,
+  /**
+   * Dipanggil dengan tujuan navigasi saat klik tautan disadap. Pemanggil yang
+   * memutuskan apa yang terjadi berikutnya — biasanya menampilkan dialog lalu
+   * melanjutkan sendiri kalau disetujui.
+   *
+   * Ini sebabnya penyadapnya TIDAK lagi memakai `window.confirm`. Dialog bawaan
+   * peramban sinkron, jadi ia bisa menjawab "lanjut atau tidak" di tengah
+   * penanganan klik; dialog React tidak bisa. Polanya dibalik: kliknya SELALU
+   * dibatalkan lebih dulu, tujuannya diserahkan ke sini, dan navigasinya
+   * dijalankan ulang belakangan kalau memang disetujui.
+   */
+  onIntercept: (href: string) => void,
+): void {
   useEffect(() => {
     // Tidak ada yang perlu dijaga selama belum ada perubahan. Keluar lebih awal
     // berarti nol pendengar yang menempel di dokumen pada keadaan normal.
-    if (!isDirty) return
+    if (!isDirty) return;
 
     function handleBeforeUnload(event: BeforeUnloadEvent) {
-      event.preventDefault()
+      event.preventDefault();
       // Sebagian peramban lama baru menampilkan dialognya kalau `returnValue`
       // diisi, bukan cukup `preventDefault()`.
-      event.returnValue = ""
+      //
+      // Teksnya TIDAK bisa ditentukan sendiri: peramban modern mengabaikan pesan
+      // kustom dan selalu memakai kalimatnya sendiri. Jadi dialog inilah satu-
+      // satunya yang tidak akan pernah memakai komponen dialog project ini.
+      event.returnValue = "";
     }
 
     function handleClick(event: MouseEvent) {
       // Klik yang sudah dibatalkan penanganan lain bukan urusan kita.
-      if (event.defaultPrevented) return
+      if (event.defaultPrevented) return;
 
       // Klik tengah, Ctrl/Cmd/Shift-klik membuka tab baru — halaman ini tetap
       // di tempatnya, jadi tidak ada yang bisa hilang.
-      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-        return
+      if (
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
       }
 
-      const target = event.target
-      if (!(target instanceof Element)) return
+      const target = event.target;
+      if (!(target instanceof Element)) return;
 
-      const anchor = target.closest("a[href]")
-      if (!(anchor instanceof HTMLAnchorElement)) return
-      if (anchor.target === "_blank" || anchor.hasAttribute("download")) return
+      const anchor = target.closest("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) return;
+      if (anchor.target === "_blank" || anchor.hasAttribute("download")) return;
 
-      const tujuan = new URL(anchor.href, window.location.href)
+      const tujuan = new URL(anchor.href, window.location.href);
 
       // Tautan keluar situs sengaja dilewatkan: dokumennya memang akan
       // ditinggalkan, jadi `beforeunload` yang menanganinya. Menyadapnya di sini
       // berarti dua dialog berurutan untuk satu perbuatan.
-      if (tujuan.origin !== window.location.origin) return
+      if (tujuan.origin !== window.location.origin) return;
 
       // Tautan ke halaman yang sedang dibuka tidak menghilangkan apa pun.
       if (
         tujuan.pathname === window.location.pathname &&
         tujuan.search === window.location.search
       ) {
-        return
+        return;
       }
 
-      if (window.confirm(PESAN)) return
-
-      event.preventDefault()
+      event.preventDefault();
       // `stopPropagation` diperlukan, bukan hiasan: penjagaan ini berjalan di
       // fase CAPTURE justru supaya bisa mendahului penangan <Link> milik Next.
       // Tanpa menghentikan penyebarannya, Next tetap menerima kliknya dan
-      // navigasinya jalan walau orangnya sudah menekan Batal.
-      event.stopPropagation()
+      // navigasinya jalan walau orangnya belum menjawab dialognya.
+      event.stopPropagation();
+
+      onIntercept(`${tujuan.pathname}${tujuan.search}`);
     }
 
-    window.addEventListener("beforeunload", handleBeforeUnload)
-    document.addEventListener("click", handleClick, true)
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("click", handleClick, true);
 
     return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload)
-      document.removeEventListener("click", handleClick, true)
-    }
-  }, [isDirty])
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("click", handleClick, true);
+    };
+  }, [isDirty, onIntercept]);
 }

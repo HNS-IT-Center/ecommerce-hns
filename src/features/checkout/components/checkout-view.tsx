@@ -1,18 +1,51 @@
 "use client"
 
+import { useState } from "react"
+
 import { useCartStore } from "@/store/cart"
 import { formatRupiah } from "@/lib/utils"
-import { Settings, ShoppingBag } from "lucide-react"
+import { MessageCircle, ShoppingBag } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { buttonVariants } from "@/components/ui/button"
+import { WhatsAppOrderButton } from "./whatsapp-order-button"
 
 export function CheckoutView() {
   const { items, getSelectedTotalPrice } = useCartStore()
-  
+
+  /**
+   * Harga menurut katalog, terisi setelah tombol WhatsApp membacanya.
+   *
+   * null = katalog belum dibaca, jadi yang tampil masih angka keranjang.
+   * Begitu terisi, ia menggantikan angka keranjang di SELURUH halaman — baris
+   * per barang maupun ringkasan. Mengoreksi totalnya saja akan membuat
+   * penjumlahan di layar tidak cocok, yang justru memindahkan masalahnya.
+   */
+  const [catalogPricing, setCatalogPricing] = useState<{
+    total: number
+    unitPriceByCartItemId: Record<string, number>
+    unavailableCartItemIds: string[]
+  } | null>(null)
+
   // Only show selected items
   const selectedItems = items.filter(item => item.selected !== false)
-  const totalUnits = selectedItems.reduce((sum, item) => sum + item.quantity, 0)
+  const cartTotal = getSelectedTotalPrice()
+  const displayedTotal = catalogPricing?.total ?? cartTotal
+  const priceWasCorrected =
+    catalogPricing !== null && catalogPricing.total !== cartTotal
+
+  /** Harga satuan yang ditampilkan: katalog kalau sudah dibaca, keranjang kalau belum. */
+  const unitPriceOf = (item: { id: string; price: number }) =>
+    catalogPricing?.unitPriceByCartItemId[item.id] ?? item.price
+
+  const isUnavailable = (item: { id: string }) =>
+    catalogPricing?.unavailableCartItemIds.includes(item.id) ?? false
+
+  // Barang yang sudah tidak terbit tidak ikut dihitung — ia juga tidak ikut
+  // dikirim ke CS.
+  const totalUnits = selectedItems
+    .filter((item) => !isUnavailable(item))
+    .reduce((sum, item) => sum + item.quantity, 0)
   const currentDate = new Intl.DateTimeFormat('id-ID', {
     weekday: 'long',
     year: 'numeric',
@@ -80,11 +113,23 @@ export function CheckoutView() {
                         </p>
                       )}
                       <p className="mt-2 text-sm">
-                        {item.quantity} x {formatRupiah(item.price)}
+                        {item.quantity} x {formatRupiah(unitPriceOf(item))}
+                        {unitPriceOf(item) !== item.price && (
+                          <span className="ml-2 text-muted-foreground line-through">
+                            {formatRupiah(item.price)}
+                          </span>
+                        )}
                       </p>
+                      {isUnavailable(item) && (
+                        <p className="mt-1 text-sm font-semibold text-sale-red">
+                          Sudah tidak tersedia — tidak ikut dipesan
+                        </p>
+                      )}
                     </div>
                     <div className="text-right font-bold text-foreground">
-                      {formatRupiah(item.price * item.quantity)}
+                      {isUnavailable(item)
+                        ? "—"
+                        : formatRupiah(unitPriceOf(item) * item.quantity)}
                     </div>
                   </div>
                 </div>
@@ -93,15 +138,34 @@ export function CheckoutView() {
           </div>
         </div>
         
-        {/* Coming Soon Block */}
-        <div className="rounded-xl border border-dashed border-primary/50 bg-primary/5 p-12 flex flex-col items-center justify-center text-center">
-          <div className="animate-spin-slow mb-4">
-            <Settings className="h-12 w-12 text-primary" />
+        {/*
+          Menyatakan cara memesan, BUKAN fitur yang sedang dibangun.
+
+          Sebelumnya kotak ini bertuliskan "Coming Soon — sistem checkout
+          otomatis sedang dalam tahap pengembangan". Itu kabar tentang kami,
+          bukan tentang pesanan orang yang sedang membacanya: ia sudah memilih
+          barang dan siap membayar, lalu diberi tahu bahwa yang dia butuhkan
+          belum ada. Titik paling mahal untuk mengecewakan orang.
+
+          Jangan kembalikan bahasa "coming soon" di sini. Pemesanan lewat CS
+          bukan penampung sementara — itu memang cara HNS bekerja, dan
+          kalimatnya tetap benar meski checkout otomatis dibangun nanti.
+        */}
+        <div className="rounded-xl border border-dashed border-whatsapp/50 bg-whatsapp/5 p-12 flex flex-col items-center justify-center text-center">
+          <div className="mb-4">
+            <MessageCircle className="h-12 w-12 text-whatsapp" />
           </div>
-          <h3 className="text-2xl font-bold text-primary mb-2">Coming Soon</h3>
+          <h3 className="text-2xl font-bold text-whatsapp mb-2">Pesan lewat WhatsApp</h3>
           <p className="text-muted-foreground max-w-md">
-            Sistem checkout otomatis sedang dalam tahap pengembangan. Untuk saat ini, silahkan hubungi CS kami.
+            Pesanan Anda diselesaikan bersama tim CS kami lewat WhatsApp —
+            termasuk konfirmasi stok, ongkir, dan cara pembayaran.
           </p>
+          {/* Tombolnya ADA DI SINI, bukan hanya di ringkasan samping: kotak ini
+              yang menjelaskan caranya, dan penjelasan tanpa tombol membuat
+              halaman ini jalan buntu bagi orang yang sudah siap membayar. */}
+          <div className="mt-6 w-full max-w-sm">
+            <WhatsAppOrderButton onPriced={setCatalogPricing} />
+          </div>
         </div>
       </div>
 
@@ -112,17 +176,25 @@ export function CheckoutView() {
           <div className="mt-6 space-y-4">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Total Harga ({totalUnits} Barang)</span>
-              <span className="font-medium">{formatRupiah(getSelectedTotalPrice())}</span>
+              <span className="font-medium">{formatRupiah(displayedTotal)}</span>
             </div>
 
             <div className="my-4 border-t border-dashed" />
-            
+
             <div className="flex justify-between">
               <span className="font-bold">Total Belanja</span>
               <span className="text-lg font-extrabold text-sale-red">
-                {formatRupiah(getSelectedTotalPrice())}
+                {formatRupiah(displayedTotal)}
               </span>
             </div>
+
+            {/* Muncul hanya kalau katalog memang mengubah angkanya. Menyebut
+                sebabnya, bukan sekadar mengganti angka diam-diam. */}
+            {priceWasCorrected && (
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Total disesuaikan dengan harga terbaru di katalog.
+              </p>
+            )}
           </div>
         </div>
       </div>

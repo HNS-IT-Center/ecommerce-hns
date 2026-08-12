@@ -1,39 +1,55 @@
 "use client"
 
-import { Download } from "lucide-react"
-
 import { BackButton } from "./back-button"
 import { CartBadge } from "./cart-badge"
 import { SearchBar } from "./search-bar"
+import { MobileMenu } from "./mobile-menu"
 import { useTransparentHeader } from "./transparent-header-provider"
 import { cn } from "@/lib/utils"
+import type { ProductCategory } from "@/types/woocommerce"
 
 /**
- * Baris atas versi mobile: Back — Pencarian — Unduh — Keranjang.
+ * Kelas untuk tombol yang sedang melayang di atas foto produk.
+ *
+ * Lingkaran kaca gelap dipakai supaya ikon putih tetap terbaca di atas foto
+ * apa pun — produk di katalog ini kebanyakan berlatar putih, dan ikon polos
+ * tanpa alas akan hilang sama sekali di sana. Latar hover bawaan tiap tombol
+ * ikut dimatikan: kotak abu-abu yang muncul saat disentuh terlihat seperti
+ * cacat render di atas gambar, sedangkan lingkarannya sendiri sudah jadi
+ * penanda area sentuh yang cukup.
+ */
+const GLASS_BUTTON =
+  "bg-black/35 text-white backdrop-blur-md [&_button]:text-white [&_button]:hover:bg-transparent [&_button]:hover:text-white"
+
+/**
+ * Baris atas versi mobile: Menu — Back — Pencarian — Keranjang.
  *
  * Dipisah dari `Header` karena wujudnya bergantung pada gulungan, dan itu butuh
  * state klien — sementara `Header` sendiri Server Component yang mengambil
  * kategori dan tema. Isinya tidak berubah dari sebelumnya; yang baru hanya
  * kemampuan tampil melayang di atas galeri produk.
  */
-export function HeaderMobileBar() {
+export function HeaderMobileBar({ categories }: { categories?: ProductCategory[] }) {
   const { isTransparent } = useTransparentHeader()
 
   return (
     <div className="flex w-full items-center gap-2 md:hidden">
-      {/* Bungkus kaca untuk tombol kembali. Dipasang di pembungkus, bukan di
-          BackButton sendiri, supaya komponen itu tetap netral dan bisa dipakai
-          halaman lain tanpa membawa gaya khusus halaman produk.
-
-          `[&>button]:hover:bg-transparent` mematikan latar hover bawaan tombol:
-          di atas foto, kotak abu-abu yang muncul saat disentuh terlihat seperti
-          cacat render, sedangkan lingkaran kacanya sendiri sudah jadi penanda
-          area sentuh yang cukup. */}
+      {/* Bungkus kaca dipasang di pembungkus, bukan di komponen tombolnya,
+          supaya masing-masing tetap netral dan bisa dipakai halaman lain tanpa
+          membawa gaya khusus halaman produk. */}
       <div
         className={cn(
           "shrink-0 rounded-full transition-all duration-300",
-          isTransparent &&
-            "bg-black/35 text-white backdrop-blur-md [&>button]:text-white [&>button]:hover:bg-transparent [&>button]:hover:text-white",
+          isTransparent && GLASS_BUTTON,
+        )}
+      >
+        <MobileMenu categories={categories} />
+      </div>
+
+      <div
+        className={cn(
+          "shrink-0 rounded-full transition-all duration-300",
+          isTransparent && GLASS_BUTTON,
         )}
       >
         <BackButton />
@@ -56,24 +72,8 @@ export function HeaderMobileBar() {
       </div>
 
       {/* Saat pencarian menghilang, ruang kosongnya diambil alih di sini supaya
-          ketiga tombol tetap terdorong ke kanan. */}
+          keranjang tetap terdorong ke kanan. */}
       {isTransparent && <div className="flex-1" aria-hidden="true" />}
-
-      <button
-        type="button"
-        className={cn(
-          "group relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all duration-300",
-          isTransparent
-            ? "bg-black/35 text-white backdrop-blur-md"
-            : "rounded-md text-muted-foreground hover:bg-muted hover:text-foreground",
-        )}
-        aria-label="Download (Coming soon)"
-      >
-        <Download className="h-5 w-5" />
-        <span className="absolute -bottom-8 right-0 whitespace-nowrap rounded bg-foreground px-2 py-1 text-xs text-background opacity-0 transition-opacity group-hover:opacity-100 pointer-events-none z-50">
-          Coming soon
-        </span>
-      </button>
 
       <div
         className={cn(

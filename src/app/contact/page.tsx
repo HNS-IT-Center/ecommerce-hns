@@ -2,7 +2,7 @@ import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { MapPin, Clock, Mail, MessageCircle, Navigation } from "lucide-react"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
-import { getStores } from "@/lib/api/stores"
+import { getActiveStores } from "@/lib/api/stores"
 import { formatOpeningHours } from "@/lib/utils/opening-hours"
 import { env } from "@/config/env"
 
@@ -17,7 +17,7 @@ export const revalidate = 3600
 const CS_EMAIL = "cs@hnsitcenter.co.id"
 
 export default async function ContactPage() {
-  const stores = await getStores()
+  const stores = await getActiveStores()
   const waUrl = buildWhatsAppUrl(
     env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER,
     "Halo HNS IT Center, saya ingin bertanya."

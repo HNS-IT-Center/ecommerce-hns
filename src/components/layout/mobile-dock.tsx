@@ -5,16 +5,20 @@ import { usePathname } from "next/navigation"
 import { Home, Monitor, ShoppingBag, ShoppingCart, User } from "lucide-react"
 import { useCartStore } from "@/store/cart"
 import { useIsHydrated } from "@/hooks/use-is-hydrated"
+import { useCustomer } from "@/hooks/use-customer"
 import { cn } from "@/lib/utils"
 import { ChristmasDockDecor } from "@/components/theme/christmas-decor"
 
 /**
  * `isChristmas` dioper sebagai prop dari root layout, bukan dibaca sendiri —
- * komponen ini berjalan di klien dan tidak bisa menyentuh database.
+ * komponen ini berjalan di klien dan tidak bisa menyentuh database. Status
+ * login TIDAK dioper sebagai prop server (lihat hooks/use-customer.ts) —
+ * membaca cookies() di RootLayout akan menandai seluruh storefront dynamic.
  */
 export function MobileDock({ isChristmas = false }: { isChristmas?: boolean }) {
   const pathname = usePathname()
   const mounted = useIsHydrated()
+  const { customer } = useCustomer()
   const totalItems = useCartStore((state) => state.getTotalItems())
   
   // Hide dock if on desktop or admin routes
@@ -67,10 +71,10 @@ export function MobileDock({ isChristmas = false }: { isChristmas?: boolean }) {
       isActive: pathname === "/cart",
     },
     {
-      label: "Account",
+      label: "Akun",
       icon: <User className="h-6 w-6" />,
-      href: "/account",
-      isActive: pathname.startsWith("/account"),
+      href: customer ? "/akun" : "/login",
+      isActive: pathname.startsWith("/akun") || pathname === "/login",
     },
   ]
 
