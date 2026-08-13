@@ -99,7 +99,19 @@ function activeChildUrl(pathname: string, item: NavItem): string | null {
   )
 }
 
-export function AppSidebar() {
+/**
+ * Identitas yang sedang masuk, diteruskan dari layout panel (Server Component
+ * yang sudah memanggil `getCurrentUser()`).
+ *
+ * Sebelumnya nama dan email di footer sidebar DITULIS MATI sebagai "Admin" /
+ * "admin@hnsitcenter.id" — dan itu bukan akun yang sebenarnya dipakai
+ * (`admin@hns.com`). Jadi setiap hari staff melihat identitas yang salah di
+ * panel yang bisa mengubah data produk dan menghapus akun pelanggan, tepat di
+ * tempat orang memastikan "saya sedang masuk sebagai siapa".
+ */
+type AdminIdentity = { name: string; email: string }
+
+export function AppSidebar({ user }: { user: AdminIdentity }) {
   const pathname = usePathname()
   const { open, toggleSidebar, isMobile, setOpenMobile } = useSidebar()
 
@@ -398,11 +410,13 @@ export function AppSidebar() {
         {/* Footer */}
         <SidebarFooter className="p-3 border-t border-white/10">
           <div className={`flex items-center rounded-lg py-1.5 ${open ? "gap-3 px-1.5" : "justify-center"}`}>
-            <UserNav />
+            <UserNav name={user.name || user.email} email={user.email} />
             {open && (
               <div className="flex flex-col min-w-0">
-                <span className="text-sm font-medium text-white truncate">Admin</span>
-                <span className="text-xs text-blue-200 truncate">admin@hnsitcenter.id</span>
+                <span className="text-sm font-medium text-white truncate">
+                  {user.name || user.email}
+                </span>
+                <span className="text-xs text-blue-200 truncate">{user.email}</span>
               </div>
             )}
           </div>

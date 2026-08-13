@@ -29,7 +29,7 @@ export default async function AdminLayout({
   return (
     <div className="bg-muted/40 text-foreground min-h-screen w-full flex font-sans">
       <SidebarProvider defaultOpen={defaultOpen} style={{ "--sidebar-width-icon": "4.5rem" } as React.CSSProperties}>
-        <AppSidebar />
+        <AppSidebar user={{ name: user.name, email: user.email }} />
         <div className="flex flex-col flex-1 w-full relative z-10 min-w-0">
           {/* Mobile top bar — shown only on mobile, replaces client bottom nav */}
           <AdminMobileBar />
