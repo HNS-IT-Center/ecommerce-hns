@@ -12,7 +12,7 @@ import {
 import { createCustomerSession } from "@/lib/auth/customer"
 import { createVerificationToken, consumeVerificationToken } from "@/lib/auth/verification-token"
 import { sendEmail } from "@/lib/email/send"
-import { resolveSiteUrl } from "@/lib/utils/site-url"
+import { resolvePublicUrl } from "@/lib/utils/public-link"
 import { checkRateLimit, clientIpFrom } from "@/lib/auth/registration-rate-limit"
 import { sanitizeNextPath } from "@/lib/auth/safe-redirect"
 import { getPrisma } from "@/lib/prisma/client"
@@ -91,19 +91,43 @@ export async function forgotPasswordAction(
   const email = String(formData.get("email") ?? "").trim()
   if (!email) return { error: "Masukkan email Anda.", ok: false }
 
+  /**
+   * Alamat publik ditentukan SEBELUM mencari pelanggan, dan galatnya
+   * dilaporkan apa adanya.
+   *
+   * Urutannya penting untuk menjaga sifat anti-enumerasi fungsi ini: hasilnya
+   * sama sekali tidak bergantung pada apakah `email` terdaftar, jadi pesan
+   * galat ini tidak membocorkan apa pun. Kalau pemeriksaannya ditaruh di dalam
+   * blok `if (customer)`, justru pesan itu sendiri yang menjadi pembeda —
+   * penyerang bisa menyimpulkan email mana yang terdaftar dari perbedaan
+   * balasannya.
+   *
+   * Host request, bukan `NEXT_PUBLIC_SITE_URL` — alasannya sama seperti di
+   * `sendVerificationEmail` (app/register/actions.ts).
+   */
+  let baseUrl: string
+  try {
+    baseUrl = await resolvePublicUrl()
+  } catch (error) {
+    console.error("Gagal mengirim email reset password:", error)
+    return {
+      error:
+        "Email reset password tidak bisa dikirim karena ada masalah konfigurasi di sisi kami. " +
+        `Hubungi CS lewat WhatsApp (https://wa.me/${env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER}).`,
+      ok: false,
+    }
+  }
+
   const customer = await findCustomerByEmail(email)
 
   if (customer && customer.passwordHash) {
     try {
       const token = await createVerificationToken(customer.id, "reset_password")
-      // Host request, bukan `NEXT_PUBLIC_SITE_URL` — alasan lengkapnya ada di
-      // `sendVerificationEmail` (app/register/actions.ts). Singkatnya: env itu
-      // masih `localhost` di produksi, jadi tautan ini pun tidak bisa dibuka
-      // pelanggan. Rusaknya dengan cara yang sama, cuma belum ketahuan karena
-      // alur lupa-password lebih jarang dipakai daripada pendaftaran.
-      const link = `${await resolveSiteUrl()}/login/reset-password/${token}`
+      const link = `${baseUrl}/login/reset-password/${token}`
       await sendEmail({ to: customer.email, subject: "Reset password HNS IT Center", text: resetPasswordEmailText(link) })
     } catch (error) {
+      // Kegagalan SMTP tetap ditelan diam-diam: membedakan "email terkirim"
+      // dari "email tidak terkirim" akan membocorkan email mana yang terdaftar.
       console.error("Gagal mengirim email reset password:", error)
     }
   }

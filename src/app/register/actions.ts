@@ -11,7 +11,7 @@ import {
 import { createVerificationToken, consumeVerificationToken } from "@/lib/auth/verification-token"
 import { sendEmail, EmailSendError } from "@/lib/email/send"
 import { checkRateLimit, clientIpFrom } from "@/lib/auth/registration-rate-limit"
-import { resolveSiteUrl } from "@/lib/utils/site-url"
+import { resolvePublicUrl, PublicUrlUnavailableError } from "@/lib/utils/public-link"
 import { getPrisma } from "@/lib/prisma/client"
 import { env } from "@/config/env"
 import type { RegisterState, ResendVerificationState, VerifyEmailResult } from "./state"
@@ -45,8 +45,11 @@ function verificationEmailText(link: string): string {
 async function sendVerificationEmail(customerId: string, email: string): Promise<void> {
   const token = await createVerificationToken(customerId, "verify_email")
   /**
-   * Tautan dibangun dari host request (`resolveSiteUrl`), BUKAN dari
-   * `NEXT_PUBLIC_SITE_URL`.
+   * `resolvePublicUrl()` — bukan `resolveSiteUrl()` langsung. Ia MELEMPAR
+   * kalau hasilnya bukan alamat publik yang kita akui, sehingga email dengan
+   * tautan mati tidak pernah terkirim. Lihat `lib/utils/public-link.ts`.
+   *
+   * Tautan dibangun dari host request, BUKAN dari `NEXT_PUBLIC_SITE_URL`.
    *
    * Env itu terbukti masih `http://localhost:3000` di deployment produksi
    * (13 Agustus 2026), sehingga setiap pelanggan yang mendaftar menerima
@@ -63,7 +66,7 @@ async function sendVerificationEmail(customerId: string, email: string): Promise
    * `resolveSiteUrl` menyaring host lewat daftar izin, jadi header `Host`
    * palsu tidak bisa mengubah tautan aktivasi menjadi alamat penyerang.
    */
-  const link = `${await resolveSiteUrl()}/verifikasi-email/${token}`
+  const link = `${await resolvePublicUrl()}/verifikasi-email/${token}`
   await sendEmail({
     to: email,
     subject: "Verifikasi akun HNS IT Center",
@@ -126,6 +129,29 @@ export async function registerAction(_prev: RegisterState, formData: FormData): 
     // tidak boleh terjebak tanpa cara mengaktifkan akunnya. Pesannya
     // eksplisit menyebut ini urusan teknis kami, bukan input yang salah.
     console.error("Gagal mengirim email verifikasi:", error)
+
+    /**
+     * `PublicUrlUnavailableError` sengaja dibedakan dari kegagalan SMTP biasa.
+     *
+     * Emailnya TIDAK terkirim sama sekali, dan menyuruh pelanggan menekan
+     * "Kirim ulang" hanya akan mengulang kegagalan yang sama — konfigurasinya
+     * yang salah, bukan gangguan sesaat. Satu-satunya jalan yang benar-benar
+     * menolong pelanggan saat ini adalah menghubungi CS.
+     *
+     * Pesannya tidak menyebut nama variabel atau isi galat: itu urusan kami,
+     * dan alamat env di layar pelanggan tidak menolong siapa pun. Rinciannya
+     * ada di log server lewat `console.error` di atas.
+     */
+    if (error instanceof PublicUrlUnavailableError) {
+      return {
+        error:
+          "Akun dibuat, tapi email verifikasi tidak bisa dikirim karena ada masalah konfigurasi di sisi kami. " +
+          `Hubungi CS lewat WhatsApp (https://wa.me/${env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER}) agar akun Anda diaktifkan manual — ` +
+          "jangan mendaftar ulang, akunnya sudah ada.",
+        ok: false,
+      }
+    }
+
     return {
       error:
         error instanceof EmailSendError

@@ -166,7 +166,11 @@ export default async function ProductPage({ params }: ProductPageProps) {
     brand: brandName ? { "@type": "Brand", name: brandName } : undefined,
     offers: {
       "@type": "Offer",
-      url: `${env.NEXT_PUBLIC_SITE_URL}/product/${product.slug}`,
+      // `siteUrl` (host request), BUKAN `env.NEXT_PUBLIC_SITE_URL`. Halaman ini
+      // sudah menghitung `siteUrl` di atas untuk QR code, tapi baris ini
+      // terlewat — akibatnya structured data yang dibaca Google memuat
+      // `http://localhost:3000/product/...` di produksi, entah sejak kapan.
+      url: `${siteUrl}/product/${product.slug}`,
       priceCurrency: "IDR",
       price: product.price,
       availability: availabilityMap[product.stock_status] ?? "https://schema.org/OutOfStock",
