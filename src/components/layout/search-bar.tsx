@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { useLiveSearch } from "@/features/search/hooks/use-live-search"
 import { SearchResultsDropdown } from "@/features/search/components/search-results-dropdown"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 const MIN_QUERY_LENGTH = 2
 
@@ -20,7 +21,11 @@ export function SearchBar({ className }: SearchBarProps = {}) {
   const [isFocused, setIsFocused] = useState(false)
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
-  const [isMobile, setIsMobile] = useState(false)
+  // Lewat `useIsMobile()`, bukan salinan `useState` + listener resize sendiri:
+  // breakpointnya sama persis (768px) dan hook itu memakai
+  // `useSyncExternalStore`, jadi tidak melanggar `set-state-in-effect` dan
+  // tidak menghasilkan render bertingkat.
+  const isMobile = useIsMobile()
   const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
@@ -35,12 +40,6 @@ export function SearchBar({ className }: SearchBarProps = {}) {
    */
   const historyEntryRef = useRef(false)
 
-  useEffect(() => {
-    setIsMobile(window.innerWidth < 768)
-    const handleResize = () => setIsMobile(window.innerWidth < 768)
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
 
   const isOpen = (isFocused || isMobileSearchOpen) && query.trim().length >= MIN_QUERY_LENGTH
 
