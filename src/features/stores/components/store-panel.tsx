@@ -131,8 +131,19 @@ export function StorePanel({ store }: { store: PanelStore }) {
         )}
 
         <div className="mt-auto grid grid-cols-2 gap-3 pt-2">
+          {/*
+            `nativeButton={false}` WAJIB menyertai `render={<a/>}`.
+
+            Tanpa itu Base UI memperingatkan di konsol setiap kali halaman ini
+            dibuka: komponen mengaku tombol native padahal yang dirender <a>,
+            dan semantik tombolnya hilang — yang berdampak pada pembaca layar,
+            bukan sekadar peringatan kosmetik.
+
+            Pola yang sama sudah dipakai benar di `admin/(panel)/banner`.
+          */}
           <Button
             variant="outline"
+            nativeButton={false}
             render={
               <a
                 href={store.directionsUrl}
@@ -146,6 +157,7 @@ export function StorePanel({ store }: { store: PanelStore }) {
           </Button>
           <Button
             variant="whatsapp"
+            nativeButton={false}
             render={
               <a href={store.waUrl} target="_blank" rel="noopener noreferrer" />
             }
