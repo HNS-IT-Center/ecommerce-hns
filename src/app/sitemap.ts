@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 import { getProductsForSitemap } from "@/lib/api/woocommerce/products";
 import { getCategories } from "@/lib/api/woocommerce/categories";
 import { resolveSiteUrl } from "@/lib/utils/site-url";
+import { isIndexableRequest } from "@/lib/utils/indexable-host";
 
 /**
  * Peta situs untuk mesin pencari.
@@ -61,6 +62,25 @@ const STATIC_ROUTES: Array<{
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  /**
+   * Lingkungan yang tidak boleh diindeks TIDAK menghasilkan peta situs sama
+   * sekali — bukan peta berisi alamat staging.
+   *
+   * `robots.txt` di sana memang sudah `Disallow: /`, tapi keduanya bekerja
+   * lewat jalur berbeda: robots melarang crawler yang PATUH, sedangkan peta
+   * situs adalah undangan aktif yang bisa ditemukan lewat jalan lain — orang
+   * mengirimkannya sendiri ke Search Console, alat SEO pihak ketiga
+   * mengambilnya, atau crawler yang tidak patuh membacanya langsung. Menutup
+   * satu pintu sambil membiarkan yang lain terbuka bukan penutupan.
+   *
+   * Peta kosong, BUKAN 404: crawler yang meminta alamat ini mendapat jawaban
+   * sah yang menyatakan "tidak ada yang perlu diindeks", bukan galat yang
+   * mengundang percobaan ulang.
+   */
+  if (!(await isIndexableRequest())) {
+    return [];
+  }
+
   // Dari host request (lewat daftar izin di `resolveSiteUrl`), BUKAN dari
   // `NEXT_PUBLIC_SITE_URL`.
   //
@@ -69,9 +89,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // `localhost` — daftar alamat yang tidak bisa dijangkau siapa pun, disajikan
   // atas nama domain HNS. Peta situs yang salah alamat lebih buruk daripada
   // tidak punya peta sama sekali.
-  //
-  // Host request tidak bisa salah dengan cara itu: ia selalu menggambarkan
-  // domain yang benar-benar sedang melayani permintaan.
   const baseUrl = await resolveSiteUrl();
   const now = new Date();
 
