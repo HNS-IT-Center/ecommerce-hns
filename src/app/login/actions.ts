@@ -12,6 +12,7 @@ import {
 import { createCustomerSession } from "@/lib/auth/customer"
 import { createVerificationToken, consumeVerificationToken } from "@/lib/auth/verification-token"
 import { sendEmail } from "@/lib/email/send"
+import { resolveSiteUrl } from "@/lib/utils/site-url"
 import { checkRateLimit, clientIpFrom } from "@/lib/auth/registration-rate-limit"
 import { sanitizeNextPath } from "@/lib/auth/safe-redirect"
 import { getPrisma } from "@/lib/prisma/client"
@@ -95,7 +96,12 @@ export async function forgotPasswordAction(
   if (customer && customer.passwordHash) {
     try {
       const token = await createVerificationToken(customer.id, "reset_password")
-      const link = `${env.NEXT_PUBLIC_SITE_URL}/login/reset-password/${token}`
+      // Host request, bukan `NEXT_PUBLIC_SITE_URL` — alasan lengkapnya ada di
+      // `sendVerificationEmail` (app/register/actions.ts). Singkatnya: env itu
+      // masih `localhost` di produksi, jadi tautan ini pun tidak bisa dibuka
+      // pelanggan. Rusaknya dengan cara yang sama, cuma belum ketahuan karena
+      // alur lupa-password lebih jarang dipakai daripada pendaftaran.
+      const link = `${await resolveSiteUrl()}/login/reset-password/${token}`
       await sendEmail({ to: customer.email, subject: "Reset password HNS IT Center", text: resetPasswordEmailText(link) })
     } catch (error) {
       console.error("Gagal mengirim email reset password:", error)

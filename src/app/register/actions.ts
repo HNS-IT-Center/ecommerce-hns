@@ -11,6 +11,7 @@ import {
 import { createVerificationToken, consumeVerificationToken } from "@/lib/auth/verification-token"
 import { sendEmail, EmailSendError } from "@/lib/email/send"
 import { checkRateLimit, clientIpFrom } from "@/lib/auth/registration-rate-limit"
+import { resolveSiteUrl } from "@/lib/utils/site-url"
 import { getPrisma } from "@/lib/prisma/client"
 import { env } from "@/config/env"
 import type { RegisterState, ResendVerificationState, VerifyEmailResult } from "./state"
@@ -43,7 +44,26 @@ function verificationEmailText(link: string): string {
 
 async function sendVerificationEmail(customerId: string, email: string): Promise<void> {
   const token = await createVerificationToken(customerId, "verify_email")
-  const link = `${env.NEXT_PUBLIC_SITE_URL}/verifikasi-email/${token}`
+  /**
+   * Tautan dibangun dari host request (`resolveSiteUrl`), BUKAN dari
+   * `NEXT_PUBLIC_SITE_URL`.
+   *
+   * Env itu terbukti masih `http://localhost:3000` di deployment produksi
+   * (13 Agustus 2026), sehingga setiap pelanggan yang mendaftar menerima
+   * tautan aktivasi ke `http://localhost:3000/verifikasi-email/...` — alamat
+   * yang tidak bisa dibuka siapa pun kecuali orang yang kebetulan menjalankan
+   * server di laptopnya sendiri. Akunnya terdaftar tapi tidak pernah bisa
+   * diaktifkan.
+   *
+   * Selain memperbaiki itu, host request memang sumber yang lebih tepat untuk
+   * email: tautan harus mengarah ke tempat pelanggan SEDANG mendaftar. Kalau
+   * suatu saat dua domain hidup bersamaan (staging dan produksi), satu nilai
+   * env tidak mungkin benar untuk keduanya.
+   *
+   * `resolveSiteUrl` menyaring host lewat daftar izin, jadi header `Host`
+   * palsu tidak bisa mengubah tautan aktivasi menjadi alamat penyerang.
+   */
+  const link = `${await resolveSiteUrl()}/verifikasi-email/${token}`
   await sendEmail({
     to: email,
     subject: "Verifikasi akun HNS IT Center",
