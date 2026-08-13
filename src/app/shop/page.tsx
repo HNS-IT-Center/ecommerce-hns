@@ -10,6 +10,16 @@ import { getBrands } from "@/lib/api/woocommerce/brands"
 import { getPrisma } from "@/lib/prisma/client"
 import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper"
 import { collectCategoryAndDescendantIds } from "@/lib/utils/category-tree"
+import type { GetProductsParams } from "@/types/woocommerce"
+
+/**
+ * Nilai `orderby` yang sah, diturunkan dari `GetProductsParams` supaya daftar
+ * ini tidak bisa menyimpang dari tipe aslinya: menambah/menghapus nilai di
+ * `types/woocommerce.ts` langsung membuat berkas ini gagal typecheck.
+ */
+const ALLOWED_ORDERBY = [
+  "date", "id", "include", "title", "slug", "price", "popularity", "rating", "sku",
+] as const satisfies readonly NonNullable<GetProductsParams["orderby"]>[]
 import { ProductCard } from "@/components/ui/product-card"
 import { Filter } from "lucide-react"
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet"
@@ -36,8 +46,19 @@ export default async function ShopPage({ searchParams }: ShopPageProps) {
   const minPrice = resolvedParams.minPrice ? Number(resolvedParams.minPrice) : undefined
   const maxPrice = resolvedParams.maxPrice ? Number(resolvedParams.maxPrice) : undefined
   const search = typeof resolvedParams.search === "string" ? resolvedParams.search : undefined
-  const orderby = typeof resolvedParams.orderby === "string" ? resolvedParams.orderby as any : undefined
-  const order = typeof resolvedParams.order === "string" ? resolvedParams.order as any : undefined
+  /**
+   * `orderby`/`order` datang dari URL, jadi isinya bisa apa saja.
+   *
+   * Sebelumnya `as any` — yang bukan cuma pelanggaran §2.4, tapi membuat nilai
+   * ngawur dari URL (`?orderby=harga-termurah`) diteruskan apa adanya ke
+   * WooCommerce dan ditolak di sana, bukan diabaikan di sini. Sekarang
+   * dicocokkan ke daftar nilai yang sah; yang tidak dikenali jatuh ke
+   * `undefined`, artinya "pakai urutan bawaan".
+   */
+  const orderby = ALLOWED_ORDERBY.find((v) => v === resolvedParams.orderby)
+  const order = resolvedParams.order === "asc" || resolvedParams.order === "desc"
+    ? resolvedParams.order
+    : undefined
   const brand = resolvedParams.brand
 
   const categories = await getCategories({ hideEmpty: true, perPage: 500 })

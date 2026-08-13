@@ -1,8 +1,13 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import useEmblaCarousel from "embla-carousel-react"
+import useEmblaCarousel, { type UseEmblaCarouselType } from "embla-carousel-react"
 import { ProductCard, type Product } from "@/components/ui/product-card"
+
+// Instance API Embla. `UseEmblaCarouselType[1]` bisa `undefined` (sebelum
+// carousel siap), tapi kedua callback di bawah hanya dipanggil setelah
+// `emblaApi` dipastikan ada — jadi `NonNullable` di sini jujur, bukan paksaan.
+type EmblaApi = NonNullable<UseEmblaCarouselType[1]>
 
 interface DealsCarouselProps {
   products: Product[]
@@ -33,11 +38,14 @@ export function DealsCarousel({ products }: DealsCarouselProps) {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [scrollSnaps, setScrollSnaps] = useState<number[]>([])
 
-  const onInit = useCallback((api: any) => {
+  // `EmblaApi`, bukan `any`: tipenya diturunkan dari `useEmblaCarousel` itu
+  // sendiri (pola yang sama dipakai `components/ui/carousel.tsx`), jadi
+  // `scrollSnapList()` dan `selectedScrollSnap()` ikut terperiksa compiler.
+  const onInit = useCallback((api: EmblaApi) => {
     setScrollSnaps(api.scrollSnapList())
   }, [])
 
-  const onSelect = useCallback((api: any) => {
+  const onSelect = useCallback((api: EmblaApi) => {
     setSelectedIndex(api.selectedScrollSnap())
   }, [])
 
