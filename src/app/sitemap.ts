@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
-import { env } from "@/config/env";
 import { getProductsForSitemap } from "@/lib/api/woocommerce/products";
 import { getCategories } from "@/lib/api/woocommerce/categories";
+import { resolveSiteUrl } from "@/lib/utils/site-url";
 
 /**
  * Peta situs untuk mesin pencari.
@@ -61,7 +61,18 @@ const STATIC_ROUTES: Array<{
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "");
+  // Dari host request (lewat daftar izin di `resolveSiteUrl`), BUKAN dari
+  // `NEXT_PUBLIC_SITE_URL`.
+  //
+  // Env itu terbukti masih `http://localhost:3000` di deployment produksi pada
+  // 13 Agustus 2026, dan akibatnya SELURUH 2.886 URL di peta ini menunjuk
+  // `localhost` — daftar alamat yang tidak bisa dijangkau siapa pun, disajikan
+  // atas nama domain HNS. Peta situs yang salah alamat lebih buruk daripada
+  // tidak punya peta sama sekali.
+  //
+  // Host request tidak bisa salah dengan cara itu: ia selalu menggambarkan
+  // domain yang benar-benar sedang melayani permintaan.
+  const baseUrl = await resolveSiteUrl();
   const now = new Date();
 
   const staticEntries: MetadataRoute.Sitemap = STATIC_ROUTES.map((route) => ({

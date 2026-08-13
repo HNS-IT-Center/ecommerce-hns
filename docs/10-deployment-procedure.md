@@ -99,26 +99,40 @@ dulu, jangan menunggu pipeline yang memberitahu.
 
 Saat mengarahkan `hnsitcenter.id` ke deployment ini:
 
-1. **Ubah `NEXT_PUBLIC_SITE_URL` lebih dulu**, sebelum domainnya diarahkan.
+1. **Pastikan domainnya ada di daftar `INDEXABLE_HOSTS`** (`src/app/robots.ts`).
 
-   `src/app/robots.ts` membaca variabel ini: selama nilainya belum mengandung
-   `hnsitcenter.id`, ia menyatakan `disallow: "/"` untuk semua crawler. Ini
-   disengaja supaya deployment staging (`*.vercel.app`) tidak terindeks Google
-   sebagai duplikat situs utama.
+   Sejak 13 Agustus 2026 `robots.ts` memutuskan berdasarkan **host request**,
+   bukan `NEXT_PUBLIC_SITE_URL`. Hanya host di daftar itu (`hnsitcenter.id` dan
+   `www.hnsitcenter.id`) yang mendapat `Allow: /`; host lain — termasuk staging
+   `store.hnsitcenter.id` dan host tak dikenal — mendapat `Disallow: /`.
 
-   Kalau env-nya telat diperbarui, domain produksi ikut ter-`disallow` — situsnya
-   hidup tapi tidak pernah muncul di pencarian.
+   Dasarnya sengaja host request, karena env bisa salah tanpa ada yang
+   menyadarinya: pada 13 Agustus 2026 `NEXT_PUBLIC_SITE_URL` di produksi
+   ternyata masih `http://localhost:3000`. Penjaga yang bergantung pada nilai
+   yang sama-sama bisa salah tidak menjaga apa pun.
 
-2. Verifikasi setelah cutover:
+   **Gagal tertutup:** domain baru yang belum ditambahkan ke daftar TIDAK akan
+   terindeks. Jadi kalau domainnya berubah, tambahkan di `INDEXABLE_HOSTS`
+   lebih dulu — jangan menunggu sampai sadar situsnya tidak muncul di Google.
+
+2. **`NEXT_PUBLIC_SITE_URL` tetap harus benar.** Ia tidak lagi menentukan
+   robots/sitemap (keduanya memakai host request lewat `resolveSiteUrl()`),
+   tapi masih dipakai `metadataBase`, JSON-LD, dan canonical di
+   `src/app/layout.tsx`.
+
+3. Verifikasi setelah cutover:
 
    ```bash
-   curl https://hnsitcenter.id/robots.txt
+   curl https://hnsitcenter.id/robots.txt   # harus Allow: /
+   curl https://hnsitcenter.id/sitemap.xml | head   # <loc> harus domain asli
    ```
 
-   Pastikan isinya `Allow: /`, bukan `Disallow: /`.
+   Kalau `<loc>` masih `localhost`, berarti ada yang salah di resolusi host —
+   jangan biarkan, itu menyajikan alamat yang tidak bisa dijangkau siapa pun
+   atas nama domain HNS.
 
-3. Pastikan seluruh variabel environment produksi sudah terisi di Vercel — daftar
-   lengkap beserta artinya ada di
+4. Pastikan seluruh variabel environment produksi sudah terisi — daftar lengkap
+   beserta artinya ada di
    [`docs/07-environment-variables.md`](./07-environment-variables.md).
 
 ---
