@@ -189,11 +189,32 @@ Dikonfigurasi memakai SMTP Gmail (keputusan 2026-08-12: mulai cepat, tanpa perlu
 | `SMTP_USER` | akun Gmail yang App Password-nya dipakai, mis. `developer.hns@gmail.com` |
 | `SMTP_PASSWORD` | App Password 16 karakter tanpa spasi, BUKAN password akun |
 | `SMTP_FROM` | `"Nama <alamat>"` atau email polos — **alamatnya HARUS sama dengan `SMTP_USER`** |
-| `EMAIL_REPLY_TO` | opsional — alamat CS yang dipantau untuk balasan, mis. `cs@hnsitcenter.co.id` |
+| `EMAIL_REPLY_TO` | opsional — alamat CS yang dipantau untuk balasan. Pakai domain `hnsitcenter.id` (MX-nya aktif di Hostinger). **JANGAN `@hnsitcenter.co.id`** — domain itu tidak terdaftar, lihat catatan di bawah. |
 
 **`SMTP_FROM` wajib memakai alamat yang sama dengan `SMTP_USER`.** Gmail SMTP relay menimpa header `From` ke alamat akun yang login SMTP kalau diisi alamat lain yang belum didaftarkan sebagai "Send mail as" alias terverifikasi di akun itu — mengisi `noreply@hnsitcenter.id` di sini **tidak akan bekerja** sampai salah satu dari dua hal disiapkan (belum dikerjakan, task terpisah menuju go-live):
 - daftarkan `noreply@hnsitcenter.id` sebagai alias terverifikasi di akun Gmail yang dipakai, atau
-- pindah ke penyedia transaksional (SendGrid/Postmark/Resend) dengan domain `hnsitcenter.id` diverifikasi SPF+DKIM+DMARC.
+- pindah ke penyedia transaksional (SendGrid/Postmark/Resend) dengan domain `hnsitcenter.id` diverifikasi SPF+DKIM+DMARC, atau
+- **pindah ke SMTP Hostinger** — kemungkinan jalan termurah, karena SPF-nya SUDAH siap.
+
+> **Catatan 13 Agustus 2026 — SMTP Hostinger kemungkinan cukup.**
+>
+> Rekord SPF `hnsitcenter.id` sudah memuat `include:_spf.mail.hostinger.com`, dan
+> `smtp.hostinger.com:587` menjawab `220 ESMTP`. Artinya mengirim lewat SMTP
+> Hostinger dengan `From` beralamat `@hnsitcenter.id` membuat SPF **PASS tanpa
+> menambah satu rekord DNS pun** — beda dengan penyedia transaksional yang butuh
+> tiga rekord baru.
+>
+> Yang belum terbukti: apakah Hostinger mengizinkan relay dari luar jaringannya.
+> Harus diuji dengan email sungguhan, bukan diasumsikan.
+>
+> Kalau menambah penyedia baru, **JANGAN menimpa rekord SPF yang ada** — ia
+> melayani email bisnis HNS. Tambahkan `include:` baru, jangan ganti barisnya.
+
+> **Domain `hnsitcenter.co.id` TIDAK TERDAFTAR.** Diperiksa lewat resolver publik
+> (8.8.8.8) pada 13 Agustus 2026: `Non-existent domain`. Email ke alamat
+> `@hnsitcenter.co.id` memantul dan tidak pernah sampai. Alamat itu masih tampil
+> di footer, halaman `/contact`, dan JSON-LD Organization — ada task terpisah
+> untuk membereskannya. Domain yang mail-nya aktif: **`hnsitcenter.id`**.
 
 Nama tampilan boleh apa saja — cuma bagian alamat email di dalam `< >` yang harus sama dengan `SMTP_USER`. Format: `SMTP_FROM="HNS IT Center <developer.hns@gmail.com>"`.
 
