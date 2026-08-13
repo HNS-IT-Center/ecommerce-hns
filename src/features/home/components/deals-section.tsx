@@ -1,4 +1,3 @@
-import { ProductCard } from "@/components/ui/product-card";
 import { getProducts } from "@/lib/api/woocommerce/products";
 import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper";
 import { DealsCountdown } from "./deals-countdown";

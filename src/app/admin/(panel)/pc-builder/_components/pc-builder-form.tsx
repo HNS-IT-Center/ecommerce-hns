@@ -89,6 +89,10 @@ export function PcBuilderForm({ initialSteps, initialDisplay, categories, attrib
       setShowSuccessToast(true)
       setTimeout(() => setShowSuccessToast(false), 3000)
     } catch (error) {
+      // Galat aslinya ikut dicatat, bukan cuma diganti pesan ramah: tanpa ini
+      // kegagalan menyimpan konfigurasi tidak meninggalkan jejak apa pun untuk
+      // ditelusuri, dan yang tersisa cuma "Failed to save configuration."
+      console.error("Gagal menyimpan konfigurasi PC builder:", error)
       toastManager.add({ title: "Error", description: "Failed to save configuration." })
     } finally {
       setIsSaving(false)

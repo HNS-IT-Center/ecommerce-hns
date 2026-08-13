@@ -201,7 +201,6 @@ export function ProdukForm({
   const description = watch("description") ?? ""
   const regularPrice = watch("regularPrice") ?? ""
   const salePrice = watch("salePrice") ?? ""
-  const salePriceDateEnd = watch("salePriceDateEnd") ?? ""
   const stockStatus = watch("stockStatus")
   const stockQuantity = watch("stockQuantity")
   const videoUrl = watch("videoUrl") ?? ""

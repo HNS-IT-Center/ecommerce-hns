@@ -26,7 +26,16 @@ export function useAdminSwipeGesture() {
   useEffect(() => {
     const MIN_SWIPE_DISTANCE = 60   // px horizontal travel required
     const MAX_ANGLE_RATIO = 0.5     // dy/dx must be < 0.5 (shallow angle)
-    const MIN_VELOCITY = 0.3        // px/ms to count as intentional
+    // Dulu ada `MIN_VELOCITY = 0.3` di sini beserta perhitungan `duration` di
+    // bawah, tapi tidak satu pun pernah dipakai — gerakan lambat tetap lolos.
+    // Keduanya dibuang, BUKAN disambungkan: menyalakan syarat kecepatan yang
+    // belum pernah aktif berarti mengubah perilaku gestur tanpa ada yang
+    // memintanya. Kalau memang diinginkan, itu perubahan tersendiri yang perlu
+    // diuji di perangkat sungguhan.
+    //
+    // Perhitungan lamanya pun cacat: `(e as any).startTime` bukan properti
+    // TouchEvent yang sah, jadi nilainya selalu `undefined` dan hasilnya selalu
+    // jatuh ke `300`.
 
     // Check if the touch target is inside a horizontally scrollable container
     function isInsideHorizontalScroller(el: Element | null): boolean {
@@ -57,7 +66,6 @@ export function useAdminSwipeGesture() {
       const touch = e.changedTouches[0]
       const dx = touch.clientX - touchStart.current.x
       const dy = touch.clientY - touchStart.current.y
-      const duration = e.timeStamp - (e as any).startTime || 300
 
       // Must be moving left (panel masuk dari kanan)
       if (dx > 0) {

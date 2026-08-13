@@ -4,7 +4,7 @@ import { useState, useTransition, useEffect, useCallback } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
-import { ChevronDown, ChevronUp, ChevronsUpDown, Edit, Layers, Pencil, Search, Trash2, TriangleAlert, Loader2, Check } from "lucide-react"
+import { ChevronDown, ChevronUp, ChevronsUpDown, Edit, Layers, Pencil, Search, Trash2, Loader2 } from "lucide-react"
 
 import { formatRupiah } from "@/lib/utils"
 import { parseRupiah } from "@/lib/utils"
@@ -131,7 +131,10 @@ function SortIcon({ field, currentSort, currentOrder }: { field: string, current
   return <ChevronDown className="h-4 w-4 text-red-500" />
 }
 
-export function ProductDataTable({ products, categories, rawCategories, attributeOptions }: Props) {
+// `categories` sengaja TIDAK ikut di-destructure walau ada di `Props`: komponen
+// ini memakai `rawCategories` (bentuk berpath) untuk seluruh keperluannya.
+// Prop-nya dipertahankan di tipe karena pemanggil masih mengirimnya.
+export function ProductDataTable({ products, rawCategories, attributeOptions }: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
