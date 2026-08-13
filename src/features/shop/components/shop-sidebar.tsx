@@ -44,6 +44,50 @@ export function ShopSidebar({ categories, brands = [], maxPriceLimit = 100000000
     setOpenSections(prev => ({ ...prev, [section]: !prev[section] }))
   }
 
+  /**
+   * DUA EFEK DI BERKAS INI SENGAJA DIKECUALIKAN dari `set-state-in-effect` dan
+   * `exhaustive-deps` — keputusan sadar 13 Agustus 2026, bukan aturan yang
+   * dilewatkan karena merepotkan.
+   *
+   * **Alasannya riwayat berkas ini.** Perbaikan sejenis pernah dilakukan di
+   * sini dan MENGUBAH PERILAKU tanpa disengaja (lihat `PRE-DEPLOY-CHECKLIST.md`,
+   * batch 13 Juli 2026): kategori auto-expand yang sebelumnya memaksa dirinya
+   * selalu terbuka, berubah jadi bisa ditutup manual. Waktu itu kebetulan
+   * justru perbaikan — tapi ia terjadi tanpa ada yang merencanakannya.
+   *
+   * Perilaku yang berlaku HARI INI sudah benar dan sengaja. Menukarnya demi
+   * satu angka lint bukan pertukaran yang sepadan, apalagi selama repo ini
+   * belum punya uji otomatis yang menjaganya (lihat task "Pasang test suite").
+   *
+   * **REKAMAN BASELINE — inilah yang wajib dijaga.** Diukur 13 Agustus 2026
+   * lewat Playwright dengan selector spesifik (`input[id^="cat-"]` untuk
+   * centang, ikon `chevron-down`/`chevron-right` untuk buka/tutup):
+   *
+   *   A. `/shop` polos
+   *      → 0 tercentang, 6 grup terbuka, 6 tertutup
+   *   B. `/shop?category=komponen-pc-nb` (kategori INDUK)
+   *      → `cat-4` tercentang, 6 terbuka (tidak berubah)
+   *   C. `/shop?category=komponen-pc-nb-motherboard` (kategori ANAK)
+   *      → `cat-5` tercentang, 7 terbuka — INDUKNYA AUTO-EXPAND
+   *   D. `/shop?minPrice=1000000&maxPrice=5000000`
+   *      → 0 tercentang, 6 terbuka; slider mengikuti nilai URL
+   *   E. Klik tombol chevron pada grup yang auto-expand (`cat-4`)
+   *      → ikon berubah `chevron-down` → `chevron-right`
+   *      → artinya AUTO-EXPAND BISA DITUTUP MANUAL. Ini perilaku yang paling
+   *        rawan hilang; kalau setelah perubahan grupnya memaksa terbuka lagi,
+   *        itu kemunduran ke bug lama.
+   *
+   *   0 error konsol di seluruh skenario.
+   *
+   * Catatan cara menguji: JANGAN menyimpulkan dari hitungan total grup terbuka.
+   * Menutup satu grup bisa memunculkan grup lain sehingga totalnya kebetulan
+   * sama (sempat terbaca "7 → 7" dan tampak seperti tidak bisa ditutup).
+   * Periksa ikon pada TOMBOL SPESIFIK milik kategori yang bersangkutan.
+   *
+   * Kalau suatu saat aturan ini mau ditegakkan di sini, syaratnya: uji otomatis
+   * untuk kelima skenario di atas ada lebih dulu.
+   */
+
   // Auto-expand the parent of the currently selected child categories.
   const currentCategoriesStr = currentCategories.join(",")
   useEffect(() => {
@@ -54,6 +98,7 @@ export function ShopSidebar({ categories, brands = [], maxPriceLimit = 100000000
         parentIdsToExpand[cat.parent] = true
       }
     })
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- lihat catatan di atas
     setExpandedCats(prev => {
       let hasChanges = false
       const next = { ...prev }
@@ -65,6 +110,7 @@ export function ShopSidebar({ categories, brands = [], maxPriceLimit = 100000000
       }
       return hasChanges ? next : prev
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lihat catatan di atas
   }, [categories, currentCategoriesStr])
 
   const handleCategoryChange = (slug: string, checked: boolean) => {
@@ -120,8 +166,10 @@ export function ShopSidebar({ categories, brands = [], maxPriceLimit = 100000000
     const currentMin = Number(searchParams.get("minPrice")) || 0
     const currentMax = Number(searchParams.get("maxPrice")) || maxPriceLimit
     if (currentMin !== localPriceRange[0] || currentMax !== localPriceRange[1]) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- lihat catatan di atas
       setLocalPriceRange([currentMin, currentMax])
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lihat catatan di atas
   }, [searchParams, maxPriceLimit])
 
   const clearFilters = () => {
