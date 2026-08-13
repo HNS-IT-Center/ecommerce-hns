@@ -96,9 +96,43 @@ export function NewItemsTabsClient({ tabs, initialProducts }: NewItemsTabsClient
     })
   }, [tabs])
 
+  /**
+   * DUA EFEK DI BAWAH SENGAJA DIKECUALIKAN dari `set-state-in-effect`.
+   *
+   * Ini keputusan yang sudah ditimbang, bukan aturan yang dilewatkan karena
+   * merepotkan. Pola pengganti yang dipakai di tempat lain pada repo ini
+   * ("sesuaikan state saat render", lihat `live-search.tsx` dan
+   * `delete-customer-dialog.tsx`) TIDAK BISA dipakai di sini, karena dua
+   * syaratnya saling bertabrakan:
+   *
+   *   1. Penjaganya harus TIDAK memicu render. `inView` dari
+   *      `react-intersection-observer` berubah berkali-kali selama menggulir,
+   *      jadi penjaga berbasis `useState` — cara yang sah untuk menyesuaikan
+   *      state saat render — justru menambah render pada jalur yang paling
+   *      sering berjalan.
+   *   2. Penjaga yang tidak memicu render berarti `useRef`. Tapi React 19
+   *      melarang MEMBACA maupun MENULIS ref selama render
+   *      (`react-hooks/refs`).
+   *
+   * Dicoba, dan hasilnya terukur: versi `useRef` menghilangkan 1 error tapi
+   * memunculkan 4 error `react-hooks/refs` — total lint naik 42 → 45. Versi itu
+   * dibatalkan.
+   *
+   * Perilakunya sendiri sudah diuji IDENTIK antara versi efek dan versi ref,
+   * lewat perbandingan langsung ke kode lama (`git stash`): jumlah kartu awal
+   * (33), setelah berpindah ketiga tab (33), setelah enam kali gulir (45, lalu
+   * berhenti), dan setelah gulir naik-lalu-turun (45). Nol error konsol di
+   * kedua versi.
+   *
+   * Jadi yang tersisa cuma cara memenuhi aturan lint, bukan cacat perilaku.
+   * Kalau suatu saat React menyediakan jalan untuk penjaga yang tidak memicu
+   * render dan sah dipakai saat render, pengecualian ini layak ditinjau ulang.
+   */
+
   // Initial load for a tab if it hasn't been loaded yet
   useEffect(() => {
     if (!tabStates[activeTab]) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- lihat catatan di atas
       loadMoreData(activeTab, 1)
     }
   }, [activeTab, tabStates, loadMoreData])
@@ -106,6 +140,7 @@ export function NewItemsTabsClient({ tabs, initialProducts }: NewItemsTabsClient
   // Handle infinite scroll trigger
   useEffect(() => {
     if (inView && !currentTabState.isLoading && currentTabState.products.length > currentTabState.displayLimit) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- lihat catatan di atas
       setTabStates(prev => ({
         ...prev,
         [activeTab]: {

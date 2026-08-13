@@ -1,3 +1,31 @@
+/* eslint-disable @next/next/no-img-element -- lihat alasannya di bawah */
+
+/**
+ * `<img>` DISENGAJA di berkas ini, bukan `next/image`.
+ *
+ * Yang dirender di sini bukan gambar konten, melainkan SPRITE GAMEPAD yang
+ * beranimasi: satu `base.svg` sebagai badan controller, lalu sprite tombol dan
+ * analog yang ditumpuk absolut di atasnya. Sprite tombol muncul dan hilang tiap
+ * kali tombol ditekan, dan tutup analog dihitung ulang posisinya terus-menerus
+ * mengikuti gerakan stick (`stickOffset`).
+ *
+ * Tiga alasan `next/image` justru merugikan di sini:
+ *
+ *   1. Ia menambah pembungkus, lazy loading, dan pipeline optimisasi pada jalur
+ *      yang harus responsif dalam hitungan milidetik. Ini ALAT TES HARDWARE —
+ *      ketertinggalan sekecil apa pun terbaca pengguna sebagai "gamepad saya
+ *      yang bermasalah", padahal alatnya yang lambat.
+ *   2. `base.svg` tidak memperoleh manfaat apa pun; `next/image` tidak
+ *      mengonversi maupun menskala ulang SVG.
+ *   3. Peringatan aturannya sendiri ("slower LCP and higher bandwidth") tidak
+ *      berlaku: seluruh sprite berada di dalam tab yang harus diklik dulu, jadi
+ *      bukan konten LCP, ukurannya sudah tetap mengikuti pembungkus
+ *      ber-`aspectRatio`, dan totalnya cuma ~636K aset lokal di
+ *      `public/gamepad/`.
+ *
+ * Kalau suatu saat sprite ini dipakai di luar konteks interaktif (mis. sebagai
+ * gambar statis di halaman pemasaran), pengecualian ini layak ditinjau ulang.
+ */
 import { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import {
