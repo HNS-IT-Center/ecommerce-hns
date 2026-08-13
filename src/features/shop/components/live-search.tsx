@@ -33,14 +33,27 @@ export function LiveSearch() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm]) // Only trigger on searchTerm change
 
-  // Sync state if URL changes externally
-  useEffect(() => {
-    const currentSearch = searchParams.get("search") || ""
-    if (currentSearch !== searchTerm) {
-      setSearchTerm(currentSearch)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
+  /**
+   * Menyelaraskan isi kotak saat URL berubah dari LUAR — tombol Back, klik
+   * kategori di sidebar, atau tautan yang membawa `?search=`.
+   *
+   * Pola "sesuaikan state saat render", BUKAN `useEffect` + `setState`. Versi
+   * efek melanggar `react-hooks/set-state-in-effect` dan punya cacat yang
+   * terlihat: kotaknya masih menampilkan kata lama untuk satu render penuh
+   * setelah URL berganti, baru kemudian dikoreksi. Menekan Back sempat
+   * memperlihatkan kata pencarian yang salah.
+   *
+   * `urlSearch` dibandingkan dengan penanda terakhir yang kita catat, bukan
+   * dengan `searchTerm` itu sendiri. Kalau dibandingkan dengan `searchTerm`,
+   * setiap ketikan pengguna akan langsung ditimpa kembali oleh nilai URL yang
+   * belum sempat diperbarui debounce — kotaknya jadi tidak bisa diketik.
+   */
+  const urlSearch = searchParams.get("search") || ""
+  const [lastUrlSearch, setLastUrlSearch] = useState(urlSearch)
+  if (urlSearch !== lastUrlSearch) {
+    setLastUrlSearch(urlSearch)
+    setSearchTerm(urlSearch)
+  }
 
   return (
     <div className="relative w-full md:max-w-sm">
