@@ -1,13 +1,8 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
-import useEmblaCarousel, { type UseEmblaCarouselType } from "embla-carousel-react"
+import { useEffect, useCallback, useSyncExternalStore } from "react"
+import useEmblaCarousel from "embla-carousel-react"
 import { ProductCard, type Product } from "@/components/ui/product-card"
-
-// Instance API Embla. `UseEmblaCarouselType[1]` bisa `undefined` (sebelum
-// carousel siap), tapi kedua callback di bawah hanya dipanggil setelah
-// `emblaApi` dipastikan ada — jadi `NonNullable` di sini jujur, bukan paksaan.
-type EmblaApi = NonNullable<UseEmblaCarouselType[1]>
 
 interface DealsCarouselProps {
   products: Product[]
@@ -35,33 +30,60 @@ export function DealsCarousel({ products }: DealsCarouselProps) {
     slidesToScroll: 1,
   })
 
-  const [selectedIndex, setSelectedIndex] = useState(0)
-  const [scrollSnaps, setScrollSnaps] = useState<number[]>([])
 
   // `EmblaApi`, bukan `any`: tipenya diturunkan dari `useEmblaCarousel` itu
   // sendiri (pola yang sama dipakai `components/ui/carousel.tsx`), jadi
   // `scrollSnapList()` dan `selectedScrollSnap()` ikut terperiksa compiler.
-  const onInit = useCallback((api: EmblaApi) => {
-    setScrollSnaps(api.scrollSnapList())
-  }, [])
+  /**
+   * Berlangganan langsung ke kejadian Embla, BUKAN menyalinnya ke state lewat
+   * efek. Pola yang sama sudah dipakai `components/ui/carousel.tsx` — dan
+   * komentar di sana menyebut alasan yang persis sama: menyalin lewat efek
+   * berarti memanggil setState di dalam badan efek hanya untuk membaca nilai
+   * awalnya.
+   */
+  const subscribeToApi = useCallback(
+    (onStoreChange: () => void) => {
+      if (!emblaApi) return () => {}
+      emblaApi.on("select", onStoreChange)
+      emblaApi.on("reInit", onStoreChange)
+      return () => {
+        emblaApi.off("select", onStoreChange)
+        emblaApi.off("reInit", onStoreChange)
+      }
+    },
+    [emblaApi]
+  )
 
-  const onSelect = useCallback((api: EmblaApi) => {
-    setSelectedIndex(api.selectedScrollSnap())
-  }, [])
+  const selectedIndex = useSyncExternalStore(
+    subscribeToApi,
+    () => emblaApi?.selectedScrollSnap() ?? 0,
+    () => 0
+  )
 
+  /**
+   * Cukup JUMLAHNYA, bukan array-nya.
+   *
+   * `scrollSnapList()` mengembalikan array baru setiap dipanggil, dan
+   * `useSyncExternalStore` membandingkan hasil snapshot dengan `Object.is` —
+   * mengembalikan array langsung akan terbaca "selalu berubah" dan memicu
+   * render tanpa henti. Yang dipakai komponen ini cuma panjangnya (untuk
+   * menggambar titik indikator), jadi angka itu yang dijadikan snapshot.
+   */
+  const snapCount = useSyncExternalStore(
+    subscribeToApi,
+    () => emblaApi?.scrollSnapList().length ?? 0,
+    () => 0
+  )
+
+  // Putar otomatis. Tetap efek — ini memang efek samping berjangka waktu,
+  // bukan penyalinan state.
   useEffect(() => {
     if (!emblaApi) return
-
-    onInit(emblaApi)
-    onSelect(emblaApi)
-    emblaApi.on("reInit", onInit).on("reInit", onSelect).on("select", onSelect)
-
     const interval = setInterval(() => {
       emblaApi.scrollNext()
     }, 4000)
-
     return () => clearInterval(interval)
-  }, [emblaApi, onInit, onSelect])
+  }, [emblaApi])
 
   return (
     <div className="overflow-hidden pb-4" ref={emblaRef}>
@@ -74,7 +96,7 @@ export function DealsCarousel({ products }: DealsCarouselProps) {
       </div>
       
       <div className="mt-8 flex justify-center gap-2">
-        {scrollSnaps.map((_, index) => (
+        {Array.from({ length: snapCount }, (_, index) => (
           <button
             key={index}
             onClick={() => emblaApi?.scrollTo(index)}
