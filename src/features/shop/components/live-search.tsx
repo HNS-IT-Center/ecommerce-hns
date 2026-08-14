@@ -5,10 +5,17 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Input } from "@/components/ui/input"
 import { Search } from "lucide-react"
 
-export function LiveSearch() {
+interface LiveSearchProps {
+  /** Route tujuan saat kata kunci berubah. Default `/shop`. */
+  basePath?: string
+  /** Nama query param kata kunci — `search` di `/shop`, `q` di `/search`. */
+  paramName?: string
+}
+
+export function LiveSearch({ basePath = "/shop", paramName = "search" }: LiveSearchProps = {}) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const initialSearch = searchParams.get("search") || ""
+  const initialSearch = searchParams.get(paramName) || ""
   const [searchTerm, setSearchTerm] = useState(initialSearch)
   const isMounted = useRef(false)
 
@@ -21,12 +28,12 @@ export function LiveSearch() {
     const timer = setTimeout(() => {
       const params = new URLSearchParams(searchParams.toString())
       if (searchTerm) {
-        params.set("search", searchTerm)
+        params.set(paramName, searchTerm)
       } else {
-        params.delete("search")
+        params.delete(paramName)
       }
       params.delete("page")
-      router.push(`/shop?${params.toString()}`, { scroll: false })
+      router.push(`${basePath}?${params.toString()}`, { scroll: false })
     }, 500)
 
     return () => clearTimeout(timer)
@@ -35,7 +42,7 @@ export function LiveSearch() {
 
   // Sync state if URL changes externally
   useEffect(() => {
-    const currentSearch = searchParams.get("search") || ""
+    const currentSearch = searchParams.get(paramName) || ""
     if (currentSearch !== searchTerm) {
       setSearchTerm(currentSearch)
     }

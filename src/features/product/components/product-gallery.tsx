@@ -273,19 +273,21 @@ export function ProductGallery({
           bentuknya kembali seperti semula: kartu membulat di dalam grid. */}
       <div
         ref={imageRef}
-        /* Di mobile tingginya dipatok 40% layar (`h-[40dvh]`), bukan mengikuti
+        /* Di mobile tingginya dipatok 50% layar (`h-[50dvh]`), bukan mengikuti
            `aspect-square`. Kanvas persegi memakan hampir seluruh lipatan
            pertama di ponsel dan mendorong nama serta harga produk ke bawah
            garis lipat — pembeli harus menggulir dulu sebelum melihat angka yang
-           justru dicarinya. Dari `sm` ke atas bentuk perseginya kembali, karena
-           di sana galeri hanya mengisi satu kolom dari dua.
+           justru dicarinya. Setengah layar masih menyisakan ruang untuk nama
+           dan harga di lipatan pertama, sambil memberi foto porsi yang lebih
+           layak. Dari `sm` ke atas bentuk perseginya kembali, karena di sana
+           galeri hanya mengisi satu kolom dari dua.
 
            `dvh`, bukan `vh`: di browser ponsel `vh` diukur dari viewport saat
            bilah alamat tersembunyi, jadi kanvasnya lebih tinggi dari layar yang
            benar-benar terlihat saat halaman pertama dibuka. `dvh` ikut tinggi
-           viewport yang sedang berlaku, sehingga 40% memang 40% dari yang
+           viewport yang sedang berlaku, sehingga 50% memang 50% dari yang
            dilihat pembeli. */
-        className="group relative w-full h-[40dvh] sm:h-auto sm:aspect-square sm:max-h-[500px] overflow-hidden rounded-none sm:rounded-2xl bg-background drop-shadow-sm flex items-center justify-center cursor-pointer sm:cursor-crosshair"
+        className="group relative w-full h-[50dvh] sm:h-auto sm:aspect-square sm:max-h-[500px] overflow-hidden rounded-none sm:rounded-2xl bg-background drop-shadow-sm flex items-center justify-center cursor-pointer sm:cursor-crosshair"
         onClick={handleImageClick}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}

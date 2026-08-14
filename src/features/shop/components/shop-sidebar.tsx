@@ -13,9 +13,31 @@ interface ShopSidebarProps {
   brands?: Brand[]
   maxPriceLimit?: number
   isMobile?: boolean
+  /**
+   * Route tujuan saat filter berubah. Default `/shop`.
+   *
+   * Sidebar ini dipakai di dua route (`/shop` dan `/search`) yang keduanya
+   * memakai set filter yang sama. Tanpa prop ini setiap centang filter di
+   * `/search` akan melempar pembeli ke `/shop` dan keyword-nya hilang.
+   */
+  basePath?: string
+  /**
+   * Nama query param kata kunci pencarian yang harus DIPERTAHANKAN saat
+   * "Hapus Filter" ditekan — `search` di `/shop`, `q` di `/search`.
+   * Menghapus filter berarti membuang kategori/merek/harga, bukan membatalkan
+   * pencarian yang sedang dilihat pembeli.
+   */
+  searchParamName?: string
 }
 
-export function ShopSidebar({ categories, brands = [], maxPriceLimit = 100000000, isMobile }: ShopSidebarProps) {
+export function ShopSidebar({
+  categories,
+  brands = [],
+  maxPriceLimit = 100000000,
+  isMobile,
+  basePath = "/shop",
+  searchParamName = "search",
+}: ShopSidebarProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -78,7 +100,7 @@ export function ShopSidebar({ categories, brands = [], maxPriceLimit = 100000000
         if (c !== slug) params.append("category", c)
       })
     }
-    router.push(`/shop?${params.toString()}`, { scroll: false })
+    router.push(`${basePath}?${params.toString()}`, { scroll: false })
   }
 
   const handleBrandChange = (slug: string, checked: boolean) => {
@@ -92,7 +114,7 @@ export function ShopSidebar({ categories, brands = [], maxPriceLimit = 100000000
         if (b !== slug) params.append("brand", b)
       })
     }
-    router.push(`/shop?${params.toString()}`, { scroll: false })
+    router.push(`${basePath}?${params.toString()}`, { scroll: false })
   }
 
   const handleOnSaleChange = (checked: boolean) => {
@@ -100,7 +122,7 @@ export function ShopSidebar({ categories, brands = [], maxPriceLimit = 100000000
     params.delete("page")
     if (checked) params.set("onSale", "true")
     else params.delete("onSale")
-    router.push(`/shop?${params.toString()}`, { scroll: false })
+    router.push(`${basePath}?${params.toString()}`, { scroll: false })
   }
 
   const handlePriceCommit = () => {
@@ -111,8 +133,8 @@ export function ShopSidebar({ categories, brands = [], maxPriceLimit = 100000000
     
     if (localPriceRange[1] < maxPriceLimit) params.set("maxPrice", localPriceRange[1].toString())
     else params.delete("maxPrice")
-    
-    router.push(`/shop?${params.toString()}`, { scroll: false })
+
+    router.push(`${basePath}?${params.toString()}`, { scroll: false })
   }
 
   // Reset local state if external URL changes
@@ -125,7 +147,13 @@ export function ShopSidebar({ categories, brands = [], maxPriceLimit = 100000000
   }, [searchParams, maxPriceLimit])
 
   const clearFilters = () => {
-    router.push("/shop", { scroll: false })
+    // Kata kunci pencarian bukan filter — ia konteks halaman yang sedang
+    // dilihat pembeli. Membuangnya di sini akan mengosongkan hasil `/search`.
+    const keyword = searchParams.get(searchParamName)
+    const params = new URLSearchParams()
+    if (keyword) params.set(searchParamName, keyword)
+    const queryString = params.toString()
+    router.push(queryString ? `${basePath}?${queryString}` : basePath, { scroll: false })
   }
 
   const toggleExpand = (id: number) => {

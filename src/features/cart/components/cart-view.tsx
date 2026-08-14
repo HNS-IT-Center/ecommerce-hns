@@ -111,17 +111,20 @@ export function CartView() {
           </div>
           <div className="divide-y">
             {items.map((item) => (
-              <div key={item.id} className="flex gap-4 p-6 sm:gap-6">
-                {/* Product Image */}
-                <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-lg bg-muted sm:h-32 sm:w-32">
+              <div key={item.id} className="flex items-stretch gap-4 p-4 sm:items-start sm:gap-6 sm:p-6">
+                {/* Product Image
+                    Di mobile kotaknya ikut tinggi kolom kanan (nama–harga–kuantitas)
+                    lewat items-stretch, jadi tidak ada ruang menganga di bawahnya.
+                    Di sm ke atas kembali kotak 128px seperti sebelumnya. */}
+                <div className="relative w-24 shrink-0 self-stretch overflow-hidden rounded-lg border bg-background p-1.5 sm:h-32 sm:w-32 sm:self-auto">
                   {item.image ? (
                     <Image
                       src={item.image}
                       alt={item.name}
                       fill
-                      // 96px (h-24) di bawah breakpoint sm, 128px (sm:h-32) di atasnya.
+                      // 96px (w-24) di bawah breakpoint sm, 128px (sm:w-32) di atasnya.
                       sizes="(min-width: 640px) 128px, 96px"
-                      className="object-cover"
+                      className="object-contain object-center"
                     />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center bg-muted">
@@ -131,24 +134,27 @@ export function CartView() {
                 </div>
 
                 {/* Product Details */}
-                <div className="flex flex-1 flex-col justify-between">
-                  <div className="flex justify-between gap-4">
-                    <div>
+                <div className="flex min-w-0 flex-1 flex-col justify-between">
+                  {/* Mobile: nama lalu harga menumpuk ke bawah — di lebar ~200px
+                      keduanya berdampingan membuat nama terpotong dan harga
+                      membungkus. Dari sm ke atas kembali sebaris. */}
+                  <div className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-4">
+                    <div className="min-w-0">
                       <h3 className="font-semibold leading-tight line-clamp-2">
                         {item.name}
                       </h3>
                       {item.variationLabel && (
-                        <p className="mt-1 text-sm text-muted-foreground">
+                        <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
                           {item.variationLabel}
                         </p>
                       )}
                       {item.sku && (
-                        <p className="mt-1 text-sm text-muted-foreground">
+                        <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
                           SKU: {item.sku}
                         </p>
                       )}
                     </div>
-                    <div className="text-right font-bold text-foreground sm:text-lg">
+                    <div className="shrink-0 font-bold text-foreground sm:text-right sm:text-lg">
                       {isUnavailable(item) ? "—" : formatRupiah(unitPriceOf(item))}
                     </div>
                   </div>
@@ -176,7 +182,7 @@ export function CartView() {
                     return null
                   })()}
 
-                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <div className="mt-3 flex flex-wrap items-center gap-2 sm:mt-4 sm:gap-3">
                     <div className="flex items-center rounded-lg border bg-background">
                       <button
                         onClick={() =>

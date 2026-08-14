@@ -2,13 +2,14 @@
 
 import { useCartStore } from "@/store/cart"
 import { formatRupiah } from "@/lib/utils"
-import { Trash2, Plus, Minus, ShoppingBag, ArrowRight } from "lucide-react"
+import { Trash2, Plus, Minus, ShoppingBag, ArrowRight, X } from "lucide-react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import {
   Sheet,
+  SheetClose,
   SheetContent,
   SheetHeader,
   SheetTitle,
@@ -69,23 +70,68 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
         Lebarnya naik bertahap, bukan melompat dari penuh ke `max-w-md`: tablet
         (768–1024px) dulu kebagian panel sesempit ponsel padahal layarnya lapang.
 
+        Di ponsel panel menutupi layar sepenuhnya — tanpa bayangan dan tanpa
+        sudut membulat. Keduanya menyisakan kesan "kartu yang mengambang di atas
+        halaman" padahal tidak ada apa pun di baliknya yang terlihat; di layar
+        sesempit itu ia memang layar tersendiri, bukan panel samping. Bayangan
+        dan sudutnya kembali dari `sm` ke atas, tempat halaman di belakangnya
+        benar-benar tampak.
+
+        Lebarnya WAJIB ditulis sebagai `data-[side=right]:w-full`, bukan
+        `w-full` biasa. `SheetContent` membawa bawaan `data-[side=right]:w-3/4`,
+        dan selektor beratribut menang atas class polos berapa pun urutannya —
+        `w-full` yang ditulis di sini dulu kalah diam-diam, jadi panelnya
+        berhenti di 75% lebar layar. Varian `data-[side=right]:` menyamakan
+        specificity-nya sehingga urutan Tailwind kembali menentukan. Alasan yang
+        sama berlaku untuk `max-w-none` terhadap bawaan `sm:max-w-sm`.
+
         Tingginya pakai `100dvh`, bukan `h-full`/`vh`. Di Safari iOS satuan `vh`
         dihitung dari viewport saat bilah alamat terbentang, jadi panelnya lebih
         tinggi dari layar sebenarnya dan bagian bawah — tepat tempat tombol
         Checkout — tertutup bilah itu.
       */}
+      {/*
+        Tombol tutup bawaan dimatikan: ia diposisikan `absolute top-3 right-3`,
+        sudut yang sama persis dengan badge "N unit" di ujung header, sehingga
+        keduanya bertumpuk. Di sini X dijadikan bagian dari baris header supaya
+        keduanya berbagi ruang lewat flex, bukan saling menimpa.
+      */}
       <SheetContent
-        className="flex w-full flex-col gap-0 border-none p-0 drop-shadow-2xl sm:max-w-sm md:max-w-md lg:max-w-lg"
+        showCloseButton={false}
+        className="flex flex-col gap-0 rounded-none border-none p-0 shadow-none data-[side=right]:w-full data-[side=right]:max-w-none sm:drop-shadow-2xl sm:data-[side=right]:max-w-sm md:data-[side=right]:max-w-md lg:data-[side=right]:max-w-lg"
         style={{ height: "100dvh" }}
       >
-        <SheetHeader className="shrink-0 border-b px-4 py-4 sm:px-6">
-          <SheetTitle className="flex items-center justify-between gap-3 text-lg font-bold sm:text-xl">
-            <span>Keranjang</span>
+        <SheetHeader className="shrink-0 border-b px-4 py-3 sm:px-6 sm:py-4">
+          <SheetTitle className="flex items-center gap-3 text-lg font-bold sm:text-xl">
+            <span className="min-w-0 flex-1 truncate">Keranjang</span>
             {items.length > 0 && (
-              <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground tabular-nums">
+              <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground tabular-nums">
                 {totalUnits} unit
               </span>
             )}
+            {/* Bulatan merah pekat: tombol ini satu-satunya jalan keluar yang
+                terlihat di mode layar penuh, jadi ia sengaja tidak berbaur
+                dengan header. Warnanya token `destructive` — sama dengan aksi
+                hapus di panel ini — bukan merah lepas, supaya ikut menyesuaikan
+                di mode gelap.
+
+                Basisnya `variant="default"`, bukan `ghost`: hover milik ghost
+                (`hover:bg-muted` + `dark:hover:bg-muted/50`) menyisakan aturan
+                gelap yang tidak punya lawan di sini, jadi bulatannya berubah
+                abu-abu saat disentuh di mode gelap. Varian default hanya
+                membawa satu `hover:bg-*` yang tertimpa bersih oleh tailwind-merge. */}
+            <SheetClose
+              render={
+                <Button
+                  variant="default"
+                  size="icon-sm"
+                  className="-mr-1 shrink-0 rounded-full bg-destructive text-white shadow-none hover:bg-destructive/85 focus-visible:ring-destructive/40"
+                  aria-label="Tutup keranjang"
+                />
+              }
+            >
+              <X className="h-4 w-4" />
+            </SheetClose>
           </SheetTitle>
         </SheetHeader>
 

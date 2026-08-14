@@ -231,8 +231,12 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
 
         {/* Content */}
         <div className="flex flex-1 flex-col p-3 rounded-b-xl">
-          {/* Product Name */}
-          <h3 className="line-clamp-2 text-xs font-medium leading-snug text-foreground transition-colors group-hover:text-brand-green">
+          {/* Product Name. Tingginya dikunci dua baris supaya kartu dengan nama
+            pendek tidak lebih pendek daripada tetangganya di grid. `2lh` = dua
+            baris menurut leading elemen ini sendiri, jadi ia ikut kalau ukuran
+            font atau leading diubah; nilai rem di depannya hanya cadangan untuk
+            browser lama yang belum mengenal unit `lh`. */}
+          <h3 className="line-clamp-2 min-h-[2.0625rem] min-h-[2lh] text-xs font-medium leading-snug text-foreground transition-colors group-hover:text-brand-green">
             {product.name}
           </h3>
 
