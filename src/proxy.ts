@@ -3,7 +3,7 @@ import { SESSION_COOKIE, verifySession } from "@/lib/auth/session"
 import { CUSTOMER_SESSION_COOKIE, verifyCustomerSession } from "@/lib/auth/customer-session"
 
 /**
- * Penjaga pertama untuk /admin dan /akun — dua sesi yang TIDAK BOLEH saling
+ * Penjaga pertama untuk /admin dan /profile — dua sesi yang TIDAK BOLEH saling
  * menyentuh (lihat docs/09-google-oauth-setup.md §1). Ditulis dalam satu
  * fungsi karena Next hanya memuat satu file proxy per project, bukan tanda
  * keduanya berbagi logika.
@@ -47,7 +47,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(login)
   }
 
-  // /akun/:path*
+  // /profile/:path*
   const session = await verifyCustomerSession(request.cookies.get(CUSTOMER_SESSION_COOKIE)?.value)
   if (session) return NextResponse.next()
 
@@ -57,5 +57,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/akun/:path*"],
+  matcher: ["/admin/:path*", "/profile/:path*"],
 }

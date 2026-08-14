@@ -218,7 +218,7 @@ ditinjau siapa pun tidak sebanding dengan menghemat satu dependensi.
 | Sesi | Token bertanda tangan di cookie `hns_customer_session` — nama berbeda dari `hns_admin_session` supaya tidak pernah saling menimpa |
 | Pencabutan sesi | Kolom `sessionsRevokedAt`; token yang terbit sebelum waktu itu dianggap mati |
 | Hapus akun | **Hard delete**, dengan `onDelete: Cascade` ke rakitan tersimpan, ditulis di migrasi pertama — bukan ditambahkan belakangan |
-| Halaman terproteksi | Hanya `/akun/:path*`. Browsing, PC builder, keranjang, dan checkout WhatsApp tetap terbuka tanpa akun |
+| Halaman terproteksi | Hanya `/profile/:path*`. Browsing, PC builder, keranjang, dan checkout WhatsApp tetap terbuka tanpa akun |
 
 **Login tidak boleh mengubah harga.** Lihat `CLAUDE.md` §2.7 — tidak ada harga
 member, tidak ada diskon khusus akun. Status login tidak pernah masuk ke jalur
@@ -283,7 +283,7 @@ mencegah CSRF), bukan di query string terpisah yang bisa diubah siapa saja.
 - **tidak boleh** diawali `//` maupun `/\` — keduanya dibaca peramban sebagai
   URL protokol-relatif menuju host lain
 - tidak boleh memuat `://`
-- kalau tidak lolos, jatuh ke `/akun` tanpa pesan galat
+- kalau tidak lolos, jatuh ke `/profile` tanpa pesan galat
 
 Tanpa validasi ini, tautan `?next=https://situs-penipu.example` menjadikan
 domain HNS sebagai batu loncatan phishing yang tampak tepercaya — pelanggan

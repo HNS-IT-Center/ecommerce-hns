@@ -67,12 +67,12 @@ export async function GET(request: NextRequest) {
   await createCustomerSession(customer)
 
   // Google tidak pernah memberi username atau nomor HP — akun yang belum
-  // melengkapi keduanya WAJIB mampir ke /akun/lengkapi-profil dulu sebelum
+  // melengkapi keduanya WAJIB mampir ke /profile/lengkapi-profil dulu sebelum
   // ke tujuan aslinya (lihat catatan di schema.prisma pada Customer.username).
   // `next` dibawa serta supaya redirect asli tidak hilang setelah dilengkapi.
   const redirectTarget =
     !customer.username || !customer.phoneNumber
-      ? `/akun/lengkapi-profil?next=${encodeURIComponent(nextPath)}`
+      ? `/profile/lengkapi-profil?next=${encodeURIComponent(nextPath)}`
       : nextPath
 
   const response = NextResponse.redirect(new URL(redirectTarget, request.nextUrl.origin))

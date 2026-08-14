@@ -9,7 +9,7 @@ import { HeaderMobileBar } from "./header-mobile-bar";
 import { HeaderShell, HeaderSpacer } from "./header-shell";
 import { getCategories } from "@/lib/api/woocommerce/categories";
 import { getThemeSettings } from "@/lib/theme/settings";
-import { customerLogoutAction } from "@/app/akun/actions";
+import { customerLogoutAction } from "@/app/profile/actions";
 import {
   ChristmasHeaderDecor,
   ChristmasHeaderPattern,

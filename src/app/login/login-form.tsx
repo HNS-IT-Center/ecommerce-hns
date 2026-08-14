@@ -42,7 +42,10 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
           <label className="block text-xs font-semibold" htmlFor="login-password">
             Password
           </label>
-          <Link href="/login/lupa-password" className="text-xs font-semibold text-muted-foreground hover:text-foreground">
+          <Link
+            href="/login/lupa-password"
+            className="rounded text-xs font-semibold text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:underline focus-visible:outline-none"
+          >
             Lupa password?
           </Link>
         </div>

@@ -24,10 +24,10 @@ export const metadata = {
  */
 export default async function Page() {
   const customer = await getCurrentCustomer();
-  if (customer) redirect("/akun");
+  if (customer) redirect("/profile");
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-dvh flex-col bg-background">
       <Header />
       {/* `items-start` di mobile, BUKAN `items-center`: form ini 6 field,
           seringkali lebih tinggi dari viewport. `items-center` pada flex
