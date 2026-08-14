@@ -12,7 +12,7 @@ import { useCatalogPricing } from "@/features/checkout/hooks/use-catalog-pricing
 import {
   PriceChangedBadge,
   UnavailableNotice,
-} from "./price-change-notice"
+} from "@/components/shared/price-change-notice"
 
 /**
  * Prop `whatsappNumber` dihapus: nomor tujuan sekarang dibaca dari tabel stores

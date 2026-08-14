@@ -5,8 +5,13 @@ import { useNewBuilderStore, BuilderProduct } from "@/store/new-builder"
 import { PcBuilderStepConfig } from "@/lib/pc-builder/config"
 import { formatRupiah } from "@/lib/utils"
 import { fetchBuilderProducts } from "../actions"
-import { prepareBuildWhatsApp } from "../actions-whatsapp"
 import { saveBuildAction } from "../actions-save"
+import { useBuilderCatalogPricing } from "../hooks/use-builder-catalog-pricing"
+import {
+  PriceChangedBadge,
+  UnavailableNotice,
+  UnverifiedPriceNotice,
+} from "@/components/shared/price-change-notice"
 import { ProductCardBuilder } from "./product-card-builder"
 import { SaveBuildDialog } from "./save-build-dialog"
 import { StartNewBuildDialog } from "./start-new-build-dialog"
@@ -61,6 +66,53 @@ export function DynamicBuilderView({ stepsConfig, isLoggedIn }: DynamicBuilderVi
   // yang belum disentuh" — itu rakitan yang justru sengaja sedang dimuat.
   const [showPreviousBuildBanner, setShowPreviousBuildBanner] = useState(false)
   const toastManager = useToastManager()
+
+  /**
+   * Harga dibaca dari katalog begitu halaman dibuka — bukan menunggu tombol.
+   *
+   * Rakitan mengendap di localStorage jauh lebih lama daripada keranjang: orang
+   * menyusun PC selama berhari-hari sebelum memutuskan. Angka yang tampil di
+   * panel karena itu harus benar sejak pertama dilihat, bukan hanya saat
+   * dikirim ke CS. Alasan sama dengan `/cart` — lihat CartView.
+   *
+   * Satu kueri per kunjungan; mengganti komponen TIDAK memicu kueri baru.
+   */
+  const {
+    pricing,
+    loading: pricingLoading,
+    error: pricingError,
+    refresh: refreshPricing,
+  } = useBuilderCatalogPricing({ auto: true })
+
+  /**
+   * Selagi katalog belum terbaca, yang tampil adalah harga dari localStorage —
+   * persis angka yang berpotensi basi. Karena itu setiap tempat yang memakai
+   * fallback ini WAJIB berdampingan dengan `UnverifiedPriceNotice`.
+   */
+  const unitPriceOf = (product: { id: number; price: number }) =>
+    pricing?.unitPriceByProductId[Number(product.id)] ?? product.price
+
+  const isUnavailable = (product: { id: number }) =>
+    pricing?.unavailableProductIds.includes(Number(product.id)) ?? false
+
+  const changeOf = (product: { id: number }) =>
+    pricing?.changes.find((c) => c.productId === Number(product.id))
+
+  /**
+   * `true` selama angka di panel belum dipastikan ke katalog.
+   *
+   * Sengaja mencakup jendela SEBELUM pembacaan pertama dimulai, bukan hanya
+   * saat `pricingLoading` menyala: antara render pertama dan selesainya
+   * hydration localStorage, `pricing` masih null sementara panel sudah
+   * menampilkan angka dari store. Tanpa ini ada jeda di mana harga basi tampil
+   * tanpa penanda — keadaan yang justru sedang diperbaiki di sini.
+   *
+   * Rakitan kosong tidak dihitung: tidak ada angka untuk diragukan.
+   */
+  const adaPilihan = Object.values(selections).some(
+    (v) => Array.isArray(v) && v.length > 0
+  )
+  const priceUnverified = adaPilihan && !pricing
 
   useEffect(() => {
     setMounted(true)
@@ -228,28 +280,17 @@ export function DynamicBuilderView({ stepsConfig, isLoggedIn }: DynamicBuilderVi
     if (!validateRequiredSteps()) return
     if (sendingWA) return
 
-    const lines = steps.flatMap((step) => {
-      const stepSels = selections[step.id]
-      if (!Array.isArray(stepSels)) return []
-      return stepSels.map((sel) => ({
-        productId: Number(sel.product.id),
-        quantity: sel.quantity,
-        stepName: step.name,
-      }))
-    })
-
     setSendingWA(true)
     try {
-      const hasil = await prepareBuildWhatsApp(lines)
-      if (!hasil.ok) {
+      // Katalog dibaca ULANG di sini, tidak memakai hasil saat halaman dibuka:
+      // komponen mungkin sudah diganti sejak itu, dan yang dikirim ke CS harus
+      // mencerminkan rakitan pada detik tombol ditekan. Pola sama dengan
+      // `handleCheckoutWA` di CartView.
+      const hasil = await refreshPricing()
+      if (!hasil) {
         toastManager.add({
           title: "Gagal menyiapkan pesan",
-          description:
-            hasil.reason === "all-unavailable"
-              ? "Komponen yang dipilih sudah tidak tersedia. Muat ulang halaman ini."
-              : hasil.reason === "no-store"
-                ? "Nomor WhatsApp CS belum tersedia."
-                : "Belum ada komponen yang dipilih.",
+          description: pricingError ?? "Coba lagi sebentar lagi.",
         })
         return
       }
@@ -264,11 +305,6 @@ export function DynamicBuilderView({ stepsConfig, isLoggedIn }: DynamicBuilderVi
       }
 
       window.open(hasil.waUrl, "_blank", "noopener,noreferrer")
-    } catch {
-      toastManager.add({
-        title: "Gagal menyiapkan pesan",
-        description: "Coba lagi sebentar lagi.",
-      })
     } finally {
       setSendingWA(false)
     }
@@ -475,12 +511,43 @@ export function DynamicBuilderView({ stepsConfig, isLoggedIn }: DynamicBuilderVi
                 </div>
                 <div className="mt-1 flex items-baseline gap-1.5">
                   <span className="text-xs font-black text-sale-red">
-                    {formatRupiah(sel.product.price * sel.quantity)}
+                    {isUnavailable(sel.product)
+                      ? "—"
+                      : formatRupiah(unitPriceOf(sel.product) * sel.quantity)}
                   </span>
                   <span className="text-[10px] font-medium text-muted-foreground">
                     &times;{sel.quantity}
                   </span>
                 </div>
+
+                {/* Perubahan disebut di baris komponennya sendiri, bukan hanya
+                    terlihat sebagai total yang bergeser. Komponen yang sudah
+                    tidak dijual ditandai — tombol hapusnya yang sudah ada di
+                    sebelah kanan baris ini, tidak perlu tombol kedua. */}
+                {(() => {
+                  if (isUnavailable(sel.product)) {
+                    return <UnavailableNotice name={sel.product.name} density="compact" />
+                  }
+                  if (priceUnverified) {
+                    return (
+                      <UnverifiedPriceNotice
+                        state={pricingError ? "error" : "loading"}
+                        density="compact"
+                      />
+                    )
+                  }
+                  const perubahan = changeOf(sel.product)
+                  if (perubahan) {
+                    return (
+                      <PriceChangedBadge
+                        oldUnitPrice={perubahan.oldUnitPrice}
+                        newUnitPrice={perubahan.newUnitPrice}
+                        density="compact"
+                      />
+                    )
+                  }
+                  return null
+                })()}
               </div>
 
               {/* Aksi tampil saat hover di desktop; di mobile selalu terlihat
@@ -520,13 +587,52 @@ export function DynamicBuilderView({ stepsConfig, isLoggedIn }: DynamicBuilderVi
           <div className="flex justify-between items-baseline">
             <span className="text-xs font-bold">Total</span>
             <span className="text-base font-black text-sale-red tabular-nums">
-              {formatRupiah(getTotalPrice())}
+              {/* `pricing.total` sudah mengecualikan komponen yang tidak
+                  tersedia. Fallback ke `getTotalPrice()` hanya berlaku selagi
+                  katalog belum terbaca — dan saat itu penandanya tampil di
+                  bawah. */}
+              {formatRupiah(pricing?.total ?? getTotalPrice())}
             </span>
           </div>
           <div className="flex justify-between items-baseline text-[11px] pt-0.5">
             <span className="text-muted-foreground">Komponen dipilih</span>
             <span className="font-semibold">{selectedStepsCount}/{totalSteps}</span>
           </div>
+
+          {/* Kegagalan verifikasi TIDAK memblokir tombol Konsultasi di bawah:
+              harga yang dikirim ke CS dibaca ulang di server, jadi pemesanan
+              tetap aman walau panel gagal memastikan angkanya di sini. */}
+          {priceUnverified && (
+            <p
+              className={`flex items-center gap-1.5 pt-0.5 text-[10px] leading-tight ${
+                pricingError ? "text-sale-red" : "text-muted-foreground"
+              }`}
+            >
+              {!pricingError && (
+                <Loader2 className="h-2.5 w-2.5 shrink-0 animate-spin" aria-hidden="true" />
+              )}
+              {pricingError
+                ? "Harga belum bisa diverifikasi. Angka di atas berasal dari rakitan tersimpan dan mungkin sudah berubah — CS akan mengonfirmasi harga terkini."
+                : "Memeriksa harga terbaru…"}
+            </p>
+          )}
+
+          {/* Menyebut sebabnya, bukan sekadar menampilkan angka lain. */}
+          {!pricingLoading && pricing && pricing.changes.length > 0 && (
+            <p className="pt-0.5 text-[10px] leading-tight text-muted-foreground">
+              {pricing.changes.length === 1
+                ? "Satu komponen"
+                : `${pricing.changes.length} komponen`}{" "}
+              berubah harganya sejak terakhir Anda lihat.
+            </p>
+          )}
+
+          {!pricingLoading && pricing && pricing.unavailableProductIds.length > 0 && (
+            <p className="pt-0.5 text-[10px] leading-tight text-sale-red">
+              {pricing.unavailableProductIds.length} komponen sudah tidak
+              tersedia dan tidak ikut dihitung.
+            </p>
+          )}
         </div>
 
         {/* Dua aksi utama sebaris supaya panel tidak memanjang ke bawah. */}
