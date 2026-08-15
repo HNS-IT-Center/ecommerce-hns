@@ -175,40 +175,55 @@ Cara: buat project di [sentry.io](https://sentry.io) → Settings → Client Key
 
 Dipakai `lib/email/send.ts` untuk mengirim email verifikasi akun & reset password pelanggan yang daftar manual di `/register` (lihat §8 dokumen ini soal keputusan login email+password, dan `docs/09-google-oauth-setup.md` untuk jalur Google). Tersedia juga untuk kebutuhan lain nanti (booking service, notifikasi order).
 
-Dikonfigurasi memakai SMTP Gmail (keputusan 2026-08-12: mulai cepat, tanpa perlu daftar/verifikasi domain penyedia transaksional dulu). Produksi jangka panjang sebaiknya pindah ke penyedia transaksional (SendGrid/Postmark/Resend) kalau volume kirim sudah melebihi batas wajar Gmail.
+**Produksi memakai SMTP Hostinger, mengirim sebagai `noreply@hnsitcenter.id`** (keputusan 13 Agustus 2026, menggantikan Gmail yang dipakai sejak 12 Agustus). Alasannya di bawah; konfigurasi Gmail lama dicatat di akhir bagian ini karena masih dipakai sebagian mesin pengembangan.
 
-**Cara dapat App Password Gmail:**
+| Variable | Nilai produksi (Hostinger) |
+|---|---|
+| `SMTP_HOST` | `smtp.hostinger.com` |
+| `SMTP_PORT` | `465` |
+| `SMTP_USER` | `noreply@hnsitcenter.id` — alamat **lengkap**, bukan `noreply` saja |
+| `SMTP_PASSWORD` | password **mailbox** yang dibuat di hPanel (Emails → Email Accounts), **BUKAN** password akun hPanel |
+| `SMTP_FROM` | `"HNS IT Center <noreply@hnsitcenter.id>"` — alamatnya harus sama dengan `SMTP_USER` |
+| `EMAIL_REPLY_TO` | opsional — alamat CS yang dipantau untuk balasan. Pakai domain `hnsitcenter.id`. **JANGAN `@hnsitcenter.co.id`** — domain itu tidak terdaftar, lihat catatan di bawah. |
+
+**Tidak ada saklar SSL/TLS terpisah.** `lib/email/send.ts` menurunkannya dari nomor port: `secure: port === 465`. Port 465 terenkripsi sejak koneksi dibuka; 587 mulai polos lalu naik lewat STARTTLS. Keduanya terbukti hidup (`220 ESMTP`, diuji 3× berturut pada 13 Agustus 2026); 465 dipilih karena terenkripsi sejak detik pertama. `SMTP_PORT` boleh ditulis sebagai teks — skema env meng-coerce ke number.
+
+**Mengubah `SMTP_*` cukup RESTART, tidak perlu build ulang.** Tiga alasannya: variabel ini tidak berprefiks `NEXT_PUBLIC_` sehingga tidak pernah di-inline ke bundle browser; `send.ts` diawali `import "server-only"`; dan `EnvSchema.parse(process.env…)` di `config/env.ts` berjalan saat modul dimuat, bukan saat build. Kontras dengan `NEXT_PUBLIC_SITE_URL` yang **dibekukan saat build** dan karenanya wajib build ulang — perbedaan ini sempat jadi sumber kebingungan. Tetap restart proses Node-nya di hPanel; menyimpan env saja tidak cukup.
+
+**Kenapa Hostinger, bukan Gmail.** Gmail SMTP relay menimpa header `From` ke alamat akun yang login kalau diisi alamat lain yang belum terdaftar sebagai alias "Send mail as" terverifikasi. Artinya `noreply@hnsitcenter.id` **tidak bisa** dikirim lewat Gmail tanpa menyiapkan alias itu dulu. SMTP Hostinger tidak punya batasan tersebut, dan rekord SPF `hnsitcenter.id` **sudah** memuat `include:_spf.mail.hostinger.com` — jadi SPF PASS tanpa menambah satu rekord DNS pun, beda dengan penyedia transaksional yang butuh tiga rekord baru.
+
+**Yang masih harus dibuktikan dengan email sungguhan:** apakah Hostinger mengizinkan relay SMTP dari luar jaringannya. Sebagian penyedia membatasi ke IP sendiri; aplikasi ini juga di Hostinger sehingga kemungkinan aman, tapi jangan diasumsikan. Kalau ditolak, rencana B adalah Resend.
+
+**Verifikasi setelah env terisi — empat langkah berurutan, jangan dilompati:**
+
+1. Jalankan `npx tsx scratch/kirim-email-uji.mts <alamat-tujuan>` — kirim ke **Gmail dan Outlook**, dua penilai spam berbeda. Harus masuk INBOX, bukan folder spam.
+2. Di Gmail buka **"Show original"**, cari `SPF: PASS`, `DKIM: PASS`, `DMARC: PASS`.
+   - SPF FAIL → alamat di `SMTP_FROM` bukan `@hnsitcenter.id`, atau IP pengirim di luar SPF
+   - DKIM tidak ada → aktifkan di hPanel (Emails → domain → DKIM)
+   - DKIM PASS tapi DMARC FAIL → domain DKIM tidak sejajar dengan domain `From`
+3. Uji di [mail-tester.com](https://www.mail-tester.com) — target ≥ 9/10.
+4. **Uji alur sungguhan, bukan email lepas:** daftar akun baru di storefront, pastikan email verifikasi masuk inbox, lalu **klik tautannya** dan pastikan mengarah ke domain produksi, BUKAN `localhost`. Ulangi untuk lupa-password. (Lihat §2.1 soal `NEXT_PUBLIC_SITE_URL` yang pernah salah di Hostinger.)
+
+**Jangan:** menimpa rekord SPF `hnsitcenter.id` yang sudah ada — ia melayani email bisnis HNS; tambahkan `include:` baru kalau perlu, jangan ganti barisnya. Jangan menaikkan DMARC ke `p=quarantine` sebelum SPF+DKIM terbukti PASS.
+
+<details>
+<summary><b>Konfigurasi Gmail (lama, masih dipakai sebagian mesin dev)</b></summary>
+
+Dipakai 12–13 Agustus 2026 supaya alur daftar/reset bisa diuji tanpa menunggu mailbox domain. Batasnya: `From` selalu ditimpa ke alamat Gmail yang login, jadi pelanggan menerima email dari alamat Gmail pribadi — itu alasan pindah ke Hostinger.
+
 1. Aktifkan 2-Step Verification di akun Gmail HNS (myaccount.google.com/security) — App Password tidak bisa dibuat tanpa ini.
 2. Buka [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords), buat password baru untuk "Mail".
-3. Salin **persis 16 karakter** yang muncul, **buang spasi pemisahnya** — itu `SMTP_PASSWORD`, **bukan** password login Gmail biasa. (Google menampilkannya sebagai 4 grup berspasi, mis. `abcd efgh ijkl mnop`; yang disimpan adalah `abcdefghijklmnop`, tanpa spasi.)
+3. Salin **persis 16 karakter** yang muncul, **buang spasi pemisahnya** — itu `SMTP_PASSWORD`, **bukan** password login Gmail biasa.
 
-| Variable | Contoh (Gmail) |
-|---|---|
-| `SMTP_HOST` | `smtp.gmail.com` |
-| `SMTP_PORT` | `587` |
-| `SMTP_USER` | akun Gmail yang App Password-nya dipakai, mis. `developer.hns@gmail.com` |
-| `SMTP_PASSWORD` | App Password 16 karakter tanpa spasi, BUKAN password akun |
-| `SMTP_FROM` | `"Nama <alamat>"` atau email polos — **alamatnya HARUS sama dengan `SMTP_USER`** |
-| `EMAIL_REPLY_TO` | opsional — alamat CS yang dipantau untuk balasan. Pakai domain `hnsitcenter.id` (MX-nya aktif di Hostinger). **JANGAN `@hnsitcenter.co.id`** — domain itu tidak terdaftar, lihat catatan di bawah. |
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=developer.hns@gmail.com
+SMTP_PASSWORD=<App Password 16 karakter tanpa spasi>
+SMTP_FROM="HNS IT Center <developer.hns@gmail.com>"
+```
 
-**`SMTP_FROM` wajib memakai alamat yang sama dengan `SMTP_USER`.** Gmail SMTP relay menimpa header `From` ke alamat akun yang login SMTP kalau diisi alamat lain yang belum didaftarkan sebagai "Send mail as" alias terverifikasi di akun itu — mengisi `noreply@hnsitcenter.id` di sini **tidak akan bekerja** sampai salah satu dari dua hal disiapkan (belum dikerjakan, task terpisah menuju go-live):
-- daftarkan `noreply@hnsitcenter.id` sebagai alias terverifikasi di akun Gmail yang dipakai, atau
-- pindah ke penyedia transaksional (SendGrid/Postmark/Resend) dengan domain `hnsitcenter.id` diverifikasi SPF+DKIM+DMARC, atau
-- **pindah ke SMTP Hostinger** — kemungkinan jalan termurah, karena SPF-nya SUDAH siap.
-
-> **Catatan 13 Agustus 2026 — SMTP Hostinger kemungkinan cukup.**
->
-> Rekord SPF `hnsitcenter.id` sudah memuat `include:_spf.mail.hostinger.com`, dan
-> `smtp.hostinger.com:587` menjawab `220 ESMTP`. Artinya mengirim lewat SMTP
-> Hostinger dengan `From` beralamat `@hnsitcenter.id` membuat SPF **PASS tanpa
-> menambah satu rekord DNS pun** — beda dengan penyedia transaksional yang butuh
-> tiga rekord baru.
->
-> Yang belum terbukti: apakah Hostinger mengizinkan relay dari luar jaringannya.
-> Harus diuji dengan email sungguhan, bukan diasumsikan.
->
-> Kalau menambah penyedia baru, **JANGAN menimpa rekord SPF yang ada** — ia
-> melayani email bisnis HNS. Tambahkan `include:` baru, jangan ganti barisnya.
+</details>
 
 > **Domain `hnsitcenter.co.id` TIDAK TERDAFTAR.** Diperiksa lewat resolver publik
 > (8.8.8.8) pada 13 Agustus 2026: `Non-existent domain`. Email ke alamat
@@ -216,7 +231,7 @@ Dikonfigurasi memakai SMTP Gmail (keputusan 2026-08-12: mulai cepat, tanpa perlu
 > di footer, halaman `/contact`, dan JSON-LD Organization — ada task terpisah
 > untuk membereskannya. Domain yang mail-nya aktif: **`hnsitcenter.id`**.
 
-Nama tampilan boleh apa saja — cuma bagian alamat email di dalam `< >` yang harus sama dengan `SMTP_USER`. Format: `SMTP_FROM="HNS IT Center <developer.hns@gmail.com>"`.
+Nama tampilan boleh apa saja — cuma bagian alamat email di dalam `< >` yang harus sama dengan `SMTP_USER`. Format: `SMTP_FROM="HNS IT Center <noreply@hnsitcenter.id>"`.
 
 **`EMAIL_REPLY_TO`** mengarahkan balasan pelanggan ke alamat yang benar-benar dipantau tim (CS), bukan ke `SMTP_USER` yang cuma dipakai untuk mengirim. Kalau kosong, balasan default ke `SMTP_FROM`.
 
