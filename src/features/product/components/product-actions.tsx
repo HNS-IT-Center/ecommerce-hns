@@ -3,7 +3,7 @@
 import { ShoppingCart } from "lucide-react"
 import WhatsappIcon from "@/components/icons/whatsapp-icon"
 import { Button, buttonVariants } from "@/components/ui/button"
-import { formatRupiah } from "@/lib/utils"
+import { cn, formatRupiah } from "@/lib/utils"
 
 type ProductActionsProps = {
   onAddToCart: (e: React.MouseEvent) => void
@@ -96,32 +96,49 @@ export function ProductActions({
   )
 
   /**
-   * Mobile: tombol ikon saja — label teksnya dibuang supaya ruang bar tersisa
-   * untuk harga, yang jauh lebih penting dibaca sekilas. Ukuran 40px tetap di
-   * atas ambang sasaran sentuh yang nyaman, dan `aria-label` menjaga keduanya
-   * tetap terbaca pembaca layar.
+   * Mobile: tombol keranjang membentang selebar sisa bar, berlabel teks.
+   *
+   * Sebelumnya ia kotak ikon 40px yang duduk sebaris dengan harga — dan di sana
+   * seluruh bar praktis tidak terlihat: latarnya sewarna halaman, dan satu-satunya
+   * penanda aksi cuma dua kotak kecil di ujung kanan. Aksi utama halaman produk
+   * pantas jadi sasaran sentuh terbesar di layar, bukan yang terkecil.
+   *
+   * 48px tinggi — di atas ambang 44px yang nyaman disentuh ibu jari.
    */
   const cartButtonMobile = showCartButton && (
     <button
       type="button"
       onClick={handleCartClick}
       disabled={!canAddToCart && !needsVariantChoice}
-      aria-label="Tambah ke keranjang"
-      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-colors disabled:opacity-50"
+      className="flex h-12 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground transition-colors disabled:opacity-50"
     >
-      <ShoppingCart className="h-[18px] w-[18px]" />
+      <ShoppingCart className="h-[18px] w-[18px] shrink-0" />
+      <span className="truncate">Tambah ke Keranjang</span>
     </button>
   )
 
+  /**
+   * WhatsApp tetap tombol ikon: ia jalur pendamping, bukan aksi utama. Dua
+   * tombol berlabel bersebelahan akan saling bersaing dan memaksa keduanya
+   * menyusut sampai labelnya terpotong.
+   *
+   * Saat produknya tidak bisa masuk keranjang sama sekali (mis. varian tanpa
+   * data), tidak ada tombol lain di baris ini — jadi ia yang melebar dan
+   * memakai labelnya, supaya barisnya tidak berisi satu kotak kecil sendirian.
+   */
   const waButtonMobile = (
     <a
       href={waUrl}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label={waLabel}
-      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#25D366] text-white transition-colors hover:bg-[#128C7E]"
+      aria-label={showCartButton ? waLabel : undefined}
+      className={cn(
+        "flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#25D366] text-white transition-colors hover:bg-[#128C7E]",
+        showCartButton ? "w-12" : "min-w-0 flex-1 px-4 text-sm font-bold",
+      )}
     >
-      <WhatsappIcon size={18} color="white" />
+      <WhatsappIcon size={20} color="white" />
+      {!showCartButton && <span className="truncate">{waLabel}</span>}
     </a>
   )
 
@@ -150,36 +167,60 @@ export function ProductActions({
         "Deal"/"Hot" akan menembus di atasnya. Tetap di bawah header (`z-50`)
         dan lightbox galeri (`z-[100]`).
       */}
-      <div className="fixed inset-x-0 bottom-0 z-[45] px-3 pb-2 pb-safe md:hidden print:hidden">
-        <div className="rounded-xl border border-border bg-background/95 px-3 py-2 shadow-[0_2px_16px_rgba(0,0,0,0.15)] backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <div className="fixed inset-x-0 bottom-0 z-[45] pb-safe md:hidden print:hidden">
+        {/* Barnya menempel penuh ke tepi layar: tanpa margin luar, tanpa sudut
+            membulat, dan pemisahnya hanya garis atas — satu-satunya sisi yang
+            masih berbatasan dengan konten saat lebarnya penuh. `pb-safe` di
+            pembungkus menjaga isinya tetap di atas home indicator iPhone
+            sementara latar barnya sendiri tetap turun sampai dasar layar. */}
+        {/* Latarnya `--background-100`, BUKAN `bg-background` — dan bukan pula
+            `bg-card`.
+
+            Ini inti perbaikannya: sebelumnya bar memakai warna yang sama persis
+            dengan halaman, jadi satu-satunya yang memisahkannya cuma garis 1px
+            — dan barnya terbaca sebagai bagian bawah konten, bukan lapisan aksi
+            yang mengambang di atasnya.
+
+            `bg-card` terlihat seperti jawabannya, tapi di tema project ini
+            `--card` dan `--background` SAMA-SAMA menunjuk `--background-50`
+            (lihat globals.css), jadi memakainya tidak akan mengubah apa pun.
+            `--background-100` adalah tingkat berikutnya yang benar-benar
+            berbeda, dan ia punya nilainya sendiri di tema terang maupun gelap.
+
+            `backdrop-blur` dilepas: ia hanya berguna kalau latarnya tembus
+            pandang, sementara di sini justru kepekatan yang dibutuhkan. */}
+        <div className="border-t border-border bg-[var(--background-50)] px-3 pb-2.5 pt-4 shadow-[0_-4px_20px_rgba(0,0,0,0.14)]">
           {/* Hint "pilih varian dulu" tidak diulang di sini: di mobile tombol
               keranjangnya sudah mengantar ke pemilih varian, jadi kalimatnya
               hanya memakan ruang layar. Hint lain (mis. "varian ini habis")
               tetap tampil karena tidak ada aksi yang menggantikannya. */}
           {addToCartHint && !needsVariantChoice && (
-            <p className="mb-1.5 text-center text-[11px] text-muted-foreground">{addToCartHint}</p>
+            <p className="mb-1 text-center text-[11px] text-muted-foreground">{addToCartHint}</p>
           )}
-          <div className="flex items-center gap-2">
-            {/* Blok harga memakai sisa ruang (`min-w-0` + `truncate`) sementara
-                kedua tombol ikon lebarnya tetap — jadi nama varian sepanjang
-                apa pun terpotong rapi, bukan mendorong tombol keluar bar. */}
-            <div className="min-w-0 flex-1">
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-base font-extrabold leading-tight text-sale-red">
-                  {formatRupiah(price)}
+
+          {/* Baris harga berdiri sendiri di ATAS tombol, tidak lagi berebut
+              lebar dengan mereka. Harga dan nama varian sama-sama dapat ruang
+              penuh — sebelumnya keduanya terjepit di sisa ruang setelah dua
+              tombol ikon mengambil bagiannya. */}
+          <div className="mb-2 flex items-baseline justify-between gap-3">
+            <div className="flex min-w-0 items-baseline gap-1.5">
+              <span className="text-lg font-extrabold leading-tight text-sale-red">
+                {formatRupiah(price)}
+              </span>
+              {originalPrice !== null && originalPrice > price && (
+                <span className="text-xs leading-tight text-muted-foreground line-through">
+                  {formatRupiah(originalPrice)}
                 </span>
-                {originalPrice !== null && originalPrice > price && (
-                  <span className="text-[11px] leading-tight text-muted-foreground line-through">
-                    {formatRupiah(originalPrice)}
-                  </span>
-                )}
-              </div>
-              {selectedVariantLabel && (
-                <p className="truncate text-[11px] leading-tight text-muted-foreground">
-                  {selectedVariantLabel}
-                </p>
               )}
             </div>
+            {selectedVariantLabel && (
+              <p className="min-w-0 truncate text-right text-[12px] leading-tight text-muted-foreground">
+                {selectedVariantLabel}
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
             {cartButtonMobile}
             {waButtonMobile}
           </div>

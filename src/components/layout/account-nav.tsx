@@ -27,18 +27,38 @@ type AccountNavProps = {
  * Dropdown-nya sengaja HANYA berisi "Rakitan Tersimpan" dan "Keluar" — tidak
  * ada aksi hapus akun di sini. Keputusan 2026-08-11: penghapusan akun
  * pelanggan bukan alur self-service, hanya lewat staff via admin/WhatsApp
- * (lihat baris "Ingin menghapus akun?" di halaman /akun). Menaruh aksi
+ * (lihat baris "Ingin menghapus akun?" di halaman /profile). Menaruh aksi
  * destruktif permanen satu klik dari dropdown yang sering dibuka bukan
  * pertukaran yang sepadan.
  */
 export function AccountNav({ logoutAction }: AccountNavProps) {
   const router = useRouter()
-  const { customer } = useCustomer()
+  const { loading, customer } = useCustomer()
 
-  // Selama fetch /api/auth/me belum selesai, dan saat memang guest, tampilan
-  // sama — tautan "Masuk". Tidak ada skeleton/spinner terpisah untuk keadaan
-  // loading: perbedaannya cuma sesaat, dan berkedip dari "Masuk" ke avatar
-  // terasa lebih wajar daripada dari skeleton ke salah satu dari keduanya.
+  // Selama fetch /api/auth/me belum selesai, JANGAN merender "Masuk".
+  //
+  // Sebelumnya keadaan loading dan keadaan guest dirender identik, dengan
+  // alasan "perbedaannya cuma sesaat". Ternyata tidak: di koneksi nyata
+  // pelanggan yang sudah login melihat "Masuk" lebih dulu, baru berganti jadi
+  // namanya. Header memberi tahu orang bahwa ia belum login padahal sudah —
+  // itu keliru, bukan sekadar berkedip.
+  //
+  // Placeholder ini sengaja tidak membawa teks maupun tautan: selama status
+  // belum diketahui, satu-satunya jawaban jujur adalah "belum tahu". Ukurannya
+  // dikunci menyerupai trigger avatar supaya lebar nav tidak melompat saat
+  // status akhirnya masuk.
+  if (loading) {
+    return (
+      <div
+        aria-hidden="true"
+        className="flex items-center gap-2 px-1.5 py-1.5"
+      >
+        <span className="size-7 shrink-0 animate-pulse rounded-full bg-muted" />
+        <span className="h-4 w-20 animate-pulse rounded bg-muted" />
+      </div>
+    )
+  }
+
   if (!customer) {
     return (
       <Link
@@ -64,7 +84,21 @@ export function AccountNav({ logoutAction }: AccountNavProps) {
         </span>
         <span className="max-w-[8rem] truncate text-sm font-semibold">{customer.name}</span>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="min-w-56">
+      {/* `max-h-[min(--available-height,70svh)]` + `overscroll-contain`
+          sengaja ditaruh di sini, BUKAN di `ui/dropdown-menu.tsx`: hanya
+          dropdown profil ini yang bermasalah, dan dropdown admin
+          (user-nav, category-manager) sekarang sudah berperilaku benar —
+          tidak ada gunanya mengubah perilaku mereka.
+
+          `svh` dipakai supaya batasnya mengikuti tinggi layar yang benar-benar
+          terlihat di mobile, bukan tinggi termasuk bilah URL yang menghilang.
+          `overscroll-contain` menahan gulir agar berhenti di ujung popup dan
+          tidak diteruskan ke <body> yang sedang dikunci Base UI saat menu
+          terbuka — tanpa itu, isi yang meluap tidak bisa digulir sama sekali. */}
+      <DropdownMenuContent
+        align="end"
+        className="max-h-[min(var(--available-height),70svh)] min-w-56 overscroll-contain"
+      >
         {/* `DropdownMenuLabel` (Base UI `Menu.GroupLabel`) mewajibkan
             `Menu.Group` sebagai leluhurnya — tanpa itu melempar
             "MenuGroupContext is missing" di setiap render. Bukan untuk
@@ -77,7 +111,7 @@ export function AccountNav({ logoutAction }: AccountNavProps) {
           </DropdownMenuLabel>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => router.push("/akun")}>
+        <DropdownMenuItem onClick={() => router.push("/profile")}>
           <Wrench className="h-4 w-4" />
           Rakitan Tersimpan
         </DropdownMenuItem>

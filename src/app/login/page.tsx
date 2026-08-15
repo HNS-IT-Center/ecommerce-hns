@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { Footer } from "@/components/layout/footer";
 import { Header } from "@/components/layout/header";
+import { getCurrentCustomer } from "@/lib/auth/customer";
 import { sanitizeNextPath } from "@/lib/auth/safe-redirect";
 import { LoginForm } from "./login-form";
 
@@ -29,10 +31,25 @@ export default async function Page({
   const { next } = await searchParams;
   const nextPath = sanitizeNextPath(next);
 
+  /**
+   * Pelanggan yang sudah masuk tidak punya keperluan dengan formulir ini —
+   * pola sama seperti /register.
+   *
+   * Tujuannya `nextPath`, BUKAN selalu `/profile`: halaman ini kerap dicapai
+   * lewat `?next=...` dari proxy, dan melempar ke /profile akan membuang
+   * tujuan yang tadi diminta. `sanitizeNextPath` sudah menjamin isinya path
+   * internal, jadi nilai ini aman dioper ke `redirect()`.
+   *
+   * Tidak berputar dengan proxy: proxy hanya melempar KE sini saat cookie
+   * sesi tidak ada, sementara cabang ini hanya jalan saat sesinya ada.
+   */
+  const customer = await getCurrentCustomer();
+  if (customer) redirect(nextPath);
+
   const googleUrl = `/api/auth/google?next=${encodeURIComponent(nextPath)}`;
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-dvh flex-col bg-background">
       <Header />
       <main className="flex flex-1 items-center justify-center p-4 py-12 sm:px-6 lg:px-8">
         <div className="w-full max-w-md space-y-6 rounded-2xl border bg-card p-8 shadow-sm">

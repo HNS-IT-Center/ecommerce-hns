@@ -53,7 +53,7 @@ export function SavedBuildActions({ buildId, hasPriceChanges }: { buildId: strin
       return
     }
 
-    router.push("/akun")
+    router.push("/profile")
     router.refresh()
   }
 

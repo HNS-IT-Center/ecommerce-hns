@@ -3,6 +3,7 @@
 import { BackButton } from "./back-button"
 import { CartBadge } from "./cart-badge"
 import { SearchBar } from "./search-bar"
+import { ShareButton } from "./share-button"
 import { useTransparentHeader } from "./transparent-header-provider"
 import { cn } from "@/lib/utils"
 
@@ -48,25 +49,47 @@ export function HeaderMobileBar() {
         <BackButton />
       </div>
 
-      {/* Kolom pencarian menyusut jadi nol saat header melayang.
+      {/* Kolom pencarian muncul dengan memudar di tempat — lebarnya tidak ikut
+          beranimasi.
 
-          Disembunyikan lewat lebar + opacity, bukan dilepas dari DOM: melepasnya
-          akan membuang isi ketikan pembeli setiap kali halaman digulir melewati
-          ambang, dan komponennya juga memasang listener history miliknya
-          sendiri yang tidak perlu dibongkar-pasang. */}
+          Sebelumnya ia bergerak antara `w-0` dan `flex-1`, jadi setiap kali
+          pembeli melewati ambang gulungan kolomnya memanjang ulang dari kiri ke
+          kanan. Di halaman produk yang digulir naik-turun, gerakan melar itu
+          berulang terus dan menarik mata ke header, padahal yang dibaca pembeli
+          ada di bawahnya.
+
+          Sekarang `flex-1` dipegang tetap di kedua keadaan sehingga lebarnya
+          sudah final sejak awal, dan hanya `opacity` yang beranimasi. `invisible`
+          menyusul setelah pudar supaya kolom yang tak terlihat tidak bisa
+          ditekan atau kena fokus keyboard — dan karena ia tetap memesan
+          ruangnya, keranjang di kanan tidak lagi bergeser saat pencarian
+          muncul-hilang. Ganjalan `flex-1` terpisah yang dulu ada di bawah jadi
+          tidak diperlukan lagi.
+
+          Tetap di DOM, bukan dilepas: melepasnya akan membuang isi ketikan
+          pembeli setiap kali halaman melewati ambang, dan komponennya memasang
+          listener history-nya sendiri yang tidak perlu dibongkar-pasang. */}
       <div
         className={cn(
-          "min-w-0 transition-all duration-300",
-          isTransparent ? "w-0 flex-none overflow-hidden opacity-0" : "flex-1 opacity-100",
+          "min-w-0 flex-1 transition-opacity duration-300",
+          isTransparent ? "invisible opacity-0" : "visible opacity-100",
         )}
         aria-hidden={isTransparent}
       >
         <SearchBar className="w-full max-w-none sm:hidden flex" />
       </div>
 
-      {/* Saat pencarian menghilang, ruang kosongnya diambil alih di sini supaya
-          keranjang tetap terdorong ke kanan. */}
-      {isTransparent && <div className="flex-1" aria-hidden="true" />}
+      {/* Bagikan, tepat di sebelah keranjang. Hanya muncul di halaman yang
+          memasang ShareTargetProvider — di halaman lain komponennya menarik
+          diri sendiri dan baris ini kembali seperti semula. */}
+      <div
+        className={cn(
+          "shrink-0 rounded-full transition-all duration-300",
+          isTransparent && GLASS_BUTTON,
+        )}
+      >
+        <ShareButton />
+      </div>
 
       <div
         className={cn(

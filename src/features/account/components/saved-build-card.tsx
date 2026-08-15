@@ -16,7 +16,7 @@ export function SavedBuildCard({ build }: { build: ResolvedSavedBuild }) {
 
   return (
     <Link
-      href={`/akun/rakitan/${build.id}`}
+      href={`/profile/rakitan/${build.id}`}
       className="group block rounded-2xl border bg-card p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
     >
       <div className="flex items-center gap-1">

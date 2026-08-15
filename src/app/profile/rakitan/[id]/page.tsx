@@ -34,7 +34,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       <main className="flex-1 p-4 py-12 sm:px-6 lg:px-8">
         <div className="mx-auto w-full max-w-3xl space-y-6">
           <Link
-            href="/akun"
+            href="/profile"
             className="inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4" />

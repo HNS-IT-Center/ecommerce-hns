@@ -32,7 +32,7 @@ type SaveBuildDialogProps = {
 
 /**
  * Dua layar dalam satu dialog: form nama, lalu — setelah sukses — konfirmasi
- * dengan dua jalan. TIDAK ada redirect otomatis ke /akun setelah simpan;
+ * dengan dua jalan. TIDAK ada redirect otomatis ke /profile setelah simpan;
  * orang yang baru menyimpan sering masih ingin lanjut mengedit atau memesan
  * lewat WhatsApp, jadi keputusan pindah halaman diserahkan ke pelanggan,
  * bukan dipaksa.
@@ -94,7 +94,7 @@ export function SaveBuildDialog({ open, onOpenChange, onConfirm, onSaved }: Save
             </DialogHeader>
 
             <DialogFooter className="sm:flex-col sm:gap-2">
-              <Button className="w-full" onClick={() => router.push("/akun")}>
+              <Button className="w-full" onClick={() => router.push("/profile")}>
                 Lihat Rakitan Saya
               </Button>
               <button

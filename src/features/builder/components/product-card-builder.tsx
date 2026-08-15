@@ -86,7 +86,10 @@ export function ProductCardBuilder({ product, quantity, onSelect, onUpdateQuanti
           className="text-left cursor-pointer disabled:cursor-not-allowed"
           disabled={product.stock === 0}
         >
-          <h3 className="line-clamp-2 text-xs font-medium leading-snug text-foreground transition-colors group-hover:text-brand-green">
+          {/* Tingginya dikunci dua baris, sama seperti kartu katalog, supaya
+            nama pendek tidak membuat kartu ini lebih pendek dari tetangganya.
+            `2lh` ikut leading elemen; rem di depannya cadangan browser lama. */}
+          <h3 className="line-clamp-2 min-h-[2.0625rem] min-h-[2lh] text-xs font-medium leading-snug text-foreground transition-colors group-hover:text-brand-green">
             {product.name}
           </h3>
         </button>

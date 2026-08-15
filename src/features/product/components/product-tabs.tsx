@@ -82,16 +82,20 @@ export function ProductTabs({
   // menyiratkan ada bagian lain yang bisa dibuka, padahal tidak ada. Aturan ini
   // dulu hanya berlaku saat spesifikasi kosong; sekarang berlaku dua arah,
   // karena deskripsi jauh lebih sering kosong daripada spesifikasi.
+  // `mt-6` di mobile, bukan `mt-12`: di layar ponsel blok ini menyusul tepat
+  // setelah QR, dan jarak 48px di sana terbaca seperti halaman yang sudah
+  // habis — pembeli berhenti menggulir sebelum sampai ke deskripsi. Desktop
+  // tetap 48px karena kolomnya memang lebih lega.
   if (tabs.length === 1) {
     return (
-      <div className="mt-12">
+      <div className="mt-6 md:mt-12">
         {tabs[0].id === "desc" ? descriptionContent : specContent}
       </div>
     );
   }
 
   return (
-    <div className="mt-12">
+    <div className="mt-6 md:mt-12">
       {/*
         Deretan tab menempel di bawah header selama pembeli masih membaca.
         `top-16` = tinggi header yang `fixed` (lihat header.tsx), supaya tab

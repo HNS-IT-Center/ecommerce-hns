@@ -5,20 +5,22 @@ import { usePathname } from "next/navigation"
 import { Home, Monitor, ShoppingBag, ShoppingCart, User } from "lucide-react"
 import { useCartStore } from "@/store/cart"
 import { useIsHydrated } from "@/hooks/use-is-hydrated"
-import { useCustomer } from "@/hooks/use-customer"
 import { cn } from "@/lib/utils"
 import { ChristmasDockDecor } from "@/components/theme/christmas-decor"
 
 /**
  * `isChristmas` dioper sebagai prop dari root layout, bukan dibaca sendiri —
- * komponen ini berjalan di klien dan tidak bisa menyentuh database. Status
- * login TIDAK dioper sebagai prop server (lihat hooks/use-customer.ts) —
- * membaca cookies() di RootLayout akan menandai seluruh storefront dynamic.
+ * komponen ini berjalan di klien dan tidak bisa menyentuh database.
+ *
+ * Komponen ini sengaja TIDAK lagi membaca status login sama sekali. Dulu ia
+ * memanggil `useCustomer()` hanya untuk memilih tujuan tombol "Akun", padahal
+ * `/profile` sudah mengurus pengunjung tanpa sesi lewat redirect di server. Satu
+ * fetch `/api/auth/me` per pemuatan halaman mobile hilang, dan dengan begitu
+ * hilang pula jendela di mana dock menebak status login secara keliru.
  */
 export function MobileDock({ isChristmas = false }: { isChristmas?: boolean }) {
   const pathname = usePathname()
   const mounted = useIsHydrated()
-  const { customer } = useCustomer()
   const totalItems = useCartStore((state) => state.getTotalItems())
   
   // Hide dock if on desktop or admin routes
@@ -73,8 +75,21 @@ export function MobileDock({ isChristmas = false }: { isChristmas?: boolean }) {
     {
       label: "Akun",
       icon: <User className="h-6 w-6" />,
-      href: customer ? "/akun" : "/login",
-      isActive: pathname.startsWith("/akun") || pathname === "/login",
+      /**
+       * Selalu `/profile`, tidak pernah bercabang di klien.
+       *
+       * Sebelumnya `customer ? "/profile" : "/login"`, dan karena status login
+       * baru tiba setelah fetch `/api/auth/me` selesai, tap di detik-detik
+       * pertama membawa pelanggan yang sudah login ke halaman login.
+       *
+       * Percabangannya tidak perlu diperbaiki, cukup dihapus: `/profile/page.tsx`
+       * sudah memanggil `redirect("/login")` untuk pengunjung tanpa sesi. Itu
+       * keputusan server yang membaca cookie sungguhan — lebih benar daripada
+       * tebakan klien, dan tetap benar sebelum hydration selesai. Guest tetap
+       * mendarat di /login, hanya lewat satu lompatan.
+       */
+      href: "/profile",
+      isActive: pathname.startsWith("/profile") || pathname === "/login",
     },
   ]
 

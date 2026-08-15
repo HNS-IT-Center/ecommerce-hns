@@ -11,7 +11,7 @@
  * di address bar, lalu setelah login mendarat di domain lain yang tampak
  * datang dari sini.
  */
-const FALLBACK = "/akun"
+const FALLBACK = "/profile"
 
 export function isSafeInternalPath(value: string): boolean {
   if (!value.startsWith("/")) return false
@@ -22,7 +22,7 @@ export function isSafeInternalPath(value: string): boolean {
   return true
 }
 
-/** Kembalikan `value` kalau path internal yang sah, selain itu `/akun` tanpa pesan galat. */
+/** Kembalikan `value` kalau path internal yang sah, selain itu `/profile` tanpa pesan galat. */
 export function sanitizeNextPath(value: string | null | undefined): string {
   if (!value) return FALLBACK
   return isSafeInternalPath(value) ? value : FALLBACK

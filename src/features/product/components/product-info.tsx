@@ -49,6 +49,8 @@ interface ProductInfoProps {
   /** Sorotan sesaat saat pembeli menekan keranjang tanpa varian lengkap. */
   isVariantHighlighted: boolean;
   onRequestVariantChoice: () => void;
+  /** Kombinasi varian yang tidak ada di katalog — dihitung di `ProductDetail`. */
+  unavailableOptions?: Set<string>;
   className?: string;
 }
 
@@ -76,6 +78,7 @@ export function ProductInfo({
   onSelectAttribute,
   isVariantHighlighted,
   onRequestVariantChoice,
+  unavailableOptions,
   className,
 }: ProductInfoProps) {
   const isSimpleProduct = type === "simple";
@@ -206,7 +209,17 @@ export function ProductInfo({
     type === "variable" && Object.keys(selected).length > 0
       ? ` (${variantAttributes.map((a) => `${a.name}: ${selected[a.name] ?? "?"}`).join(", ")})`
       : "";
-  const waMessage = `Halo HNS IT Center, saya tertarik dengan produk: ${name}${variantSuffix} (SKU: ${effectiveSku}). Apakah tersedia?`;
+  /**
+   * Tautan pendek produk, dipakai bersama oleh QR, tombol bagikan, dan pesan
+   * WhatsApp. `/p/{id}` mengalihkan permanen ke slug kanonik (lihat
+   * `app/p/[id]/route.ts`), jadi ia aman dibagikan sekaligus jauh lebih pendek
+   * daripada URL slug penuh yang sering memakan dua baris di gelembung chat.
+   */
+  const shortUrl = `${siteUrl}/p/${id}`;
+
+  // Tautannya disertakan supaya CS langsung tahu barang yang dimaksud tanpa
+  // harus mencari SKU-nya manual di panel admin.
+  const waMessage = `Halo HNS IT Center, saya tertarik dengan produk: ${name}${variantSuffix} (SKU: ${effectiveSku}).\n${shortUrl}\nApakah tersedia?`;
   const waUrl = buildWhatsAppUrl(whatsappNumber, waMessage);
 
   const handleAddToCart = (e: React.MouseEvent) => {
@@ -261,7 +274,7 @@ export function ProductInfo({
        urutan lamanya: merek, nama, SKU, baru harga. Satu DOM dengan urutan
        visual berbeda membuat keduanya mustahil berbeda isi, dan pembaca layar
        tetap membacanya dalam urutan sumber yang masuk akal. */
-    <div className={cn("flex flex-col space-y-6", className)}>
+    <div className={cn("flex flex-col space-y-3 md:space-y-6", className)}>
       {/* Brand + Category */}
       <div className="order-2 flex items-center gap-2 text-sm md:order-1">
         {brand && (
@@ -275,7 +288,7 @@ export function ProductInfo({
       </div>
 
       {/* Product Name */}
-      <h1 className="order-3 text-2xl font-extrabold leading-tight tracking-tight md:order-2 md:text-3xl">
+      <h1 className="order-3 text-lg font-extrabold leading-snug tracking-tight md:order-2 md:text-3xl md:leading-tight">
         {name}
       </h1>
 
@@ -317,6 +330,7 @@ export function ProductInfo({
             attributes={variantAttributes}
             selected={selected}
             onSelect={onSelectAttribute}
+            unavailableOptions={unavailableOptions}
             isHighlighted={isVariantHighlighted}
           />
         </div>
@@ -376,24 +390,14 @@ export function ProductInfo({
           onRequestVariantChoice={onRequestVariantChoice}
         />
       </div>
-      {/* Spacer: ProductActions jadi bar mengambang di mobile. Barnya `fixed`,
-          jadi tidak memakan ruang dokumen — tanpa ganjalan ini ia akan menutupi
-          konten terakhir di halaman.
-
-          `-mt-6` membatalkan jarak bawaan `space-y-6` milik pembungkus, yang
-          sebelumnya menumpuk 24px DI ATAS tinggi spacer dan membuat celahnya
-          terlihat jauh lebih lebar dari barnya sendiri. Sisanya dipatok pas
-          setinggi bar: tombol h-10 (40px) + py-2 (16px) + pb-2 (8px) ≈ 64px. */}
-      <div className="order-8 -mt-6 h-16 md:hidden" aria-hidden="true" />
-
       {/* Trust Badges */}
-      <div className="order-9 grid grid-cols-2 gap-3 pt-2">
-        <div className="flex items-center gap-2 rounded-lg border border-border p-3 text-sm">
-          <Shield className="h-5 w-5 text-brand-green shrink-0" />
+      <div className="order-9 grid grid-cols-2 gap-2 md:gap-3 md:pt-2">
+        <div className="flex items-center gap-1.5 rounded-lg border border-border p-2.5 text-xs md:gap-2 md:p-3 md:text-sm">
+          <Shield className="h-4 w-4 shrink-0 text-brand-green md:h-5 md:w-5" />
           <span>Garansi Resmi</span>
         </div>
-        <div className="flex items-center gap-2 rounded-lg border border-border p-3 text-sm">
-          <Truck className="h-5 w-5 text-brand-green shrink-0" />
+        <div className="flex items-center gap-1.5 rounded-lg border border-border p-2.5 text-xs md:gap-2 md:p-3 md:text-sm">
+          <Truck className="h-4 w-4 shrink-0 text-brand-green md:h-5 md:w-5" />
           <span>
             Gratis ongkir Batam (syarat berlaku) —{" "}
             <a
@@ -407,7 +411,7 @@ export function ProductInfo({
       </div>
 
       {/* QR Code */}
-      <div className="order-10 mt-4 flex items-center justify-between rounded-lg border border-border bg-muted/20 p-4">
+      <div className="order-10 flex items-center justify-between rounded-lg border border-border bg-muted/20 p-4 md:mt-4">
         <div className="space-y-1">
           <p className="text-sm font-semibold text-primary">Scan QR Produk</p>
           <p className="text-xs text-muted-foreground max-w-[200px]">
@@ -416,13 +420,46 @@ export function ProductInfo({
         </div>
         <div className="rounded-md bg-white p-1.5 shadow-sm">
           <QRCodeCanvas
-            value={`${siteUrl}/p/${id}`}
+            value={shortUrl}
             size={350}
             level="L"
             style={{ width: 64, height: 64 }}
           />
         </div>
       </div>
+
+      {/* JANGAN HAPUS — ini ganjalan untuk bar aksi mengambang, bukan celah
+          dekoratif yang tertinggal.
+
+          `ProductActions` berubah jadi bar `fixed` di dasar layar pada mobile
+          (lihat product-actions.tsx). Elemen `fixed` keluar dari alur dokumen,
+          jadi ia tidak memesan ruang apa pun untuk dirinya dan menutupi apa pun
+          yang kebetulan berada di bawahnya. Tanpa ganjalan ini, blok terakhir
+          di panel — QR produk — tersembunyi permanen di balik bar dan tidak
+          bisa dicapai dengan menggulir sejauh apa pun.
+
+          Terlihat "kosong" memang wujud yang benar: tugasnya menyediakan ruang,
+          bukan menampilkan sesuatu.
+
+          TINGGINYA HARUS IKUT TINGGI BAR. Sejak bar memakai tata letak dua
+          baris (harga di atas, tombol lebar di bawah), ukurannya jadi:
+
+            border-t          1px
+            pt-2              8px
+            baris harga     ~22px
+            mb-2              8px
+            tombol h-12      48px
+            pb-2.5           10px
+            ─────────────────────
+                             97px  →  h-24 (96px)
+
+          Sisa satu piksel ditanggung `pb-safe` milik bar, yang di ponsel modern
+          selalu menambah ruang di bawahnya.
+
+          Kalau tata letak bar diubah lagi, angka ini ikut diperbarui — kalau
+          tidak, QR kembali tertutup (ganjalan kekecilan) atau muncul celah
+          putih di ujung halaman (kebesaran). */}
+      <div className="order-last h-24 md:hidden" aria-hidden="true" />
     </div>
   );
 }

@@ -5,10 +5,17 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Input } from "@/components/ui/input"
 import { Search } from "lucide-react"
 
-export function LiveSearch() {
+interface LiveSearchProps {
+  /** Route tujuan saat kata kunci berubah. Default `/shop`. */
+  basePath?: string
+  /** Nama query param kata kunci — `search` di `/shop`, `q` di `/search`. */
+  paramName?: string
+}
+
+export function LiveSearch({ basePath = "/shop", paramName = "search" }: LiveSearchProps = {}) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const initialSearch = searchParams.get("search") || ""
+  const initialSearch = searchParams.get(paramName) || ""
   const [searchTerm, setSearchTerm] = useState(initialSearch)
   const isMounted = useRef(false)
 
@@ -21,12 +28,12 @@ export function LiveSearch() {
     const timer = setTimeout(() => {
       const params = new URLSearchParams(searchParams.toString())
       if (searchTerm) {
-        params.set("search", searchTerm)
+        params.set(paramName, searchTerm)
       } else {
-        params.delete("search")
+        params.delete(paramName)
       }
       params.delete("page")
-      router.push(`/shop?${params.toString()}`, { scroll: false })
+      router.push(`${basePath}?${params.toString()}`, { scroll: false })
     }, 500)
 
     return () => clearTimeout(timer)
@@ -35,7 +42,7 @@ export function LiveSearch() {
 
   /**
    * Menyelaraskan isi kotak saat URL berubah dari LUAR — tombol Back, klik
-   * kategori di sidebar, atau tautan yang membawa `?search=`.
+   * kategori di sidebar, atau tautan yang membawa kata kunci.
    *
    * Pola "sesuaikan state saat render", BUKAN `useEffect` + `setState`. Versi
    * efek melanggar `react-hooks/set-state-in-effect` dan punya cacat yang
@@ -47,8 +54,12 @@ export function LiveSearch() {
    * dengan `searchTerm` itu sendiri. Kalau dibandingkan dengan `searchTerm`,
    * setiap ketikan pengguna akan langsung ditimpa kembali oleh nilai URL yang
    * belum sempat diperbarui debounce — kotaknya jadi tidak bisa diketik.
+   *
+   * Dibaca lewat `paramName`, bukan `"search"` harfiah: `/search` memakai
+   * `?q=` sementara `/shop` memakai `?search=`. Mengunci ke `"search"` membuat
+   * kotak di `/search` tidak pernah menyelaraskan diri dengan URL-nya.
    */
-  const urlSearch = searchParams.get("search") || ""
+  const urlSearch = searchParams.get(paramName) || ""
   const [lastUrlSearch, setLastUrlSearch] = useState(urlSearch)
   if (urlSearch !== lastUrlSearch) {
     setLastUrlSearch(urlSearch)

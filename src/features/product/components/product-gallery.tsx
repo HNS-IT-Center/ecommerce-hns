@@ -93,6 +93,16 @@ export function ProductGallery({
   const [magnifierStyle, setMagnifierStyle] = useState({ display: 'none', top: 0, left: 0, bgPosX: 0, bgPosY: 0 })
   const imageRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  /**
+   * Geseran yang baru saja terjadi, supaya klik yang menyusulnya bisa diabaikan.
+   *
+   * Lapisan penangkap geseran menerima `click` juga — dan setiap geseran
+   * berakhir dengan satu. Tanpa penanda ini, menggeser foto di mobile langsung
+   * membuka lightbox begitu jari diangkat. Disimpan di ref, bukan state: yang
+   * membacanya hanya penangan klik sesudahnya, dan mengubah state di sini akan
+   * memicu render ulang yang tidak mengubah apa pun yang terlihat.
+   */
+  const didDragRef = useRef(false)
   const [isMobile, setIsMobile] = useState(true) // Default true, verify on mount
 
   useEffect(() => {
@@ -172,11 +182,34 @@ export function ProductGallery({
 
   const handleDragEnd = (_e: MouseEvent | TouchEvent | PointerEvent, { offset }: PanInfo) => {
     const swipe = offset.x
+    didDragRef.current = Math.abs(swipe) > 5
+
     if (swipe < -50) {
       handleNext()
     } else if (swipe > 50) {
       handlePrev()
     }
+  }
+
+  /**
+   * Klik di kanvas, diterima lapisan penangkap geseran yang menutupi semuanya.
+   *
+   * Karena lapisan itu duduk di atas poster video, tombol play di bawahnya tidak
+   * lagi bisa ditekan langsung — jadi maksud kliknya diterjemahkan di sini:
+   * di slide video berarti "putar", di slide foto berarti "buka lightbox".
+   */
+  const handleCanvasClick = () => {
+    if (didDragRef.current) {
+      didDragRef.current = false
+      return
+    }
+
+    if (isVideoSlide) {
+      if (!isVideoOpen) setIsVideoOpen(true)
+      return
+    }
+
+    handleImageClick()
   }
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -240,7 +273,21 @@ export function ProductGallery({
           bentuknya kembali seperti semula: kartu membulat di dalam grid. */}
       <div
         ref={imageRef}
-        className="group relative w-full aspect-square max-h-[350px] sm:max-h-[500px] overflow-hidden rounded-none sm:rounded-2xl bg-background drop-shadow-sm flex items-center justify-center cursor-pointer sm:cursor-crosshair"
+        /* Di mobile tingginya dipatok 50% layar (`h-[50dvh]`), bukan mengikuti
+           `aspect-square`. Kanvas persegi memakan hampir seluruh lipatan
+           pertama di ponsel dan mendorong nama serta harga produk ke bawah
+           garis lipat — pembeli harus menggulir dulu sebelum melihat angka yang
+           justru dicarinya. Setengah layar masih menyisakan ruang untuk nama
+           dan harga di lipatan pertama, sambil memberi foto porsi yang lebih
+           layak. Dari `sm` ke atas bentuk perseginya kembali, karena di sana
+           galeri hanya mengisi satu kolom dari dua.
+
+           `dvh`, bukan `vh`: di browser ponsel `vh` diukur dari viewport saat
+           bilah alamat tersembunyi, jadi kanvasnya lebih tinggi dari layar yang
+           benar-benar terlihat saat halaman pertama dibuka. `dvh` ikut tinggi
+           viewport yang sedang berlaku, sehingga 50% memang 50% dari yang
+           dilihat pembeli. */
+        className="group relative w-full h-[50dvh] sm:h-auto sm:aspect-square sm:max-h-[500px] overflow-hidden rounded-none sm:rounded-2xl bg-background drop-shadow-sm flex items-center justify-center cursor-pointer sm:cursor-crosshair"
         onClick={handleImageClick}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
@@ -249,8 +296,16 @@ export function ProductGallery({
             galeri sampai ke foto sebuah varian, supaya jelas warna/ukuran mana
             yang sedang dilihat — tanpa ini foto-foto varian tampak seperti
             deretan foto produk yang sama. */}
+        {/* Di mobile label ini duduk di kiri-BAWAH, sejajar dengan penghitung
+            "3/7" di kanan-bawah dan tidak lagi menutupi foto dari atas.
+
+            `max-w-[60%]` + `truncate` menjaganya tidak pernah tumbuh sampai
+            menabrak penghitung itu: nama varian di katalog ini bisa sepanjang
+            "PUTIH / 32 INCH / 165HZ", dan tanpa batas lebar ia akan menindih
+            angkanya di layar sempit. Dari `sm` ke atas ia kembali ke kanan-atas,
+            tempat penghitungnya memang tidak dilukis. */}
         {activeSlide?.kind === "image" && activeSlide.image.variantLabel && (
-          <span className="absolute right-3 top-3 z-40 rounded-full bg-black/70 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-md">
+          <span className="absolute bottom-3 left-3 z-40 max-w-[60%] truncate rounded-full bg-black/70 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-md sm:bottom-auto sm:left-auto sm:right-3 sm:top-3 sm:max-w-none">
             {activeSlide.image.variantLabel}
           </span>
         )}
@@ -260,14 +315,17 @@ export function ProductGallery({
             memakai thumbnail resmi YouTube bila ada; Vimeo dan file R2 tidak
             punya sampul beralamat tetap, jadi jatuh ke foto utama produk yang
             digelapkan supaya tombol play tetap terbaca di atasnya. */}
+        {/* `pointer-events-none`: kliknya ditangani lapisan geseran di atasnya
+            (lihat `handleCanvasClick`), yang menerjemahkan tekanan di slide ini
+            jadi "putar video". Tetap sebuah <button> supaya pembaca layar
+            membacanya sebagai kontrol, dan `tabIndex={-1}` mencegahnya jadi
+            perhentian keyboard yang tidak melakukan apa-apa saat ditekan. */}
         {isVideoSlide && !isVideoOpen && (
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              setIsVideoOpen(true)
-            }}
-            className="absolute inset-0 z-40 flex items-center justify-center bg-black cursor-pointer group/video"
+            onClick={() => setIsVideoOpen(true)}
+            tabIndex={-1}
+            className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-black cursor-pointer group/video"
             aria-label="Putar video produk"
           >
             <Image
@@ -333,15 +391,11 @@ export function ProductGallery({
             initial="enter"
             animate="center"
             exit="exit"
-            drag="x"
-            dragConstraints={{ left: 0, right: 0 }}
-            dragElastic={0.8}
-            onDragEnd={handleDragEnd}
             transition={{
               x: { type: "spring", stiffness: 300, damping: 30 },
               opacity: { duration: 0.2 },
             }}
-            className="absolute inset-0 p-6 sm:p-10 touch-pan-y"
+            className="absolute inset-0 p-6 sm:p-10"
           >
             {activeSlide?.kind === "image" && (
               <Image
@@ -355,6 +409,37 @@ export function ProductGallery({
             )}
           </motion.div>
         </AnimatePresence>
+
+        {/* Lapisan penangkap geseran, terpisah dari slide yang beranimasi.
+
+            Dulu `drag` menempel di `motion.div` gambar di atas, yang duduk di
+            bawah poster video dan pemutarnya (keduanya `z-40`). Akibatnya di
+            slide video seluruh sentuhan diserap lapisan video, dan galeri
+            berhenti bisa digeser di sana — pembeli yang videonya ada di slide
+            kedua tidak punya jalan untuk sampai ke foto ketiga dan seterusnya.
+
+            Sekarang penangkapnya berdiri sendiri di `z-[41]`, di atas video tapi
+            di bawah tombol panah dan penghitung slide (`z-40` yang dilukis
+            belakangan) — jadi geseran selalu tertangkap di slide mana pun.
+            `pointer-events-none` saat videonya benar-benar diputar: di sana
+            kontrol pemutar yang harus menerima sentuhan, bukan galeri.
+
+            `touch-pan-y` menjaga gulungan vertikal halaman tetap normal; hanya
+            geseran mendatar yang diambil. Tanpa `dragMomentum={false}` lapisan
+            ini akan meluncur sendiri setelah dilepas dan meleset dari posisinya. */}
+        <motion.div
+          drag="x"
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={0.8}
+          dragMomentum={false}
+          onDragEnd={handleDragEnd}
+          onClick={handleCanvasClick}
+          className={cn(
+            "absolute inset-0 z-[41] touch-pan-y",
+            isVideoOpen && "pointer-events-none",
+          )}
+          aria-hidden="true"
+        />
 
         {/* Desktop Zoom Effect. Tidak berlaku di slide video — kacanya akan
             menutupi poster dan pemutarnya. */}

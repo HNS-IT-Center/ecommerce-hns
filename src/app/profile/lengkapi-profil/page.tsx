@@ -24,7 +24,7 @@ export default async function Page({
 }) {
   const customer = await getCurrentCustomer();
   if (!customer) redirect("/login");
-  if (customer.username && customer.phoneNumber) redirect("/akun");
+  if (customer.username && customer.phoneNumber) redirect("/profile");
 
   const { next } = await searchParams;
   const nextPath = sanitizeNextPath(next);

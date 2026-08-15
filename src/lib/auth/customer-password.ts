@@ -67,7 +67,7 @@ export type RegisterCustomerResult =
  * peninjau keamanan khusus.
  *
  * `username` dan `phoneNumber` WAJIB di jalur daftar-manual (beda dengan
- * akun Google, yang mengisinya belakangan lewat /akun/lengkapi-profil) —
+ * akun Google, yang mengisinya belakangan lewat /profile/lengkapi-profil) —
  * pemanggil (`register/actions.ts`) yang menjamin keduanya sudah divalidasi
  * sebelum sampai sini.
  *

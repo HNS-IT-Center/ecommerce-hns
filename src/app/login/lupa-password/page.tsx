@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
+import { getCurrentCustomer } from "@/lib/auth/customer";
 import { ForgotPasswordForm } from "./forgot-password-form";
 
 export const metadata = {
@@ -9,9 +11,20 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function Page() {
+/**
+ * Pemulihan password hanya untuk orang yang TIDAK bisa masuk. Yang sesinya
+ * masih hidup diarahkan ke /profile — pola sama seperti /login dan /register.
+ *
+ * Ini bukan penghalang bagi pelanggan yang ingin mengganti password: alur itu
+ * memang belum ada, dan kalau nanti dibuat, tempatnya di halaman akun dengan
+ * verifikasi password lama — bukan lewat tautan reset via email.
+ */
+export default async function Page() {
+  const customer = await getCurrentCustomer();
+  if (customer) redirect("/profile");
+
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-dvh flex-col bg-background">
       <Header />
       <main className="flex flex-1 items-center justify-center p-4 py-12 sm:px-6 lg:px-8">
         <div className="w-full max-w-sm space-y-6 rounded-2xl border bg-card p-8 shadow-sm">

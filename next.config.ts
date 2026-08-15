@@ -34,6 +34,43 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+
+  /**
+   * Rute akun pelanggan pindah dari `/akun` ke `/profile` (merge 15 Agustus
+   * 2026 dari branch development).
+   *
+   * Rute lamanya TIDAK dibiarkan mati 404. Tautan `/akun` sempat dibagikan
+   * saat pengujian, dan alamat yang pernah dibuka tersimpan di riwayat &
+   * autocomplete peramban — orang yang mengetik "akun" di bilah alamat akan
+   * ditawari alamat lama itu berbulan-bulan ke depan.
+   *
+   * `permanent: true` (308, bukan 307) supaya peramban dan mesin telusur
+   * mencatat perpindahannya, bukan menanyakan ulang setiap kali. Konsekuensinya
+   * disengaja: 308 di-cache agresif oleh peramban, jadi alamat ini tidak boleh
+   * dipakai ulang untuk hal lain di kemudian hari.
+   *
+   * `:path*` ikut membawa sub-rutenya — `/akun/rakitan/<id>` yang dibagikan
+   * pelanggan mendarat di `/profile/rakitan/<id>`, bukan di halaman profil
+   * kosong yang membuat orang mengira rakitannya hilang.
+   *
+   * `/account` TIDAK ada di sini: ia sudah punya `page.tsx` sendiri yang
+   * me-redirect (peninggalan halaman akun pra-Sprint-1). Menambahkannya di sini
+   * juga akan membuat dua mekanisme redirect untuk satu alamat.
+   */
+  async redirects() {
+    return [
+      {
+        source: "/akun",
+        destination: "/profile",
+        permanent: true,
+      },
+      {
+        source: "/akun/:path*",
+        destination: "/profile/:path*",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;
