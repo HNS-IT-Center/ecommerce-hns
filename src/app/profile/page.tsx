@@ -12,7 +12,7 @@ import { env } from "@/config/env";
 import { customerLogoutAction } from "./actions";
 
 export const metadata = {
-  title: "Akun Saya — HNS IT Center",
+  title: "Profil Saya — HNS IT Center",
   robots: { index: false, follow: false },
 };
 
@@ -46,7 +46,7 @@ export default async function Page() {
         <div className="mx-auto w-full max-w-4xl space-y-8">
           <div className="flex flex-col gap-6 rounded-2xl border bg-card p-8 shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h1 className="text-2xl font-extrabold tracking-tight">Akun Saya</h1>
+              <h1 className="text-2xl font-extrabold tracking-tight">Profil Saya</h1>
               <p className="mt-1 text-sm text-muted-foreground">{customer.name}</p>
               <p className="text-sm text-muted-foreground">{customer.email}</p>
             </div>

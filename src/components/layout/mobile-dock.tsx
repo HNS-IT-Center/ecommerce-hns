@@ -73,7 +73,7 @@ export function MobileDock({ isChristmas = false }: { isChristmas?: boolean }) {
       isActive: pathname === "/cart",
     },
     {
-      label: "Akun",
+      label: "Profil",
       icon: <User className="h-6 w-6" />,
       /**
        * Selalu `/profile`, tidak pernah bercabang di klien.

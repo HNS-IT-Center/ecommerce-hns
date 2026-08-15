@@ -38,7 +38,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             className="inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4" />
-            Kembali ke Akun
+            Kembali ke Profil
           </Link>
 
           <div className="flex flex-col gap-4 rounded-2xl border bg-card p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
