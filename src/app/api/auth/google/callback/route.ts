@@ -5,6 +5,7 @@ import { createCustomerSession } from "@/lib/auth/customer"
 import { GOOGLE_STATE_COOKIE, parseState } from "@/lib/auth/google-state"
 import { sanitizeNextPath } from "@/lib/auth/safe-redirect"
 import { checkGoogleCallbackRateLimit, clientIpFrom } from "@/lib/auth/google-callback-rate-limit"
+import { resolveSiteUrl } from "@/lib/utils/site-url"
 
 /**
  * Callback OAuth Google. Endpoint PUBLIK yang MENULIS ke database — lihat
@@ -13,8 +14,13 @@ import { checkGoogleCallbackRateLimit, clientIpFrom } from "@/lib/auth/google-ca
  * kosong).
  */
 export async function GET(request: NextRequest) {
+  // Harus sama persis dengan origin yang dipakai `/api/auth/google` saat
+  // membangun `redirect_uri` — Google mencocokkan keduanya. Lihat alasan
+  // lengkapnya (CDN Hostinger, http vs https) di rute tersebut.
+  const origin = await resolveSiteUrl()
+
   const errorPage = (reason: string) => {
-    const url = new URL("/login/error", request.nextUrl.origin)
+    const url = new URL("/login/error", origin)
     url.searchParams.set("reason", reason)
     return NextResponse.redirect(url)
   }
@@ -49,7 +55,7 @@ export async function GET(request: NextRequest) {
 
   let identity: Awaited<ReturnType<typeof exchangeCodeForIdentity>>
   try {
-    identity = await exchangeCodeForIdentity(code, request.nextUrl.origin)
+    identity = await exchangeCodeForIdentity(code, origin)
   } catch (error) {
     console.error("Gagal menukar/verifikasi id_token Google:", error)
     return errorPage("network")
@@ -75,7 +81,7 @@ export async function GET(request: NextRequest) {
       ? `/profile/lengkapi-profil?next=${encodeURIComponent(nextPath)}`
       : nextPath
 
-  const response = NextResponse.redirect(new URL(redirectTarget, request.nextUrl.origin))
+  const response = NextResponse.redirect(new URL(redirectTarget, origin))
   // Cookie state sekali pakai — buang setelah dipakai, sukses maupun gagal.
   response.cookies.set(GOOGLE_STATE_COOKIE, "", { path: "/", maxAge: 0 })
   return response
