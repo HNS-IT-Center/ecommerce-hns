@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { getCurrentCustomer } from "@/lib/auth/customer";
+import { env } from "@/config/env";
 import { RegisterForm } from "./register-form";
 
 export const metadata = {
@@ -23,6 +24,23 @@ export const metadata = {
  * verifikasi email sebelum akun bisa dipakai masuk.
  */
 export default async function Page() {
+  /**
+   * Sakelar pendaftaran manual — DIPERIKSA SEBELUM sesi, karena rute ini
+   * harus tertutup bagi siapa pun saat flag mati, bukan cuma bagi tamu.
+   *
+   * Menyembunyikan tautan di /login saja tidak cukup: URL yang diketik
+   * langsung, tab lama, dan tautan yang beredar di luar tetap tembus. Yang
+   * lebih menentukan — setelah `NEXT_PUBLIC_SITE_URL` menunjuk domain
+   * produksi (c4), `robots.ts` berhenti memblokir seluruh crawler, dan rute
+   * yatim yang masih hidup bisa terindeks. `metadata.robots` di bawah
+   * memang sudah `index: false`, tapi itu janji ke crawler yang patuh —
+   * redirect ini yang benar-benar menutup pintunya.
+   *
+   * Lihat REGISTER_MANUAL_ENABLED di config/env.ts. Server-only: dibalik
+   * dengan restart, tanpa build ulang.
+   */
+  if (!env.REGISTER_MANUAL_ENABLED) redirect("/login");
+
   const customer = await getCurrentCustomer();
   if (customer) redirect("/profile");
 

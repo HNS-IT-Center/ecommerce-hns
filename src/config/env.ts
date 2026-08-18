@@ -84,6 +84,26 @@ const EnvSchema = z.object({
   // balasan. Opsional — kalau kosong, replyTo tidak disetel dan balasan
   // default ke SMTP_FROM seperti biasa.
   EMAIL_REPLY_TO: z.string().email().optional(),
+
+  // ---------------------------------------------------------------------
+  // Sakelar pendaftaran manual (email+password).
+  //
+  // SENGAJA tanpa prefiks NEXT_PUBLIC_: nilainya hanya dibaca di sisi
+  // server, jadi mengubahnya cukup restart proses Node — tidak perlu build
+  // ulang. Kalau suatu saat tergoda memakainya di Client Component, jangan
+  // tambahkan prefiksnya; pindahkan keputusannya ke server.
+  //
+  // Default-nya "false" (tertutup) supaya lingkungan yang tidak menyebutkan
+  // variabel ini sama sekali tidak diam-diam membuka pendaftaran yang
+  // emailnya belum tentu bisa terkirim. Menyalakannya harus disengaja.
+  //
+  // Google OAuth TIDAK terpengaruh sakelar ini — masuk pertama kali lewat
+  // Google sekaligus mendaftarkan akun, dan jalur itu tidak butuh email
+  // verifikasi.
+  REGISTER_MANUAL_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
 });
 
 export const env = EnvSchema.parse({
@@ -114,4 +134,5 @@ export const env = EnvSchema.parse({
   SMTP_PASSWORD: process.env.SMTP_PASSWORD,
   SMTP_FROM: process.env.SMTP_FROM,
   EMAIL_REPLY_TO: process.env.EMAIL_REPLY_TO,
+  REGISTER_MANUAL_ENABLED: process.env.REGISTER_MANUAL_ENABLED,
 });

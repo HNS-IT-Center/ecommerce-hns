@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { Footer } from "@/components/layout/footer";
 import { Header } from "@/components/layout/header";
+import { env } from "@/config/env";
 import { getCurrentCustomer } from "@/lib/auth/customer";
 import { sanitizeNextPath } from "@/lib/auth/safe-redirect";
 import { LoginForm } from "./login-form";
@@ -75,15 +76,24 @@ export default async function Page({
 
           <LoginForm nextPath={nextPath} />
 
-          <p className="text-center text-sm text-muted-foreground">
-            Belum punya akun?{" "}
-            <Link
-              href="/register"
-              className="font-semibold text-foreground underline"
-            >
-              Daftar
-            </Link>
-          </p>
+          {/* Tautan "Daftar" hanya muncul kalau pendaftaran manual memang
+              dibuka. Saat tertutup, TIDAK ada teks pengganti seperti
+              "pendaftaran sedang ditutup": Google di atas tetap mendaftarkan
+              akun pada masuk pertama, jadi orang tidak sedang kehilangan
+              apa pun — mengumumkan penutupan justru membuat mereka mengira
+              tidak bisa punya akun sama sekali. Lihat REGISTER_MANUAL_ENABLED
+              di config/env.ts. */}
+          {env.REGISTER_MANUAL_ENABLED ? (
+            <p className="text-center text-sm text-muted-foreground">
+              Belum punya akun?{" "}
+              <Link
+                href="/register"
+                className="font-semibold text-foreground underline"
+              >
+                Daftar
+              </Link>
+            </p>
+          ) : null}
 
           <Link
             href="/shop"

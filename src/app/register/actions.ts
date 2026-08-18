@@ -74,7 +74,28 @@ async function sendVerificationEmail(customerId: string, email: string): Promise
   })
 }
 
+/**
+ * Pesan penolakan saat pendaftaran manual ditutup. Sengaja mengarahkan ke
+ * Google, bukan sekadar mengatakan "ditutup": orang yang sampai di sini
+ * sedang berusaha punya akun, dan jalur itu memang masih terbuka.
+ */
+const REGISTER_DISABLED_MESSAGE =
+  "Pendaftaran lewat email sedang ditutup sementara. Silakan masuk dengan Google — akun otomatis dibuat saat pertama kali masuk."
+
 export async function registerAction(_prev: RegisterState, formData: FormData): Promise<RegisterState> {
+  /**
+   * Lapis server dari sakelar pendaftaran manual. WAJIB ada terpisah dari
+   * penjagaan di `page.tsx`: Server Action punya endpoint HTTP-nya sendiri
+   * dan bisa dipanggil langsung tanpa pernah memuat halamannya — menutup
+   * UI saja meninggalkan jalur tulis yang menganga.
+   *
+   * Diletakkan sebelum rate limit supaya penolakan yang sudah pasti tidak
+   * ikut menghabiskan jatah percobaan IP.
+   */
+  if (!env.REGISTER_MANUAL_ENABLED) {
+    return { error: REGISTER_DISABLED_MESSAGE, ok: false }
+  }
+
   const ip = clientIpFrom(await headers())
   const rateLimit = checkRateLimit("register", ip)
   if (!rateLimit.ok) {
@@ -175,6 +196,19 @@ export async function resendVerificationAction(
   _prev: ResendVerificationState,
   formData: FormData
 ): Promise<ResendVerificationState> {
+  /**
+   * SENGAJA TIDAK dijaga sakelar `REGISTER_MANUAL_ENABLED`.
+   *
+   * Kirim-ulang verifikasi melayani orang yang SUDAH terlanjur mendaftar
+   * selagi pendaftaran masih terbuka, lalu tautannya kedaluwarsa atau
+   * emailnya tidak sampai. Menutup jalur ini bersamaan dengan pendaftaran
+   * akan mengunci mereka di akun yang tidak pernah bisa diaktifkan —
+   * persis kelompok yang paling dirugikan, karena tidak melakukan
+   * kesalahan apa pun.
+   *
+   * Ia tidak membuka celah: aksi ini hanya mengirim ulang token untuk
+   * akun yang sudah ada, tidak pernah membuat akun baru.
+   */
   const ip = clientIpFrom(await headers())
   const rateLimit = checkRateLimit("resend_verification", ip)
   if (!rateLimit.ok) {
