@@ -1,0 +1,24 @@
+# Normalisasi line ending.
+#
+# Semua berkas teks disimpan LF di dalam repo. Di Windows, core.autocrlf=true
+# tetap mengurus checkout jadi CRLF secara lokal — aturan ini hanya memastikan
+# yang MASUK ke git selalu LF, apa pun mesin yang dipakai anggota tim.
+#
+# Tanpa berkas ini, mesin dengan setelan autocrlf berbeda bisa mencatat ratusan
+# berkas "berubah" padahal isinya sama, dan diff jadi tidak bisa direview.
+* text=auto eol=lf
+
+# Berkas biner — jangan pernah disentuh normalisasi.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.avif binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.pdf binary
+*.zip binary
