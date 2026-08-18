@@ -125,6 +125,7 @@ fitur HNS yang membutuhkannya.
 
 ```
 http://localhost:3000
+https://store.hnsitcenter.id
 https://hnsitcenter.id
 ```
 
@@ -132,6 +133,7 @@ https://hnsitcenter.id
 
 ```
 http://localhost:3000/api/auth/google/callback
+https://store.hnsitcenter.id/api/auth/google/callback
 https://hnsitcenter.id/api/auth/google/callback
 ```
 
