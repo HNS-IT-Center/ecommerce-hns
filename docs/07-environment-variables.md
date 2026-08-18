@@ -239,15 +239,22 @@ Tanpa `SMTP_*` terisi, `/register` dan alur lupa-password membalas error yang je
 
 ---
 
-### 2.7 OPSIONAL — Admin Panel (Prisma + MariaDB, WordPress Application Password)
+### 2.7 OPSIONAL — Admin Panel (Prisma + MariaDB)
 
 | Variable | Deskripsi | Cara Dapatnya |
 |---|---|---|
 | `DATABASE_URL` | Connection string MariaDB (`mysql://user:password@host:3306/dbname`) | hPanel Hostinger → Databases → MySQL Databases |
-| `WORDPRESS_APP_USER` | Username WordPress buat upload gambar produk | Akun admin wp-admin yang sama |
-| `WORDPRESS_APP_PASSWORD` | Application Password (BEDA dari password login biasa) | wp-admin → Users → Profile → Application Passwords → Add New |
+| ~~`WORDPRESS_APP_USER`~~ | **USANG** — lihat catatan di bawah | — |
+| ~~`WORDPRESS_APP_PASSWORD`~~ | **USANG** — lihat catatan di bawah | — |
 
-**Kenapa 2 kredensial WordPress berbeda?** `WOOCOMMERCE_CONSUMER_KEY/SECRET` cuma valid untuk `/wp-json/wc/v3/*` (data produk/kategori/order). Upload gambar produk lewat admin panel butuh WordPress Media REST API (`/wp-json/wp/v2/media`), yang tidak menerima consumer key/secret — endpoint ini butuh Application Password.
+> **Dua env WordPress di atas sudah tidak terpakai.** Dulu dipakai mengunggah
+> foto produk lewat WordPress Media REST API (`/wp-json/wp/v2/media`), yang memang
+> tidak menerima `WOOCOMMERCE_CONSUMER_KEY/SECRET` dan butuh Application Password
+> tersendiri. Sejak upload pindah ke Cloudflare R2 (§2.10), satu-satunya
+> pembacanya adalah `lib/api/wordpress/media.ts` — dan berkas itu sendiri sudah
+> tidak diimpor siapa pun. Aman dikosongkan; hapus dari `.env` setelah `media.ts`
+> benar-benar dibuang. Blog (`lib/api/wordpress/posts.ts`) **tidak** memakainya —
+> ia membaca REST publik tanpa autentikasi.
 
 **Setup database setelah `DATABASE_URL` diisi:**
 ```bash
@@ -300,6 +307,61 @@ Catatan:
 - Opsional di skema Zod supaya storefront tidak fail-fast di mesin yang belum punya kredensial Google; `lib/auth/google.ts` yang menjaganya sendiri dan melempar pesan jelas saat `/api/auth/google` benar-benar dipanggil.
 - `GOOGLE_CLIENT_SECRET` **tidak boleh** diawali `NEXT_PUBLIC_` — sama seperti alasan `AUTH_SECRET`, itu akan membocorkannya ke bundel browser.
 - Rancangan lengkap (kenapa bukan Auth.js, kenapa kunci identitas `googleSub` bukan email, dst) ada di `docs/09-google-oauth-setup.md` §8.
+
+---
+
+### 2.10 WAJIB untuk Admin Panel — Upload Foto Produk (Cloudflare R2)
+
+Tanpa kelima variabel ini, tombol unggah foto di `/admin/produk` mati total —
+tidak ada jalur cadangan sejak WordPress Media ditinggalkan (lihat catatan §2.7).
+
+| Variable | Deskripsi | Cara Dapatnya |
+|---|---|---|
+| `R2_ACCOUNT_ID` | Account ID Cloudflare. Dipakai membentuk endpoint S3 `https://<account-id>.r2.cloudflarestorage.com` | Cloudflare Dashboard → R2 → **Account ID** di panel kanan |
+| `R2_ACCESS_KEY_ID` | Access Key ID dari API token R2 | Cloudflare Dashboard → R2 → **Manage R2 API Tokens** → Create API Token, izin **Object Read & Write** |
+| `R2_SECRET_ACCESS_KEY` | Secret Access Key pasangan token di atas | Ditampilkan **sekali saja** saat token dibuat. Tidak bisa dilihat ulang — kalau hilang, buat token baru |
+| `R2_BUCKET_NAME` | Nama bucket tujuan upload | Cloudflare Dashboard → R2 → nama bucket. Proyek ini: `ecommerce-hns` |
+| `NEXT_PUBLIC_R2_PUBLIC_URL` | Base URL publik bucket, **tanpa** garis miring di akhir | R2 → bucket → Settings → Public Development URL, atau custom domain yang disambungkan ke bucket |
+
+**Jalur uploadnya — satu-satunya, tidak bercabang:**
+
+```
+admin/produk/image-uploader.tsx
+  └─ POST /api/admin/media          (app/api/admin/media/route.ts)
+       └─ uploadMedia()             (lib/api/cloudflare/r2.ts)
+            └─ PutObjectCommand     → bucket R2, key `products/<id>-<nama>`
+```
+
+**Kelimanya wajib bersamaan.** `readConfig()` di `r2.ts` memeriksa kelimanya lalu
+melempar `R2UploadError` yang menyebut variabel mana yang kurang. Mengisi
+sebagian tidak membuat upload jalan sebagian — ia gagal seluruhnya.
+
+**Kenapa opsional di `config/env.ts` padahal wajib di sini?** Alasan yang sama
+persis dengan SMTP (§2.6): skema Zod di-parse saat modul dimuat, jadi menandainya
+`required` akan mematikan **seluruh aplikasi** — storefront ikut mati — di mesin
+mana pun yang belum diberi bucket. Kegagalan harus berhenti di "foto tidak bisa
+diunggah", bukan "situs tidak bisa dibuka". Kewajibannya ditegakkan saat upload
+dicoba, bukan saat aplikasi boot.
+
+**Empat env server-only cukup RESTART; `NEXT_PUBLIC_R2_PUBLIC_URL` wajib BUILD
+ULANG.** Yang berprefiks `NEXT_PUBLIC_` di-inline ke bundle browser saat build —
+mengubahnya di panel hosting lalu restart saja tidak mengubah apa pun. Perbedaan
+ini sudah beberapa kali jadi sumber kebingungan; lihat §2.1 soal
+`NEXT_PUBLIC_SITE_URL`.
+
+**Domain publiknya wajib terdaftar di `next.config.ts`.** `next/image` menolak
+host yang tidak ada di `remotePatterns`. Nilai yang dipakai sekarang
+`https://media.hnsitcenter.com` sudah terdaftar di sana. Perhatikan domainnya
+**`.com`**, berbeda dari `hnsitcenter.id` yang dipakai WooCommerce dan SMTP —
+kalau `NEXT_PUBLIC_R2_PUBLIC_URL` diganti, `remotePatterns` **wajib** ikut
+diperbarui dan aplikasi di-build ulang, atau semua foto produk berhenti tampil.
+
+**ID gambar bersifat sintetis.** R2 tidak punya ID integer seperti WordPress Media
+Library, jadi `uploadMedia()` membangkitkannya dari `Date.now() * 1000 + counter`.
+Penghitung itu bukan hiasan: mengunggah beberapa foto sekaligus (`Promise.all`
+dari form admin) bisa selesai pada milidetik yang sama, dan tanpa penghitung dua
+unggahan mendapat ID — dan nama berkas — identik, yang menimpa berkas di R2 dan
+membuat React melihat dua `key` yang sama.
 
 ---
 

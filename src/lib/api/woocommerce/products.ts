@@ -1174,7 +1174,7 @@ async function refetchAsWoo(productId: number): Promise<Product> {
   return decodeProduct(prismaProductToWoo(product));
 }
 
-/** Buat produk baru (dipakai admin panel). Tulis langsung ke Prisma DB (lihat CLAUDE.md §2.2 — WooCommerce tidak lagi dipakai untuk data produk). Gambar tetap diupload lewat WordPress Media API sebelum sampai sini (lihat lib/api/wordpress/media.ts), di sini cuma menyimpan URL-nya. */
+/** Buat produk baru (dipakai admin panel). Tulis langsung ke Prisma DB (lihat CLAUDE.md §2.2 — WooCommerce tidak lagi dipakai untuk data produk). Gambar sudah diupload ke Cloudflare R2 sebelum sampai sini (lihat lib/api/cloudflare/r2.ts, dipanggil lewat POST /api/admin/media), di sini cuma menyimpan URL-nya. BUKAN WordPress Media API — jalur itu sudah mati. */
 export async function createProduct(input: ProductInput): Promise<Product> {
   const prisma = getPrisma();
   const wooId = await nextWooId();
