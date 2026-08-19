@@ -317,6 +317,14 @@ export function CategoryTreeDnD({ categories, children }: CategoryTreeDnDProps) 
 type CategoryDragRowProps = {
   node: AdminCategory
   depth: number
+  /**
+   * Mode susun ulang. Saat `false`, gagangnya TIDAK dirender dan draggable
+   * maupun droppable ikut dimatikan — bukan sekadar disembunyikan lewat CSS.
+   * Menyembunyikan saja meninggalkan pemicu yang masih hidup bagi papan ketik
+   * dan pembaca layar, padahal maksud modenya justru meniadakan kemungkinan
+   * mengubah struktur tanpa sengaja.
+   */
+  arranging?: boolean
   children: ReactNode
 }
 
@@ -328,7 +336,7 @@ type CategoryDragRowProps = {
  * yang mendengarkan, empat tombol aksi di dalamnya akan berebut kejadian yang
  * sama dengan seretan.
  */
-export function CategoryDragRow({ node, depth, children }: CategoryDragRowProps) {
+export function CategoryDragRow({ node, depth, arranging = true, children }: CategoryDragRowProps) {
   const { draggingId, blockedReason, statusOf } = useTreeDnd()
 
   const status = statusOf(node.id)
@@ -340,14 +348,14 @@ export function CategoryDragRow({ node, depth, children }: CategoryDragRowProps)
     listeners,
     setNodeRef: setDragRef,
     setActivatorNodeRef,
-  } = useDraggable({ id: node.id, disabled: status.pending })
+  } = useDraggable({ id: node.id, disabled: !arranging || status.pending })
 
   const { isOver, setNodeRef: setDropRef } = useDroppable({
     id: node.id,
-    disabled: blocked !== null,
+    disabled: !arranging || blocked !== null,
   })
 
-  const grip = (
+  const grip = !arranging ? null : (
     <button
       type="button"
       ref={setActivatorNodeRef}

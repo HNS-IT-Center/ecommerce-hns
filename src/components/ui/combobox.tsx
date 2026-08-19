@@ -30,6 +30,21 @@ type ComboboxProps = {
   placeholder?: string
   /** Ditampilkan di bawah daftar saat teks yang diketik tidak cocok dengan opsi manapun. */
   createHint?: (query: string) => string
+  /**
+   * Wajib memilih dari daftar — teks bebas TIDAK sah.
+   *
+   * Kebalikan dari perilaku bawaan komponen ini, yang sengaja menerima nilai
+   * baru karena backend meng-upsert nama atribut/brand yang belum ada. Ada
+   * pemakaian yang tidak boleh begitu: memindahkan kategori ke induk yang
+   * "diketik" berarti aksinya berjalan dengan sasaran yang tidak pernah ada.
+   *
+   * Saat `true`, teks yang tidak cocok dengan opsi manapun dipulihkan ke
+   * pilihan sah terakhir begitu input ditinggalkan, dan `createHint`
+   * diabaikan.
+   */
+  requireOption?: boolean
+  /** Diteruskan ke <input>, supaya <label htmlFor> di pemanggil tetap menunjuk sasaran yang benar. */
+  inputId?: string
   className?: string
   inputClassName?: string
   disabled?: boolean
@@ -62,6 +77,8 @@ export function Combobox({
   options,
   placeholder,
   createHint,
+  requireOption = false,
+  inputId,
   className,
   inputClassName,
   disabled,
@@ -86,7 +103,17 @@ export function Combobox({
   const exactMatch = options.some(
     (option) => option.label.toLowerCase() === value.trim().toLowerCase()
   )
-  const showCreateHint = Boolean(value.trim()) && !exactMatch && Boolean(createHint)
+  const showCreateHint =
+    !requireOption && Boolean(value.trim()) && !exactMatch && Boolean(createHint)
+
+  // Pilihan sah terakhir, dipakai memulihkan isian saat orang mengetik sesuatu
+  // yang tidak ada di daftar lalu berpindah fokus. Tanpa ini, input bisa
+  // ditinggalkan berisi teks yang tidak menunjuk apa pun.
+  const lastValidRef = React.useRef(value)
+  React.useEffect(() => {
+    if (!requireOption) return
+    if (!value.trim() || exactMatch) lastValidRef.current = value
+  }, [requireOption, value, exactMatch])
   const isVisible = open && (filtered.length > 0 || showCreateHint)
 
   // Posisi dropdown mengikuti input. Dihitung ulang saat dibuka dan saat
@@ -125,6 +152,7 @@ export function Combobox({
   return (
     <div ref={anchorRef} className={cn("relative", className)}>
       <Input
+        id={inputId}
         value={value}
         disabled={disabled}
         placeholder={placeholder}
@@ -132,6 +160,14 @@ export function Combobox({
         onFocus={() => setOpen(true)}
         onBlur={() => {
           setOpen(false)
+          if (requireOption) {
+            if (!exactMatch) {
+              const pulih = lastValidRef.current
+              onValueChange(pulih)
+              onCommit?.(pulih)
+            }
+            return
+          }
           // Teks yang sudah diketik ikut ditetapkan saat meninggalkan input,
           // supaya admin tidak kehilangan isian karena lupa menekan Enter.
           if (onCommit && value.trim()) onCommit(value.trim())
@@ -142,7 +178,15 @@ export function Combobox({
           // submit tak sengaja akan menyimpan produk yang belum selesai diisi.
           e.preventDefault()
           const first = filtered[0]
-          const chosen = first && !value.trim() ? first.label : value.trim()
+          // Saat wajib dari daftar, Enter berarti "ambil saran teratas" —
+          // bukan "pakai apa yang saya ketik", yang di mode ini tidak sah.
+          const chosen = requireOption
+            ? exactMatch
+              ? value.trim()
+              : first?.label
+            : first && !value.trim()
+              ? first.label
+              : value.trim()
           if (!chosen) return
           onValueChange(chosen)
           onCommit?.(chosen)

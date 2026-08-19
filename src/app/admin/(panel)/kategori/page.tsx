@@ -18,9 +18,13 @@ export default async function AdminKategoriPage() {
   return (
     <div className="mx-auto max-w-3xl">
       <h1 className="text-2xl font-bold">Kategori</h1>
+      {/* Keterangan badge sengaja TIDAK di sini lagi. Kalimat lama menyebut
+          "badge hijau" padahal badge-nya biru, dan "cabang" yang dimaksud
+          cabang pohon kategori — bukan cabang toko, yang juga ada di sidebar
+          ini. Keduanya sekarang dijelaskan oleh legenda bercontoh di dalam
+          CategoryManager, berdampingan dengan badge sungguhannya. */}
       <p className="mt-1 text-sm text-muted-foreground">
-        {categories.length} kategori, {totalProducts} kaitan produk. Badge hijau = total produk di
-        cabang; badge abu-abu = produk yang menempel langsung.
+        {categories.length} kategori · {totalProducts.toLocaleString("id-ID")} kaitan produk
       </p>
 
       <div className="mt-6">

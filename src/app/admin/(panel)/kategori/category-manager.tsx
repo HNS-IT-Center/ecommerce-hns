@@ -7,6 +7,7 @@ import {
   Folder,
   FolderInput,
   FolderOpen,
+  GripVertical,
   Merge,
   Pencil,
   Plus,
@@ -48,8 +49,24 @@ import {
   previewMergeCategoryAction,
   renameCategoryAction,
 } from "./actions"
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox"
 import { EMPTY_MERGE_PREVIEW, EMPTY_STATE } from "./state"
 import { CategoryDragRow, CategoryRootDropZone, CategoryTreeDnD } from "./category-tree-dnd"
+
+/**
+ * Dua pekerjaan yang dulu tercampur di satu layar: MENELUSURI (mencari
+ * kategori, membaca jumlah produknya) dan MENYUSUN ULANG (menyeret, mengubah
+ * nama, menggabung, menghapus). Yang kedua jauh lebih jarang dilakukan, tapi
+ * perkakasnya dulu hadir di SETIAP baris — dengan 108 kategori itu berarti
+ * ratusan gagang seret dan tombol aksi yang menuntut perhatian sepanjang
+ * waktu, termasuk saat staff cuma ingin mencari satu nama.
+ */
+const MODES = [
+  { value: "lihat", label: "Lihat & cari" },
+  { value: "susun", label: "Susun ulang" },
+] as const
+
+type CategoryMode = (typeof MODES)[number]["value"]
 
 /**
  * Layar kelola kategori untuk PIC.
@@ -85,6 +102,74 @@ const ACTION_TRIGGER_CLASS =
 
 const SHEET_ITEM_CLASS =
   "flex w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-sm font-medium hover:bg-muted"
+
+/** Pilihan "tidak punya induk" pada pemilih kategori. */
+const ROOT_LABEL = "— kategori utama —"
+
+type CategoryPickerProps = {
+  inputId?: string
+  /** Id kategori terpilih sebagai teks; "" berarti pilihan pertama (akar / belum dipilih). */
+  value: string
+  onChange: (id: string) => void
+  options: AdminCategory[]
+  /** Label pilihan pertama — maknanya berbeda antar dialog, jadi tidak dipatok di sini. */
+  rootLabel: string
+  className?: string
+}
+
+/**
+ * Pemilih kategori yang bisa dicari.
+ *
+ * Dulu `<select>` datar berisi 108 jalur penuh, dan satu-satunya cara menemukan
+ * "KOMPONEN PC / NB > CASING PC" adalah menggulir daftar itu dengan mata.
+ *
+ * `Combobox` DIPAKAI ULANG di sini, bukan ditulis baru: penempatan lewat portal
+ * (supaya daftarnya tidak terpotong `overflow-hidden` induknya), navigasi papan
+ * ketik, dan penyaringan sudah selesai di sana.
+ *
+ * `requireOption` wajib menyala. Perilaku bawaan Combobox menerima teks bebas,
+ * karena backend meng-upsert nama atribut/brand yang belum ada. Di sini justru
+ * kebalikannya: memindahkan kategori ke induk yang sekadar diketik berarti
+ * aksinya berjalan menuju sasaran yang tidak pernah ada.
+ */
+function CategoryPicker({ inputId, value, onChange, options, rootLabel, className }: CategoryPickerProps) {
+  const items = useMemo<ComboboxOption[]>(
+    () => [
+      { id: "", label: rootLabel },
+      ...options.map((c) => ({ id: String(c.id), label: c.path })),
+    ],
+    [options, rootLabel]
+  )
+
+  const labelFor = (id: string) => items.find((i) => String(i.id) === id)?.label ?? rootLabel
+
+  // Teks diselaraskan SAAT RENDER ketika `value` berubah dari luar (dialog
+  // dibuka untuk kategori lain), bukan lewat useEffect. Pola yang sama sudah
+  // dipakai di live-search dan deals-carousel setelah setState di dalam efek
+  // terbukti memicu render beruntun.
+  const [text, setText] = useState(() => labelFor(value))
+  const [lastValue, setLastValue] = useState(value)
+  if (value !== lastValue) {
+    setLastValue(value)
+    setText(labelFor(value))
+  }
+
+  return (
+    <Combobox
+      requireOption
+      inputId={inputId}
+      className={className}
+      value={text}
+      onValueChange={setText}
+      onCommit={(label) => {
+        const found = items.find((i) => i.label.toLowerCase() === label.trim().toLowerCase())
+        onChange(found ? String(found.id) : "")
+      }}
+      options={items}
+      placeholder="Ketik untuk mencari kategori…"
+    />
+  )
+}
 
 function buildTree(categories: AdminCategory[]): Node[] {
   const nodes = new Map<number, Node>()
@@ -216,7 +301,14 @@ export function CategoryManager({ categories }: Props) {
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
   const [query, setQuery] = useState("")
   const [showCreate, setShowCreate] = useState(false)
+  const [newParentId, setNewParentId] = useState("")
   const [activeRootId, setActiveRootId] = useState<number | null>(null)
+
+  // Bawaannya "lihat": itu yang paling sering dilakukan, dan mode yang tidak
+  // bisa mengubah apa pun adalah tempat berdiri yang lebih aman saat halaman
+  // baru dibuka.
+  const [mode, setMode] = useState<CategoryMode>("lihat")
+  const arranging = mode === "susun"
 
   const byId = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories])
 
@@ -501,7 +593,7 @@ export function CategoryManager({ categories }: Props) {
 
     return (
       <li key={node.id}>
-        <CategoryDragRow node={node} depth={depth}>
+        <CategoryDragRow node={node} depth={depth} arranging={arranging}>
           {hasChildren ? (
             <button
               type="button"
@@ -558,12 +650,24 @@ export function CategoryManager({ categories }: Props) {
                 {node.name}
               </span>
               {hasChildren ? (
-                <span
-                  className="shrink-0 rounded-full border border-brand-green/30 bg-brand-green/10 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-brand-green"
-                  title="Total produk di seluruh cabang (menjumlahkan kaitan langsung tiap sub-kategori)"
-                >
-                  {total}
-                </span>
+                /* DUA badge berdampingan, bukan satu yang artinya bergantung
+                   warna. Angka agregat dan angka langsung punya arti yang
+                   sangat berbeda bagi staff — "406" tidak berarti ada 406
+                   produk yang menempel di KABEL / CONVERTER. */
+                <>
+                  <span
+                    className="shrink-0 rounded-full border border-brand-green/30 bg-brand-green/10 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-brand-green"
+                    title="Termasuk seluruh sub-kategori di bawahnya"
+                  >
+                    {total}
+                  </span>
+                  <span
+                    className="shrink-0 rounded-full border border-input bg-muted/40 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground"
+                    title="Produk yang menempel langsung di kategori ini"
+                  >
+                    {node.productCount}
+                  </span>
+                </>
               ) : (
                 <span
                   className="shrink-0 rounded-full border border-input bg-muted/40 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground"
@@ -572,14 +676,16 @@ export function CategoryManager({ categories }: Props) {
                   {node.productCount}
                 </span>
               )}
-              <RowActions
-                node={node}
-                isMobile={isMobile}
-                onRename={startEdit}
-                onMove={openMove}
-                onMerge={openMerge}
-                onDelete={openDelete}
-              />
+              {arranging ? (
+                <RowActions
+                  node={node}
+                  isMobile={isMobile}
+                  onRename={startEdit}
+                  onMove={openMove}
+                  onMerge={openMerge}
+                  onDelete={openDelete}
+                />
+              ) : null}
             </>
           )}
         </CategoryDragRow>
@@ -605,6 +711,70 @@ export function CategoryManager({ categories }: Props) {
       {success && !message && (
         <p className="rounded-xl border border-brand-green/30 bg-brand-green/10 px-4 py-3 text-sm text-brand-green">
           {success}
+        </p>
+      )}
+
+      {/* Sakelar mode, dan legenda yang memakai badge SUNGGUHAN alih-alih
+          menyebut nama warnanya.
+
+          Teks lama berbunyi "Badge hijau = total produk di cabang". Dua-duanya
+          keliru: `brand-green` di globals.css ternyata alias
+          `var(--primary-500)` — biru di tema ini, jadi tidak ada badge hijau
+          di layar mana pun. Dan "cabang" terbaca sebagai cabang TOKO, karena
+          menu "Toko & Lokasi" ada di sidebar yang sama.
+
+          Legenda yang menyebut nama warna akan salah lagi setiap kali tema
+          diubah lewat /admin/tema. Menempelkan contohnya langsung membuat
+          legenda ini tidak bisa berbohong. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div
+          role="group"
+          aria-label="Mode halaman kategori"
+          className="inline-flex shrink-0 rounded-lg border border-input bg-muted/40 p-0.5"
+        >
+          {MODES.map(({ value, label }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => {
+                setMode(value)
+                // Form ubah nama dibuka lewat tombol aksi, yang tidak ada di
+                // mode lihat. Tanpa ini ia tersangkut terbuka di layar yang
+                // seharusnya tidak bisa mengubah apa pun.
+                if (value === "lihat") setEditingId(null)
+              }}
+              aria-pressed={mode === value}
+              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                mode === value
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <span className="rounded-full border border-brand-green/30 bg-brand-green/10 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-brand-green">
+              406
+            </span>
+            termasuk sub-kategori
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="rounded-full border border-input bg-muted/40 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
+              35
+            </span>
+            menempel langsung
+          </span>
+        </div>
+      </div>
+
+      {arranging && (
+        <p className="flex items-start gap-2 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm text-primary">
+          <GripVertical className="mt-0.5 h-4 w-4 shrink-0" />
+          Menyeret baris memindahkan kategori beserta seluruh isinya, dan tersimpan saat itu juga.
         </p>
       )}
 
@@ -661,19 +831,16 @@ export function CategoryManager({ categories }: Props) {
             <label className="mb-1 block text-xs font-semibold" htmlFor="new-parent">
               Di bawah
             </label>
-            <select
-              id="new-parent"
-              name="parentId"
-              defaultValue=""
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-            >
-              <option value="">— kategori utama —</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.path}
-                </option>
-              ))}
-            </select>
+            {/* Nilainya ikut terkirim lewat input tersembunyi: form ini memakai
+                server action, dan Combobox bukan kontrol form bawaan. */}
+            <input type="hidden" name="parentId" value={newParentId} />
+            <CategoryPicker
+              inputId="new-parent"
+              value={newParentId}
+              onChange={setNewParentId}
+              options={categories}
+              rootLabel={ROOT_LABEL}
+            />
           </div>
           <button
             type="submit"
@@ -787,19 +954,13 @@ export function CategoryManager({ categories }: Props) {
               <label className="block text-xs font-semibold" htmlFor="move-target">
                 Pindahkan ke bawah
               </label>
-              <select
-                id="move-target"
+              <CategoryPicker
+                inputId="move-target"
                 value={moveTarget}
-                onChange={(e) => setMoveTarget(e.target.value)}
-                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-              >
-                <option value="">— kategori utama —</option>
-                {moveOptions.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.path}
-                  </option>
-                ))}
-              </select>
+                onChange={setMoveTarget}
+                options={moveOptions}
+                rootLabel={ROOT_LABEL}
+              />
 
               {movePreview && !movePreview.ok && (
                 <p className="flex items-start gap-2 text-xs text-destructive">
@@ -893,24 +1054,17 @@ export function CategoryManager({ categories }: Props) {
                   Gabungkan ke
                 </label>
                 <div className="flex gap-2">
-                  <select
-                    id="merge-target"
+                  <CategoryPicker
+                    inputId="merge-target"
+                    className="min-w-0 flex-1"
                     value={mergeTarget}
-                    onChange={(e) => {
-                      setMergeTarget(e.target.value)
+                    onChange={(id) => {
+                      setMergeTarget(id)
                       setMergePreview(null)
                     }}
-                    className="min-w-0 flex-1 rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-                  >
-                    <option value="">— pilih kategori tujuan —</option>
-                    {categories
-                      .filter((c) => c.id !== mergingNode.id)
-                      .map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.path}
-                        </option>
-                      ))}
-                  </select>
+                    options={categories.filter((c) => c.id !== mergingNode.id)}
+                    rootLabel="— pilih kategori tujuan —"
+                  />
                   <button
                     type="button"
                     onClick={loadMergePreview}
