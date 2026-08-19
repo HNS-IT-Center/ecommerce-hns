@@ -95,7 +95,140 @@ dulu, jangan menunggu pipeline yang memberitahu.
 
 ---
 
-## 4. Cutover domain produksi
+## 4. Backup database
+
+> Jalankan **sebelum** cutover, sebelum `migrate deploy` apa pun, dan sebelum
+> skrip yang menulis massal. Backup yang tidak pernah diverifikasi bukan backup —
+> ia cuma berkas yang menenangkan.
+
+### Mengambil dump
+
+`mysqldump` tidak ada di PATH mesin pengembangan; binernya numpang dari Laragon:
+`C:\laragon\bin\mysql\mysql-8.4.3-winx64\bin\`.
+
+Kredensial dioper lewat berkas sementara, **bukan** argumen baris perintah —
+argumen terbaca proses lain di mesin yang sama dan tersimpan di riwayat shell.
+
+```bash
+# 1. Berkas kredensial sementara
+cat > /tmp/dump.cnf <<'EOF'
+[client]
+host=<host>
+port=3306
+user=<user>
+password="<password>"
+EOF
+
+# 2. Dump
+mysqldump --defaults-extra-file=/tmp/dump.cnf \
+  --single-transaction --quick --routines --triggers \
+  --no-tablespaces --column-statistics=0 --set-gtid-purged=OFF \
+  --default-character-set=utf8mb4 \
+  u859138789_ecommerce_hns > "u859138789_ecommerce_hns_$(date +%Y-%m-%d_%H%M).sql"
+
+# 3. Hapus kredensialnya — jangan ditunda
+rm -f /tmp/dump.cnf
+```
+
+Empat flag yang tidak boleh dihilangkan:
+
+| Flag | Kenapa |
+|---|---|
+| `--single-transaction` | Snapshot konsisten tanpa mengunci tabel — database ini melayani staging sementara dump berjalan |
+| `--column-statistics=0` | Klien MySQL 8 menanyakan `information_schema.COLUMN_STATISTICS`, yang tidak ada di MariaDB |
+| `--no-tablespaces` | User shared hosting Hostinger tidak punya privilege `PROCESS` |
+| `--set-gtid-purged=OFF` | Mencegah pernyataan GTID khas MySQL ikut masuk ke dump MariaDB |
+
+**Simpan di luar folder repo.** Dump memuat email dan nama pelanggan, hash
+password, serta akun admin. Jangan sampai ikut ter-commit, dan jangan diunggah
+ke Drive/WhatsApp/chat tanpa dipikirkan lebih dulu.
+
+### Verifikasi dump — jangan dilewati
+
+```bash
+grep -c "^CREATE TABLE" <berkas>.sql   # jumlah tabel
+tail -2 <berkas>.sql                   # harus "-- Dump completed on ..."
+```
+
+Dump yang terpotong di tengah tetap terlihat seperti berkas `.sql` yang wajar dan
+tetap berukuran besar. Baris `Dump completed` satu-satunya penanda bahwa
+`mysqldump` benar-benar selesai, bukan mati di tengah jalan.
+
+Hitung baris per tabel langsung dari berkasnya:
+
+```bash
+for t in products product_images brands customers; do
+  n=$(grep "^INSERT INTO \`$t\`" <berkas>.sql | grep -o "),(" | wc -l)
+  s=$(grep -c "^INSERT INTO \`$t\`" <berkas>.sql)
+  echo "$t $((n + s))"
+done
+```
+
+(`n` menghitung pemisah antar-tuple; `s` menambahkan tuple pertama tiap
+pernyataan `INSERT`.)
+
+**Angka pembanding per 19 Agustus 2026** — kalau suatu saat hasilnya jauh
+berbeda tanpa penjelasan, curigai dumpnya lebih dulu:
+
+| | |
+|---|---|
+| `products` | 5.196 |
+| `product_images` | 12.835 |
+| `brands` | 135 |
+| `customers` | 5 |
+| Tabel | 26 |
+| Ukuran | 6,5 MB |
+
+### Restore — WAJIB ke database bernama LAIN
+
+> **Dump ini memuat `DROP TABLE IF EXISTS` untuk ke-26 tabelnya.** Memuatkannya
+> ke database yang sedang dipakai akan **menghapus tabel yang ada beserta
+> seluruh isinya** lebih dulu, lalu menggantinya dengan isi backup. Tidak ada
+> konfirmasi, tidak ada undo. Semua data yang masuk setelah backup diambil
+> hilang tanpa jejak.
+
+Karena itu: **restore selalu ke database bernama lain, periksa dulu, baru
+putuskan.**
+
+Dump ini sengaja tidak memuat `CREATE DATABASE` maupun `USE` (satu database,
+tanpa `--databases`), jadi ia bisa dimuat ke nama database apa pun.
+
+1. **Buat database kosong lewat hPanel Hostinger** — misalnya
+   `u859138789_restore_uji`. Harus lewat hPanel: user MariaDB project ini tidak
+   punya privilege `CREATE DATABASE`. Itu keterbatasan yang sama yang membuat
+   `prisma migrate dev` tidak bisa dipakai di sini — lihat
+   [`docs/08-database-migrations.md`](./08-database-migrations.md).
+
+2. **Muat dumpnya ke sana:**
+
+   ```bash
+   mysql --defaults-extra-file=/tmp/dump.cnf u859138789_restore_uji < <berkas>.sql
+   ```
+
+3. **Verifikasi jumlah barisnya sebelum mempercayainya:**
+
+   ```bash
+   mysql --defaults-extra-file=/tmp/dump.cnf u859138789_restore_uji \
+     -e "SELECT 'products' t, COUNT(*) n FROM products
+         UNION ALL SELECT 'product_images', COUNT(*) FROM product_images
+         UNION ALL SELECT 'brands', COUNT(*) FROM brands
+         UNION ALL SELECT 'customers', COUNT(*) FROM customers;"
+   ```
+
+   Angkanya harus sama dengan hasil hitungan dari berkas dump di atas. Kalau
+   berbeda, dumpnya cacat — jangan dijadikan dasar pemulihan apa pun.
+
+4. Baru setelah angkanya cocok, database itu sah dipakai: sebagai sumber
+   menyalin baris yang hilang, atau sebagai kandidat pengganti.
+
+**Jangan pernah** menjalankan langkah 2 dengan nama database produksi sebagai
+jalan pintas "biar cepat". Kalau memang niatnya memulihkan produksi seutuhnya,
+ambil dump **baru** dari produksi lebih dulu — supaya keadaan sebelum pemulihan
+masih ada kalau ternyata keputusannya keliru.
+
+---
+
+## 5. Cutover domain produksi
 
 Saat mengarahkan `hnsitcenter.id` ke deployment ini:
 
@@ -137,7 +270,7 @@ Saat mengarahkan `hnsitcenter.id` ke deployment ini:
 
 ---
 
-## 5. Setelah deploy
+## 6. Setelah deploy
 
 - Buka `/admin/login` dan pastikan bisa masuk.
 - Buka satu halaman produk dan pastikan harga serta gambar tampil.
