@@ -74,7 +74,13 @@ export function AccountNav({ logoutAction }: AccountNavProps) {
   const initial = customer.name.charAt(0).toUpperCase()
 
   return (
-    <DropdownMenu>
+    /* `modal={false}`. Bawaan Base UI untuk `modal` adalah `true`, dan itu
+       MENGUNCI gulir <body> selama menu terbuka. Akibatnya pelanggan yang
+       membukanya di tengah halaman merasa situsnya macet — padahal ia tidak
+       sedang menghadapi dialog yang menuntut keputusan, cuma melirik dua
+       tautan. Dengan `false`, halaman tetap bisa digulir, dan menu tetap
+       menutup saat diklik di luar maupun ditekan Esc. */
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger className="flex items-center gap-2 rounded-lg px-1.5 py-1.5 transition-colors hover:bg-muted">
         <span
           aria-hidden="true"
@@ -93,10 +99,20 @@ export function AccountNav({ logoutAction }: AccountNavProps) {
           `svh` dipakai supaya batasnya mengikuti tinggi layar yang benar-benar
           terlihat di mobile, bukan tinggi termasuk bilah URL yang menghilang.
           `overscroll-contain` menahan gulir agar berhenti di ujung popup dan
-          tidak diteruskan ke <body> yang sedang dikunci Base UI saat menu
-          terbuka — tanpa itu, isi yang meluap tidak bisa digulir sama sekali. */}
+          tidak merembet ke halaman di belakangnya begitu isinya mentok. Dulu
+          ia sekaligus menyiasati <body> yang dikunci Base UI; sejak
+          `modal={false}` di atas, kuncian itu sudah tidak ada. */}
       <DropdownMenuContent
         align="end"
+        /* Header ini `fixed`, sedangkan popup di-portal ke <body> dan secara
+           bawaan diposisikan `absolute` — yaitu dalam koordinat DOKUMEN. Maka
+           begitu halaman digulir — hal yang baru mungkin terjadi sejak
+           `modal={false}` — popupnya ikut bergerak sementara avatar jangkarnya
+           diam di header, dan menu terlihat lari meninggalkan pemicunya.
+
+           `fixed` menempatkannya dalam koordinat VIEWPORT, sama seperti
+           jangkarnya, sehingga keduanya diam bersama saat halaman bergulir. */
+        positionMethod="fixed"
         className="max-h-[min(var(--available-height),70svh)] min-w-56 overscroll-contain"
       >
         {/* `DropdownMenuLabel` (Base UI `Menu.GroupLabel`) mewajibkan
