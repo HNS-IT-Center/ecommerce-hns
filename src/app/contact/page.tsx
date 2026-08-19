@@ -1,10 +1,10 @@
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
-import { MapPin, Clock, Mail, MessageCircle, Navigation } from "lucide-react"
+import Link from "next/link"
+import { MapPin, Mail, MessageCircle } from "lucide-react"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import { getActiveStores } from "@/lib/api/stores"
 import { CS_EMAIL } from "@/lib/constants/contact"
-import { formatOpeningHours } from "@/lib/utils/opening-hours"
 import { env } from "@/config/env"
 
 export const metadata = {
@@ -80,36 +80,26 @@ export default async function ContactPage() {
           </div>
         </section>
 
-        {/* Store Addresses */}
+        {/* Daftar toko lengkap tinggal di /stores — SATU rumah untuk alamat,
+            jam buka, dan petunjuk arah. Data yang sama sebelumnya dirender di
+            tiga halaman (/stores, /about, /contact). Sumbernya memang satu
+            (`getActiveStores`), jadi isinya tidak pernah berselisih — tapi
+            pembaca tetap harus menebak halaman mana yang paling lengkap, dan
+            setiap perubahan tata letak harus dikerjakan tiga kali. */}
         <section className="border-t bg-muted/10 py-16">
-          <div className="mx-auto max-w-5xl px-4 md:px-6">
-            <h2 className="mb-8 text-center text-2xl font-extrabold text-sale-red">
-              Kunjungi Toko Kami
-            </h2>
-            <div className="grid gap-6 md:grid-cols-2">
-              {stores.map((store) => (
-                <div key={store.id} className="rounded-2xl border bg-card p-6 shadow-sm">
-                  <h3 className="text-lg font-bold">{store.name}</h3>
-                  <div className="mt-4 flex items-start gap-3 text-sm text-muted-foreground">
-                    <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand-green" />
-                    <p className="leading-relaxed">{store.address}</p>
-                  </div>
-                  <div className="mt-3 flex items-center gap-3 text-sm font-medium text-foreground">
-                    <Clock className="h-4 w-4 text-sale-red" />
-                    <p>{formatOpeningHours(store.hours)}</p>
-                  </div>
-                  <a
-                    href={store.mapsUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-6 flex items-center justify-center gap-2 rounded-xl border border-input bg-background px-4 py-3 text-sm font-bold shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-                  >
-                    <Navigation className="h-4 w-4" />
-                    Google Maps
-                  </a>
-                </div>
-              ))}
-            </div>
+          <div className="mx-auto max-w-5xl px-4 text-center md:px-6">
+            <h2 className="text-2xl font-extrabold text-sale-red">Kunjungi Toko Kami</h2>
+            <p className="mx-auto mt-3 max-w-md text-muted-foreground">
+              {stores.length} cabang di Batam: {stores.map((s) => s.name).join(" dan ")}.
+              Alamat lengkap, jam buka, dan petunjuk arah ada di halaman lokasi toko.
+            </p>
+            <Link
+              href="/stores"
+              className="mt-6 inline-flex items-center gap-2 rounded-xl border border-input bg-background px-6 py-3 text-sm font-bold shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              <MapPin className="h-4 w-4 text-brand-green" />
+              Lihat Lokasi Toko
+            </Link>
           </div>
         </section>
       </main>

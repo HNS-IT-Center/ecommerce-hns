@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { Star, MapPin } from "lucide-react";
@@ -272,27 +273,36 @@ export default async function AboutPage() {
         </section>
 
         {/* STORE LOCATIONS (BOTTOM) */}
+        {/* Daftar toko lengkap tinggal di /stores — SATU rumah untuk alamat,
+            jam buka, dan petunjuk arah. Data yang sama sebelumnya dirender di
+            tiga halaman (/stores, /about, /contact). Sumbernya memang satu
+            (`getActiveStores`), jadi isinya tidak pernah berselisih — tapi
+            pembaca tetap harus menebak halaman mana yang paling lengkap, dan
+            setiap perubahan tata letak harus dikerjakan tiga kali. */}
         <section className="border-t bg-muted/10 py-16">
-          <div className="container mx-auto px-4 md:px-6">
+          <div className="container mx-auto px-4 text-center md:px-6">
             {stores.length === 0 ? (
-              <p className="text-center text-muted-foreground">
+              <p className="text-muted-foreground">
                 Data toko belum tersedia. Hubungi kami lewat WhatsApp untuk
                 menanyakan lokasi.
               </p>
             ) : (
-              <div className="grid gap-8 md:grid-cols-2">
-                {stores.map((store) => (
-                  <div key={store.id} className="space-y-2 text-center">
-                    <h3 className="text-xl font-bold text-sale-red">
-                      {store.name}
-                    </h3>
-                    <p className="mx-auto flex max-w-sm items-center justify-center gap-2 text-muted-foreground">
-                      <MapPin className="h-4 w-4 shrink-0 text-brand-green" />
-                      {store.address}
-                    </p>
-                  </div>
-                ))}
-              </div>
+              <>
+                <h2 className="text-2xl font-extrabold text-sale-red">
+                  {stores.length} cabang di Batam
+                </h2>
+                <p className="mx-auto mt-3 max-w-md text-muted-foreground">
+                  {stores.map((s) => s.name).join(" dan ")} — alamat lengkap, jam buka,
+                  dan petunjuk arah ada di halaman lokasi toko.
+                </p>
+                <Link
+                  href="/stores"
+                  className="mt-6 inline-flex items-center gap-2 rounded-xl border border-input bg-background px-6 py-3 text-sm font-bold shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                  <MapPin className="h-4 w-4 text-brand-green" />
+                  Lihat Lokasi Toko
+                </Link>
+              </>
             )}
           </div>
         </section>

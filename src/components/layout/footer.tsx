@@ -106,10 +106,11 @@ export async function Footer() {
                   ditaut dari mana pun — dan halaman tanpa tautan masuk praktis
                   tidak pernah ditelusuri mesin pencari. */}
               <li><Link href="/tools" className="hover:text-white hover:underline">Tes Keyboard, Mouse & Gamepad</Link></li>
-              <li><Link href="/kebijakan/pengembalian-barang" className="hover:text-white hover:underline">Kebijakan Pengembalian Barang</Link></li>
-              <li><Link href="/kebijakan/pengembalian-dana" className="hover:text-white hover:underline">Kebijakan Pengembalian Dana</Link></li>
-              <li><Link href="/kebijakan/pembatalan-pesanan" className="hover:text-white hover:underline">Kebijakan Pembatalan Pesanan</Link></li>
-              <li><Link href="/kebijakan/pengiriman" className="hover:text-white hover:underline">Kebijakan Pengiriman</Link></li>
+              {/* Empat kebijakan dulu berdiri sendiri-sendiri di sini dan memakan
+                  separuh kolom. Sekarang satu tautan ke halaman induknya — alamat
+                  yang sebelumnya justru 404, padahal keempat anaknya ditaut dari
+                  setiap halaman situs. */}
+              <li><Link href="/kebijakan" className="hover:text-white hover:underline">Kebijakan Pembelian</Link></li>
             </ul>
           </div>
 
