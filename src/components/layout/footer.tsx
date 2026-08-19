@@ -1,6 +1,7 @@
 import Link from "next/link"
 import Image from "next/image"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
+import { CS_EMAIL } from "@/lib/constants/contact"
 import { env } from "@/config/env"
 import { getThemeSettings } from "@/lib/theme/settings"
 import { ChristmasFooterDecor, ChristmasFooterPattern } from "@/components/theme/christmas-decor"
@@ -136,8 +137,8 @@ export async function Footer() {
                 </a>
               </li>
               <li>
-                <a href="mailto:cs@hnsitcenter.co.id" className="hover:text-white hover:underline">
-                  cs@hnsitcenter.co.id
+                <a href={`mailto:${CS_EMAIL}`} className="hover:text-white hover:underline">
+                  {CS_EMAIL}
                 </a>
               </li>
             </ul>

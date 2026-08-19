@@ -8,6 +8,7 @@ import { MobileDock } from "@/components/layout/mobile-dock";
 import { FlyToCartProvider } from "@/components/providers/fly-to-cart-provider";
 import { JsonLd } from "@/components/seo/json-ld";
 import { env } from "@/config/env";
+import { CS_EMAIL } from "@/lib/constants/contact";
 import { getActiveThemeCss, getThemeSettings } from "@/lib/theme/settings";
 import { ChristmasSnow } from "@/components/theme/christmas-snow";
 import NextTopLoader from "nextjs-toploader";
@@ -44,7 +45,7 @@ const organizationJsonLd = {
   url: env.NEXT_PUBLIC_SITE_URL,
   description:
     "Pusat IT & Gaming terpercaya di Batam. Harga terbaik, garansi resmi, teknisi berpengalaman.",
-  email: "cs@hnsitcenter.co.id",
+  email: CS_EMAIL,
   telephone: env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER,
   address: {
     "@type": "PostalAddress",

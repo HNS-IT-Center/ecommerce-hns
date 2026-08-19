@@ -3,6 +3,7 @@ import { Footer } from "@/components/layout/footer"
 import { MapPin, Clock, Mail, MessageCircle, Navigation } from "lucide-react"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import { getActiveStores } from "@/lib/api/stores"
+import { CS_EMAIL } from "@/lib/constants/contact"
 import { formatOpeningHours } from "@/lib/utils/opening-hours"
 import { env } from "@/config/env"
 
@@ -14,7 +15,6 @@ export const metadata = {
 /** Alasannya sama dengan di `/stores` — lihat catatan revalidate di sana. */
 export const revalidate = 3600
 
-const CS_EMAIL = "cs@hnsitcenter.co.id"
 
 export default async function ContactPage() {
   const stores = await getActiveStores()
