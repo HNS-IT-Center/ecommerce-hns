@@ -22,9 +22,9 @@ export const metadata = {
 export default async function BuildPcPage({
   searchParams,
 }: {
-  searchParams: Promise<{ preset?: string }>
+  searchParams: Promise<{ preset?: string; pick?: string }>
 }) {
-  const [{ preset: presetId }, stepsConfig, customer] = await Promise.all([
+  const [{ preset: presetId, pick }, stepsConfig, customer] = await Promise.all([
     searchParams,
     getPcBuilderConfig(),
     getCurrentCustomer(),
@@ -44,6 +44,23 @@ export default async function BuildPcPage({
       const stepAda = new Set(stepsConfig.map((step) => step.id))
       const selections: Record<string, BuilderSelection[]> = {}
 
+      /**
+       * `pick` membawa pilihan varian sebagai `stepId:productId`, BUKAN indeks.
+       *
+       * Indeks akan berkhianat diam-diam: begitu staff mengurutkan ulang atau
+       * menghapus satu pilihan, setiap tautan yang sudah tersebar lewat
+       * WhatsApp menunjuk produk lain. Pelanggan membuka tautan "RAM 32GB"
+       * minggu depan dan mendapat 16GB — tanpa error, tanpa ada yang tahu.
+       */
+      const diminta = new Map<string, number>()
+      for (const bagian of (pick ?? "").split(",")) {
+        const [stepId, mentah] = bagian.split(":")
+        const productId = Number(mentah)
+        if (stepId && Number.isFinite(productId) && productId > 0) {
+          diminta.set(stepId, productId)
+        }
+      }
+
       for (const slot of preset.slots) {
         // Step yang sudah dihapus dari konfigurasi builder DILEWATI — bukan
         // menggagalkan pemuatan. Rakitan yang termuat sebagian masih berguna;
@@ -51,9 +68,20 @@ export default async function BuildPcPage({
         // komponen berubah.
         if (!stepAda.has(slot.stepId)) continue
 
+        // Yang diminta lewat URL dipakai HANYA kalau ia benar-benar salah satu
+        // pilihan slot ini dan produknya masih ada. Kalau tidak, jatuh ke
+        // bawaan — bukan dipaksakan masuk.
+        const idDiminta = diminta.get(slot.stepId)
+        const dariUrl =
+          idDiminta === undefined
+            ? undefined
+            : slot.options.find(
+                (option) => option.productId === idDiminta && byId.has(option.productId)
+              )
+
         // Bawaan = pilihan pertama yang produknya masih ada. Stok kosong TIDAK
         // memindahkan bawaan — pelanggan bisa menukarnya sendiri di wizard.
-        const terpakai = slot.options.find((option) => byId.has(option.productId))
+        const terpakai = dariUrl ?? slot.options.find((option) => byId.has(option.productId))
         const product = terpakai ? byId.get(terpakai.productId) : undefined
         if (!terpakai || !product) continue
 

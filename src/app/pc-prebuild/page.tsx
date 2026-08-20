@@ -92,12 +92,22 @@ export default async function PcPrebuildPage() {
 
                     <div className="mt-auto space-y-3 border-t pt-4">
                       <div>
+                        {/* "Mulai dari" HANYA untuk paket yang punya pilihan.
+                            Menyeragamkan semua kartu jadi "mulai dari" membuat
+                            harga pasti terlihat seperti harga awal. */}
                         <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                          Total
+                          {preset.branchingCount > 0 ? "Mulai dari" : "Total"}
                         </p>
                         <p className="text-xl font-extrabold text-sale-red">
-                          {formatRupiah(preset.total)}
+                          {formatRupiah(
+                            preset.branchingCount > 0 ? preset.minTotal : preset.total
+                          )}
                         </p>
+                        {preset.branchingCount > 0 && (
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {preset.branchingCount} komponen bisa dipilih
+                          </p>
+                        )}
                         {preset.missingCount > 0 && (
                           <p className="mt-1 flex items-start gap-1.5 text-xs text-sale-red">
                             <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />

@@ -79,6 +79,11 @@ export type ResolvedPrebuildPreset = {
   items: ResolvedPrebuildItem[]
   /** Menjumlahkan pilihan bawaan tiap slot yang produknya masih ada. */
   total: number
+  /**
+   * Kombinasi TERMURAH dari pilihan yang tersedia — dipakai label "mulai dari".
+   * Sama dengan `total` kalau paketnya tidak punya slot bercabang.
+   */
+  minTotal: number
   /** Slot yang SELURUH pilihannya hilang dari katalog. */
   missingCount: number
   /** Slot yang bawaannya ada tapi stoknya kosong. */
@@ -205,6 +210,11 @@ export async function resolvePrebuildPresets(
         (jumlah, item) => jumlah + (item.product ? item.product.price * item.quantity : 0),
         0
       ),
+      minTotal: slots.reduce((jumlah, slot) => {
+        const tersedia = slot.options.filter((option) => option.product !== null)
+        if (tersedia.length === 0) return jumlah
+        return jumlah + Math.min(...tersedia.map((o) => o.product!.price * o.quantity))
+      }, 0),
       missingCount: slots.filter((slot) => slot.defaultIndex < 0).length,
       outOfStockCount: items.filter((item) => item.product !== null && item.product.stock <= 0)
         .length,

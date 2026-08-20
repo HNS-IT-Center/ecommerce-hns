@@ -31,20 +31,14 @@
 import { unstable_cache } from "next/cache"
 
 import { getPrisma } from "@/lib/prisma/client"
+import { MAX_BRANCHING_SLOTS, MAX_OPTIONS_PER_SLOT } from "./limits"
 
 export const PC_PREBUILD_CACHE_TAG = "pc-prebuild-config"
 export const PC_PREBUILD_SETTING_KEY = "PC_PREBUILD_CONFIG"
 
-/**
- * Batas yang disengaja, bukan angka acak.
- *
- * Tiga slot bercabang dengan tiga pilihan masing-masing sudah 27 kombinasi
- * harga di satu halaman. Lebih dari itu, halaman detail berubah jadi
- * konfigurator — dan untuk itu sudah ada PC Builder. Tiga cukup untuk kasus
- * nyata: 16/32 GB, hitam/putih, 1/2 TB.
- */
-export const MAX_OPTIONS_PER_SLOT = 3
-export const MAX_BRANCHING_SLOTS = 3
+// Batasnya tinggal di berkas sendiri supaya panel admin (Client Component)
+// bisa memakainya tanpa menyeret Prisma ke bundle browser. Lihat limits.ts.
+export { MAX_BRANCHING_SLOTS, MAX_OPTIONS_PER_SLOT } from "./limits"
 
 export type PcPrebuildOption = {
   productId: number
@@ -109,7 +103,10 @@ function angkaSah(value: unknown): value is number {
 function toOption(value: unknown): PcPrebuildOption | null {
   if (typeof value !== "object" || value === null) return null
   const opt = value as Record<string, unknown>
-  if (!angkaSah(opt.productId)) return null
+  // `> 0` penting: panel admin membuat baris pilihan kosong dengan productId 0
+  // sebagai penampung sementara. Baris yang tidak pernah diisi harus mati di
+  // sini, bukan tersimpan sebagai pilihan yang tidak menunjuk produk apa pun.
+  if (!angkaSah(opt.productId) || opt.productId <= 0) return null
   if (!angkaSah(opt.quantity) || opt.quantity <= 0) return null
 
   const label = typeof opt.label === "string" ? opt.label.trim() : ""

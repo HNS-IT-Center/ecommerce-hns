@@ -1,12 +1,19 @@
 "use client"
 
 import { useRef, useState, useTransition } from "react"
-import { ChevronDown, ChevronRight, Plus, Save, Trash2, TriangleAlert } from "lucide-react"
+import { ChevronDown, ChevronRight, Plus, Save, Trash2, TriangleAlert, X } from "lucide-react"
 
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox"
 import { fetchBuilderProducts } from "@/features/builder/actions"
 import type { PcBuilderStepConfig } from "@/lib/pc-builder/config"
-import type { PcPrebuildConfig, PcPrebuildPreset } from "@/lib/pc-prebuild/config"
+// NILAI dari limits.ts, TIPE dari config.ts. Mengimpor nilai dari config.ts
+// akan menyeret getPrisma() ke bundle browser dan menggagalkan build.
+import { MAX_BRANCHING_SLOTS, MAX_OPTIONS_PER_SLOT } from "@/lib/pc-prebuild/limits"
+import type {
+  PcPrebuildConfig,
+  PcPrebuildOption,
+  PcPrebuildPreset,
+} from "@/lib/pc-prebuild/config"
 
 import { savePcPrebuildConfig } from "./actions"
 
@@ -22,7 +29,6 @@ type Props = {
 }
 
 function idBaru(): string {
-  // `crypto.randomUUID` tersedia di semua browser yang didukung project ini.
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `preset-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -68,61 +74,26 @@ export function PrebuildManager({ initialConfig, steps, initialOptions, productN
     })
   }
 
-  /**
-   * Menyunting pilihan PERTAMA sebuah slot, dan MEMPERTAHANKAN sisanya.
-   *
-   * Editor ini belum punya antarmuka multi-pilihan. Kalau ia menulis ulang
-   * seluruh slot, pilihan kedua dan ketiga yang tidak bisa ia tampilkan akan
-   * terhapus diam-diam setiap kali staff menyimpan.
-   */
-  function setItem(presetId: string, stepId: string, productId: number | null, label?: string) {
-    if (productId !== null && label) setNama((lama) => ({ ...lama, [productId]: label }))
-
+  /** Ubah daftar pilihan satu slot. Daftar kosong = slotnya dibuang. */
+  function ubahSlot(presetId: string, stepId: string, options: PcPrebuildOption[]) {
     setPresets((lama) =>
       lama.map((preset) => {
         if (preset.id !== presetId) return preset
 
-        if (productId === null) {
+        if (options.length === 0) {
           return { ...preset, slots: preset.slots.filter((slot) => slot.stepId !== stepId) }
         }
 
-        const slotLama = preset.slots.find((slot) => slot.stepId === stepId)
-        const sisaPilihan = (slotLama?.options ?? [])
-          .slice(1)
-          .filter((option) => option.productId !== productId)
-        const qtyLama = slotLama?.options[0]?.quantity ?? 1
-        const slotBaru = {
-          stepId,
-          options: [{ productId, quantity: qtyLama }, ...sisaPilihan],
-        }
-
-        return slotLama
-          ? { ...preset, slots: preset.slots.map((slot) => (slot.stepId === stepId ? slotBaru : slot)) }
-          : { ...preset, slots: [...preset.slots, slotBaru] }
-      })
-    )
-  }
-
-  function setQty(presetId: string, stepId: string, quantity: number) {
-    if (!Number.isFinite(quantity) || quantity < 1) return
-    setPresets((lama) =>
-      lama.map((preset) =>
-        preset.id === presetId
+        const ada = preset.slots.some((slot) => slot.stepId === stepId)
+        return ada
           ? {
               ...preset,
               slots: preset.slots.map((slot) =>
-                slot.stepId === stepId
-                  ? {
-                      ...slot,
-                      options: slot.options.map((option, i) =>
-                        i === 0 ? { ...option, quantity } : option
-                      ),
-                    }
-                  : slot
+                slot.stepId === stepId ? { ...slot, options } : slot
               ),
             }
-          : preset
-      )
+          : { ...preset, slots: [...preset.slots, { stepId, options }] }
+      })
     )
   }
 
@@ -184,6 +155,8 @@ export function PrebuildManager({ initialConfig, steps, initialOptions, productN
         ) : (
           presets.map((preset, index) => {
             const terbuka = openId === preset.id
+            const bercabang = preset.slots.filter((slot) => slot.options.length > 1).length
+
             return (
               <div key={preset.id} className="border-b border-input last:border-b-0">
                 <div className="flex flex-wrap items-center gap-2 p-3">
@@ -198,7 +171,9 @@ export function PrebuildManager({ initialConfig, steps, initialOptions, productN
                     ) : (
                       <ChevronRight className="h-4 w-4" />
                     )}
-                    <span className="sr-only">{terbuka ? "Tutup" : "Buka"} {preset.name}</span>
+                    <span className="sr-only">
+                      {terbuka ? "Tutup" : "Buka"} {preset.name}
+                    </span>
                   </button>
 
                   <input
@@ -218,6 +193,11 @@ export function PrebuildManager({ initialConfig, steps, initialOptions, productN
                   <span className="shrink-0 rounded-full border border-input bg-muted/40 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
                     {preset.slots.length} komponen
                   </span>
+                  {bercabang > 0 && (
+                    <span className="shrink-0 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-primary">
+                      {bercabang} bisa dipilih
+                    </span>
+                  )}
 
                   <div className="flex shrink-0 items-center gap-1">
                     <button
@@ -248,23 +228,22 @@ export function PrebuildManager({ initialConfig, steps, initialOptions, productN
                 </div>
 
                 {terbuka && (
-                  <div className="space-y-2 border-t border-input bg-muted/20 p-3">
-                    {steps.map((step) => {
-                      const slot = preset.slots.find((s) => s.stepId === step.id)
-                      const item = slot?.options[0]
-                      return (
-                        <StepPicker
-                          key={step.id}
-                          step={step}
-                          options={initialOptions[step.id] ?? []}
-                          productId={item?.productId ?? null}
-                          productLabel={item ? (nama[item.productId] ?? "") : ""}
-                          quantity={item?.quantity ?? 1}
-                          onPick={(id, label) => setItem(preset.id, step.id, id, label)}
-                          onQty={(n) => setQty(preset.id, step.id, n)}
-                        />
-                      )
-                    })}
+                  <div className="space-y-3 border-t border-input bg-muted/20 p-3">
+                    {steps.map((step) => (
+                      <SlotEditor
+                        key={step.id}
+                        step={step}
+                        options={preset.slots.find((s) => s.stepId === step.id)?.options ?? []}
+                        saranAwal={initialOptions[step.id] ?? []}
+                        namaProduk={nama}
+                        // Batas slot bercabang ditegakkan di parser juga; di sini
+                        // supaya staff tahu SEBELUM menyimpan, bukan setelah
+                        // pilihannya diam-diam dikunci.
+                        bolehTambahCabang={bercabang < MAX_BRANCHING_SLOTS}
+                        onNamaProduk={(id, label) => setNama((l) => ({ ...l, [id]: label }))}
+                        onChange={(opts) => ubahSlot(preset.id, step.id, opts)}
+                      />
+                    ))}
                   </div>
                 )}
               </div>
@@ -297,44 +276,154 @@ export function PrebuildManager({ initialConfig, steps, initialOptions, productN
   )
 }
 
-type StepPickerProps = {
+type SlotEditorProps = {
   step: PcBuilderStepConfig
-  options: ComboboxOption[]
-  productId: number | null
-  productLabel: string
-  quantity: number
-  onPick: (productId: number | null, label?: string) => void
+  options: PcPrebuildOption[]
+  saranAwal: ComboboxOption[]
+  namaProduk: Record<number, string>
+  bolehTambahCabang: boolean
+  onNamaProduk: (productId: number, label: string) => void
+  onChange: (options: PcPrebuildOption[]) => void
+}
+
+/**
+ * Satu langkah = satu slot, berisi satu sampai tiga pilihan.
+ *
+ * Pilihan PERTAMA adalah bawaan; itulah yang dipakai kalau pelanggan tidak
+ * memilih apa-apa. Pilihan kedua dan seterusnya muncul sebagai tombol di
+ * halaman paket — "16 GB / 32 GB", "Hitam / Putih".
+ */
+function SlotEditor({
+  step,
+  options,
+  saranAwal,
+  namaProduk,
+  bolehTambahCabang,
+  onNamaProduk,
+  onChange,
+}: SlotEditorProps) {
+  const terpakai = options.map((o) => o.productId)
+  const bercabang = options.length > 1
+  const bisaTambah =
+    options.length > 0 &&
+    options.length < MAX_OPTIONS_PER_SLOT &&
+    (bercabang || bolehTambahCabang)
+
+  function ubahIndeks(i: number, patch: Partial<PcPrebuildOption>) {
+    onChange(options.map((o, idx) => (idx === i ? { ...o, ...patch } : o)))
+  }
+
+  return (
+    <div className="rounded-lg border border-input bg-background p-2.5">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {step.name}
+        </span>
+        {bercabang && (
+          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+            pelanggan memilih
+          </span>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        {(options.length === 0 ? [null] : options).map((option, i) => (
+          <OptionRow
+            key={option ? `${option.productId}-${i}` : "kosong"}
+            step={step}
+            saranAwal={saranAwal}
+            option={option}
+            index={i}
+            isBawaan={i === 0}
+            /** Produk yang sudah dipakai pilihan lain di slot ini — tidak boleh kembar. */
+            terlarang={terpakai.filter((_, idx) => idx !== i)}
+            namaProduk={namaProduk}
+            onNamaProduk={onNamaProduk}
+            onPilih={(productId, label) => {
+              if (productId === null) {
+                onChange(options.filter((_, idx) => idx !== i))
+                return
+              }
+              if (option) ubahIndeks(i, { productId })
+              else onChange([...options, { productId, quantity: 1 }])
+              if (label) onNamaProduk(productId, label)
+            }}
+            onLabel={(label) => ubahIndeks(i, { label: label || undefined })}
+            onQty={(quantity) => ubahIndeks(i, { quantity })}
+          />
+        ))}
+      </div>
+
+      {bisaTambah && (
+        <button
+          type="button"
+          onClick={() => onChange([...options, { productId: 0, quantity: 1 }])}
+          className="mt-2 flex items-center gap-1 rounded-lg border border-dashed border-input px-2.5 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Tambah pilihan
+        </button>
+      )}
+
+      {options.length >= MAX_OPTIONS_PER_SLOT && (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Maksimal {MAX_OPTIONS_PER_SLOT} pilihan per komponen.
+        </p>
+      )}
+      {!bercabang && options.length > 0 && !bolehTambahCabang && (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Sudah ada {MAX_BRANCHING_SLOTS} komponen yang bisa dipilih di paket ini — batasnya
+          tercapai.
+        </p>
+      )}
+    </div>
+  )
+}
+
+type OptionRowProps = {
+  step: PcBuilderStepConfig
+  saranAwal: ComboboxOption[]
+  option: PcPrebuildOption | null
+  index: number
+  isBawaan: boolean
+  terlarang: number[]
+  namaProduk: Record<number, string>
+  onNamaProduk: (productId: number, label: string) => void
+  onPilih: (productId: number | null, label?: string) => void
+  onLabel: (label: string) => void
   onQty: (quantity: number) => void
 }
 
 /**
- * Satu baris langkah: pemilih produk + jumlah.
+ * Satu baris pilihan: produk + label tombol + jumlah.
  *
- * Daftar awalnya dimuat di server (20 teratas per langkah) supaya dropdownnya
- * tidak kosong saat dibuka. Begitu staff mengetik 3 huruf atau lebih, daftarnya
+ * Daftar produknya dimuat di server (20 teratas per langkah) supaya dropdown
+ * tidak kosong saat dibuka; begitu staff mengetik tiga huruf, daftarnya
  * diperbarui lewat `fetchBuilderProducts` — server action yang SAMA dengan yang
- * dipakai wizard pelanggan, jadi produk yang bisa dipilih di sini persis produk
- * yang bisa dipilih di sana.
+ * dipakai wizard pelanggan.
  */
-function StepPicker({
+function OptionRow({
   step,
-  options,
-  productId,
-  productLabel,
-  quantity,
-  onPick,
+  saranAwal,
+  option,
+  isBawaan,
+  terlarang,
+  namaProduk,
+  onPilih,
+  onLabel,
   onQty,
-}: StepPickerProps) {
-  const [teks, setTeks] = useState(productLabel)
-  const [daftar, setDaftar] = useState<ComboboxOption[]>(options)
-  const [nilaiTerakhir, setNilaiTerakhir] = useState(productLabel)
+}: OptionRowProps) {
+  const labelProduk = option && option.productId ? (namaProduk[option.productId] ?? "") : ""
+  const [teks, setTeks] = useState(labelProduk)
+  const [daftar, setDaftar] = useState<ComboboxOption[]>(saranAwal)
+  const [nilaiTerakhir, setNilaiTerakhir] = useState(labelProduk)
   const queryTerakhir = useRef("")
 
   // Diselaraskan saat render, bukan lewat useEffect — aturan lint repo ini
   // menolak setState di dalam efek (`react-hooks/set-state-in-effect`).
-  if (productLabel !== nilaiTerakhir) {
-    setNilaiTerakhir(productLabel)
-    setTeks(productLabel)
+  if (labelProduk !== nilaiTerakhir) {
+    setNilaiTerakhir(labelProduk)
+    setTeks(labelProduk)
   }
 
   async function cari(q: string) {
@@ -351,12 +440,13 @@ function StepPicker({
     setDaftar(products.map((p) => ({ id: p.id, label: p.name })))
   }
 
-  return (
-    <div className="grid gap-2 sm:grid-cols-[9rem_minmax(0,1fr)_5rem_auto] sm:items-center">
-      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        {step.name}
-      </span>
+  // Produk yang sudah dipakai pilihan lain disembunyikan dari daftar. `productId`
+  // adalah identitas pilihan — termasuk di URL nanti — jadi dua pilihan dengan
+  // produk yang sama tidak bisa dibedakan satu sama lain.
+  const daftarBersih = daftar.filter((o) => !terlarang.includes(Number(o.id)))
 
+  return (
+    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_4.5rem_auto] sm:items-center">
       <Combobox
         requireOption
         value={teks}
@@ -365,20 +455,32 @@ function StepPicker({
           if (v.trim().length >= 3) void cari(v.trim())
         }}
         onCommit={(label) => {
-          const cocok = daftar.find((o) => o.label.toLowerCase() === label.trim().toLowerCase())
-          onPick(cocok ? Number(cocok.id) : null, cocok?.label)
+          const cocok = daftarBersih.find(
+            (o) => o.label.toLowerCase() === label.trim().toLowerCase()
+          )
+          onPilih(cocok ? Number(cocok.id) : null, cocok?.label)
         }}
-        options={daftar}
-        placeholder="Ketik untuk mencari produk…"
+        options={daftarBersih}
+        placeholder={isBawaan ? "Komponen bawaan…" : "Pilihan lain…"}
         inputClassName="h-9 text-sm"
+      />
+
+      <input
+        value={option?.label ?? ""}
+        onChange={(e) => onLabel(e.target.value)}
+        placeholder={isBawaan ? "Label (ops.)" : "Label"}
+        aria-label={`Label pilihan untuk ${step.name}`}
+        disabled={!option?.productId}
+        title="Teks tombol pilihan — mis. 16 GB, Hitam, Samsung. Kosong = pakai nama produk."
+        className="w-full rounded-lg border border-input bg-background px-2 py-1.5 text-sm outline-none focus:border-primary disabled:opacity-50"
       />
 
       <input
         type="number"
         min={1}
-        value={quantity}
+        value={option?.quantity ?? 1}
         onChange={(e) => onQty(Number(e.target.value))}
-        disabled={productId === null}
+        disabled={!option?.productId}
         aria-label={`Jumlah ${step.name}`}
         className="w-full rounded-lg border border-input bg-background px-2 py-1.5 text-sm tabular-nums outline-none focus:border-primary disabled:opacity-50"
       />
@@ -387,12 +489,13 @@ function StepPicker({
         type="button"
         onClick={() => {
           setTeks("")
-          onPick(null)
+          onPilih(null)
         }}
-        disabled={productId === null}
-        className="rounded-lg border border-input px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted disabled:opacity-40"
+        disabled={!option?.productId}
+        aria-label={`Hapus pilihan ${step.name}`}
+        className="rounded-lg border border-input px-2 py-1.5 text-muted-foreground hover:bg-muted disabled:opacity-40"
       >
-        Kosongkan
+        <X className="h-3.5 w-3.5" />
       </button>
     </div>
   )
