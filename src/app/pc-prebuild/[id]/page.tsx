@@ -1,3 +1,4 @@
+import Image from "next/image"
 import Link from "next/link"
 import { notFound, redirect } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
@@ -61,6 +62,17 @@ export default async function PrebuildDetailPage({ params }: Props) {
           <h1 className="text-3xl font-extrabold tracking-tight md:text-4xl">{resolved.name}</h1>
           {resolved.summary && (
             <p className="mt-2 max-w-2xl text-muted-foreground">{resolved.summary}</p>
+          )}
+
+          {resolved.image && (
+            <Image
+              src={resolved.image}
+              alt=""
+              width={960}
+              height={640}
+              priority
+              className="mt-6 aspect-[3/2] w-full rounded-2xl border bg-white object-contain"
+            />
           )}
 
           <PrebuildDetail

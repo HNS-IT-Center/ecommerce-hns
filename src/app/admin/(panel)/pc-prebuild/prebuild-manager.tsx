@@ -1,11 +1,13 @@
 "use client"
 
+import Image from "next/image"
 import { useRef, useState, useTransition } from "react"
-import { ChevronDown, ChevronRight, Plus, Save, Trash2, TriangleAlert, X } from "lucide-react"
+import { ChevronDown, ChevronRight, ImagePlus, Plus, Save, Trash2, TriangleAlert, X } from "lucide-react"
 
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox"
 import { fetchBuilderProducts } from "@/features/builder/actions"
 import { formatRupiah } from "@/lib/utils"
+import { compressImage } from "@/lib/utils/image-compression"
 import type { PcBuilderStepConfig } from "@/lib/pc-builder/config"
 // NILAI dari limits.ts, TIPE dari config.ts. Mengimpor nilai dari config.ts
 // akan menyeret getPrisma() ke bundle browser dan menggagalkan build.
@@ -288,6 +290,11 @@ export function PrebuildManager({
 
                 {terbuka && (
                   <div className="space-y-3 border-t border-input bg-muted/20 p-3">
+                    <FotoPaket
+                      url={preset.image ?? null}
+                      onChange={(url) => ubahPreset(preset.id, { image: url ?? undefined })}
+                    />
+
                     {steps.map((step) => (
                       <SlotEditor
                         key={step.id}
@@ -332,6 +339,105 @@ export function PrebuildManager({
           {pending ? "Menyimpan…" : "Simpan"}
         </button>
         {flash && <span className="text-sm text-muted-foreground">{flash}</span>}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Foto rakitan jadi untuk satu paket.
+ *
+ * Diunggah ke Cloudflare R2 lewat `POST /api/admin/media` — satu-satunya jalur
+ * unggah foto di project ini (CLAUDE.md §2.2). Dikompres dulu di browser, sama
+ * seperti foto banner dan foto produk: berkas dari kamera bisa beberapa MB, dan
+ * ini gambar yang dimuat pertama kali oleh setiap pengunjung halaman paket.
+ *
+ * BEDA dari form produk, unggahannya terjadi SAAT DIPILIH, bukan ditahan sampai
+ * "Simpan". Form produk menahannya karena staff sering menambah lalu membatalkan
+ * banyak gambar sekaligus; di sini cuma satu foto per paket, dan menahannya
+ * berarti pratinjaunya hilang setiap kali panel ini dirender ulang.
+ */
+function FotoPaket({
+  url,
+  onChange,
+}: {
+  url: string | null
+  onChange: (url: string | null) => void
+}) {
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function pilih(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploading(true)
+    setError(null)
+    try {
+      const { file: compressed } = await compressImage(file)
+      const formData = new FormData()
+      formData.append("file", compressed)
+      const res = await fetch("/api/admin/media", { method: "POST", body: formData })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Upload gambar gagal")
+      onChange(data.source_url as string)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload gambar gagal")
+    } finally {
+      setUploading(false)
+      e.target.value = ""
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-input bg-background p-2.5">
+      {url ? (
+        <Image
+          src={url}
+          alt=""
+          width={96}
+          height={96}
+          className="h-24 w-24 shrink-0 rounded-lg border bg-white object-contain"
+        />
+      ) : (
+        <span
+          aria-hidden="true"
+          className="grid h-24 w-24 shrink-0 place-items-center rounded-lg border border-dashed border-input bg-muted/40 text-muted-foreground"
+        >
+          <ImagePlus className="h-6 w-6" />
+        </span>
+      )}
+
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <p className="text-xs font-semibold">Foto rakitan</p>
+        <p className="text-[11px] text-muted-foreground">
+          Foto PC-nya utuh — ini yang paling menentukan kesan pelanggan. Kalau kosong, kartunya
+          memakai foto komponen.
+        </p>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="cursor-pointer rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs font-semibold hover:bg-muted">
+            {uploading ? "Mengunggah…" : url ? "Ganti foto" : "Pilih foto"}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={pilih}
+              disabled={uploading}
+              className="sr-only"
+            />
+          </label>
+          {url && (
+            <button
+              type="button"
+              onClick={() => onChange(null)}
+              className="rounded-lg border border-input px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted"
+            >
+              Hapus
+            </button>
+          )}
+        </div>
+
+        {error && <p className="text-[11px] text-destructive">{error}</p>}
       </div>
     </div>
   )

@@ -66,6 +66,19 @@ export default async function PcPrebuildPage() {
                     key={preset.id}
                     className="flex w-full max-w-sm flex-col gap-4 rounded-2xl border bg-card p-6 shadow-sm transition-shadow hover:shadow-md"
                   >
+                    {/* Foto rakitan utuh memimpin kartu kalau ada. Foto komponen
+                        di bawah tetap berguna, tapi yang membuat orang berhenti
+                        menggulir adalah wujud PC-nya. */}
+                    {preset.image && (
+                      <Image
+                        src={preset.image}
+                        alt=""
+                        width={640}
+                        height={480}
+                        className="aspect-[4/3] w-full rounded-xl border bg-white object-contain"
+                      />
+                    )}
+
                     <div>
                       <h2 className="text-lg font-bold">{preset.name}</h2>
                       {preset.summary && (

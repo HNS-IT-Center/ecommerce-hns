@@ -73,6 +73,15 @@ export type PcPrebuildPreset = {
   id: string
   name: string
   summary: string
+  /**
+   * Foto rakitan jadi, hasil unggah ke Cloudflare R2 lewat POST /api/admin/media
+   * — satu-satunya jalur unggah foto di project ini (CLAUDE.md §2.2).
+   *
+   * Yang disimpan URL-nya saja. Foto komponen satu per satu sudah ada di
+   * katalog; ini foto PC-nya UTUH, yang justru paling menentukan kesan
+   * pelanggan dan tidak bisa disusun dari foto komponen.
+   */
+  image?: string
   order: number
   slots: PcPrebuildSlot[]
 }
@@ -207,10 +216,13 @@ function toPreset(value: unknown, index: number): PcPrebuildPreset | null {
   // sebelum percabangan ada.
   const slots = rapikanSlots(dariSlots.length > 0 ? dariSlots : dariItems)
 
+  const image = typeof preset.image === "string" ? preset.image.trim() : ""
+
   return {
     id: preset.id,
     name: preset.name,
     summary: typeof preset.summary === "string" ? preset.summary : "",
+    ...(image ? { image } : {}),
     order: angkaSah(preset.order) ? preset.order : index,
     slots,
   }
