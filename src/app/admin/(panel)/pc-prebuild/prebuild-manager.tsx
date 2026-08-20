@@ -46,7 +46,7 @@ export function PrebuildManager({ initialConfig, steps, initialOptions, productN
       name: "Paket baru",
       summary: "",
       order: presets.length,
-      items: [],
+      slots: [],
     }
     setPresets((lama) => [...lama, preset])
     setOpenId(preset.id)
@@ -68,16 +68,37 @@ export function PrebuildManager({ initialConfig, steps, initialOptions, productN
     })
   }
 
+  /**
+   * Menyunting pilihan PERTAMA sebuah slot, dan MEMPERTAHANKAN sisanya.
+   *
+   * Editor ini belum punya antarmuka multi-pilihan. Kalau ia menulis ulang
+   * seluruh slot, pilihan kedua dan ketiga yang tidak bisa ia tampilkan akan
+   * terhapus diam-diam setiap kali staff menyimpan.
+   */
   function setItem(presetId: string, stepId: string, productId: number | null, label?: string) {
     if (productId !== null && label) setNama((lama) => ({ ...lama, [productId]: label }))
 
     setPresets((lama) =>
       lama.map((preset) => {
         if (preset.id !== presetId) return preset
-        const tanpaStep = preset.items.filter((item) => item.stepId !== stepId)
-        if (productId === null) return { ...preset, items: tanpaStep }
-        const qtyLama = preset.items.find((item) => item.stepId === stepId)?.quantity ?? 1
-        return { ...preset, items: [...tanpaStep, { stepId, productId, quantity: qtyLama }] }
+
+        if (productId === null) {
+          return { ...preset, slots: preset.slots.filter((slot) => slot.stepId !== stepId) }
+        }
+
+        const slotLama = preset.slots.find((slot) => slot.stepId === stepId)
+        const sisaPilihan = (slotLama?.options ?? [])
+          .slice(1)
+          .filter((option) => option.productId !== productId)
+        const qtyLama = slotLama?.options[0]?.quantity ?? 1
+        const slotBaru = {
+          stepId,
+          options: [{ productId, quantity: qtyLama }, ...sisaPilihan],
+        }
+
+        return slotLama
+          ? { ...preset, slots: preset.slots.map((slot) => (slot.stepId === stepId ? slotBaru : slot)) }
+          : { ...preset, slots: [...preset.slots, slotBaru] }
       })
     )
   }
@@ -89,8 +110,15 @@ export function PrebuildManager({ initialConfig, steps, initialOptions, productN
         preset.id === presetId
           ? {
               ...preset,
-              items: preset.items.map((item) =>
-                item.stepId === stepId ? { ...item, quantity } : item
+              slots: preset.slots.map((slot) =>
+                slot.stepId === stepId
+                  ? {
+                      ...slot,
+                      options: slot.options.map((option, i) =>
+                        i === 0 ? { ...option, quantity } : option
+                      ),
+                    }
+                  : slot
               ),
             }
           : preset
@@ -188,7 +216,7 @@ export function PrebuildManager({ initialConfig, steps, initialOptions, productN
                   />
 
                   <span className="shrink-0 rounded-full border border-input bg-muted/40 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
-                    {preset.items.length} komponen
+                    {preset.slots.length} komponen
                   </span>
 
                   <div className="flex shrink-0 items-center gap-1">
@@ -222,7 +250,8 @@ export function PrebuildManager({ initialConfig, steps, initialOptions, productN
                 {terbuka && (
                   <div className="space-y-2 border-t border-input bg-muted/20 p-3">
                     {steps.map((step) => {
-                      const item = preset.items.find((i) => i.stepId === step.id)
+                      const slot = preset.slots.find((s) => s.stepId === step.id)
+                      const item = slot?.options[0]
                       return (
                         <StepPicker
                           key={step.id}

@@ -35,7 +35,9 @@ export default async function PcPrebuildPage() {
   // Nama produk yang sudah terpakai di preset — tanpa ini, pemilihnya tampil
   // kosong padahal datanya ada, karena preset cuma menyimpan id.
   const katalog = await getPrebuildProducts(
-    config.presets.flatMap((preset) => preset.items.map((item) => item.productId))
+    config.presets.flatMap((preset) =>
+      preset.slots.flatMap((slot) => slot.options.map((option) => option.productId))
+    )
   )
   const productNames: Record<number, string> = {}
   for (const [id, produk] of katalog) productNames[id] = produk.name

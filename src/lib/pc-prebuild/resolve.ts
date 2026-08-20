@@ -29,12 +29,43 @@ export type PrebuildProduct = {
   image: string | null
 }
 
-export type ResolvedPrebuildItem = {
+export type ResolvedPrebuildOption = {
+  productId: number
+  quantity: number
+  /** Label tombol: label yang ditulis staff, atau nama produknya. */
+  label: string
+  /** `null` = produknya sudah tidak ada di katalog. */
+  product: PrebuildProduct | null
+}
+
+export type ResolvedPrebuildSlot = {
   stepId: string
   /** Nama step saat ini. Kosong kalau step-nya sudah dihapus dari PC Builder. */
   stepName: string
+  options: ResolvedPrebuildOption[]
+  /**
+   * Indeks pilihan bawaan yang EFEKTIF, atau -1 kalau tidak ada satu pun
+   * produknya tersisa di katalog.
+   *
+   * Bawaan adalah pilihan pertama — kecuali produknya sudah dihapus, maka
+   * jatuh ke pilihan tersedia berikutnya. Slot yang bawaannya hilang tidak
+   * ditampilkan sebagai slot rusak; ia cuma memakai pilihan lain.
+   *
+   * STOK KOSONG TIDAK MEMINDAHKAN BAWAAN. Pilihan pertama tetap bawaan, cuma
+   * ditandai, dan tetap bisa dipilih — pelanggan bisa menukarnya di wizard.
+   * Bawaan yang berpindah sendiri karena stok membuat staff melihat paket yang
+   * berbeda dari yang ia susun.
+   */
+  defaultIndex: number
+  /** Lebih dari satu pilihan = pelanggan boleh memilih. */
+  branching: boolean
+}
+
+/** Proyeksi satu slot pada pilihan bawaannya — bentuk yang dipakai halaman hari ini. */
+export type ResolvedPrebuildItem = {
+  stepId: string
+  stepName: string
   quantity: number
-  /** `null` = produknya sudah tidak ada di katalog. */
   product: PrebuildProduct | null
 }
 
@@ -42,15 +73,20 @@ export type ResolvedPrebuildPreset = {
   id: string
   name: string
   summary: string
+  /** Seluruh pilihan tiap slot. Dipakai saat pemilihan varian dikerjakan. */
+  slots: ResolvedPrebuildSlot[]
+  /** Slot pada pilihan bawaannya — satu entri per slot. */
   items: ResolvedPrebuildItem[]
-  /** Hanya menjumlahkan item yang produknya masih ada. */
+  /** Menjumlahkan pilihan bawaan tiap slot yang produknya masih ada. */
   total: number
-  /** Item yang produknya hilang dari katalog. */
+  /** Slot yang SELURUH pilihannya hilang dari katalog. */
   missingCount: number
-  /** Item yang produknya ada tapi stoknya kosong. */
+  /** Slot yang bawaannya ada tapi stoknya kosong. */
   outOfStockCount: number
-  /** Item yang step-nya sudah tidak ada di konfigurasi PC Builder. */
+  /** Slot yang step-nya sudah tidak ada di konfigurasi PC Builder. */
   orphanStepCount: number
+  /** Slot yang punya lebih dari satu pilihan. */
+  branchingCount: number
 }
 
 /**
@@ -113,39 +149,67 @@ export async function getPrebuildProducts(ids: number[]): Promise<Map<number, Pr
 /**
  * Preset mentah → preset siap tampil.
  *
- * Item yang produknya hilang atau step-nya sudah dihapus TIDAK dibuang, hanya
- * ditandai. Menyembunyikannya diam-diam membuat staff mengira paketnya masih
- * utuh, dan pelanggan melihat total yang tidak menjelaskan kenapa lebih murah.
+ * Slot yang seluruh pilihannya hilang, atau yang step-nya sudah dihapus, TIDAK
+ * dibuang — hanya ditandai. Menyembunyikannya diam-diam membuat staff mengira
+ * paketnya masih utuh, dan pelanggan melihat total yang tidak menjelaskan
+ * kenapa lebih murah.
  */
 export async function resolvePrebuildPresets(
   presets: PcPrebuildPreset[],
   steps: PcBuilderStepConfig[]
 ): Promise<ResolvedPrebuildPreset[]> {
-  const semuaId = presets.flatMap((preset) => preset.items.map((item) => item.productId))
+  const semuaId = presets.flatMap((preset) =>
+    preset.slots.flatMap((slot) => slot.options.map((option) => option.productId))
+  )
   const katalog = await getPrebuildProducts(semuaId)
   const namaStep = new Map(steps.map((step) => [step.id, step.name]))
 
   return presets.map((preset) => {
-    const items: ResolvedPrebuildItem[] = preset.items.map((item) => ({
-      stepId: item.stepId,
-      stepName: namaStep.get(item.stepId) ?? "",
-      quantity: item.quantity,
-      product: katalog.get(item.productId) ?? null,
-    }))
+    const slots: ResolvedPrebuildSlot[] = preset.slots.map((slot) => {
+      const options: ResolvedPrebuildOption[] = slot.options.map((option) => {
+        const product = katalog.get(option.productId) ?? null
+        return {
+          productId: option.productId,
+          quantity: option.quantity,
+          label: option.label || product?.name || `Produk #${option.productId}`,
+          product,
+        }
+      })
+
+      return {
+        stepId: slot.stepId,
+        stepName: namaStep.get(slot.stepId) ?? "",
+        options,
+        defaultIndex: options.findIndex((option) => option.product !== null),
+        branching: options.length > 1,
+      }
+    })
+
+    const items: ResolvedPrebuildItem[] = slots.map((slot) => {
+      const terpakai = slot.defaultIndex >= 0 ? slot.options[slot.defaultIndex] : slot.options[0]
+      return {
+        stepId: slot.stepId,
+        stepName: slot.stepName,
+        quantity: terpakai?.quantity ?? 1,
+        product: slot.defaultIndex >= 0 ? terpakai.product : null,
+      }
+    })
 
     return {
       id: preset.id,
       name: preset.name,
       summary: preset.summary,
+      slots,
       items,
       total: items.reduce(
         (jumlah, item) => jumlah + (item.product ? item.product.price * item.quantity : 0),
         0
       ),
-      missingCount: items.filter((item) => item.product === null).length,
+      missingCount: slots.filter((slot) => slot.defaultIndex < 0).length,
       outOfStockCount: items.filter((item) => item.product !== null && item.product.stock <= 0)
         .length,
-      orphanStepCount: items.filter((item) => item.stepName === "").length,
+      orphanStepCount: slots.filter((slot) => slot.stepName === "").length,
+      branchingCount: slots.filter((slot) => slot.branching).length,
     }
   })
 }

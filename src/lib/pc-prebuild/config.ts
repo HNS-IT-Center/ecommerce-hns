@@ -16,8 +16,17 @@
  *
  * **Langkahnya menumpang `PC_BUILDER_CONFIG`.** Tidak ada daftar langkah kedua
  * yang perlu dijaga — `stepId` di sini menunjuk step yang sama dengan yang
- * dipakai wizard. Kalau suatu step dihapus dari konfigurasi builder, item yang
- * menunjuknya diabaikan saat dimuat (lihat `resolvePrebuildSteps`).
+ * dipakai wizard.
+ *
+ * ## Dua bentuk masuk, satu bentuk keluar
+ *
+ * Parser menerima bentuk LAMA (`items: [{ stepId, productId, quantity }]`) dan
+ * bentuk BARU (`slots: [{ stepId, options: [...] }]`), tapi selalu
+ * mengeluarkan bentuk baru. `savePcPrebuildConfig` menjalankan parser ini
+ * sebelum menulis, jadi setiap penyimpanan menormalkan datanya.
+ *
+ * Kalau tidak begitu, dua bentuk akan hidup berdampingan di kolom `settings`
+ * selamanya dan setiap pembaca berikutnya harus tahu keduanya.
  */
 import { unstable_cache } from "next/cache"
 
@@ -26,20 +35,52 @@ import { getPrisma } from "@/lib/prisma/client"
 export const PC_PREBUILD_CACHE_TAG = "pc-prebuild-config"
 export const PC_PREBUILD_SETTING_KEY = "PC_PREBUILD_CONFIG"
 
-/** Satu komponen di dalam paket. Tanpa harga — lihat catatan di atas berkas. */
-export type PcPrebuildItem = {
-  stepId: string
+/**
+ * Batas yang disengaja, bukan angka acak.
+ *
+ * Tiga slot bercabang dengan tiga pilihan masing-masing sudah 27 kombinasi
+ * harga di satu halaman. Lebih dari itu, halaman detail berubah jadi
+ * konfigurator — dan untuk itu sudah ada PC Builder. Tiga cukup untuk kasus
+ * nyata: 16/32 GB, hitam/putih, 1/2 TB.
+ */
+export const MAX_OPTIONS_PER_SLOT = 3
+export const MAX_BRANCHING_SLOTS = 3
+
+export type PcPrebuildOption = {
   productId: number
   quantity: number
+  /**
+   * Label pendek untuk tombol pilihannya — "16 GB", "Hitam", "Samsung".
+   * Kosong = pakai nama produknya.
+   *
+   * Nama produk terlalu panjang untuk jadi tombol: "SSD SAMSUNG 980 NVME M.2
+   * 1TB" tidak terbaca sebagai pilihan, "Samsung 1TB" terbaca.
+   */
+  label?: string
+}
+
+export type PcPrebuildSlot = {
+  stepId: string
+  /**
+   * Satu pilihan = komponen tetap. Lebih dari satu = pelanggan memilih, dan
+   * yang PERTAMA adalah bawaan.
+   *
+   * TIDAK PERNAH kosong: slot tanpa pilihan tidak punya arti, jadi dilewati
+   * saat dibaca dan ditolak saat disimpan.
+   *
+   * `productId` tidak boleh kembar di dalam satu slot. Pilihan diidentifikasi
+   * lewat `productId` — termasuk di URL — jadi dua pilihan dengan produk yang
+   * sama tidak bisa dibedakan satu sama lain.
+   */
+  options: PcPrebuildOption[]
 }
 
 export type PcPrebuildPreset = {
   id: string
   name: string
-  /** Satu kalimat yang muncul di kartu paket. Boleh kosong. */
   summary: string
   order: number
-  items: PcPrebuildItem[]
+  slots: PcPrebuildSlot[]
 }
 
 export type PcPrebuildConfig = {
@@ -53,25 +94,103 @@ export type PcPrebuildConfig = {
 
 export const EMPTY_PREBUILD_CONFIG: PcPrebuildConfig = { enabled: false, presets: [] }
 
+function angkaSah(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value)
+}
+
 /**
- * Satu item dianggap sah hanya kalau ketiga kolomnya bertipe benar.
+ * Satu pilihan dianggap sah hanya kalau produk dan jumlahnya bertipe benar.
  *
  * Kolom `value` di tabel `settings` bertipe JSON bebas, jadi tidak ada yang
  * menjamin bentuknya selain pemeriksaan ini. Baris cacat DIBUANG, bukan
  * diteruskan: halaman publik memetakan `productId` ke katalog, dan satu entri
  * yang bukan angka cukup untuk menggagalkan seluruh halaman.
  */
-function isPrebuildItem(value: unknown): value is PcPrebuildItem {
-  if (typeof value !== "object" || value === null) return false
+function toOption(value: unknown): PcPrebuildOption | null {
+  if (typeof value !== "object" || value === null) return null
+  const opt = value as Record<string, unknown>
+  if (!angkaSah(opt.productId)) return null
+  if (!angkaSah(opt.quantity) || opt.quantity <= 0) return null
+
+  const label = typeof opt.label === "string" ? opt.label.trim() : ""
+
+  return {
+    productId: opt.productId,
+    quantity: opt.quantity,
+    ...(label ? { label } : {}),
+  }
+}
+
+/** Buang pilihan berproduk kembar, lalu potong ke batas. */
+function rapikanOptions(raw: unknown[]): PcPrebuildOption[] {
+  const hasil: PcPrebuildOption[] = []
+  const sudahAda = new Set<number>()
+
+  for (const kandidat of raw) {
+    const option = toOption(kandidat)
+    if (!option) continue
+    if (sudahAda.has(option.productId)) continue
+    sudahAda.add(option.productId)
+    hasil.push(option)
+    if (hasil.length >= MAX_OPTIONS_PER_SLOT) break
+  }
+
+  return hasil
+}
+
+function toSlot(value: unknown): PcPrebuildSlot | null {
+  if (typeof value !== "object" || value === null) return null
+  const slot = value as Record<string, unknown>
+  if (typeof slot.stepId !== "string" || !slot.stepId) return null
+  if (!Array.isArray(slot.options)) return null
+
+  const options = rapikanOptions(slot.options)
+  if (options.length === 0) return null
+
+  return { stepId: slot.stepId, options }
+}
+
+/**
+ * Bentuk LAMA: satu produk per langkah, tanpa percabangan.
+ *
+ * Dibaca jadi slot berisi tepat satu pilihan. Tidak ada data yang hilang, dan
+ * penyimpanan berikutnya dari panel admin menuliskannya dalam bentuk baru.
+ */
+function itemLamaToSlot(value: unknown): PcPrebuildSlot | null {
+  if (typeof value !== "object" || value === null) return null
   const item = value as Record<string, unknown>
-  return (
-    typeof item.stepId === "string" &&
-    typeof item.productId === "number" &&
-    Number.isFinite(item.productId) &&
-    typeof item.quantity === "number" &&
-    Number.isFinite(item.quantity) &&
-    item.quantity > 0
-  )
+  if (typeof item.stepId !== "string" || !item.stepId) return null
+
+  const option = toOption(item)
+  if (!option) return null
+
+  return { stepId: item.stepId, options: [option] }
+}
+
+/** Gabungkan slot ber-stepId sama, lalu tegakkan batas slot bercabang. */
+function rapikanSlots(slots: PcPrebuildSlot[]): PcPrebuildSlot[] {
+  const perStep = new Map<string, PcPrebuildSlot>()
+
+  for (const slot of slots) {
+    const ada = perStep.get(slot.stepId)
+    if (!ada) {
+      perStep.set(slot.stepId, slot)
+      continue
+    }
+    // Satu langkah hanya boleh punya satu slot. Pilihan dari entri kembar
+    // digabung, bukan dibuang — bentuk lama bisa memuat langkah yang sama dua
+    // kali, dan membuangnya diam-diam akan menghilangkan komponen.
+    ada.options = rapikanOptions([...ada.options, ...slot.options])
+  }
+
+  // Kalau slot bercabangnya lebih dari batas, yang berlebih DIKUNCI ke
+  // bawaannya — bukan dibuang. Paketnya tetap utuh, cuma berhenti bercabang.
+  let bercabang = 0
+  return [...perStep.values()].map((slot) => {
+    if (slot.options.length <= 1) return slot
+    bercabang += 1
+    return bercabang <= MAX_BRANCHING_SLOTS ? slot : { ...slot, options: [slot.options[0]] }
+  })
 }
 
 function toPreset(value: unknown, index: number): PcPrebuildPreset | null {
@@ -79,14 +198,24 @@ function toPreset(value: unknown, index: number): PcPrebuildPreset | null {
   const preset = value as Record<string, unknown>
   if (typeof preset.id !== "string" || typeof preset.name !== "string") return null
 
-  const items = Array.isArray(preset.items) ? preset.items.filter(isPrebuildItem) : []
+  const dariSlots = Array.isArray(preset.slots)
+    ? preset.slots.map(toSlot).filter((s): s is PcPrebuildSlot => s !== null)
+    : []
+
+  const dariItems = Array.isArray(preset.items)
+    ? preset.items.map(itemLamaToSlot).filter((s): s is PcPrebuildSlot => s !== null)
+    : []
+
+  // `slots` menang kalau ada. `items` hanya dipakai untuk data yang ditulis
+  // sebelum percabangan ada.
+  const slots = rapikanSlots(dariSlots.length > 0 ? dariSlots : dariItems)
 
   return {
     id: preset.id,
     name: preset.name,
     summary: typeof preset.summary === "string" ? preset.summary : "",
-    order: typeof preset.order === "number" && Number.isFinite(preset.order) ? preset.order : index,
-    items,
+    order: angkaSah(preset.order) ? preset.order : index,
+    slots,
   }
 }
 

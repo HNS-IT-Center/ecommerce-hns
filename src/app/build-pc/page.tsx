@@ -37,21 +37,29 @@ export default async function BuildPcPage({
     const preset = config.enabled ? config.presets.find((p) => p.id === presetId) : undefined
 
     if (preset) {
-      const products = await fetchBuilderProductsByIds(preset.items.map((item) => item.productId))
+      const products = await fetchBuilderProductsByIds(
+        preset.slots.flatMap((slot) => slot.options.map((option) => option.productId))
+      )
       const byId = new Map(products.map((product) => [product.id, product]))
       const stepAda = new Set(stepsConfig.map((step) => step.id))
       const selections: Record<string, BuilderSelection[]> = {}
 
-      for (const item of preset.items) {
-        const product = byId.get(item.productId)
-        // Produk yang sudah dihapus dari katalog, atau step yang sudah dihapus
-        // dari konfigurasi builder, DILEWATI — bukan menggagalkan pemuatan.
-        // Rakitan yang termuat sebagian masih berguna; yang tidak berguna
-        // adalah halaman yang menolak terbuka karena satu komponen berubah.
-        if (!product || !stepAda.has(item.stepId)) continue
-        selections[item.stepId] = [
-          ...(selections[item.stepId] ?? []),
-          { product, quantity: item.quantity },
+      for (const slot of preset.slots) {
+        // Step yang sudah dihapus dari konfigurasi builder DILEWATI — bukan
+        // menggagalkan pemuatan. Rakitan yang termuat sebagian masih berguna;
+        // yang tidak berguna adalah halaman yang menolak terbuka karena satu
+        // komponen berubah.
+        if (!stepAda.has(slot.stepId)) continue
+
+        // Bawaan = pilihan pertama yang produknya masih ada. Stok kosong TIDAK
+        // memindahkan bawaan — pelanggan bisa menukarnya sendiri di wizard.
+        const terpakai = slot.options.find((option) => byId.has(option.productId))
+        const product = terpakai ? byId.get(terpakai.productId) : undefined
+        if (!terpakai || !product) continue
+
+        selections[slot.stepId] = [
+          ...(selections[slot.stepId] ?? []),
+          { product, quantity: terpakai.quantity },
         ]
       }
 
