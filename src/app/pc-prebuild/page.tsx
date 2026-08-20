@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
-import { Cpu, TriangleAlert } from "lucide-react"
+import Image from "next/image"
+import { TriangleAlert } from "lucide-react"
 
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
@@ -54,13 +55,16 @@ export default async function PcPrebuildPage() {
               .
             </p>
           ) : (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div className="flex flex-wrap justify-center gap-6">
+              {/* Flex, BUKAN grid tiga kolom. Dengan grid, satu paket sendirian
+                  menggantung di kolom kiri dan halaman terlihat rusak — padahal
+                  di awal memang baru ada satu atau dua paket. */}
               {terisi.map((preset) => {
                 const tampil = preset.items.filter((item) => item.product !== null)
                 return (
                   <article
                     key={preset.id}
-                    className="flex flex-col gap-4 rounded-2xl border bg-card p-6 shadow-sm"
+                    className="flex w-full max-w-sm flex-col gap-4 rounded-2xl border bg-card p-6 shadow-sm transition-shadow hover:shadow-md"
                   >
                     <div>
                       <h2 className="text-lg font-bold">{preset.name}</h2>
@@ -69,14 +73,36 @@ export default async function PcPrebuildPage() {
                       )}
                     </div>
 
-                    <ul className="space-y-1.5 text-sm">
+                    {/* Foto komponen, BUKAN ikon seragam. Ikon yang sama untuk
+                        prosesor, RAM, dan casing tidak memberi tahu apa pun —
+                        ia cuma mengisi ruang. Fotonya sudah kita punya. */}
+                    <ul className="space-y-2 text-sm">
                       {tampil.slice(0, MAX_SPEK_TAMPIL).map((item, index) => (
-                        <li key={`${item.stepId}-${index}`} className="flex gap-2">
-                          <Cpu className="mt-0.5 h-4 w-4 shrink-0 text-brand-green" aria-hidden="true" />
+                        <li key={`${item.stepId}-${index}`} className="flex items-center gap-2.5">
+                          {item.product?.image ? (
+                            <Image
+                              src={item.product.image}
+                              alt=""
+                              width={36}
+                              height={36}
+                              className="h-9 w-9 shrink-0 rounded-md border bg-white object-contain"
+                            />
+                          ) : (
+                            <span
+                              aria-hidden="true"
+                              className="h-9 w-9 shrink-0 rounded-md border bg-muted/40"
+                            />
+                          )}
                           <span className="min-w-0">
-                            <span className="block truncate font-medium">{item.product?.name}</span>
+                            {/* Dua baris, bukan satu yang terpotong di tengah kata.
+                                "PROCESSOR AMD RYZEN 5 5600 3.5 G…" menyembunyikan
+                                justru bagian yang membedakan satu paket dari
+                                yang lain. */}
+                            <span className="line-clamp-2 text-xs font-medium leading-snug">
+                              {item.product?.name}
+                            </span>
                             {item.product !== null && item.product.stock <= 0 && (
-                              <span className="text-xs font-semibold text-sale-red">
+                              <span className="text-[11px] font-semibold text-sale-red">
                                 Stok habis — bisa diganti di builder
                               </span>
                             )}
@@ -84,7 +110,7 @@ export default async function PcPrebuildPage() {
                         </li>
                       ))}
                       {tampil.length > MAX_SPEK_TAMPIL && (
-                        <li className="pl-6 text-xs text-muted-foreground">
+                        <li className="pl-[2.875rem] text-xs text-muted-foreground">
                           +{tampil.length - MAX_SPEK_TAMPIL} komponen lainnya
                         </li>
                       )}
