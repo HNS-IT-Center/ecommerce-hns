@@ -25,6 +25,8 @@ export type PrebuildProduct = {
   /** Harga katalog yang berlaku. Tidak pernah disimpan di preset — lihat lib/pc-prebuild/config.ts. */
   price: number
   stock: number
+  /** Foto pertama produk, kalau ada. Host-nya sudah terdaftar di next.config.ts. */
+  image: string | null
 }
 
 export type ResolvedPrebuildItem = {
@@ -80,6 +82,11 @@ export async function getPrebuildProducts(ids: number[]): Promise<Map<number, Pr
           salePrice: true,
           stockStatus: true,
           stockQty: true,
+          images: {
+            orderBy: { position: "asc" },
+            take: 1,
+            select: { url: true },
+          },
         },
       })
 
@@ -92,6 +99,7 @@ export async function getPrebuildProducts(ids: number[]): Promise<Map<number, Pr
           slug: p.slug,
           price: sale > 0 ? sale : regular,
           stock: p.stockStatus === "OUTOFSTOCK" ? 0 : (p.stockQty ?? 10),
+          image: p.images[0]?.url ?? null,
         }
       })
     },

@@ -1,3 +1,4 @@
+import Image from "next/image"
 import Link from "next/link"
 import { notFound, redirect } from "next/navigation"
 import { ArrowLeft, PencilRuler, TriangleAlert } from "lucide-react"
@@ -94,19 +95,38 @@ export default async function PrebuildDetailPage({ params }: Props) {
                         </td>
                         <td className="px-4 py-3 align-top">
                           {item.product ? (
-                            <>
-                              <Link
-                                href={`/product/${item.product.slug}`}
-                                className="font-medium hover:underline"
-                              >
-                                {item.product.name}
-                              </Link>
-                              {item.product.stock <= 0 && (
-                                <span className="mt-0.5 block text-xs font-semibold text-sale-red">
-                                  Stok habis — bisa diganti di PC Builder
-                                </span>
+                            <div className="flex items-start gap-3">
+                              {/* Foto komponen. Yang tidak punya foto memakai
+                                  kotak kosong berukuran sama, supaya barisnya
+                                  tetap sejajar dan tabel tidak bergerigi. */}
+                              {item.product.image ? (
+                                <Image
+                                  src={item.product.image}
+                                  alt=""
+                                  width={48}
+                                  height={48}
+                                  className="h-12 w-12 shrink-0 rounded-lg border bg-white object-contain"
+                                />
+                              ) : (
+                                <span
+                                  aria-hidden="true"
+                                  className="h-12 w-12 shrink-0 rounded-lg border bg-muted/40"
+                                />
                               )}
-                            </>
+                              <span className="min-w-0">
+                                <Link
+                                  href={`/product/${item.product.slug}`}
+                                  className="font-medium hover:underline"
+                                >
+                                  {item.product.name}
+                                </Link>
+                                {item.product.stock <= 0 && (
+                                  <span className="mt-0.5 block text-xs font-semibold text-sale-red">
+                                    Stok habis — bisa diganti di PC Builder
+                                  </span>
+                                )}
+                              </span>
+                            </div>
                           ) : (
                             <span className="text-sale-red">
                               Komponen sudah tidak tersedia
