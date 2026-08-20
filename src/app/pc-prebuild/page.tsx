@@ -1,7 +1,22 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import Image from "next/image"
-import { TriangleAlert } from "lucide-react"
+import {
+  Box,
+  CircuitBoard,
+  Cpu,
+  Fan,
+  HardDrive,
+  Headphones,
+  Keyboard,
+  MemoryStick,
+  Monitor,
+  Mouse,
+  Package,
+  Power,
+  TriangleAlert,
+  type LucideIcon,
+} from "lucide-react"
 
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
@@ -18,6 +33,40 @@ export const metadata = {
 
 /** Komponen yang ditampilkan di kartu. Sisanya terlihat setelah rakitan dimuat ke builder. */
 const MAX_SPEK_TAMPIL = 4
+
+/**
+ * Ikon per JENIS komponen, dicocokkan dari nama langkahnya.
+ *
+ * Foto komponen sempat dipakai di sini, tapi pada ukuran 36px ia jadi bercak
+ * warna yang tidak terbaca — apalagi setelah foto rakitan utuh memimpin kartu.
+ * Ikon lebih tenang. Yang TIDAK boleh terulang adalah ikon yang sama untuk
+ * semua baris seperti versi pertama halaman ini: ikon seragam bukan informasi,
+ * cuma pengisi ruang.
+ *
+ * Nama langkah ditulis staff di /admin/pc-builder dan bisa apa saja, jadi
+ * pencocokannya lewat kata kunci dengan jaring pengaman di ujung.
+ */
+const IKON_KOMPONEN: Array<[RegExp, LucideIcon]> = [
+  [/prosesor|processor|cpu/i, Cpu],
+  [/mother|mobo/i, CircuitBoard],
+  [/ram|memor/i, MemoryStick],
+  [/ssd|hdd|nvme|storage|penyimpanan/i, HardDrive],
+  [/vga|gpu|graphic|grafis/i, Monitor],
+  [/psu|power|daya/i, Power],
+  [/cooler|fan|pendingin|hsf/i, Fan],
+  [/casing|case/i, Box],
+  [/monitor|layar/i, Monitor],
+  [/keyboard/i, Keyboard],
+  [/mouse|tetikus/i, Mouse],
+  [/headset|audio|speaker/i, Headphones],
+]
+
+function ikonUntuk(stepName: string): LucideIcon {
+  for (const [pola, ikon] of IKON_KOMPONEN) {
+    if (pola.test(stepName)) return ikon
+  }
+  return Package
+}
 
 export default async function PcPrebuildPage() {
   const config = await getPcPrebuildConfig()
@@ -90,22 +139,14 @@ export default async function PcPrebuildPage() {
                         prosesor, RAM, dan casing tidak memberi tahu apa pun —
                         ia cuma mengisi ruang. Fotonya sudah kita punya. */}
                     <ul className="space-y-2 text-sm">
-                      {tampil.slice(0, MAX_SPEK_TAMPIL).map((item, index) => (
-                        <li key={`${item.stepId}-${index}`} className="flex items-center gap-2.5">
-                          {item.product?.image ? (
-                            <Image
-                              src={item.product.image}
-                              alt=""
-                              width={36}
-                              height={36}
-                              className="h-9 w-9 shrink-0 rounded-md border bg-white object-contain"
-                            />
-                          ) : (
-                            <span
-                              aria-hidden="true"
-                              className="h-9 w-9 shrink-0 rounded-md border bg-muted/40"
-                            />
-                          )}
+                      {tampil.slice(0, MAX_SPEK_TAMPIL).map((item, index) => {
+                        const Ikon = ikonUntuk(item.stepName)
+                        return (
+                        <li key={`${item.stepId}-${index}`} className="flex items-start gap-2.5">
+                          <Ikon
+                            className="mt-0.5 h-4 w-4 shrink-0 text-brand-green"
+                            aria-hidden="true"
+                          />
                           <span className="min-w-0">
                             {/* Dua baris, bukan satu yang terpotong di tengah kata.
                                 "PROCESSOR AMD RYZEN 5 5600 3.5 G…" menyembunyikan
@@ -121,9 +162,10 @@ export default async function PcPrebuildPage() {
                             )}
                           </span>
                         </li>
-                      ))}
+                        )
+                      })}
                       {tampil.length > MAX_SPEK_TAMPIL && (
-                        <li className="pl-[2.875rem] text-xs text-muted-foreground">
+                        <li className="pl-[1.625rem] text-xs text-muted-foreground">
                           +{tampil.length - MAX_SPEK_TAMPIL} komponen lainnya
                         </li>
                       )}
