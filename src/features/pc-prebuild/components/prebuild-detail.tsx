@@ -8,6 +8,7 @@ import { PencilRuler, TriangleAlert } from "lucide-react"
 import { formatRupiah } from "@/lib/utils"
 
 import { PrebuildOrderButton } from "./prebuild-order-button"
+import { PrebuildSaveButton } from "./prebuild-save-button"
 
 type Produk = {
   id: number
@@ -49,7 +50,15 @@ export type SlotTampil = {
  * ulang seluruhnya dari katalog. Jadi angka yang sampai ke CS tidak bisa
  * berasal dari halaman ini.
  */
-export function PrebuildDetail({ presetId, slots }: { presetId: string; slots: SlotTampil[] }) {
+export function PrebuildDetail({
+  presetId,
+  namaPaket,
+  slots,
+}: {
+  presetId: string
+  namaPaket: string
+  slots: SlotTampil[]
+}) {
   const [dipilih, setDipilih] = useState<Record<string, number>>(() =>
     Object.fromEntries(slots.map((slot) => [slot.stepId, slot.defaultIndex]))
   )
@@ -66,13 +75,22 @@ export function PrebuildDetail({ presetId, slots }: { presetId: string; slots: S
   )
   const hilang = aktif.filter(({ option }) => !option?.product).length
 
-  const orderItems = aktif
-    .filter(({ option }) => option?.product)
-    .map(({ slot, option }) => ({
-      productId: option!.product!.id,
-      quantity: option!.quantity,
-      stepName: slot.stepName || "Komponen",
-    }))
+  const terpakai = aktif.filter(({ option }) => option?.product)
+
+  const orderItems = terpakai.map(({ slot, option }) => ({
+    productId: option!.product!.id,
+    quantity: option!.quantity,
+    stepName: slot.stepName || "Komponen",
+  }))
+
+  // Bentuk simpan butuh `stepId` juga — rakitan tersimpan memetakan komponen
+  // kembali ke langkah wizard saat dibuka lagi.
+  const saveItems = terpakai.map(({ slot, option }) => ({
+    productId: option!.product!.id,
+    quantity: option!.quantity,
+    stepId: slot.stepId,
+    stepName: slot.stepName || "Komponen",
+  }))
 
   /**
    * Pilihan dibawa ke wizard sebagai `stepId:productId`, BUKAN sebagai indeks.
@@ -217,6 +235,17 @@ export function PrebuildDetail({ presetId, slots }: { presetId: string; slots: S
           </div>
 
           <PrebuildOrderButton items={orderItems} />
+
+          {/* Menyimpan memasukkan paket ini ke mesin "Rakitan Tersimpan" yang
+              sudah ada — termasuk pemberitahuan "Harga telah berubah sejak
+              terakhir disimpan" di /profile/rakitan/[id]. Halaman ini sendiri
+              tidak punya pembanding: harganya selalu dibaca segar, jadi tidak
+              ada harga lama yang bisa berubah. */}
+          <PrebuildSaveButton
+            nama={namaPaket}
+            items={saveItems}
+            kembaliKe={`/pc-prebuild/${presetId}`}
+          />
 
           {/* Jalan kedua: yang ingin menukar satu-dua komponen tidak perlu
               menyusun ulang dari nol — paketnya dimuat ke wizard beserta

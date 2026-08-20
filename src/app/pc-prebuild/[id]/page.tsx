@@ -65,6 +65,7 @@ export default async function PrebuildDetailPage({ params }: Props) {
 
           <PrebuildDetail
             presetId={resolved.id}
+            namaPaket={resolved.name}
             slots={resolved.slots.map((slot) => ({
               stepId: slot.stepId,
               stepName: slot.stepName,
