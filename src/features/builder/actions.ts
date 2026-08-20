@@ -175,3 +175,74 @@ export async function fetchBuilderProducts({
     hasMore
   }
 }
+
+/**
+ * Produk berdasarkan daftar id — dipakai memuat paket PC Prebuild ke wizard.
+ *
+ * Bentuk `select` dan pemetaannya SAMA PERSIS dengan `fetchBuilderProducts`
+ * di atas, termasuk aturan harga (`salePrice > 0 ? salePrice : regularPrice`)
+ * dan stok (`OUTOFSTOCK` → 0). Kalau salah satunya diubah, ubah keduanya:
+ * angka di kartu paket harus sama persis dengan angka yang muncul begitu
+ * rakitannya masuk wizard. Aturan yang sama juga dicerminkan di
+ * `lib/pc-prebuild/resolve.ts`.
+ *
+ * Urutan hasilnya TIDAK dijamin sama dengan urutan `ids` — pemanggil
+ * memetakannya sendiri lewat id.
+ */
+export async function fetchBuilderProductsByIds(ids: number[]): Promise<BuilderProduct[]> {
+  const unik = [...new Set(ids)].filter((id) => Number.isFinite(id))
+  if (unik.length === 0) return []
+
+  const prisma = getPrisma()
+
+  const products = await prisma.product.findMany({
+    where: { id: { in: unik } },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      type: true,
+      regularPrice: true,
+      salePrice: true,
+      stockQty: true,
+      stockStatus: true,
+      viewCount: true,
+      images: {
+        orderBy: { position: "asc" },
+        take: 1,
+        select: { url: true }
+      },
+      attributes: {
+        select: {
+          attribute: { select: { id: true, name: true } },
+          value: { select: { id: true, value: true } }
+        }
+      }
+    }
+  })
+
+  return products.map(p => {
+    const salePriceNum = p.salePrice ? Number(p.salePrice) : 0;
+    const regularPriceNum = p.regularPrice ? Number(p.regularPrice) : 0;
+    const currentPrice = salePriceNum > 0 ? salePriceNum : regularPriceNum;
+
+    return {
+      id: p.id,
+      name: p.name,
+      slug: p.slug,
+      type: p.type,
+      price: currentPrice,
+      regularPrice: regularPriceNum,
+      salePrice: salePriceNum,
+      sold: p.viewCount || 0,
+      stock: p.stockStatus === "OUTOFSTOCK" ? 0 : (p.stockQty ?? 10),
+      image: p.images[0]?.url,
+      attributes: p.attributes.map(a => ({
+        attributeId: a.attribute.id,
+        attributeName: a.attribute.name,
+        valueId: a.value.id,
+        valueName: a.value.value
+      }))
+    }
+  })
+}

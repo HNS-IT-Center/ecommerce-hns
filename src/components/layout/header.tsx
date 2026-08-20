@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 
 import { MegaMenu } from "./mega-menu";
+import { getPcPrebuildConfig } from "@/lib/pc-prebuild/config";
 import { CartBadge } from "./cart-badge";
 import { SearchBar } from "./search-bar";
 import { AccountNav } from "./account-nav";
@@ -22,10 +23,16 @@ export async function Header() {
   // itu menandai SETIAP halaman yang me-render Header (yaitu semuanya) sebagai
   // dynamic, termasuk yang sebelumnya statis (/cart, /faq, dst). `AccountNav`
   // membaca statusnya sendiri lewat `/api/auth/me` di klien.
-  const [categories, theme] = await Promise.all([
+  const [categories, theme, prebuild] = await Promise.all([
     getCategories({ hideEmpty: true, perPage: 100 }),
     getThemeSettings(),
+    getPcPrebuildConfig(),
   ]);
+
+  // Tautan PC Prebuild hanya dirender kalau sakelarnya menyala. Bacanya di
+  // sini, bukan di MegaMenu: komponen itu `use client` dan tidak boleh
+  // menyentuh lapisan data sendiri (CLAUDE.md §2.5).
+  const showPrebuild = prebuild.enabled;
 
   const isChristmas = theme.activeChromeThemeId === "christmas";
 
@@ -58,7 +65,7 @@ export async function Header() {
             </Link>
 
             {/* Desktop Navigation */}
-            <MegaMenu categories={categories} />
+            <MegaMenu categories={categories} showPrebuild={showPrebuild} />
 
             {/* Search Bar */}
             <div className="flex flex-1 items-center justify-center px-4 lg:px-8">

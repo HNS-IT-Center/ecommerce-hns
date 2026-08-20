@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useState, useMemo } from "react"
-import { useNewBuilderStore, BuilderProduct } from "@/store/new-builder"
+import { useEffect, useRef, useState, useMemo } from "react"
+import { useNewBuilderStore, BuilderProduct, type BuilderSelection } from "@/store/new-builder"
 import { PcBuilderStepConfig } from "@/lib/pc-builder/config"
 import { formatRupiah } from "@/lib/utils"
 import { fetchBuilderProducts } from "../actions"
@@ -28,16 +28,27 @@ type DynamicBuilderViewProps = {
   stepsConfig: PcBuilderStepConfig[]
   /** Dari sesi customer di server — menentukan tombol Simpan aktif atau mengarah ke /login. */
   isLoggedIn: boolean
+  /**
+   * Paket PC Prebuild yang diminta lewat `?preset=`, sudah diselesaikan di
+   * server lengkap dengan harga katalognya. `null` kalau tidak ada preset,
+   * presetnya tidak ditemukan, atau sakelar fiturnya sedang mati.
+   */
+  presetLoad?: { name: string; selections: Record<string, BuilderSelection[]> } | null
 }
 
 /**
  * Nomor WhatsApp tidak lagi dioper dari env: tujuan dan harganya sama-sama
  * dibaca di server lewat `prepareBuildWhatsApp`, dari tabel stores.
  */
-export function DynamicBuilderView({ stepsConfig, isLoggedIn }: DynamicBuilderViewProps) {
+export function DynamicBuilderView({
+  stepsConfig,
+  isLoggedIn,
+  presetLoad = null,
+}: DynamicBuilderViewProps) {
   const { 
     steps, setSteps, selections, activeStepId, setActiveStep, 
-    selectProduct, removeProduct, updateQuantity, getTotalPrice, clearSelections
+    selectProduct, removeProduct, updateQuantity, getTotalPrice, clearSelections,
+    hydrateSelections
   } = useNewBuilderStore()
 
   const [mounted, setMounted] = useState(false)
@@ -65,6 +76,11 @@ export function DynamicBuilderView({ stepsConfig, isLoggedIn }: DynamicBuilderVi
   // Builder" dari rakitan tersimpan) padahal itu bukan kasus "rakitan lama
   // yang belum disentuh" — itu rakitan yang justru sengaja sedang dimuat.
   const [showPreviousBuildBanner, setShowPreviousBuildBanner] = useState(false)
+
+  // Tawaran memuat paket PC Prebuild, hanya muncul kalau sudah ada rakitan
+  // berjalan. Lihat efeknya di bawah.
+  const [presetPending, setPresetPending] = useState(false)
+  const presetSudahDitangani = useRef(false)
   const toastManager = useToastManager()
 
   /**
@@ -117,6 +133,35 @@ export function DynamicBuilderView({ stepsConfig, isLoggedIn }: DynamicBuilderVi
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  /**
+   * Memuat paket PC Prebuild dari `?preset=`.
+   *
+   * Aturannya: MUAT KALAU KOSONG, TANYA KALAU SUDAH ADA ISINYA. Menimpa
+   * diam-diam berarti membuang rakitan yang sedang disusun seseorang tanpa
+   * peringatan; selalu bertanya berarti menambah dialog pada jalur yang
+   * seharusnya satu klik.
+   *
+   * WAJIB menunggu `mounted`. Isi store baru terbaca setelah hydration Zustand
+   * persist selesai — sebelum itu store SELALU terlihat kosong, dan rakitan
+   * pelanggan akan tertimpa tanpa sempat ditanya.
+   */
+  useEffect(() => {
+    if (!mounted || !presetLoad || presetSudahDitangani.current) return
+    presetSudahDitangani.current = true
+
+    const adaRakitanBerjalan = Object.values(
+      useNewBuilderStore.getState().selections
+    ).some((v) => Array.isArray(v) && v.length > 0)
+
+    if (adaRakitanBerjalan) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPresetPending(true)
+      return
+    }
+
+    hydrateSelections(presetLoad.selections)
+  }, [mounted, presetLoad, hydrateSelections])
 
   // Sengaja bergantung pada `mounted` saja, BUKAN `selections` — supaya cek
   // "ada rakitan lama" hanya jalan sekali di titik hydration selesai, tidak
@@ -795,6 +840,33 @@ export function DynamicBuilderView({ stepsConfig, isLoggedIn }: DynamicBuilderVi
             satu komponen sebelum sadar "ini bukan yang mau saya lanjutkan"
             harus tetap melihatnya, bukan kehilangan jejaknya setelah
             perubahan pertama. */}
+        {presetPending && presetLoad && (
+          <div className="mb-6 mt-[112px] md:mt-0 flex flex-col items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900 dark:bg-amber-950/30 print:hidden sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+            <div className="text-amber-900 dark:text-amber-200">
+              <span className="font-semibold">Muat paket &ldquo;{presetLoad.name}&rdquo;?</span>{" "}
+              Rakitan yang sedang kamu susun akan diganti.
+            </div>
+            <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
+              <button
+                onClick={() => {
+                  hydrateSelections(presetLoad.selections)
+                  setPresetPending(false)
+                  setShowPreviousBuildBanner(false)
+                }}
+                className="cursor-pointer rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-700"
+              >
+                Muat paket
+              </button>
+              <button
+                onClick={() => setPresetPending(false)}
+                className="cursor-pointer rounded-lg px-2.5 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 dark:text-amber-200 dark:hover:bg-amber-900/40"
+              >
+                Pertahankan rakitan saya
+              </button>
+            </div>
+          </div>
+        )}
+
         {showPreviousBuildBanner && (
           <div className="mb-6 mt-[112px] md:mt-0 flex flex-col items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm dark:border-blue-900 dark:bg-blue-950/30 print:hidden sm:flex-row sm:items-center sm:justify-between sm:gap-3">
             <div className="flex items-center gap-2 text-blue-800 dark:text-blue-300">
