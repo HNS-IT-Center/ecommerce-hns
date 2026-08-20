@@ -40,7 +40,15 @@ export default async function PcPrebuildPage() {
     )
   )
   const productNames: Record<number, string> = {}
-  for (const [id, produk] of katalog) productNames[id] = produk.name
+  // Harga IKUT dikirim supaya staff tahu paket yang sedang ia rakit jatuhnya
+  // berapa. Ini keterangan untuk layar admin saja — angkanya tidak pernah
+  // tersimpan ke preset; setiap pembacaan berikutnya membacanya lagi dari
+  // katalog (lihat lib/pc-prebuild/config.ts).
+  const productPrices: Record<number, number> = {}
+  for (const [id, produk] of katalog) {
+    productNames[id] = produk.name
+    productPrices[id] = produk.price
+  }
 
   return (
     <div className="flex-1 space-y-4 p-8 pt-6">
@@ -58,6 +66,7 @@ export default async function PcPrebuildPage() {
         steps={sortedSteps}
         initialOptions={initialOptions}
         productNames={productNames}
+        productPrices={productPrices}
       />
     </div>
   )

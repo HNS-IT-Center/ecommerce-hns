@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight, Plus, Save, Trash2, TriangleAlert, X } from 
 
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox"
 import { fetchBuilderProducts } from "@/features/builder/actions"
+import { formatRupiah } from "@/lib/utils"
 import type { PcBuilderStepConfig } from "@/lib/pc-builder/config"
 // NILAI dari limits.ts, TIPE dari config.ts. Mengimpor nilai dari config.ts
 // akan menyeret getPrisma() ke bundle browser dan menggagalkan build.
@@ -26,6 +27,8 @@ type Props = {
   initialOptions: PilihanAwal
   /** Nama produk yang sudah terpakai di preset, supaya pickernya menampilkan pilihan tersimpan. */
   productNames: Record<number, string>
+  /** Harga katalog produk yang sudah terpakai. Keterangan layar saja — tidak ikut tersimpan. */
+  productPrices: Record<number, number>
 }
 
 function idBaru(): string {
@@ -34,11 +37,18 @@ function idBaru(): string {
     : `preset-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-export function PrebuildManager({ initialConfig, steps, initialOptions, productNames }: Props) {
+export function PrebuildManager({
+  initialConfig,
+  steps,
+  initialOptions,
+  productNames,
+  productPrices,
+}: Props) {
   const [enabled, setEnabled] = useState(initialConfig.enabled)
   const [presets, setPresets] = useState<PcPrebuildPreset[]>(initialConfig.presets)
   const [openId, setOpenId] = useState<string | null>(initialConfig.presets[0]?.id ?? null)
   const [nama, setNama] = useState<Record<number, string>>(productNames)
+  const [harga, setHarga] = useState<Record<number, number>>(productPrices)
   const [flash, setFlash] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
@@ -95,6 +105,36 @@ export function PrebuildManager({ initialConfig, steps, initialOptions, productN
           : { ...preset, slots: [...preset.slots, { stepId, options }] }
       })
     )
+  }
+
+  /**
+   * Berapa paket ini jatuhnya.
+   *
+   * `termurah` dipakai untuk paket yang punya komponen berpilihan — pelanggan
+   * melihat "mulai dari", jadi staff perlu melihat angka yang sama.
+   *
+   * `lengkap: false` berarti ada komponen yang harganya belum diketahui layar
+   * ini (produk baru dipilih dan daftarnya belum memuat harganya). Angkanya
+   * ditandai, bukan disembunyikan — staff tetap butuh perkiraan.
+   */
+  function hitung(preset: PcPrebuildPreset, termurah: boolean) {
+    let total = 0
+    let lengkap = true
+
+    for (const slot of preset.slots) {
+      const kandidat = termurah ? slot.options : slot.options.slice(0, 1)
+      const angka = kandidat
+        .map((o) => (harga[o.productId] === undefined ? null : harga[o.productId] * o.quantity))
+        .filter((n): n is number => n !== null)
+
+      if (angka.length === 0) {
+        lengkap = false
+        continue
+      }
+      total += termurah ? Math.min(...angka) : angka[0]
+    }
+
+    return { total, lengkap }
   }
 
   function simpan() {
@@ -193,6 +233,25 @@ export function PrebuildManager({ initialConfig, steps, initialOptions, productN
                   <span className="shrink-0 rounded-full border border-input bg-muted/40 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
                     {preset.slots.length} komponen
                   </span>
+                  {preset.slots.length > 0 &&
+                    (() => {
+                      const { total, lengkap } = hitung(preset, false)
+                      const murah = bercabang > 0 ? hitung(preset, true).total : total
+                      return (
+                        <span
+                          title={
+                            bercabang > 0
+                              ? "Angka pertama = kombinasi bawaan; angka kedua = kombinasi termurah, yang dilihat pelanggan sebagai 'mulai dari'."
+                              : "Total harga katalog paket ini."
+                          }
+                          className="shrink-0 rounded-full border border-sale-red/30 bg-sale-red/10 px-2 py-0.5 text-[11px] font-bold tabular-nums text-sale-red"
+                        >
+                          {formatRupiah(total)}
+                          {bercabang > 0 && murah !== total && ` · dari ${formatRupiah(murah)}`}
+                          {!lengkap && " *"}
+                        </span>
+                      )
+                    })()}
                   {bercabang > 0 && (
                     <span className="shrink-0 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-primary">
                       {bercabang} bisa dipilih
@@ -236,6 +295,8 @@ export function PrebuildManager({ initialConfig, steps, initialOptions, productN
                         options={preset.slots.find((s) => s.stepId === step.id)?.options ?? []}
                         saranAwal={initialOptions[step.id] ?? []}
                         namaProduk={nama}
+                        hargaProduk={harga}
+                        onHargaProduk={(peta) => setHarga((l) => ({ ...l, ...peta }))}
                         // Batas slot bercabang ditegakkan di parser juga; di sini
                         // supaya staff tahu SEBELUM menyimpan, bukan setelah
                         // pilihannya diam-diam dikunci.
@@ -281,6 +342,8 @@ type SlotEditorProps = {
   options: PcPrebuildOption[]
   saranAwal: ComboboxOption[]
   namaProduk: Record<number, string>
+  hargaProduk: Record<number, number>
+  onHargaProduk: (peta: Record<number, number>) => void
   bolehTambahCabang: boolean
   onNamaProduk: (productId: number, label: string) => void
   onChange: (options: PcPrebuildOption[]) => void
@@ -298,6 +361,8 @@ function SlotEditor({
   options,
   saranAwal,
   namaProduk,
+  hargaProduk,
+  onHargaProduk,
   bolehTambahCabang,
   onNamaProduk,
   onChange,
@@ -338,6 +403,8 @@ function SlotEditor({
             /** Produk yang sudah dipakai pilihan lain di slot ini — tidak boleh kembar. */
             terlarang={terpakai.filter((_, idx) => idx !== i)}
             namaProduk={namaProduk}
+            hargaProduk={hargaProduk}
+            onHargaProduk={onHargaProduk}
             onNamaProduk={onNamaProduk}
             onPilih={(productId, label) => {
               if (productId === null) {
@@ -388,6 +455,8 @@ type OptionRowProps = {
   isBawaan: boolean
   terlarang: number[]
   namaProduk: Record<number, string>
+  hargaProduk: Record<number, number>
+  onHargaProduk: (peta: Record<number, number>) => void
   onNamaProduk: (productId: number, label: string) => void
   onPilih: (productId: number | null, label?: string) => void
   onLabel: (label: string) => void
@@ -409,6 +478,8 @@ function OptionRow({
   isBawaan,
   terlarang,
   namaProduk,
+  hargaProduk,
+  onHargaProduk,
   onPilih,
   onLabel,
   onQty,
@@ -438,6 +509,11 @@ function OptionRow({
     // menimpa hasil ketikan terbaru.
     if (queryTerakhir.current !== q) return
     setDaftar(products.map((p) => ({ id: p.id, label: p.name })))
+
+    // Harga ikut dicatat dari hasil pencarian. Tanpa ini, produk yang baru
+    // dipilih staff tidak punya angka sampai halaman dimuat ulang — dan total
+    // paketnya terlihat lebih murah dari yang sebenarnya.
+    onHargaProduk(Object.fromEntries(products.map((p) => [p.id, p.price])))
   }
 
   // Produk yang sudah dipakai pilihan lain disembunyikan dari daftar. `productId`
@@ -446,7 +522,7 @@ function OptionRow({
   const daftarBersih = daftar.filter((o) => !terlarang.includes(Number(o.id)))
 
   return (
-    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_4.5rem_auto] sm:items-center">
+    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_7rem_4.5rem_6.5rem_auto] sm:items-center">
       <Combobox
         requireOption
         value={teks}
@@ -484,6 +560,14 @@ function OptionRow({
         aria-label={`Jumlah ${step.name}`}
         className="w-full rounded-lg border border-input bg-background px-2 py-1.5 text-sm tabular-nums outline-none focus:border-primary disabled:opacity-50"
       />
+
+      {/* Keterangan untuk staff, dibaca dari katalog. TIDAK ikut tersimpan ke
+          preset — lihat lib/pc-prebuild/config.ts. */}
+      <span className="text-right text-sm font-semibold tabular-nums text-sale-red sm:text-xs">
+        {option?.productId && hargaProduk[option.productId] !== undefined
+          ? formatRupiah(hargaProduk[option.productId] * option.quantity)
+          : "—"}
+      </span>
 
       <button
         type="button"
