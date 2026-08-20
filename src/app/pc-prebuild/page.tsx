@@ -106,11 +106,15 @@ export default async function PcPrebuildPage() {
                         )}
                       </div>
 
+                      {/* Menuju halaman detail, bukan langsung ke wizard.
+                          Spesifikasi lengkapnya dilihat dulu; yang sudah cocok
+                          bisa memesan dari sana, yang ingin menukar komponen
+                          baru masuk ke PC Builder. */}
                       <Link
-                        href={`/build-pc?preset=${encodeURIComponent(preset.id)}`}
+                        href={`/pc-prebuild/${encodeURIComponent(preset.id)}`}
                         className="block rounded-xl bg-brand-green px-4 py-3 text-center text-sm font-bold text-primary-foreground transition-opacity hover:opacity-90"
                       >
-                        Pakai rakitan ini
+                        Lihat detail paket
                       </Link>
                     </div>
                   </article>
