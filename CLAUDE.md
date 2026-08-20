@@ -144,6 +144,7 @@ Sebelum bekerja di area tertentu, baca dokumen terkait di folder `docs/`:
 | [`docs/07-environment-variables.md`](./docs/07-environment-variables.md) | Menambah integrasi baru, konfigurasi environment. |
 | [`docs/08-database-migrations.md`](./docs/08-database-migrations.md) | Mengubah `prisma/schema.prisma`. **`prisma migrate dev` DAN `prisma db push` dua-duanya dilarang di project ini** — sejak 5 Agustus 2026 skema dilacak lewat berkas migrasi di `prisma/migrations/`. Alasan masing-masing ada di dokumen itu. |
 | [`docs/10-deployment-procedure.md`](./docs/10-deployment-procedure.md) | Menyiapkan environment/database baru, cutover domain produksi, atau menjalankan perintah apa pun terhadap database produksi. |
+| [`docs/11-pc-prebuild.md`](./docs/11-pc-prebuild.md) | Menyentuh paket rakitan siap pakai: `/admin/pc-prebuild`, `/pc-prebuild`, atau pemuatan preset di `/build-pc`. |
 
 ---
 
