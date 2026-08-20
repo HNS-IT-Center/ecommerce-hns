@@ -1,4 +1,3 @@
-import Image from "next/image"
 import Link from "next/link"
 import { notFound, redirect } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
@@ -6,6 +5,7 @@ import { ArrowLeft } from "lucide-react"
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { PrebuildDetail } from "@/features/pc-prebuild/components/prebuild-detail"
+import { PrebuildGallery } from "@/features/pc-prebuild/components/prebuild-gallery"
 import { getPcBuilderConfig } from "@/lib/pc-builder/config"
 import { getPcPrebuildConfig } from "@/lib/pc-prebuild/config"
 import { resolvePrebuildPresets } from "@/lib/pc-prebuild/resolve"
@@ -64,16 +64,7 @@ export default async function PrebuildDetailPage({ params }: Props) {
             <p className="mt-2 max-w-2xl text-muted-foreground">{resolved.summary}</p>
           )}
 
-          {resolved.image && (
-            <Image
-              src={resolved.image}
-              alt=""
-              width={960}
-              height={640}
-              priority
-              className="mt-6 aspect-[3/2] w-full rounded-2xl border bg-white object-contain"
-            />
-          )}
+          <PrebuildGallery images={resolved.images} nama={resolved.name} />
 
           <PrebuildDetail
             presetId={resolved.id}

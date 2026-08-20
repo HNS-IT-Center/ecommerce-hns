@@ -118,9 +118,9 @@ export default async function PcPrebuildPage() {
                     {/* Foto rakitan utuh memimpin kartu kalau ada. Foto komponen
                         di bawah tetap berguna, tapi yang membuat orang berhenti
                         menggulir adalah wujud PC-nya. */}
-                    {preset.image && (
+                    {preset.images[0] && (
                       <Image
-                        src={preset.image}
+                        src={preset.images[0]}
                         alt=""
                         width={640}
                         height={480}

@@ -18,3 +18,16 @@
  */
 export const MAX_OPTIONS_PER_SLOT = 3
 export const MAX_BRANCHING_SLOTS = 3
+
+/**
+ * Foto per paket: satu utama + tiga pendamping.
+ *
+ * Empat cukup untuk sudut yang benar-benar ditanyakan pelanggan — tampak depan,
+ * dalam casing, tata kabel, belakang — dan pas sebagai satu baris thumbnail di
+ * bawah foto utama. Lebih dari itu halaman paket berubah jadi galeri produk,
+ * dan untuk itu halaman produk sudah ada.
+ *
+ * Mengisinya OPSIONAL. Paket berfoto satu tetap tampil rapi; foto utamanya
+ * sekadar melebar penuh tanpa baris thumbnail.
+ */
+export const MAX_PREBUILD_IMAGES = 4

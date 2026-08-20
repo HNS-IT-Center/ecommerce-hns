@@ -31,14 +31,14 @@
 import { unstable_cache } from "next/cache"
 
 import { getPrisma } from "@/lib/prisma/client"
-import { MAX_BRANCHING_SLOTS, MAX_OPTIONS_PER_SLOT } from "./limits"
+import { MAX_BRANCHING_SLOTS, MAX_OPTIONS_PER_SLOT, MAX_PREBUILD_IMAGES } from "./limits"
 
 export const PC_PREBUILD_CACHE_TAG = "pc-prebuild-config"
 export const PC_PREBUILD_SETTING_KEY = "PC_PREBUILD_CONFIG"
 
 // Batasnya tinggal di berkas sendiri supaya panel admin (Client Component)
 // bisa memakainya tanpa menyeret Prisma ke bundle browser. Lihat limits.ts.
-export { MAX_BRANCHING_SLOTS, MAX_OPTIONS_PER_SLOT } from "./limits"
+export { MAX_BRANCHING_SLOTS, MAX_OPTIONS_PER_SLOT, MAX_PREBUILD_IMAGES } from "./limits"
 
 export type PcPrebuildOption = {
   productId: number
@@ -74,14 +74,18 @@ export type PcPrebuildPreset = {
   name: string
   summary: string
   /**
-   * Foto rakitan jadi, hasil unggah ke Cloudflare R2 lewat POST /api/admin/media
-   * — satu-satunya jalur unggah foto di project ini (CLAUDE.md §2.2).
+   * Foto rakitan jadi — hasil unggah ke Cloudflare R2 lewat
+   * POST /api/admin/media, satu-satunya jalur unggah foto di project ini
+   * (CLAUDE.md §2.2). Yang disimpan URL-nya saja.
    *
-   * Yang disimpan URL-nya saja. Foto komponen satu per satu sudah ada di
-   * katalog; ini foto PC-nya UTUH, yang justru paling menentukan kesan
-   * pelanggan dan tidak bisa disusun dari foto komponen.
+   * Yang PERTAMA adalah foto utama: itu yang dipakai kartu di /pc-prebuild dan
+   * yang tampil besar di halaman detail. Sisanya jadi thumbnail.
+   *
+   * Boleh kosong. Foto komponen satu per satu sudah ada di katalog; ini foto
+   * PC-nya UTUH, yang paling menentukan kesan pelanggan dan tidak bisa disusun
+   * dari foto komponen.
    */
-  image?: string
+  images: string[]
   order: number
   slots: PcPrebuildSlot[]
 }
@@ -216,13 +220,21 @@ function toPreset(value: unknown, index: number): PcPrebuildPreset | null {
   // sebelum percabangan ada.
   const slots = rapikanSlots(dariSlots.length > 0 ? dariSlots : dariItems)
 
-  const image = typeof preset.image === "string" ? preset.image.trim() : ""
+  // Dua bentuk masuk, satu bentuk keluar — pola yang sama dengan items → slots.
+  // Bentuk lama menyimpan SATU foto di `image`; bentuk baru menyimpan daftar di
+  // `images`. Paket yang sudah terlanjur berfoto tunggal tidak perlu diisi ulang.
+  const dariBaru = Array.isArray(preset.images) ? preset.images : []
+  const dariLama = typeof preset.image === "string" ? [preset.image] : []
+  const images = [...new Set([...dariBaru, ...dariLama])]
+    .filter((url): url is string => typeof url === "string" && url.trim().length > 0)
+    .map((url) => url.trim())
+    .slice(0, MAX_PREBUILD_IMAGES)
 
   return {
     id: preset.id,
     name: preset.name,
     summary: typeof preset.summary === "string" ? preset.summary : "",
-    ...(image ? { image } : {}),
+    images,
     order: angkaSah(preset.order) ? preset.order : index,
     slots,
   }

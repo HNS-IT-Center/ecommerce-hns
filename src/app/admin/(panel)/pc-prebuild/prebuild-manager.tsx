@@ -11,7 +11,11 @@ import { compressImage } from "@/lib/utils/image-compression"
 import type { PcBuilderStepConfig } from "@/lib/pc-builder/config"
 // NILAI dari limits.ts, TIPE dari config.ts. Mengimpor nilai dari config.ts
 // akan menyeret getPrisma() ke bundle browser dan menggagalkan build.
-import { MAX_BRANCHING_SLOTS, MAX_OPTIONS_PER_SLOT } from "@/lib/pc-prebuild/limits"
+import {
+  MAX_BRANCHING_SLOTS,
+  MAX_OPTIONS_PER_SLOT,
+  MAX_PREBUILD_IMAGES,
+} from "@/lib/pc-prebuild/limits"
 import type {
   PcPrebuildConfig,
   PcPrebuildOption,
@@ -63,6 +67,7 @@ export function PrebuildManager({
       id: idBaru(),
       name: "Paket baru",
       summary: "",
+      images: [],
       order: presets.length,
       slots: [],
     }
@@ -291,8 +296,8 @@ export function PrebuildManager({
                 {terbuka && (
                   <div className="space-y-3 border-t border-input bg-muted/20 p-3">
                     <FotoPaket
-                      url={preset.image ?? null}
-                      onChange={(url) => ubahPreset(preset.id, { image: url ?? undefined })}
+                      urls={preset.images}
+                      onChange={(images) => ubahPreset(preset.id, { images })}
                     />
 
                     {steps.map((step) => (
@@ -358,29 +363,39 @@ export function PrebuildManager({
  * berarti pratinjaunya hilang setiap kali panel ini dirender ulang.
  */
 function FotoPaket({
-  url,
+  urls,
   onChange,
 }: {
-  url: string | null
-  onChange: (url: string | null) => void
+  urls: string[]
+  onChange: (urls: string[]) => void
 }) {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function pilih(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const files = Array.from(e.target.files ?? [])
+    if (files.length === 0) return
 
     setUploading(true)
     setError(null)
     try {
-      const { file: compressed } = await compressImage(file)
-      const formData = new FormData()
-      formData.append("file", compressed)
-      const res = await fetch("/api/admin/media", { method: "POST", body: formData })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Upload gambar gagal")
-      onChange(data.source_url as string)
+      const sisa = MAX_PREBUILD_IMAGES - urls.length
+      const terunggah: string[] = []
+
+      for (const file of files.slice(0, Math.max(sisa, 0))) {
+        const { file: compressed } = await compressImage(file)
+        const formData = new FormData()
+        formData.append("file", compressed)
+        const res = await fetch("/api/admin/media", { method: "POST", body: formData })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || "Upload gambar gagal")
+        terunggah.push(data.source_url as string)
+      }
+
+      if (terunggah.length > 0) onChange([...urls, ...terunggah])
+      if (files.length > sisa) {
+        setError(`Maksimal ${MAX_PREBUILD_IMAGES} foto — sisanya tidak ikut diunggah.`)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload gambar gagal")
     } finally {
@@ -389,56 +404,77 @@ function FotoPaket({
     }
   }
 
-  return (
-    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-input bg-background p-2.5">
-      {url ? (
-        <Image
-          src={url}
-          alt=""
-          width={96}
-          height={96}
-          className="h-24 w-24 shrink-0 rounded-lg border bg-white object-contain"
-        />
-      ) : (
-        <span
-          aria-hidden="true"
-          className="grid h-24 w-24 shrink-0 place-items-center rounded-lg border border-dashed border-input bg-muted/40 text-muted-foreground"
-        >
-          <ImagePlus className="h-6 w-6" />
-        </span>
-      )}
+  const penuh = urls.length >= MAX_PREBUILD_IMAGES
 
-      <div className="min-w-0 flex-1 space-y-1.5">
+  return (
+    <div className="space-y-2 rounded-lg border border-input bg-background p-2.5">
+      <div>
         <p className="text-xs font-semibold">Foto rakitan</p>
         <p className="text-[11px] text-muted-foreground">
-          Foto PC-nya utuh — ini yang paling menentukan kesan pelanggan. Kalau kosong, kartunya
-          memakai foto komponen.
+          Foto PC-nya utuh. Yang pertama jadi foto utama — itu yang tampil di kartu daftar paket.
+          Maksimal {MAX_PREBUILD_IMAGES}, dan boleh dikosongkan.
         </p>
+      </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="cursor-pointer rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs font-semibold hover:bg-muted">
-            {uploading ? "Mengunggah…" : url ? "Ganti foto" : "Pilih foto"}
+      <div className="flex flex-wrap items-start gap-2">
+        {urls.map((url, i) => (
+          <div key={url} className="relative">
+            <Image
+              src={url}
+              alt=""
+              width={96}
+              height={96}
+              className="h-24 w-24 rounded-lg border bg-white object-contain"
+            />
+
+            {i === 0 ? (
+              <span className="absolute left-1 top-1 rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground">
+                Utama
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onChange([url, ...urls.filter((u) => u !== url)])}
+                className="absolute left-1 top-1 rounded bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold hover:bg-background"
+              >
+                Jadikan utama
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => onChange(urls.filter((u) => u !== url))}
+              aria-label="Hapus foto"
+              className="absolute right-1 top-1 rounded bg-background/90 p-1 text-muted-foreground hover:text-destructive"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        ))}
+
+        {!penuh && (
+          <label className="grid h-24 w-24 cursor-pointer place-items-center rounded-lg border border-dashed border-input bg-muted/40 text-center text-[11px] font-semibold text-muted-foreground hover:bg-muted">
+            {uploading ? (
+              "Mengunggah…"
+            ) : (
+              <span className="flex flex-col items-center gap-1">
+                <ImagePlus className="h-5 w-5" />
+                Tambah foto
+              </span>
+            )}
             <input
               type="file"
               accept="image/*"
+              multiple
               onChange={pilih}
               disabled={uploading}
               className="sr-only"
             />
           </label>
-          {url && (
-            <button
-              type="button"
-              onClick={() => onChange(null)}
-              className="rounded-lg border border-input px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted"
-            >
-              Hapus
-            </button>
-          )}
-        </div>
-
-        {error && <p className="text-[11px] text-destructive">{error}</p>}
+        )}
       </div>
+
+      {error && <p className="text-[11px] text-destructive">{error}</p>}
     </div>
   )
 }

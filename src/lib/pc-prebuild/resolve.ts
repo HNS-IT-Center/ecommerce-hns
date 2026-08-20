@@ -73,8 +73,8 @@ export type ResolvedPrebuildPreset = {
   id: string
   name: string
   summary: string
-  /** Foto rakitan jadi dari panel admin. Kosong = kartu memakai foto komponen. */
-  image: string | null
+  /** Foto rakitan jadi. Yang pertama = foto utama. Kosong = kartu tanpa foto rakitan. */
+  images: string[]
   /** Seluruh pilihan tiap slot. Dipakai saat pemilihan varian dikerjakan. */
   slots: ResolvedPrebuildSlot[]
   /** Slot pada pilihan bawaannya — satu entri per slot. */
@@ -206,7 +206,7 @@ export async function resolvePrebuildPresets(
       id: preset.id,
       name: preset.name,
       summary: preset.summary,
-      image: preset.image ?? null,
+      images: preset.images,
       slots,
       items,
       total: items.reduce(
