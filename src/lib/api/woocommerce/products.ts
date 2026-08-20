@@ -1156,6 +1156,15 @@ function invalidateProductCaches(options: {
   revalidateTag("products", EXPIRE_NOW);
   revalidateTag("all-products", EXPIRE_NOW);
 
+  // Paket PC Prebuild membaca harga & stok komponennya lewat cache sendiri
+  // (`lib/pc-prebuild/resolve.ts`). Tanpa baris ini, ia hanya menyegarkan diri
+  // lewat waktu — sampai 5 menit — sehingga staff yang baru mengubah harga
+  // lalu membuka halaman paket masih melihat angka lama dan mengira ada yang
+  // rusak. Harga yang dipakai SAAT MEMESAN tidak pernah ikut basi
+  // (`priceCartFromCatalog` sengaja tanpa cache), jadi ini murni soal apa yang
+  // terlihat, bukan apa yang ditagihkan.
+  revalidateTag("pc-prebuild-products", EXPIRE_NOW);
+
   if (options.wooId !== undefined) {
     revalidateTag(`product-id-${options.wooId}`, EXPIRE_NOW);
     revalidateTag(`product-${options.wooId}-variations`, EXPIRE_NOW);
