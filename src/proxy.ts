@@ -3,6 +3,68 @@ import { SESSION_COOKIE, verifySession } from "@/lib/auth/session"
 import { CUSTOMER_SESSION_COOKIE, verifyCustomerSession } from "@/lib/auth/customer-session"
 
 /**
+ * Origin publik permintaan, dari header proxy — BUKAN `request.url`.
+ *
+ * Di balik proxy Hostinger `request.url` berisi alamat bind server Next
+ * (`0.0.0.0:3000`), bukan alamat publik, jadi `new URL(path, request.url)`
+ * melempar orang ke host yang tidak bisa dibuka. Itu bug yang sama yang
+ * membuat QR produk mendarat di `https://0.0.0.0:3000/product/...`; di sini
+ * gejalanya lebih jarang terlihat karena hanya muncul saat sesi habis.
+ *
+ * Berbeda dari `src/app/p/[id]/route.ts`, di sini `Location` relatif BUKAN
+ * pilihan: lapisan proxy Next mem-parse header ini sendiri dan menolak URL
+ * relatif dengan `TypeError: Invalid URL` (500). Jadi origin harus disusun,
+ * dan satu-satunya sumber yang benar adalah header terusan dari proxy.
+ *
+ * Ini menirukan `resolveSiteUrl()` di `lib/utils/site-url.ts`, yang tidak bisa
+ * diimpor ke sini: modul itu `server-only` dan memakai `next/headers`,
+ * sedangkan berkas ini berjalan di Edge runtime.
+ */
+function requestOrigin(request: NextRequest): string {
+  const headers = request.headers
+  // `x-forwarded-host` didahulukan: di balik proxy, `host` berisi host internal.
+  // Bisa berupa daftar ("a.com, b.com") kalau melewati beberapa proxy.
+  const rawHost =
+    headers.get("x-forwarded-host")?.split(",")[0].trim() ||
+    headers.get("host")?.split(",")[0].trim()
+
+  // Tanpa host sama sekali, `request.nextUrl.origin` adalah satu-satunya yang
+  // tersisa. Itu bisa saja alamat bind — tapi permintaan tanpa header `Host`
+  // tidak datang dari browser sungguhan, dan menebak di sini lebih baik
+  // daripada melempar 500 ke jalur masuk.
+  if (!rawHost) return request.nextUrl.origin
+
+  const hostname = rawHost.replace(/:\d+$/, "")
+  const proto =
+    headers.get("x-forwarded-proto")?.split(",")[0].trim() ||
+    (hostname === "localhost" || hostname === "127.0.0.1" ? "http" : "https")
+
+  return `${proto}://${rawHost}`
+}
+
+/**
+ * Redirect ke halaman masuk, dibangun di atas origin publik permintaan.
+ *
+ * Host TIDAK divalidasi lewat daftar izin di sini, berbeda dari
+ * `resolveSiteUrl()`. Tujuannya selalu path di origin yang sama, jadi header
+ * `Host` palsu hanya memantulkan penyerang ke situsnya sendiri — tidak ada
+ * korban lain dan tidak ada data yang bocor. Yang berbahaya adalah host palsu
+ * yang ikut ke dalam email atau QR resmi; itu dijaga di tempatnya
+ * masing-masing (`resolvePublicUrl()` dan `resolveSiteUrl()`).
+ */
+function redirectToLogin(
+  request: NextRequest,
+  loginPath: string,
+  paramName: string,
+  target: string
+): NextResponse {
+  // `URLSearchParams` meng-encode nilainya, jadi tujuan yang mengandung `&`
+  // atau `#` tidak bisa menyelundupkan parameter tambahan ke tautan masuk.
+  const query = new URLSearchParams({ [paramName]: target })
+  return NextResponse.redirect(`${requestOrigin(request)}${loginPath}?${query}`, 307)
+}
+
+/**
  * Penjaga pertama untuk /admin dan /profile — dua sesi yang TIDAK BOLEH saling
  * menyentuh (lihat docs/09-google-oauth-setup.md §1). Ditulis dalam satu
  * fungsi karena Next hanya memuat satu file proxy per project, bukan tanda
@@ -40,20 +102,16 @@ export async function proxy(request: NextRequest) {
     const session = await verifySession(request.cookies.get(SESSION_COOKIE)?.value)
     if (session) return NextResponse.next()
 
-    const login = new URL("/admin/login", request.url)
     // Bawa tujuan semula supaya setelah masuk, PIC kembali ke halaman yang tadi
     // dituju — bukan dilempar ke dashboard dan harus mencari jalannya lagi.
-    login.searchParams.set("callbackUrl", `${pathname}${search}`)
-    return NextResponse.redirect(login)
+    return redirectToLogin(request, "/admin/login", "callbackUrl", `${pathname}${search}`)
   }
 
   // /profile/:path*
   const session = await verifyCustomerSession(request.cookies.get(CUSTOMER_SESSION_COOKIE)?.value)
   if (session) return NextResponse.next()
 
-  const login = new URL("/login", request.url)
-  login.searchParams.set("next", `${pathname}${search}`)
-  return NextResponse.redirect(login)
+  return redirectToLogin(request, "/login", "next", `${pathname}${search}`)
 }
 
 export const config = {
