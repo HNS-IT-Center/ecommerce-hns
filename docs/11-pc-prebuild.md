@@ -49,10 +49,17 @@ Alurnya:
     slots: [{
       stepId: string,          // menunjuk step di PC_BUILDER_CONFIG
       options: [{ productId, quantity, label? }]
-    }]
+    }],
+    performance?: { … }        // hasil analisis AI — opsional, lihat §9
   }]
 }
 ```
+
+Daftar game untuk grid FPS TIDAK tinggal di sini melainkan di baris `settings`
+sendiri berkunci `PC_PREBUILD_GAMES` — ia satu daftar untuk semua paket, dan
+menyimpannya bersama paket berarti menyunting satu nama game ikut menuliskan
+ulang seluruh konfigurasi paket. Pola yang sama dipakai `PC_BUILDER_DISPLAY`
+terhadap `PC_BUILDER_CONFIG`.
 
 ### Dua bentuk masuk, satu bentuk keluar
 
@@ -217,8 +224,9 @@ ditemukan" yang membingungkan.
 
 | Tag | Isi | Disegarkan oleh |
 |---|---|---|
-| `pc-prebuild-config` | Konfigurasi paket | `savePcPrebuildConfig()` |
+| `pc-prebuild-config` | Konfigurasi paket (termasuk hasil analisis performa) | `savePcPrebuildConfig()` |
 | `pc-prebuild-products` | Harga & stok komponen | `invalidateProductCaches()` — helper terpusat yang dipakai SEMUA jalur perubahan produk |
+| `pc-prebuild-games` | Daftar game grid FPS | `savePcPrebuildGames()` |
 
 `revalidateTag`, **bukan** `revalidatePath`. Alasannya sama seperti di
 `pc-builder/actions.ts`: halaman yang memegang entri invalidasi path sendiri
@@ -227,7 +235,126 @@ gejalanya, mengganti tema terlihat di seluruh situs kecuali di halaman itu.
 
 ---
 
-## 9. Yang belum ada
+## 9. Analisis performa (Groq)
+
+Ditambahkan 24 Agustus 2026. Satu klik di panel admin mengirim komponen paket
+ke Groq, dan hasilnya jadi panel "Estimasi Performa" di halaman paket: kelas
+resolusi, kecocokan per use case, estimasi FPS per game, keseimbangan CPU/GPU,
+dan saran upgrade.
+
+```
+/admin/pc-prebuild  →  "Hitung dengan AI"  →  ConfirmDialog
+        ↓
+POST /api/admin/pc-prebuild-performance      (requireAuth, openai/gpt-oss-120b)
+        ↓
+hasil masuk sebagai DRAF di state panel      (published: false)
+        ↓  staff menyunting angka bila perlu, lalu menyalakan "Tampilkan ke pelanggan"
+"Simpan"  →  tersimpan di dalam presetnya    (PC_PREBUILD_CONFIG)
+```
+
+### Katalognya TERTUTUP — AI memilih, tidak mengarang
+
+Use case (7), tingkatan resolusi (5), setelan grafis (4), dan prioritas upgrade
+(3) adalah daftar tetap di [`lib/pc-prebuild/performance.ts`](../src/lib/pc-prebuild/performance.ts).
+AI hanya memilih dari daftar itu; id yang tidak dikenal **dibuang parser**.
+
+Kalau labelnya boleh dikarang tiap kali dihitung, dua paket sekelas bisa
+berbunyi "1440p Ultra" dan "QHD High", atau "Gaming Kompetitif" dan "Esports".
+Pelanggan berhenti bisa membandingkan paket, dan flag di kartu kehilangan
+artinya sebagai penanda.
+
+### Sidik jari: analisis basi tidak pernah sampai ke pelanggan
+
+Setiap hasil menyimpan `fingerprint` — sidik jari seluruh slot beserta urutan
+pilihannya, dihitung `fingerprintSlots()`. Begitu staff mengganti satu komponen,
+sidik jarinya tidak cocok lagi:
+
+- panel admin menandai paketnya "Perlu hitung ulang" (di kepala kartu, jadi
+  terlihat tanpa membuka paketnya),
+- `resolve.ts` mengosongkan `performancePublic`, sehingga panelnya **hilang**
+  dari halaman pelanggan sampai dihitung ulang.
+
+Urutan pilihan ikut dihitung, karena pilihan pertama adalah bawaan — menukar
+urutan berarti menganalisis komponen yang berbeda. Sidik jarinya berawalan versi
+(`v1|…`) supaya perubahan format nanti otomatis membuat semua hasil lama dianggap
+basi, bukan dibandingkan dengan aturan yang sudah tidak berlaku.
+
+`resolve.ts` mengembalikan tiga bidang, dan bedanya disengaja:
+
+| Bidang | Isi | Dipakai |
+|---|---|---|
+| `performance` | apa adanya, termasuk draf & basi | panel admin |
+| `performanceStale` | komponen sudah berubah | panel admin |
+| `performancePublic` | sudah tayang DAN belum basi | halaman pelanggan |
+
+Penyaringannya di satu tempat, bukan diulang di tiap halaman: satu halaman yang
+lupa memeriksanya sudah cukup untuk memperlihatkan draf ke pelanggan.
+
+### Angkanya perkiraan, dan diperlakukan begitu
+
+- `published` bawaannya **false**. Hasil AI selalu mendarat sebagai draf; yang
+  memutuskan ia layak dilihat pelanggan adalah staff.
+- Seluruh angka **bisa disunting** staff. Teknisi HNS tahu hal yang tidak
+  diketahui model — casing berventilasi sempit, driver yang sedang bermasalah.
+- Disclaimer ada **di dalam** `PerformancePanel`, bukan ditambahkan halaman
+  pemanggil. Halaman yang lupa menyertakannya adalah halaman yang menampilkan
+  perkiraan sebagai janji.
+- Prompt melarang menyebut **harga, diskon, atau promo**. Angka rupiah dikirim
+  hanya sebagai konteks kelas paket. Selisih harga upgrade yang dikarang model
+  persis jenis angka yang dilarang [CLAUDE.md §2.7](../CLAUDE.md).
+- Estimasi FPS memakai satu patokan tetap: **1080p**, dengan setelan grafis
+  disebut per baris. Patokan yang berpindah-pindah membuat angka antar paket
+  tidak bisa dibandingkan.
+
+### Peran komponen ditebak, bukan disimpan
+
+Langkah PC Builder dinamai staff dan tidak punya kolom "peran". [`component-roles.ts`](../src/lib/pc-prebuild/component-roles.ts)
+menebaknya dari nama langkah → nama kategori → nama produk, dan berkas itu
+dipakai **tiga** tempat: tombol admin (menyala atau tidak), endpoint AI (menolak
+paket tanpa prosesor/RAM/penyimpanan), dan ikon di kartu `/pc-prebuild`. Satu
+daftar kata kunci untuk semuanya — dua daftar berarti tombol yang menyala di
+panel menghasilkan penolakan dari server.
+
+Yang **wajib** ada: prosesor, RAM, penyimpanan. GPU sengaja tidak, karena paket
+kantor ber-grafis terintegrasi justru yang paling butuh penjelasan "ini cukup
+untuk apa".
+
+### Daftar game
+
+Tab kedua di `/admin/pc-prebuild` (bukan rute baru, bukan entri sidebar). Maksimal
+12 game; logonya opsional dan diunggah ke R2 lewat `/api/admin/media` — tanpa
+logo, grid memakai inisial. **Id game tidak berubah saat namanya diubah**: entri
+FPS menunjuk id, jadi membetulkan ejaan tidak boleh menghapus angka yang sudah
+dihitung. Entri FPS untuk game yang dihapus dari daftar disaring saat dirender,
+bukan dibuang dari data.
+
+### Batas token, dan satu pelajaran yang mahal
+
+Penjaganya sama dengan dua endpoint AI lain di panel
+([`lib/api/groq/rate-limit.ts`](../src/lib/api/groq/rate-limit.ts)): `max_tokens`
+dipesan di muka terhadap jatah TPM, jadi menaikkannya justru mempersempit daftar
+komponen yang masih boleh dikirim. Yang dikirim ke Groq hanya nama produk, nama
+kategori, nama langkah, jumlah, dan harga — bukan tabel spesifikasi lengkap.
+
+**Modelnya BEDA dari dua endpoint itu**, karena `llama-3.3-70b-versatile` sudah
+tidak ada di akun ini (404 `model_not_found`, 24 Agustus 2026). Penggantinya
+`openai/gpt-oss-120b` dengan `reasoning_effort: "low"` — token penalaran ikut
+memakan `max_tokens`, jadi 2.500 dipilih supaya keluaran (terukur 856 token pada
+delapan game) tetap muat walau daftarnya penuh dua belas game. Rinciannya di
+[`docs/05-data-fetching.md` §10.3](./05-data-fetching.md).
+
+**Kalau keluarannya salah, periksa promptnya sebelum menaikkan jatah berpikir
+model.** Dua cacat pertama — RDR2 hilang dari daftar FPS, dan saran upgrade
+berbunyi "RAM 8 GB single channel" untuk paket yang sudah 16 GB dual channel —
+terlihat seperti model yang kurang teliti. Sebabnya ternyata contoh JSON di
+prompt: isinya nilai yang terlihat masuk akal, dan model menyalinnya sebagai
+fakta alih-alih membaca daftar komponen. Setelah contohnya diganti placeholder
+`<…>`, mutu pada penalaran rendah setara dengan penalaran medium yang memakai
+tiga kali lipat token.
+
+---
+
+## 10. Yang belum ada
 
 - **Masukkan keranjang** dari halaman paket. Perlu keputusan lebih dulu: paket
   berisi 6–8 produk, dan memasukkannya sebagai item terpisah membuat pelanggan

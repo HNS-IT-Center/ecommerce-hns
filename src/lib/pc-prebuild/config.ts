@@ -31,10 +31,23 @@
 import { unstable_cache } from "next/cache"
 
 import { getPrisma } from "@/lib/prisma/client"
+import { DEFAULT_PREBUILD_GAMES, parsePrebuildGames, type PrebuildGame } from "./games"
 import { MAX_BRANCHING_SLOTS, MAX_OPTIONS_PER_SLOT, MAX_PREBUILD_IMAGES } from "./limits"
+import { parsePrebuildPerformance, type PrebuildPerformance } from "./performance"
 
 export const PC_PREBUILD_CACHE_TAG = "pc-prebuild-config"
 export const PC_PREBUILD_SETTING_KEY = "PC_PREBUILD_CONFIG"
+
+/**
+ * Daftar game disimpan di baris `settings` TERPISAH dari konfigurasi paket.
+ *
+ * Dua alasan: ia satu daftar untuk semua paket (bukan milik salah satu), dan
+ * menyimpannya bersama paket berarti setiap penyuntingan daftar game menulis
+ * ulang — dan berisiko menimpa — seluruh konfigurasi paket. Pola yang sama
+ * dipakai `PC_BUILDER_DISPLAY` terhadap `PC_BUILDER_CONFIG`.
+ */
+export const PC_PREBUILD_GAMES_CACHE_TAG = "pc-prebuild-games"
+export const PC_PREBUILD_GAMES_SETTING_KEY = "PC_PREBUILD_GAMES"
 
 // Batasnya tinggal di berkas sendiri supaya panel admin (Client Component)
 // bisa memakainya tanpa menyeret Prisma ke bundle browser. Lihat limits.ts.
@@ -88,6 +101,15 @@ export type PcPrebuildPreset = {
   images: string[]
   order: number
   slots: PcPrebuildSlot[]
+  /**
+   * Hasil analisis performa dari Groq — DRAF sampai staff menayangkannya.
+   *
+   * Opsional, dan tetap opsional selamanya: paket yang belum pernah dianalisis
+   * harus tampil utuh tanpa panel performa, bukan tampil separuh. Bentuk dan
+   * aturannya ada di `performance.ts`; di sini ia hanya menumpang tersimpan
+   * bersama presetnya, karena ia memang cuma berlaku untuk satu paket itu.
+   */
+  performance?: PrebuildPerformance
 }
 
 export type PcPrebuildConfig = {
@@ -230,6 +252,10 @@ function toPreset(value: unknown, index: number): PcPrebuildPreset | null {
     .map((url) => url.trim())
     .slice(0, MAX_PREBUILD_IMAGES)
 
+  // Analisis yang cacat DIBUANG, bukan diteruskan setengah jadi: panel performa
+  // adalah tempelan di atas paket, jadi paketnya harus tetap utuh tanpanya.
+  const performance = parsePrebuildPerformance(preset.performance)
+
   return {
     id: preset.id,
     name: preset.name,
@@ -237,6 +263,7 @@ function toPreset(value: unknown, index: number): PcPrebuildPreset | null {
     images,
     order: angkaSah(preset.order) ? preset.order : index,
     slots,
+    ...(performance ? { performance } : {}),
   }
 }
 
@@ -279,4 +306,25 @@ export async function getPcPrebuildConfig(): Promise<PcPrebuildConfig> {
 export async function getPcPrebuildPreset(id: string): Promise<PcPrebuildPreset | null> {
   const config = await getPcPrebuildConfig()
   return config.presets.find((preset) => preset.id === id) ?? null
+}
+
+/**
+ * Daftar game untuk grid estimasi FPS.
+ *
+ * Belum pernah disimpan → daftar bawaan. Sudah disimpan tapi kosong → memang
+ * kosong; lihat alasannya di `parsePrebuildGames`.
+ */
+export async function getPcPrebuildGames(): Promise<PrebuildGame[]> {
+  const fetcher = unstable_cache(
+    async () => {
+      const setting = await getPrisma().setting.findUnique({
+        where: { key: PC_PREBUILD_GAMES_SETTING_KEY },
+      })
+      return setting?.value ?? null
+    },
+    ["pc-prebuild-games"],
+    { revalidate: 300, tags: [PC_PREBUILD_GAMES_CACHE_TAG] }
+  )
+
+  return parsePrebuildGames(await fetcher()) ?? DEFAULT_PREBUILD_GAMES
 }

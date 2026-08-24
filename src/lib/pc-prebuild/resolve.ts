@@ -5,6 +5,11 @@ import { unstable_cache } from "next/cache"
 import { getPrisma } from "@/lib/prisma/client"
 import type { PcBuilderStepConfig } from "@/lib/pc-builder/config"
 import type { PcPrebuildPreset } from "@/lib/pc-prebuild/config"
+import {
+  isPerformanceStale,
+  isPerformanceVisible,
+  type PrebuildPerformance,
+} from "@/lib/pc-prebuild/performance"
 
 /**
  * Menggabungkan preset (yang cuma menyimpan id) dengan katalog, supaya halaman
@@ -94,6 +99,23 @@ export type ResolvedPrebuildPreset = {
   orphanStepCount: number
   /** Slot yang punya lebih dari satu pilihan. */
   branchingCount: number
+  /**
+   * Analisis performa APA ADANYA — termasuk yang masih draf dan yang sudah
+   * basi. Ini yang dipakai panel admin, karena di sanalah draf disunting dan
+   * status basi harus terlihat.
+   */
+  performance: PrebuildPerformance | null
+  /** Komponen berubah sejak analisis dibuat. Perlu dihitung ulang. */
+  performanceStale: boolean
+  /**
+   * Analisis yang BOLEH dilihat pelanggan — sudah ditayangkan dan belum basi.
+   *
+   * Disaring di sini, bukan di tiap halaman, dan itu disengaja: kalau aturannya
+   * diulang di setiap pemakai, satu halaman yang lupa memeriksanya sudah cukup
+   * untuk memperlihatkan draf atau analisis basi ke pelanggan. Halaman publik
+   * cukup membaca bidang ini dan tidak perlu tahu aturannya.
+   */
+  performancePublic: PrebuildPerformance | null
 }
 
 /**
@@ -223,6 +245,17 @@ export async function resolvePrebuildPresets(
         .length,
       orphanStepCount: slots.filter((slot) => slot.stepName === "").length,
       branchingCount: slots.filter((slot) => slot.branching).length,
+      // Sidik jarinya dihitung dari `preset.slots` (bentuk tersimpan), BUKAN
+      // dari `slots` hasil resolve. Produk yang hilang dari katalog mengubah
+      // hasil resolve tapi tidak mengubah apa yang staff susun — dan analisis
+      // tidak seharusnya dinyatakan basi gara-gara katalog, sebab tidak ada
+      // yang bisa dikerjakan staff untuk itu selain mengganti komponennya
+      // (yang toh mengubah sidik jari juga).
+      performance: preset.performance ?? null,
+      performanceStale: isPerformanceStale(preset.performance, preset.slots),
+      performancePublic: isPerformanceVisible(preset.performance, preset.slots)
+        ? preset.performance
+        : null,
     }
   })
 }

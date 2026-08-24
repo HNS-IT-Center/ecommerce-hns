@@ -427,6 +427,60 @@ Detail implementasi Meilisearch akan didokumentasikan terpisah saat fase ini dim
 
 ---
 
+## 10.3 Route Handler AI di panel admin
+
+Tiga endpoint di `/api/admin/*` memanggil Groq memakai API key sistem. Semuanya
+memanggil `requireAuth()` lebih dulu — endpoint ini di luar jangkauan proxy
+`/admin`, jadi tanpa itu siapa pun yang tahu alamatnya bisa menghabiskan kuota
+atas nama kita.
+
+| Endpoint | Guna | Model | `max_tokens` |
+|---|---|---|---|
+| `POST /api/admin/format-specs` | Merapikan tempelan spesifikasi jadi tabel | `llama-3.3-70b-versatile` ⚠️ | 1500 |
+| `POST /api/admin/generate-short-description` | Deskripsi singkat produk | `llama-3.3-70b-versatile` ⚠️ | 300 |
+| `POST /api/admin/pc-prebuild-performance` | Analisis performa paket PC Prebuild — badan: `{ slots }`, balasan: `{ performance }` | `openai/gpt-oss-120b` (`reasoning_effort: low`) | 2500 |
+
+> ⚠️ **`llama-3.3-70b-versatile` sudah tidak ada di akun Groq ini** sejak
+> 24 Agustus 2026 — API-nya membalas 404 `model_not_found`. Dua endpoint bertanda
+> itu **sedang mati** dan perlu dipindahkan ke model lain.
+
+### Token penalaran ikut memakan `max_tokens`
+
+Catatan lama di kedua endpoint produk menyatakan `openai/gpt-oss-*` dan
+`qwen/qwen3.6-27b` "membalas 400 Failed to validate JSON" pada mode
+`response_format: json_object`. **Itu keliru.** Penyebab aslinya `max_tokens`
+yang kekecilan: ketiga model itu menulis token penalaran lebih dulu, dan
+penalaran ikut dihitung terhadap `max_tokens`. Kalau jatahnya habis sebelum
+JSON-nya keluar, Groq membalas `json_validate_failed` dengan `failed_generation`
+kosong — terbaca seperti model yang tidak sanggup, padahal ia cuma terpotong.
+
+Diukur pada prompt analisis performa (input ~1.400 token):
+
+| Model | `max_tokens` | Hasil |
+|---|---|---|
+| `openai/gpt-oss-120b` | 200 | ❌ `json_validate_failed` |
+| `openai/gpt-oss-120b` | 2500 | ✅ 856 token keluar, 3,4 dtk |
+| `qwen/qwen3.6-27b` | 4000 | ✅ |
+| `groq/compound` | — | ❌ "Request Entity Too Large" |
+
+Jadi saat memilih model untuk endpoint AI baru: cek dulu daftar model yang
+benar-benar ada (`GET https://api.groq.com/openai/v1/models`), dan beri
+`max_tokens` yang memuat penalaran, bukan cuma keluarannya.
+
+Ketiganya memakai penjaga yang sama di
+[`lib/api/groq/rate-limit.ts`](../src/lib/api/groq/rate-limit.ts): `max_tokens`
+DIPESAN di muka terhadap jatah TPM, jadi permintaan dicek muat (`checkInputFits`)
+**sebelum** dikirim, dan galat 413/429 diterjemahkan jadi pesan yang berguna
+(`rateLimitResponse`) alih-alih JSON mentah berisi id organisasi.
+
+Balasan model diperlakukan sebagai data asing: `pc-prebuild-performance`
+menjalankannya lewat parser yang sama dengan yang dipakai saat membaca dari
+database (`parsePrebuildPerformance`) — id di luar katalog dibuang, angka
+dijepit, teks dipotong. Rinciannya di
+[`docs/11-pc-prebuild.md` §9](./11-pc-prebuild.md).
+
+---
+
 ## 11. Rate Limiting & Retry
 
 - WooCommerce tidak punya rate limit built-in yang kuat, tapi hosting bisa membatasi.

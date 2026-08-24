@@ -1,6 +1,6 @@
 import { fetchBuilderProducts } from "@/features/builder/actions"
 import { getPcBuilderConfig } from "@/lib/pc-builder/config"
-import { getPcPrebuildConfig } from "@/lib/pc-prebuild/config"
+import { getPcPrebuildConfig, getPcPrebuildGames } from "@/lib/pc-prebuild/config"
 import { getPrebuildProducts } from "@/lib/pc-prebuild/resolve"
 import type { ComboboxOption } from "@/components/ui/combobox"
 
@@ -14,7 +14,11 @@ export default async function PcPrebuildPage() {
   // Langkahnya menumpang konfigurasi PC Builder, bukan daftar kedua yang harus
   // dijaga sendiri. Kalau staff menambah step di /admin/pc-builder, editor di
   // sini otomatis mengenalinya.
-  const [config, steps] = await Promise.all([getPcPrebuildConfig(), getPcBuilderConfig()])
+  const [config, steps, games] = await Promise.all([
+    getPcPrebuildConfig(),
+    getPcBuilderConfig(),
+    getPcPrebuildGames(),
+  ])
   const sortedSteps = [...steps].sort((a, b) => (a.order || 0) - (b.order || 0))
 
   // Saran awal per langkah, supaya dropdown pemilih produk tidak kosong saat
@@ -67,6 +71,7 @@ export default async function PcPrebuildPage() {
         initialOptions={initialOptions}
         productNames={productNames}
         productPrices={productPrices}
+        games={games}
       />
     </div>
   )

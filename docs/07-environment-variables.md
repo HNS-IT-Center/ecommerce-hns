@@ -365,6 +365,37 @@ membuat React melihat dua `key` yang sama.
 
 ---
 
+### 2.11 OPSIONAL — Fitur AI di Panel Admin (Groq)
+
+```env
+GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxx
+```
+
+Sudah dipakai sejak fitur AI pertama di panel produk, tapi baru dicatat di sini
+saat endpoint ketiga ditambahkan (24 Agustus 2026) — sebelumnya ia hanya hidup
+di `.env.example` dan di `config/env.ts`.
+
+**Opsional, dan gagalnya harus tetap sopan.** Tanpa kunci ini aplikasi jalan
+normal; yang mati cuma tiga tombol AI di panel admin, dan masing-masing membalas
+"GROQ_API_KEY is not configured" alih-alih melempar 500 tanpa penjelasan:
+
+| Dipakai | Guna |
+|---|---|
+| `POST /api/admin/format-specs` | Merapikan tempelan spesifikasi jadi tabel |
+| `POST /api/admin/generate-short-description` | Deskripsi singkat produk |
+| `POST /api/admin/pc-prebuild-performance` | Analisis performa paket PC Prebuild |
+
+**Bukan `NEXT_PUBLIC_*`.** Kunci ini memanggil API berbayar atas nama HNS;
+membawanya ke browser berarti siapa pun bisa membacanya dari devtools dan
+memakainya sendiri. Ketiga endpoint memanggil `requireAuth()` lebih dulu karena
+alasan yang sama — keduanya di `/api`, di luar jangkauan proxy `/admin`.
+
+Batas laju per menit (TPM) dijaga di
+[`lib/api/groq/rate-limit.ts`](../src/lib/api/groq/rate-limit.ts); angkanya
+mengikuti tier akun, jadi kalau tier dinaikkan, perbarui tabel di berkas itu.
+
+---
+
 ## 3. Setup Lokal (Developer Baru)
 
 ### Langkah

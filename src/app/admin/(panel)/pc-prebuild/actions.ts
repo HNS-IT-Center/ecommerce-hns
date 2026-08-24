@@ -5,9 +5,12 @@ import { revalidateTag } from "next/cache"
 import { getPrisma } from "@/lib/prisma/client"
 import {
   PC_PREBUILD_CACHE_TAG,
+  PC_PREBUILD_GAMES_CACHE_TAG,
+  PC_PREBUILD_GAMES_SETTING_KEY,
   PC_PREBUILD_SETTING_KEY,
   parsePrebuildConfig,
 } from "@/lib/pc-prebuild/config"
+import { parsePrebuildGames } from "@/lib/pc-prebuild/games"
 
 /**
  * Tipe SENGAJA tidak di-re-export dari sini.
@@ -47,4 +50,28 @@ export async function savePcPrebuildConfig(config: unknown) {
 
   revalidatePcPrebuild()
   return { success: true as const, presets: bersih.presets.length }
+}
+
+/**
+ * Daftar game untuk grid estimasi FPS.
+ *
+ * Disimpan ke barisnya sendiri, bukan ke `PC_PREBUILD_CONFIG` — lihat alasannya
+ * di `lib/pc-prebuild/config.ts`. Tag yang disegarkan pun terpisah: menyunting
+ * daftar game tidak perlu membatalkan cache seluruh paket.
+ *
+ * Daftar kosong DIHORMATI, tidak jatuh ke bawaan. Staff yang mengosongkannya
+ * berarti tidak ingin grid FPS tampil; mengisinya ulang otomatis akan membuat
+ * penghapusan terasa tidak berfungsi.
+ */
+export async function savePcPrebuildGames(games: unknown) {
+  const bersih = parsePrebuildGames(games) ?? []
+
+  await getPrisma().setting.upsert({
+    where: { key: PC_PREBUILD_GAMES_SETTING_KEY },
+    update: { value: bersih },
+    create: { key: PC_PREBUILD_GAMES_SETTING_KEY, value: bersih },
+  })
+
+  revalidateTag(PC_PREBUILD_GAMES_CACHE_TAG, "max")
+  return { success: true as const, games: bersih.length }
 }

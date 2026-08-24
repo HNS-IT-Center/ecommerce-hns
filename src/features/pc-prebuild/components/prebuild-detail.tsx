@@ -2,7 +2,7 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { PencilRuler, TriangleAlert } from "lucide-react"
 
 import { formatRupiah } from "@/lib/utils"
@@ -54,10 +54,24 @@ export function PrebuildDetail({
   presetId,
   namaPaket,
   slots,
+  gallery,
+  performance,
 }: {
   presetId: string
   namaPaket: string
   slots: SlotTampil[]
+  /**
+   * Galeri foto dan panel performa dioper sebagai node yang sudah jadi, bukan
+   * dirender dari sini.
+   *
+   * Keduanya tidak butuh keadaan di klien — panel performa bahkan seluruhnya
+   * statis — sedangkan komponen ini terpaksa Client Component karena pemilihan
+   * varian. Merakitnya di server dan mengopernya ke sini menjaga keduanya tetap
+   * di luar bundel browser, sekaligus membuat tata letak halaman ini tinggal di
+   * satu tempat alih-alih terpecah antara halaman dan komponen.
+   */
+  gallery: ReactNode
+  performance: ReactNode
 }) {
   const [dipilih, setDipilih] = useState<Record<string, number>>(() =>
     Object.fromEntries(slots.map((slot) => [slot.stepId, slot.defaultIndex]))
@@ -110,9 +124,21 @@ export function PrebuildDetail({
   }`
 
   return (
-    <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
-      <section>
-        <h2 className="mb-3 text-lg font-bold">Spesifikasi</h2>
+    /**
+     * Dua kolom yang berdiri sendiri-sendiri, BUKAN kisi 2×2.
+     *
+     * Pada kisi 2×2, tinggi baris pertama ditentukan yang tertinggi antara foto
+     * dan panel performa — dan panel performa jauh lebih tinggi. Akibatnya
+     * tabel spesifikasi terdorong turun dan menyisakan lubang kosong sebesar
+     * ratusan piksel di bawah foto. Dua kolom terpisah membuat masing-masing
+     * mengalir sesuai isinya.
+     */
+    <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_23rem] lg:items-start">
+      <div className="space-y-8">
+        {gallery}
+
+        <section>
+          <h2 className="mb-3 text-lg font-bold">Spesifikasi</h2>
 
         <div className="overflow-x-auto rounded-2xl border">
           <table className="w-full min-w-[32rem] text-sm">
@@ -220,10 +246,14 @@ export function PrebuildDetail({
             sisanya, atau menggantinya lewat PC Builder.
           </p>
         )}
-      </section>
+        </section>
+      </div>
 
-      <aside className="lg:sticky lg:top-24 lg:self-start">
-        <div className="space-y-4 rounded-2xl border bg-card p-6 shadow-sm">
+      <div className="space-y-6">
+        {performance}
+
+        <aside className="lg:sticky lg:top-24">
+          <div className="space-y-4 rounded-2xl border bg-card p-6 shadow-sm">
           <div>
             <p className="text-xs uppercase tracking-wide text-muted-foreground">
               Total {hilang > 0 ? "(sebagian)" : ""}
@@ -258,11 +288,12 @@ export function PrebuildDetail({
             Ubah di PC Builder
           </Link>
 
-          <p className="text-center text-xs text-muted-foreground">
-            Semua komponen tetap bisa diganti sebelum pesanan dikonfirmasi.
-          </p>
-        </div>
-      </aside>
+            <p className="text-center text-xs text-muted-foreground">
+              Semua komponen tetap bisa diganti sebelum pesanan dikonfirmasi.
+            </p>
+          </div>
+        </aside>
+      </div>
     </div>
   )
 }

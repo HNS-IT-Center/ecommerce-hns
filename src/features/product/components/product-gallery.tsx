@@ -418,9 +418,17 @@ export function ProductGallery({
             berhenti bisa digeser di sana — pembeli yang videonya ada di slide
             kedua tidak punya jalan untuk sampai ke foto ketiga dan seterusnya.
 
-            Sekarang penangkapnya berdiri sendiri di `z-[41]`, di atas video tapi
-            di bawah tombol panah dan penghitung slide (`z-40` yang dilukis
-            belakangan) — jadi geseran selalu tertangkap di slide mana pun.
+            Sekarang penangkapnya berdiri sendiri di `z-[41]`, di atas video
+            (`z-40`) — jadi geseran selalu tertangkap di slide mana pun.
+
+            Tombol panah karena itu WAJIB di atas `41`; sekarang `z-50`. Dulu
+            keduanya `z-40` dengan alasan "panah dilukis belakangan jadi tetap
+            di atas" — urutan paint hanya menentukan saat `z-index`-nya sama,
+            dan `41 > 40` membuat lapisan ini menelan setiap klik panah. Panahnya
+            tetap muncul saat hover (`group-hover` menyala dari kontainer, bukan
+            dari tombolnya), tapi tidak bisa ditekan sama sekali di desktop:
+            kliknya jatuh ke `handleCanvasClick`, yang di desktop tidak berbuat
+            apa-apa. Kalau lapisan ini naik lagi suatu hari, naikkan panahnya.
             `pointer-events-none` saat videonya benar-benar diputar: di sana
             kontrol pemutar yang harus menerima sentuhan, bukan galeri.
 
@@ -460,14 +468,14 @@ export function ProductGallery({
           <>
             <button
               onClick={handlePrev}
-              className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-40 flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-full bg-background/50 text-foreground backdrop-blur-md opacity-0 shadow-sm transition-all group-hover:opacity-100 hover:bg-background/80 cursor-pointer"
+              className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 z-50 flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-full bg-background/50 text-foreground backdrop-blur-md opacity-0 shadow-sm transition-all group-hover:opacity-100 hover:bg-background/80 cursor-pointer"
               aria-label="Previous image"
             >
               <ChevronLeft className="h-5 w-5 sm:h-6 sm:w-6" />
             </button>
             <button
               onClick={handleNext}
-              className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-40 flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-full bg-background/50 text-foreground backdrop-blur-md opacity-0 shadow-sm transition-all group-hover:opacity-100 hover:bg-background/80 cursor-pointer"
+              className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 z-50 flex h-10 w-10 sm:h-12 sm:w-12 items-center justify-center rounded-full bg-background/50 text-foreground backdrop-blur-md opacity-0 shadow-sm transition-all group-hover:opacity-100 hover:bg-background/80 cursor-pointer"
               aria-label="Next image"
             >
               <ChevronRight className="h-5 w-5 sm:h-6 sm:w-6" />

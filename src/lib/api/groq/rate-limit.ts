@@ -15,6 +15,13 @@
  * Kalau tier akun dinaikkan, perbarui angkanya di sini.
  */
 export const GROQ_TPM: Record<string, number> = {
+  /**
+   * TIDAK TERSEDIA LAGI di akun ini sejak 24 Agustus 2026 — Groq membalas 404
+   * `model_not_found`. Barisnya sengaja ditinggal sebagai catatan, karena
+   * `format-specs` dan `generate-short-description` masih menunjuk model ini
+   * dan karena itu sedang mati. Jangan memakainya untuk endpoint baru; periksa
+   * dulu daftar model yang benar-benar ada lewat `GET /openai/v1/models`.
+   */
   "llama-3.3-70b-versatile": 12000,
   "openai/gpt-oss-120b": 8000,
   "openai/gpt-oss-20b": 8000,

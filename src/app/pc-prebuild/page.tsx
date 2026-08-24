@@ -7,11 +7,9 @@ import {
   Cpu,
   Fan,
   HardDrive,
-  Headphones,
   Keyboard,
   MemoryStick,
   Monitor,
-  Mouse,
   Package,
   Power,
   TriangleAlert,
@@ -20,7 +18,12 @@ import {
 
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
+import { ResolutionFlag } from "@/features/pc-prebuild/components/performance/resolution-flag"
 import { getPcBuilderConfig } from "@/lib/pc-builder/config"
+import {
+  detectComponentRole,
+  type PrebuildComponentRole,
+} from "@/lib/pc-prebuild/component-roles"
 import { getPcPrebuildConfig } from "@/lib/pc-prebuild/config"
 import { resolvePrebuildPresets } from "@/lib/pc-prebuild/resolve"
 import { formatRupiah } from "@/lib/utils"
@@ -35,7 +38,7 @@ export const metadata = {
 const MAX_SPEK_TAMPIL = 4
 
 /**
- * Ikon per JENIS komponen, dicocokkan dari nama langkahnya.
+ * Ikon per JENIS komponen.
  *
  * Foto komponen sempat dipakai di sini, tapi pada ukuran 36px ia jadi bercak
  * warna yang tidak terbaca — apalagi setelah foto rakitan utuh memimpin kartu.
@@ -43,29 +46,27 @@ const MAX_SPEK_TAMPIL = 4
  * semua baris seperti versi pertama halaman ini: ikon seragam bukan informasi,
  * cuma pengisi ruang.
  *
- * Nama langkah ditulis staff di /admin/pc-builder dan bisa apa saja, jadi
- * pencocokannya lewat kata kunci dengan jaring pengaman di ujung.
+ * Jenisnya ditebak `detectComponentRole` — daftar kata kunci yang SAMA dengan
+ * yang dipakai panel admin dan endpoint analisis performa. Sebelumnya berkas
+ * ini punya tabel kata kunci sendiri, dan dua tabel berarti "RAM" bisa dikenali
+ * di satu tempat dan tidak dikenali di tempat lain.
  */
-const IKON_KOMPONEN: Array<[RegExp, LucideIcon]> = [
-  [/prosesor|processor|cpu/i, Cpu],
-  [/mother|mobo/i, CircuitBoard],
-  [/ram|memor/i, MemoryStick],
-  [/ssd|hdd|nvme|storage|penyimpanan/i, HardDrive],
-  [/vga|gpu|graphic|grafis/i, Monitor],
-  [/psu|power|daya/i, Power],
-  [/cooler|fan|pendingin|hsf/i, Fan],
-  [/casing|case/i, Box],
-  [/monitor|layar/i, Monitor],
-  [/keyboard/i, Keyboard],
-  [/mouse|tetikus/i, Mouse],
-  [/headset|audio|speaker/i, Headphones],
-]
+const IKON_PERAN: Record<PrebuildComponentRole, LucideIcon> = {
+  cpu: Cpu,
+  motherboard: CircuitBoard,
+  ram: MemoryStick,
+  storage: HardDrive,
+  gpu: Monitor,
+  psu: Power,
+  cooler: Fan,
+  case: Box,
+  monitor: Monitor,
+  peripheral: Keyboard,
+  other: Package,
+}
 
 function ikonUntuk(stepName: string): LucideIcon {
-  for (const [pola, ikon] of IKON_KOMPONEN) {
-    if (pola.test(stepName)) return ikon
-  }
-  return Package
+  return IKON_PERAN[detectComponentRole(stepName)]
 }
 
 export default async function PcPrebuildPage() {
@@ -119,13 +120,22 @@ export default async function PcPrebuildPage() {
                         di bawah tetap berguna, tapi yang membuat orang berhenti
                         menggulir adalah wujud PC-nya. */}
                     {preset.images[0] && (
-                      <Image
-                        src={preset.images[0]}
-                        alt=""
-                        width={640}
-                        height={480}
-                        className="aspect-[4/3] w-full rounded-xl border bg-white object-contain"
-                      />
+                      <div className="relative">
+                        {/* Flag kelas performa, sejajar dengan flag diskon di
+                            kartu produk. Hanya untuk analisis yang sudah
+                            ditayangkan DAN masih cocok dengan komponennya —
+                            penyaringannya sudah selesai di resolve.ts. */}
+                        {preset.performancePublic && (
+                          <ResolutionFlag performance={preset.performancePublic} />
+                        )}
+                        <Image
+                          src={preset.images[0]}
+                          alt=""
+                          width={640}
+                          height={480}
+                          className="aspect-4/3 w-full rounded-xl border bg-white object-contain"
+                        />
+                      </div>
                     )}
 
                     <div>
