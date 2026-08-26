@@ -37,27 +37,49 @@ export default async function BuildPcPage({
     const preset = config.enabled ? config.presets.find((p) => p.id === presetId) : undefined
 
     if (preset) {
+      /**
+       * Yang menentukan harga adalah VARIANNYA kalau ada, bukan induknya —
+       * induk VARIABLE sering berharga nol. Karena baris varian juga sebuah
+       * `Product`, ia diambil lewat pencarian id yang sama.
+       */
+      const idBerlaku = (ref: { productId: number; variationId?: number }) =>
+        ref.variationId ?? ref.productId
+
       const products = await fetchBuilderProductsByIds(
-        preset.slots.flatMap((slot) => slot.options.map((option) => option.productId))
+        preset.slots.flatMap((slot) =>
+          slot.items.flatMap((item) => [
+            idBerlaku(item),
+            ...item.alternatives.map(idBerlaku),
+          ])
+        )
       )
       const byId = new Map(products.map((product) => [product.id, product]))
       const stepAda = new Set(stepsConfig.map((step) => step.id))
       const selections: Record<string, BuilderSelection[]> = {}
 
       /**
-       * `pick` membawa pilihan varian sebagai `stepId:productId`, BUKAN indeks.
+       * `pick` membawa pilihan tukar sebagai `stepId:productId`, BUKAN indeks.
        *
        * Indeks akan berkhianat diam-diam: begitu staff mengurutkan ulang atau
        * menghapus satu pilihan, setiap tautan yang sudah tersebar lewat
        * WhatsApp menunjuk produk lain. Pelanggan membuka tautan "RAM 32GB"
        * minggu depan dan mendapat 16GB — tanpa error, tanpa ada yang tahu.
+       *
+       * Satu langkah kini bisa berisi BEBERAPA barang (dua NVMe berbeda),
+       * masing-masing dengan pilihan tukarnya sendiri. Karena itu yang disimpan
+       * per langkah adalah HIMPUNAN id yang diminta, bukan satu id — dan
+       * pencocokannya dilakukan per barang. `productId` tetap unik di dalam satu
+       * langkah (ditegakkan parser), jadi `stepId:productId` masih menunjuk
+       * tepat satu pilihan.
        */
-      const diminta = new Map<string, number>()
+      const diminta = new Map<string, Set<number>>()
       for (const bagian of (pick ?? "").split(",")) {
         const [stepId, mentah] = bagian.split(":")
         const productId = Number(mentah)
         if (stepId && Number.isFinite(productId) && productId > 0) {
-          diminta.set(stepId, productId)
+          const set = diminta.get(stepId) ?? new Set<number>()
+          set.add(productId)
+          diminta.set(stepId, set)
         }
       }
 
@@ -68,27 +90,31 @@ export default async function BuildPcPage({
         // komponen berubah.
         if (!stepAda.has(slot.stepId)) continue
 
-        // Yang diminta lewat URL dipakai HANYA kalau ia benar-benar salah satu
-        // pilihan slot ini dan produknya masih ada. Kalau tidak, jatuh ke
-        // bawaan — bukan dipaksakan masuk.
-        const idDiminta = diminta.get(slot.stepId)
-        const dariUrl =
-          idDiminta === undefined
-            ? undefined
-            : slot.options.find(
-                (option) => option.productId === idDiminta && byId.has(option.productId)
-              )
+        const idStep = diminta.get(slot.stepId)
 
-        // Bawaan = pilihan pertama yang produknya masih ada. Stok kosong TIDAK
-        // memindahkan bawaan — pelanggan bisa menukarnya sendiri di wizard.
-        const terpakai = dariUrl ?? slot.options.find((option) => byId.has(option.productId))
-        const product = terpakai ? byId.get(terpakai.productId) : undefined
-        if (!terpakai || !product) continue
+        for (const item of slot.items) {
+          // Seluruh kandidat untuk SATU barang: dirinya sendiri lebih dulu
+          // (itulah bawaannya), lalu pilihan tukarnya.
+          const kandidat = [item, ...item.alternatives]
 
-        selections[slot.stepId] = [
-          ...(selections[slot.stepId] ?? []),
-          { product, quantity: terpakai.quantity },
-        ]
+          // Yang diminta lewat URL dipakai HANYA kalau ia benar-benar salah satu
+          // kandidat barang ini dan produknya masih ada. Kalau tidak, jatuh ke
+          // bawaan — bukan dipaksakan masuk.
+          const dariUrl = idStep
+            ? kandidat.find((k) => idStep.has(k.productId) && byId.has(idBerlaku(k)))
+            : undefined
+
+          // Bawaan = kandidat pertama yang produknya masih ada. Stok kosong
+          // TIDAK memindahkan bawaan — pelanggan bisa menukarnya di wizard.
+          const terpakai = dariUrl ?? kandidat.find((k) => byId.has(idBerlaku(k)))
+          const product = terpakai ? byId.get(idBerlaku(terpakai)) : undefined
+          if (!terpakai || !product) continue
+
+          selections[slot.stepId] = [
+            ...(selections[slot.stepId] ?? []),
+            { product, quantity: terpakai.quantity },
+          ]
+        }
       }
 
       if (Object.keys(selections).length > 0) {

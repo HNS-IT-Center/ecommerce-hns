@@ -6,6 +6,13 @@
 > Dibangun 19–20 Agustus 2026. Dokumen ini memuat **keputusan beserta alasannya**,
 > karena beberapa di antaranya terlihat seperti detail sepele padahal justru
 > menahan kerusakan yang sudah pernah terjadi di tempat lain di repo ini.
+>
+> **Status per 26 Agustus 2026 — sedang dirancang ulang.**
+> Panel admin sudah dirombak total: deck kartu di `/admin/pc-prebuild`, editor
+> per paket di `/admin/pc-prebuild/[id]`, daftar game pindah ke rutenya sendiri.
+> **Halaman pelanggan (`/pc-prebuild` dan `/pc-prebuild/[id]`) masih placeholder**
+> — desain lamanya dihapus dan yang baru belum dibuat. Lapis datanya utuh dan
+> siap dipakai; lihat komentar di kedua berkas halaman itu.
 
 ---
 
@@ -20,15 +27,24 @@ adalah daftar komponen yang menunjuk produk-produk katalog yang sudah ada.
 Alurnya:
 
 ```
-/admin/pc-prebuild        staff menyusun paket, menyalakan sakelar
+/admin/pc-prebuild          DECK kartu — satu kartu per paket, satu kartu "+",
+        │                   satu kartu Daftar Game. Sakelar Tayang di kepala.
+        ├─ /baru            editor paket baru (id dibuat di server)
+        ├─ /<id>            EDITOR satu paket, dibaca atas ke bawah:
+        │                     1 nama & foto
+        │                     2 komponen  (varian, jumlah, multi-barang)
+        │                     3 analisis  (AI → matriks FPS → chart berfilter)
+        └─ /games           daftar game untuk grid FPS
         ↓
-/pc-prebuild              kartu paket (foto utama, 4 komponen, harga)
-        ↓  "Lihat detail paket"
-/pc-prebuild/<id>         spesifikasi lengkap, galeri, pilihan varian
-        ├─ "Pesan lewat WhatsApp"   → prepareBuildWhatsApp (harga dihitung ulang di server)
-        ├─ "Simpan rakitan ini"     → SavedPcBuild, ikut mesin pemberitahuan perubahan harga
-        └─ "Ubah di PC Builder"     → /build-pc?preset=<id>&pick=…
+/pc-prebuild                ⚠️ PLACEHOLDER — desain baru belum dibuat
+/pc-prebuild/<id>           ⚠️ PLACEHOLDER — desain baru belum dibuat
+        ↓ (yang sudah ada dan tetap berfungsi)
+/build-pc?preset=<id>&pick=…  memuat paket ke wizard
 ```
+
+Yang **masih hidup** di sisi pelanggan: pemuatan preset ke wizard
+(`app/build-pc/page.tsx`) — ia sudah mengerti bentuk data baru, termasuk
+beberapa barang dalam satu langkah.
 
 ---
 
@@ -44,16 +60,47 @@ Alurnya:
     id: string,
     name: string,
     summary: string,
-    images: string[],          // URL R2; yang pertama = foto utama
+    images: string[],            // URL R2; yang pertama = foto utama
     order: number,
     slots: [{
-      stepId: string,          // menunjuk step di PC_BUILDER_CONFIG
-      options: [{ productId, quantity, label? }]
+      stepId: string,            // menunjuk step di PC_BUILDER_CONFIG
+      items: [{                  // terpasang BERSAMAAN — dua NVMe = dua items
+        productId: number,       // id INDUK (SIMPLE atau VARIABLE)
+        variationId?: number,    // baris VARIATION, kalau induknya bervarian
+        quantity: number,
+        label?: string,
+        alternatives: [{ productId, variationId?, quantity, label? }]
+      }]
     }],
-    performance?: { … }        // hasil analisis AI — opsional, lihat §9
+    performance?: { … }          // hasil analisis AI — opsional, lihat §9
   }]
 }
 ```
+
+### `items` dan `alternatives` — dua hal yang sering tertukar
+
+- **`items`** terpasang **bersamaan**. Semuanya ikut dalam rakitan dan ikut
+  dalam total. Ini yang membuat "satu NVMe cepat untuk sistem + satu NVMe besar
+  untuk data" bisa dinyatakan sama sekali.
+- **`alternatives`** adalah pilihan **tukar** untuk satu barang. Pelanggan
+  memilih salah satu; barangnya sendiri adalah bawaannya.
+
+Generasi sebelumnya cuma punya `options`, yang artinya "pilihan tukar" — jadi
+dua barang sekaligus dalam satu langkah memang tidak bisa dinyatakan.
+
+**Tampilan pemilihan tukar di sisi pelanggan belum dirancang ulang.** Bidangnya
+sudah ada dan tersimpan supaya bentuk datanya tidak perlu dibongkar kedua
+kalinya saat fiturnya dinyalakan.
+
+### Varian: `productId` induk, `variationId` variannya
+
+Yang menentukan **harga dan stok adalah variannya**, bukan induknya — induk
+VARIABLE sering berharga nol. Karena baris VARIATION juga sebuah `Product`, ia
+diambil lewat pencarian id yang sama; tidak ada jalur kedua yang harus dijaga.
+
+Yang dikirim ke AI justru **id induknya**: kategori dan nama yang menjelaskan
+komponen menempel di induk, sementara baris varian biasanya cuma mengulang nama
+induk plus satu nilai atribut dan sering tidak berkategori.
 
 Daftar game untuk grid FPS TIDAK tinggal di sini melainkan di baris `settings`
 sendiri berkunci `PC_PREBUILD_GAMES` — ia satu daftar untuk semua paket, dan
@@ -66,10 +113,17 @@ terhadap `PC_BUILDER_CONFIG`.
 `parsePrebuildConfig()` menerima bentuk lama **dan** baru, tapi selalu
 mengeluarkan bentuk baru:
 
-| Lama | Baru |
-|---|---|
-| `items: [{ stepId, productId, quantity }]` | `slots: [{ stepId, options: [...] }]` |
-| `image: "…"` (satu URL) | `images: ["…"]` |
+| Gen | Bentuk | Dibaca jadi |
+|---|---|---|
+| 1 | `items: [{ stepId, productId, quantity }]` (di level **preset**) | satu slot berisi satu barang |
+| 2 | `slots: [{ stepId, options: [...] }]` | `options[0]` jadi barang, sisanya jadi `alternatives`-nya |
+| 3 | `slots: [{ stepId, items: [...] }]` | apa adanya |
+| — | `image: "…"` (satu URL) | `images: ["…"]` |
+
+Migrasi gen 2 → 3 **wajib** membaca `options[0]` sebagai barang dan sisanya
+sebagai pilihan tukar. Membacanya sebagai beberapa barang terpasang akan
+**menggandakan komponen** — paket RAM 16/32 GB tiba-tiba berisi dua keping
+sekaligus, dan totalnya naik tanpa ada yang mengubah apa pun.
 
 `savePcPrebuildConfig()` menjalankan parser itu **sebelum menulis**, jadi setiap
 penyimpanan menormalkan datanya. Tanpa itu, dua bentuk akan hidup berdampingan di
@@ -83,7 +137,8 @@ separuh jalan.
 
 ## 3. Harga — baca ini sebelum mengubah apa pun
 
-**Preset tidak pernah menyimpan harga.** Isinya hanya `productId` dan `quantity`.
+**Preset tidak pernah menyimpan harga.** Isinya hanya `productId`, `variationId`,
+dan `quantity`.
 
 Ini keharusan [CLAUDE.md §2.7](../CLAUDE.md), bukan pilihan gaya. Preset yang
 menyimpan angka akan menampilkan harga yang benar hari ini dan salah bulan depan
@@ -113,13 +168,25 @@ terpisah, lihat §7.
 
 | Batas | Nilai | Alasan |
 |---|---|---|
-| Pilihan per slot | 3 | Tiga slot × tiga pilihan sudah 27 kombinasi harga di satu halaman |
-| Slot bercabang per paket | 3 | Lebih dari itu halaman detail berubah jadi konfigurator — dan untuk itu sudah ada PC Builder |
-| Foto per paket | 4 | Satu utama + tiga pendamping: depan, dalam casing, tata kabel, belakang |
+| `MAX_ITEMS_PER_SLOT` | 4 | Langkah yang butuh lebih dari empat barang berbeda sebenarnya dua langkah yang tergabung |
+| `MAX_ALTERNATIVES_PER_ITEM` | 3 | Tiga barang bercabang × tiga pilihan sudah 27 kombinasi harga di satu halaman |
+| `MAX_BRANCHING_ITEMS` | 3 | Lebih dari itu halaman paket berubah jadi konfigurator — dan untuk itu sudah ada PC Builder |
+| `MAX_QUANTITY_PER_ITEM` | 10 | Jauh di atas kebutuhan nyata (4 keping RAM, 6 kipas); angkanya ikut ke pesan WhatsApp yang diterima CS |
+| `MAX_PREBUILD_IMAGES` | 4 | Satu utama + tiga pendamping: depan, dalam casing, tata kabel, belakang |
 
 Batasnya ditegakkan **di parser**, bukan cuma di UI. Data yang masuk lewat jalur
-mana pun tetap patuh. Slot bercabang yang melebihi batas **dikunci ke bawaannya**,
-bukan dibuang — paketnya tetap utuh, cuma berhenti bercabang.
+mana pun tetap patuh. Barang bercabang yang melebihi batas **dikunci ke
+bawaannya**, bukan dibuang — paketnya tetap utuh, cuma berhenti bercabang.
+Jumlah yang kelewat besar **dijepit**, bukan ditolak.
+
+### Satu batas yang SENGAJA tidak ditegakkan parser: `allowMultiple`
+
+`PcBuilderStepConfig.allowMultiple` menentukan boleh-tidaknya satu langkah diisi
+lebih dari satu barang. Panel prebuild mematuhinya dengan **menonaktifkan tombol
+"Tambah barang"**. Parser **tidak** ikut menegakkannya, dan itu disengaja:
+sakelar itu bisa dimatikan staff kapan saja di `/admin/pc-builder`, dan parser
+yang mematuhinya akan diam-diam menghapus komponen dari paket yang sudah
+tersusun — perubahan di satu halaman merusak data di halaman lain.
 
 ---
 
@@ -194,7 +261,7 @@ informasi, cuma pengisi ruang.
 
 ---
 
-## 7. Tiga jebakan teknis yang sudah menggigit
+## 7. Empat jebakan teknis yang sudah menggigit
 
 **1. `limits.ts` terpisah dari `config.ts`, dan itu wajib.**
 Panel admin adalah Client Component. Mengimpor **nilai** dari `config.ts`
@@ -208,7 +275,22 @@ termasuk `export type`. Build gagal dengan "Export … doesn't exist in target
 module". Deklarasikan ulang tipenya di pemanggil. Berlaku untuk
 `actions-whatsapp.ts` dan `actions-save.ts`.
 
-**3. `product.id` internal, BUKAN `wooId`.**
+**3. Wizard PC Builder MENGUNCI `type: "SIMPLE"` — panel prebuild tidak.**
+`fetchBuilderProducts` di `features/builder/actions.ts` menyaring habis produk
+VARIABLE beserta variannya, jadi di wizard skenario "pilih produk lalu pilih
+variannya" memang tidak pernah terjadi. Panel prebuild membutuhkannya, dan
+karena itu ada jalur query TERPISAH di
+[`lib/pc-prebuild/products.ts`](../src/lib/pc-prebuild/products.ts).
+
+**Jangan "menyederhanakan" dengan melonggarkan filter di `fetchBuilderProducts`.**
+Wizard dipakai pelanggan dan tidak punya UI untuk memilih varian; produk
+VARIABLE yang bocor ke sana akan masuk keranjang tanpa varian — harganya nol
+atau harga induk yang bukan harga barang mana pun. Perhatikan juga bahwa induk
+VARIABLE sering berharga nol, jadi query prebuild harus punya cabang `OR`
+khusus untuk induk yang variannya berharga; tanpa itu seluruh produk bervarian
+hilang justru dari panel yang dibuat untuk menanganinya.
+
+**4. `product.id` internal, BUKAN `wooId`.**
 `fetchBuilderProducts` mengembalikan `id: p.id`, dan itulah yang masuk ke store
 wizard — jadi preset memakai kunci yang sama. Tapi `getProductById()` di
 `lib/api/woocommerce/products.ts` justru mencari lewat `wooId`. Dua kunci hidup
@@ -243,19 +325,92 @@ resolusi, kecocokan per use case, estimasi FPS per game, keseimbangan CPU/GPU,
 dan saran upgrade.
 
 ```
-/admin/pc-prebuild  →  "Hitung dengan AI"  →  ConfirmDialog
+/admin/pc-prebuild/<id>  →  "Analisis dengan AI"  →  ConfirmDialog
+        ↓                                             (menyebut jumlah sel
+        ↓                                              yang akan dihitung)
+POST /api/admin/pc-prebuild-performance      (requireAuth)
+        └─ SATU panggilan  openai/gpt-oss-120b
+             kelas resolusi + kecocokan use case + matriks FPS + bottleneck
         ↓
-POST /api/admin/pc-prebuild-performance      (requireAuth, openai/gpt-oss-120b)
-        ↓
-hasil masuk sebagai DRAF di state panel      (published: false)
+hasil masuk sebagai DRAF di state editor     (published: false)
         ↓  staff menyunting angka bila perlu, lalu menyalakan "Tampilkan ke pelanggan"
 "Simpan"  →  tersimpan di dalam presetnya    (PC_PREBUILD_CONFIG)
 ```
 
+### Matriks FPS: 3 resolusi × 3 setelan
+
+Sejak 26 Agustus 2026 estimasi FPS bukan lagi satu patokan tetap 1080p,
+melainkan **matriks**: `PREBUILD_FPS_RESOLUTIONS` (720p/1080p/1440p) ×
+`PREBUILD_FPS_QUALITIES` (Low/Medium/High) — sembilan sel per game. Chart di
+panel admin memfilter dua sumbu itu.
+
+Sumbunya **tetap**, bukan dikarang model per paket, jadi angka antar paket tetap
+bisa dibandingkan. 4K sengaja tidak masuk: pada paket yang sanggup 4K angkanya
+sudah bisa disimpulkan dari 1440p, dan tiap kombinasi tambahan mengalikan jumlah
+angka yang harus dikeluarkan model untuk SETIAP game. "Ultra" juga tidak jadi
+sumbu matriks (ia tetap sah sebagai vonis kelas paket) dengan alasan yang sama.
+
+**Skala batang di chart TETAP** terhadap FPS tertinggi seluruh matriks, bukan
+terhadap yang tertinggi pada filter yang sedang aktif. Kalau skalanya ikut
+berubah, berpindah dari "1440p High" ke "720p Low" menampilkan batang sepanjang
+yang sama padahal angkanya berlipat — justru perubahan panjang itulah gunanya
+filter ini.
+
+**Sel kosong ≠ nol.** Kombinasi yang tidak dihitung model ditandai "—", bukan
+batang nol. Batang nol berarti "tidak sanggup menjalankan", pernyataan yang
+sama sekali berbeda dari "tidak ditanyakan".
+
+Data lama tanpa bidang `resolution` dibaca sebagai **1080p** (patokan versi
+pertama), dan `quality: "Ultra"` jatuh ke `"High"` — bukan dibuang, karena
+membuang barisnya berarti kehilangan angka yang sudah pernah dihitung.
+
+### Saran upgrade DIBUANG — jangan ditambahkan kembali
+
+Versi 24–26 Agustus 2026 sempat punya daftar saran upgrade, lengkap dengan
+produk pengganti yang dipilih AI dari katalog lewat panggilan Groq kedua
+(`openai/gpt-oss-20b`). **Seluruhnya dibuang 26 Agustus 2026** atas keputusan
+pemilik produk.
+
+Alasannya bukan teknis: yang mengunggah produk di HNS sudah berkompeten menilai
+kelas komponen, jadi saran mesin di atas penilaian mereka tidak menambah apa
+pun — sementara saran yang meleset tetap harus ditolak CS di depan pelanggan.
+Fitur yang akurasinya tidak bisa dijamin dan gunanya tipis lebih baik tidak ada
+daripada ada dengan peringatan.
+
+Yang ikut terhapus: panggilan Groq kedua, `getUpgradeCandidates()`,
+`MAX_UPGRADE_CANDIDATES`, `UPGRADE_CANDIDATE_POOL`, dan tipe
+`PrebuildUpgrade`/`PrebuildUpgradeCandidate`. Endpoint sekarang **satu
+panggilan, satu model**.
+
+### `bottleneck` UNTUK PANEL ADMIN SAJA
+
+Tetap dihitung dan tetap tersimpan, tapi **halaman pelanggan tidak boleh
+merendernya** (keputusan yang sama, 26 Agustus 2026). Bagi pembeli, "CPU 78 /
+GPU 91" bukan informasi yang bisa ditindaklanjuti, dan angka yang terbaca
+seperti nilai rapor justru membuat paket yang sehat terlihat cacat. Bagi staff
+yang sedang menyusun paket, ia justru penanda paling cepat bahwa ada komponen
+yang menahan yang lain.
+
+Ditandai di **tiga** tempat supaya tidak terlewat: tipe `PrebuildPerformance`,
+badge "Khusus admin" di panel, dan komentar di halaman pelanggan yang masih
+placeholder.
+
+### Pilihan tukar TIDAK ikut dianalisis
+
+Yang dibaca analisis adalah **bawaan** tiap barang — barang itu sendiri, bukan
+`alternatives`-nya. Paket dengan prosesor bercabang karena itu punya satu angka
+FPS yang hanya berlaku untuk prosesor bawaannya.
+
+Menghitung seluruh kombinasi berarti satu panggilan AI per kombinasi (2 CPU × 2
+RAM = 4 panggilan untuk satu paket), dan itu belum dibuat. Batasnya **ditandai
+di panel** begitu ada barang bercabang, bukan dibiarkan tersirat — staff yang
+tidak tahu akan mengira angkanya berlaku untuk semua pilihan.
+
+
 ### Katalognya TERTUTUP — AI memilih, tidak mengarang
 
-Use case (7), tingkatan resolusi (5), setelan grafis (4), dan prioritas upgrade
-(3) adalah daftar tetap di [`lib/pc-prebuild/performance.ts`](../src/lib/pc-prebuild/performance.ts).
+Use case (7), tingkatan resolusi (5), setelan grafis (4), dan sumbu matriks FPS
+(3 resolusi × 3 setelan) adalah daftar tetap di [`lib/pc-prebuild/performance.ts`](../src/lib/pc-prebuild/performance.ts).
 AI hanya memilih dari daftar itu; id yang tidak dikenal **dibuang parser**.
 
 Kalau labelnya boleh dikarang tiap kali dihitung, dua paket sekelas bisa
@@ -300,11 +455,12 @@ lupa memeriksanya sudah cukup untuk memperlihatkan draf ke pelanggan.
   pemanggil. Halaman yang lupa menyertakannya adalah halaman yang menampilkan
   perkiraan sebagai janji.
 - Prompt melarang menyebut **harga, diskon, atau promo**. Angka rupiah dikirim
-  hanya sebagai konteks kelas paket. Selisih harga upgrade yang dikarang model
-  persis jenis angka yang dilarang [CLAUDE.md §2.7](../CLAUDE.md).
-- Estimasi FPS memakai satu patokan tetap: **1080p**, dengan setelan grafis
-  disebut per baris. Patokan yang berpindah-pindah membuat angka antar paket
-  tidak bisa dibandingkan.
+  hanya sebagai konteks kelas paket. Angka rupiah yang dikarang model persis
+  jenis angka yang dilarang [CLAUDE.md §2.7](../CLAUDE.md).
+- Estimasi FPS memakai **sumbu tetap** (3 resolusi × 3 setelan, lihat di atas).
+  Sumbu yang berpindah-pindah membuat angka antar paket tidak bisa
+  dibandingkan. Seluruh selnya bisa disunting staff lewat "Sunting angka" di
+  chart — yang tersunting hanya kombinasi yang sedang ditampilkan filter.
 
 ### Peran komponen ditebak, bukan disimpan
 
@@ -321,7 +477,9 @@ untuk apa".
 
 ### Daftar game
 
-Tab kedua di `/admin/pc-prebuild` (bukan rute baru, bukan entri sidebar). Maksimal
+Rute sendiri di `/admin/pc-prebuild/games`, dicapai lewat kartu khusus di deck
+(bukan tab, bukan entri sidebar) — ia satu daftar untuk SEMUA paket, dan sebagai
+tab ia terlihat seperti bagian dari paket yang sedang dibuka. Maksimal
 12 game; logonya opsional dan diunggah ke R2 lewat `/api/admin/media` — tanpa
 logo, grid memakai inisial. **Id game tidak berubah saat namanya diubah**: entri
 FPS menunjuk id, jadi membetulkan ejaan tidak boleh menghapus angka yang sudah
@@ -339,9 +497,39 @@ kategori, nama langkah, jumlah, dan harga — bukan tabel spesifikasi lengkap.
 **Modelnya BEDA dari dua endpoint itu**, karena `llama-3.3-70b-versatile` sudah
 tidak ada di akun ini (404 `model_not_found`, 24 Agustus 2026). Penggantinya
 `openai/gpt-oss-120b` dengan `reasoning_effort: "low"` — token penalaran ikut
-memakan `max_tokens`, jadi 2.500 dipilih supaya keluaran (terukur 856 token pada
-delapan game) tetap muat walau daftarnya penuh dua belas game. Rinciannya di
+memakan `max_tokens`. Rinciannya di
 [`docs/05-data-fetching.md` §10.3](./05-data-fetching.md).
+
+**Matriks penuh muat karena SKEMA-nya dipendekkan, bukan karena ganti model.**
+108 baris FPS (12 game × 9 sel) dengan kunci panjang
+(`gameId`/`resolution`/`quality`/`avg`/`low`) tidak muat di model mana pun yang
+tersedia di akun ini. Dengan kunci pendek (`g`/`r`/`q`/`a`/`l`) ia muat lapang —
+diukur 26 Agustus 2026: prompt 672 token, keluaran **2.836 token** (52
+penalaran), **5,9 detik**, 108 dari 108 sel terisi, `finish_reason: "stop"`.
+`max_tokens` karena itu 4.000: memuat keluaran terukur dengan kelonggaran, tanpa
+memakan jatah semenit yang masih dibutuhkan panggilan kedua.
+
+Kuncinya tetap **eksplisit**, bukan array berurutan tanpa nama. Array berurutan
+lebih hemat lagi, tapi model yang menukar urutan menghasilkan angka salah secara
+diam-diam — dan angka FPS yang salah tidak punya gejala apa pun sampai ada
+pelanggan yang mengeluh. Pemetaan kunci pendek → bentuk panjang tinggal di route
+handler-nya saja (`padatKePanjang`); yang tersimpan selalu bentuk panjang.
+
+**`groq/compound` sempat dipilih, lalu dibatalkan setelah diukur.** Ia terlihat
+menjanjikan karena `GROQ_TPM` dan header `x-ratelimit-limit-tokens` sama-sama
+menyebut 70.000. Ternyata compound bukan model melainkan **router** yang
+memanggil model lain di dalamnya, dan yang mengikat adalah TPM model internal
+itu:
+
+```
+429 Rate limit reached for model `meta-llama/llama-4-scout-17b-16e-instruct`
+    … tokens per minute (TPM): Limit 30000, Used 27359, Requested 13501
+```
+
+`Requested 13501` untuk permintaan berisi 1.255 token input dengan `max_tokens`
+8.000 — ia menggandakan pemakaian karena menjalankan beberapa model internal.
+**Jangan memilih model berdasarkan angka TPM di tabel tanpa mengukur permintaan
+yang sebenarnya.**
 
 **Kalau keluarannya salah, periksa promptnya sebelum menaikkan jatah berpikir
 model.** Dua cacat pertama — RDR2 hilang dari daftar FPS, dan saran upgrade

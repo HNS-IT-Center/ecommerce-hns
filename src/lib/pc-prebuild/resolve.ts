@@ -4,7 +4,7 @@ import { unstable_cache } from "next/cache"
 
 import { getPrisma } from "@/lib/prisma/client"
 import type { PcBuilderStepConfig } from "@/lib/pc-builder/config"
-import type { PcPrebuildPreset } from "@/lib/pc-prebuild/config"
+import { collectPresetProductIds, type PcPrebuildPreset } from "@/lib/pc-prebuild/config"
 import {
   isPerformanceStale,
   isPerformanceVisible,
@@ -22,6 +22,14 @@ import {
  * `getProductById()` di `lib/api/woocommerce/products.ts` justru mencari lewat
  * `wooId` — dua kunci berbeda hidup berdampingan di repo ini, dan memakai yang
  * keliru menghasilkan "produk tidak ditemukan" yang membingungkan.
+ *
+ * ## Varian
+ *
+ * Barang bervarian menyimpan DUA id: `productId` (induk) dan `variationId`
+ * (baris VARIATION). Yang menentukan harga dan stok adalah VARIANNYA, bukan
+ * induknya — induk VARIABLE sering berharga nol. Karena baris varian juga
+ * sebuah `Product`, ia diambil lewat pencarian id yang sama; tidak ada jalur
+ * kedua yang harus dijaga.
  */
 export type PrebuildProduct = {
   id: number
@@ -30,74 +38,90 @@ export type PrebuildProduct = {
   /** Harga katalog yang berlaku. Tidak pernah disimpan di preset — lihat lib/pc-prebuild/config.ts. */
   price: number
   stock: number
-  /** Foto pertama produk, kalau ada. Host-nya sudah terdaftar di next.config.ts. */
+  /** Foto pertama produk; varian tanpa foto memakai foto induknya. */
   image: string | null
+  /** Nama induk, kalau baris ini sebuah varian. */
+  parentName: string | null
+  /** Nilai atribut varian, mis. "1TB · Hitam". Kosong untuk produk biasa. */
+  variationLabel: string | null
 }
 
-export type ResolvedPrebuildOption = {
+/** Nama yang layak dibaca manusia: induk + varian kalau ada. */
+export function namaTampil(product: PrebuildProduct): string {
+  if (product.parentName && product.variationLabel) {
+    return `${product.parentName} — ${product.variationLabel}`
+  }
+  return product.name
+}
+
+export type ResolvedPrebuildAlternative = {
   productId: number
+  variationId?: number
   quantity: number
   /** Label tombol: label yang ditulis staff, atau nama produknya. */
   label: string
-  /** `null` = produknya sudah tidak ada di katalog. */
+  /** `null` = produknya (atau variannya) sudah tidak ada di katalog. */
   product: PrebuildProduct | null
+}
+
+export type ResolvedPrebuildItem = ResolvedPrebuildAlternative & {
+  stepId: string
+  /** Nama step saat ini. Kosong kalau step-nya sudah dihapus dari PC Builder. */
+  stepName: string
+  /**
+   * Pilihan tukar untuk barang ini. Lebih dari nol = `branching` bernilai true.
+   *
+   * Fitur pemilihan di sisi pelanggan belum dirancang ulang; bidang ini sudah
+   * terisi supaya panel admin bisa menampilkannya dan supaya total termurah
+   * bisa dihitung.
+   */
+  alternatives: ResolvedPrebuildAlternative[]
+  branching: boolean
+  /**
+   * Barang yang BENAR-BENAR dipakai untuk menghitung total.
+   *
+   * Biasanya barang itu sendiri. Kalau produknya sudah dihapus dari katalog, ia
+   * jatuh ke pilihan tukar pertama yang masih ada — slot yang bawaannya hilang
+   * tidak ditampilkan sebagai slot rusak, ia cuma memakai pilihan lain.
+   *
+   * `null` = tidak ada satu pun yang tersisa.
+   *
+   * STOK KOSONG TIDAK MEMINDAHKAN BAWAAN. Barang pertama tetap bawaan, cuma
+   * ditandai. Bawaan yang berpindah sendiri karena stok membuat staff melihat
+   * paket yang berbeda dari yang ia susun.
+   */
+  effective: PrebuildProduct | null
 }
 
 export type ResolvedPrebuildSlot = {
   stepId: string
-  /** Nama step saat ini. Kosong kalau step-nya sudah dihapus dari PC Builder. */
   stepName: string
-  options: ResolvedPrebuildOption[]
-  /**
-   * Indeks pilihan bawaan yang EFEKTIF, atau -1 kalau tidak ada satu pun
-   * produknya tersisa di katalog.
-   *
-   * Bawaan adalah pilihan pertama — kecuali produknya sudah dihapus, maka
-   * jatuh ke pilihan tersedia berikutnya. Slot yang bawaannya hilang tidak
-   * ditampilkan sebagai slot rusak; ia cuma memakai pilihan lain.
-   *
-   * STOK KOSONG TIDAK MEMINDAHKAN BAWAAN. Pilihan pertama tetap bawaan, cuma
-   * ditandai, dan tetap bisa dipilih — pelanggan bisa menukarnya di wizard.
-   * Bawaan yang berpindah sendiri karena stok membuat staff melihat paket yang
-   * berbeda dari yang ia susun.
-   */
-  defaultIndex: number
-  /** Lebih dari satu pilihan = pelanggan boleh memilih. */
-  branching: boolean
-}
-
-/** Proyeksi satu slot pada pilihan bawaannya — bentuk yang dipakai halaman hari ini. */
-export type ResolvedPrebuildItem = {
-  stepId: string
-  stepName: string
-  quantity: number
-  product: PrebuildProduct | null
+  items: ResolvedPrebuildItem[]
 }
 
 export type ResolvedPrebuildPreset = {
   id: string
   name: string
   summary: string
-  /** Foto rakitan jadi. Yang pertama = foto utama. Kosong = kartu tanpa foto rakitan. */
+  /** Foto rakitan jadi. Yang pertama = foto utama. */
   images: string[]
-  /** Seluruh pilihan tiap slot. Dipakai saat pemilihan varian dikerjakan. */
   slots: ResolvedPrebuildSlot[]
-  /** Slot pada pilihan bawaannya — satu entri per slot. */
+  /** Seluruh barang dari semua slot, sudah rata — bentuk yang dipakai daftar komponen. */
   items: ResolvedPrebuildItem[]
-  /** Menjumlahkan pilihan bawaan tiap slot yang produknya masih ada. */
+  /** Menjumlahkan seluruh barang yang produknya masih ada. */
   total: number
   /**
    * Kombinasi TERMURAH dari pilihan yang tersedia — dipakai label "mulai dari".
-   * Sama dengan `total` kalau paketnya tidak punya slot bercabang.
+   * Sama dengan `total` kalau paketnya tidak punya barang bercabang.
    */
   minTotal: number
-  /** Slot yang SELURUH pilihannya hilang dari katalog. */
+  /** Barang yang SELURUH pilihannya hilang dari katalog. */
   missingCount: number
-  /** Slot yang bawaannya ada tapi stoknya kosong. */
+  /** Barang yang produknya ada tapi stoknya kosong. */
   outOfStockCount: number
   /** Slot yang step-nya sudah tidak ada di konfigurasi PC Builder. */
   orphanStepCount: number
-  /** Slot yang punya lebih dari satu pilihan. */
+  /** Barang yang punya pilihan tukar. */
   branchingCount: number
   /**
    * Analisis performa APA ADANYA — termasuk yang masih draf dan yang sudah
@@ -112,8 +136,7 @@ export type ResolvedPrebuildPreset = {
    *
    * Disaring di sini, bukan di tiap halaman, dan itu disengaja: kalau aturannya
    * diulang di setiap pemakai, satu halaman yang lupa memeriksanya sudah cukup
-   * untuk memperlihatkan draf atau analisis basi ke pelanggan. Halaman publik
-   * cukup membaca bidang ini dan tidak perlu tahu aturannya.
+   * untuk memperlihatkan draf atau analisis basi ke pelanggan.
    */
   performancePublic: PrebuildPerformance | null
 }
@@ -130,10 +153,13 @@ export type ResolvedPrebuildPreset = {
  * ia dibaca apa adanya di sini — tidak ada perkalian, tidak ada persentase.
  */
 export async function getPrebuildProducts(ids: number[]): Promise<Map<number, PrebuildProduct>> {
-  const unik = [...new Set(ids)].filter((id) => Number.isFinite(id))
+  const unik = [...new Set(ids)].filter((id) => Number.isFinite(id) && id > 0)
   if (unik.length === 0) return new Map()
 
-  const kunci = unik.slice().sort((a, b) => a - b).join(",")
+  const kunci = unik
+    .slice()
+    .sort((a, b) => a - b)
+    .join(",")
 
   const fetcher = unstable_cache(
     async () => {
@@ -147,24 +173,36 @@ export async function getPrebuildProducts(ids: number[]): Promise<Map<number, Pr
           salePrice: true,
           stockStatus: true,
           stockQty: true,
-          images: {
-            orderBy: { position: "asc" },
-            take: 1,
-            select: { url: true },
+          images: { orderBy: { position: "asc" }, take: 1, select: { url: true } },
+          // Baris VARIATION menumpang induknya untuk nama dan — kalau ia tidak
+          // punya foto sendiri — untuk fotonya juga.
+          parent: {
+            select: {
+              name: true,
+              images: { orderBy: { position: "asc" }, take: 1, select: { url: true } },
+            },
           },
+          attributes: { select: { value: { select: { value: true } } } },
         },
       })
 
       return rows.map((p) => {
         const sale = p.salePrice ? Number(p.salePrice) : 0
         const regular = p.regularPrice ? Number(p.regularPrice) : 0
+        const nilaiAtribut = p.attributes.map((a) => a.value.value.trim()).filter(Boolean)
+
         return {
           id: p.id,
           name: p.name,
           slug: p.slug,
           price: sale > 0 ? sale : regular,
           stock: p.stockStatus === "OUTOFSTOCK" ? 0 : (p.stockQty ?? 10),
-          image: p.images[0]?.url ?? null,
+          image: p.images[0]?.url ?? p.parent?.images[0]?.url ?? null,
+          parentName: p.parent?.name ?? null,
+          // Label varian hanya berarti kalau barisnya memang punya induk.
+          // Produk SIMPLE juga punya atribut, dan menampilkannya sebagai
+          // "varian" akan membuat setiap komponen tampak bervarian.
+          variationLabel: p.parent && nilaiAtribut.length > 0 ? nilaiAtribut.join(" · ") : null,
         }
       })
     },
@@ -175,54 +213,71 @@ export async function getPrebuildProducts(ids: number[]): Promise<Map<number, Pr
   return new Map((await fetcher()).map((p) => [p.id, p]))
 }
 
+/** Baris yang menentukan harga: variannya kalau ada, kalau tidak produknya sendiri. */
+function produkBerlaku(
+  katalog: Map<number, PrebuildProduct>,
+  ref: { productId: number; variationId?: number }
+): PrebuildProduct | null {
+  if (ref.variationId) return katalog.get(ref.variationId) ?? null
+  return katalog.get(ref.productId) ?? null
+}
+
+function hargaBaris(product: PrebuildProduct | null, quantity: number): number {
+  return product ? product.price * quantity : 0
+}
+
 /**
  * Preset mentah → preset siap tampil.
  *
- * Slot yang seluruh pilihannya hilang, atau yang step-nya sudah dihapus, TIDAK
- * dibuang — hanya ditandai. Menyembunyikannya diam-diam membuat staff mengira
- * paketnya masih utuh, dan pelanggan melihat total yang tidak menjelaskan
- * kenapa lebih murah.
+ * Barang yang produknya hilang, atau yang step-nya sudah dihapus, TIDAK dibuang
+ * — hanya ditandai. Menyembunyikannya diam-diam membuat staff mengira paketnya
+ * masih utuh, dan pelanggan melihat total yang tidak menjelaskan kenapa lebih
+ * murah.
  */
 export async function resolvePrebuildPresets(
   presets: PcPrebuildPreset[],
   steps: PcBuilderStepConfig[]
 ): Promise<ResolvedPrebuildPreset[]> {
-  const semuaId = presets.flatMap((preset) =>
-    preset.slots.flatMap((slot) => slot.options.map((option) => option.productId))
-  )
-  const katalog = await getPrebuildProducts(semuaId)
+  // Termasuk id varian — lihat `collectPresetProductIds`.
+  const katalog = await getPrebuildProducts(presets.flatMap(collectPresetProductIds))
   const namaStep = new Map(steps.map((step) => [step.id, step.name]))
 
   return presets.map((preset) => {
     const slots: ResolvedPrebuildSlot[] = preset.slots.map((slot) => {
-      const options: ResolvedPrebuildOption[] = slot.options.map((option) => {
-        const product = katalog.get(option.productId) ?? null
+      const stepName = namaStep.get(slot.stepId) ?? ""
+
+      const items: ResolvedPrebuildItem[] = slot.items.map((item) => {
+        const product = produkBerlaku(katalog, item)
+
+        const alternatives: ResolvedPrebuildAlternative[] = item.alternatives.map((alt) => {
+          const altProduct = produkBerlaku(katalog, alt)
+          return {
+            productId: alt.productId,
+            ...(alt.variationId ? { variationId: alt.variationId } : {}),
+            quantity: alt.quantity,
+            label: alt.label || (altProduct ? namaTampil(altProduct) : `Produk #${alt.productId}`),
+            product: altProduct,
+          }
+        })
+
         return {
-          productId: option.productId,
-          quantity: option.quantity,
-          label: option.label || product?.name || `Produk #${option.productId}`,
+          stepId: slot.stepId,
+          stepName,
+          productId: item.productId,
+          ...(item.variationId ? { variationId: item.variationId } : {}),
+          quantity: item.quantity,
+          label: item.label || (product ? namaTampil(product) : `Produk #${item.productId}`),
           product,
+          alternatives,
+          branching: alternatives.length > 0,
+          effective: product ?? alternatives.find((a) => a.product !== null)?.product ?? null,
         }
       })
 
-      return {
-        stepId: slot.stepId,
-        stepName: namaStep.get(slot.stepId) ?? "",
-        options,
-        defaultIndex: options.findIndex((option) => option.product !== null),
-        branching: options.length > 1,
-      }
+      return { stepId: slot.stepId, stepName, items }
     })
 
-    const items: ResolvedPrebuildItem[] = slots.map((slot) => {
-      const terpakai = slot.defaultIndex >= 0 ? slot.options[slot.defaultIndex] : slot.options[0]
-      return {
-        stepId: slot.stepId,
-        stepName: slot.stepName,
-        quantity: terpakai?.quantity ?? 1,
-        product: slot.defaultIndex >= 0 ? terpakai.product : null,
-      }
-    })
+    const semuaItem = slots.flatMap((slot) => slot.items)
 
     return {
       id: preset.id,
@@ -230,21 +285,25 @@ export async function resolvePrebuildPresets(
       summary: preset.summary,
       images: preset.images,
       slots,
-      items,
-      total: items.reduce(
-        (jumlah, item) => jumlah + (item.product ? item.product.price * item.quantity : 0),
-        0
-      ),
-      minTotal: slots.reduce((jumlah, slot) => {
-        const tersedia = slot.options.filter((option) => option.product !== null)
-        if (tersedia.length === 0) return jumlah
-        return jumlah + Math.min(...tersedia.map((o) => o.product!.price * o.quantity))
+      items: semuaItem,
+      total: semuaItem.reduce((jumlah, item) => jumlah + hargaBaris(item.effective, item.quantity), 0),
+      minTotal: semuaItem.reduce((jumlah, item) => {
+        // Kandidat termurah = barang itu sendiri plus seluruh pilihan tukarnya,
+        // yang produknya masih ada.
+        const kandidat = [
+          { product: item.product, quantity: item.quantity },
+          ...item.alternatives,
+        ].filter((k) => k.product !== null)
+
+        if (kandidat.length === 0) return jumlah
+        return jumlah + Math.min(...kandidat.map((k) => hargaBaris(k.product, k.quantity)))
       }, 0),
-      missingCount: slots.filter((slot) => slot.defaultIndex < 0).length,
-      outOfStockCount: items.filter((item) => item.product !== null && item.product.stock <= 0)
-        .length,
+      missingCount: semuaItem.filter((item) => item.effective === null).length,
+      outOfStockCount: semuaItem.filter(
+        (item) => item.effective !== null && item.effective.stock <= 0
+      ).length,
       orphanStepCount: slots.filter((slot) => slot.stepName === "").length,
-      branchingCount: slots.filter((slot) => slot.branching).length,
+      branchingCount: semuaItem.filter((item) => item.branching).length,
       // Sidik jarinya dihitung dari `preset.slots` (bentuk tersimpan), BUKAN
       // dari `slots` hasil resolve. Produk yang hilang dari katalog mengubah
       // hasil resolve tapi tidak mengubah apa yang staff susun — dan analisis

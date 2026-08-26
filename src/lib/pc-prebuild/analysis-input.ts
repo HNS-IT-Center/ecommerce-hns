@@ -54,6 +54,12 @@ export async function getAnalysisProducts(
       const sale = p.salePrice ? Number(p.salePrice) : 0
       const regular = p.regularPrice ? Number(p.regularPrice) : 0
 
+      // Kategori utama lebih dulu — itu yang paling menolong model mengenali
+      // komponen ketika nama langkah yang ditulis staff kabur ("Bagian 3").
+      const kategori = [...p.categories].sort(
+        (a, b) => Number(b.isPrimary) - Number(a.isPrimary)
+      )
+
       return [
         p.id,
         {
@@ -64,9 +70,7 @@ export async function getAnalysisProducts(
           // regularPrice. Tidak ada perkalian, tidak ada persentase
           // (CLAUDE.md §2.7).
           price: sale > 0 ? sale : regular,
-          categories: [...p.categories]
-            .sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary))
-            .map((c) => c.category.name),
+          categories: kategori.map((c) => c.category.name),
         },
       ]
     })

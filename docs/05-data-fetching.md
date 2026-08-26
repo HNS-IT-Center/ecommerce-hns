@@ -438,11 +438,19 @@ atas nama kita.
 |---|---|---|---|
 | `POST /api/admin/format-specs` | Merapikan tempelan spesifikasi jadi tabel | `llama-3.3-70b-versatile` ⚠️ | 1500 |
 | `POST /api/admin/generate-short-description` | Deskripsi singkat produk | `llama-3.3-70b-versatile` ⚠️ | 300 |
-| `POST /api/admin/pc-prebuild-performance` | Analisis performa paket PC Prebuild — badan: `{ slots }`, balasan: `{ performance }` | `openai/gpt-oss-120b` (`reasoning_effort: low`) | 2500 |
+| `POST /api/admin/pc-prebuild-performance` | Analisis performa paket PC Prebuild — badan: `{ presetId, name, slots }`, balasan: `{ performance }` | `openai/gpt-oss-120b` (`reasoning_effort: low`) | 4000 |
 
-> ⚠️ **`llama-3.3-70b-versatile` sudah tidak ada di akun Groq ini** sejak
-> 24 Agustus 2026 — API-nya membalas 404 `model_not_found`. Dua endpoint bertanda
-> itu **sedang mati** dan perlu dipindahkan ke model lain.
+### `pc-prebuild-performance`: satu panggilan, dan sempat dua
+
+Selama 24–26 Agustus 2026 endpoint ini menjalankan panggilan KEDUA ke
+`openai/gpt-oss-20b` untuk memilih produk pengganti dari katalog, melengkapi
+daftar saran upgrade. **Fitur saran upgrade dibuang 26 Agustus 2026** atas
+keputusan pemilik produk, dan panggilan keduanya ikut hilang.
+
+Satu hal dari periode itu tetap berlaku kalau suatu saat butuh dua panggilan
+lagi: **pisahkan modelnya.** `max_tokens` dipesan di muka terhadap TPM, dan TPM
+dihitung PER MODEL — dua panggilan ke model yang sama berebut ember yang sama,
+dua model berbeda punya ember masing-masing.
 
 ### Token penalaran ikut memakan `max_tokens`
 
@@ -460,12 +468,46 @@ Diukur pada prompt analisis performa (input ~1.400 token):
 |---|---|---|
 | `openai/gpt-oss-120b` | 200 | ❌ `json_validate_failed` |
 | `openai/gpt-oss-120b` | 2500 | ✅ 856 token keluar, 3,4 dtk |
+| `openai/gpt-oss-120b` | 4000 | ✅ matriks FPS penuh: 2.836 token keluar, 5,9 dtk |
 | `qwen/qwen3.6-27b` | 4000 | ✅ |
-| `groq/compound` | — | ❌ "Request Entity Too Large" |
+| `groq/compound` | — | ❌ 413, lalu 429 — lihat di bawah |
 
 Jadi saat memilih model untuk endpoint AI baru: cek dulu daftar model yang
 benar-benar ada (`GET https://api.groq.com/openai/v1/models`), dan beri
 `max_tokens` yang memuat penalaran, bukan cuma keluarannya.
+
+### `groq/compound` bukan model — ia ROUTER, dan TPM-nya menyesatkan
+
+`GROQ_TPM` mencatat `groq/compound` = 70.000, dan header
+`x-ratelimit-limit-tokens` di endpoint itu memang membalas 70.000. **Angka itu
+tidak bisa dipakai untuk menghitung muat-tidaknya sebuah permintaan.** Compound
+menjalankan model lain di dalamnya, dan yang benar-benar mengikat adalah TPM
+model internal itu. Diukur 26 Agustus 2026:
+
+```
+429 Rate limit reached for model `meta-llama/llama-4-scout-17b-16e-instruct`
+    … tokens per minute (TPM): Limit 30000, Used 27359, Requested 13501
+```
+
+Perhatikan `Requested 13501` untuk permintaan berisi 1.255 token input dengan
+`max_tokens` 8.000 — router itu **menggandakan** pemakaian karena memanggil
+beberapa model internal (terlihat di `usage_breakdown` pada balasan yang
+berhasil). Jangan memilih compound berdasarkan angka TPM-nya.
+
+### Kalau keluarannya kebanyakan, perpendek SKEMA-nya dulu, bukan ganti model
+
+Matriks FPS `game × 3 resolusi × 3 setelan` berarti 108 baris untuk dua belas
+game. Dengan kunci panjang (`gameId`/`resolution`/`quality`/`avg`/`low`) itu di
+luar jangkauan model mana pun yang tersedia di akun ini. Dengan kunci pendek
+(`g`/`r`/`q`/`a`/`l`) ia muat lapang di model yang sudah dipakai — 108 dari 108
+sel terisi, `finish_reason: "stop"`.
+
+Kuncinya tetap **eksplisit**, bukan array berurutan tanpa nama. Array berurutan
+lebih hemat lagi, tapi model yang menukar urutan menghasilkan angka yang salah
+secara diam-diam — dan angka FPS yang salah tidak punya gejala apa pun sampai
+ada pelanggan yang mengeluh. Pemetaan kunci pendek → bentuk panjang tinggal di
+route handler-nya saja; yang tersimpan dan yang dibaca halaman selalu bentuk
+panjang.
 
 Ketiganya memakai penjaga yang sama di
 [`lib/api/groq/rate-limit.ts`](../src/lib/api/groq/rate-limit.ts): `max_tokens`

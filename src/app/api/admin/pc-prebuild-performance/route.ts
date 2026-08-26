@@ -13,9 +13,10 @@ import {
   type PrebuildComponentRole,
 } from "@/lib/pc-prebuild/component-roles"
 import { getPcPrebuildGames } from "@/lib/pc-prebuild/config"
-import { MAX_OPTIONS_PER_SLOT } from "@/lib/pc-prebuild/limits"
+import { MAX_ITEMS_PER_SLOT } from "@/lib/pc-prebuild/limits"
 import {
-  MAX_UPGRADE_SUGGESTIONS,
+  PREBUILD_FPS_QUALITIES,
+  PREBUILD_FPS_RESOLUTIONS,
   PREBUILD_QUALITY_PRESETS,
   PREBUILD_RESOLUTION_TIERS,
   PREBUILD_USE_CASES,
@@ -26,31 +27,59 @@ import {
 /**
  * Menghitung perkiraan performa satu paket PC Prebuild lewat Groq.
  *
- * ## Kenapa BUKAN `llama-3.3-70b-versatile` seperti dua endpoint AI lain
+ * Yang dihasilkan: kelas resolusi, kecocokan per use case, matriks estimasi
+ * FPS, dan perkiraan keseimbangan CPU/GPU. **Satu panggilan, satu model.**
  *
- * Karena model itu **sudah tidak ada di akun ini** (24 Agustus 2026, Groq
- * membalas 404 `model_not_found`). Dua endpoint lain di panel ini masih
- * menunjuk model tersebut dan karena itu sedang mati juga.
+ * ## Saran upgrade SENGAJA tidak ada — jangan ditambahkan kembali
  *
- * ## Dan kenapa `openai/gpt-oss-120b`, yang katanya tidak bisa JSON
+ * Endpoint ini sempat punya panggilan KEDUA (`openai/gpt-oss-20b`) yang memilih
+ * produk pengganti dari kandidat katalog untuk melengkapi daftar saran upgrade.
+ * Seluruhnya dibuang 26 Agustus 2026 atas keputusan pemilik produk: yang
+ * mengunggah produk di HNS sudah berkompeten menilai kelas komponen, jadi saran
+ * mesin di atas penilaian mereka tidak menambah apa pun — sementara saran yang
+ * meleset tetap harus ditolak CS di depan pelanggan.
  *
- * Catatan di `format-specs` dan `generate-short-description` menyatakan
- * `openai/gpt-oss-*` dan `qwen/qwen3.6-27b` membalas 400 "Failed to validate
- * JSON" pada mode `response_format: json_object`. **Itu tidak benar lagi** —
- * dan penyebab aslinya bukan modelnya, melainkan `max_tokens` yang kekecilan:
- * ketiganya menulis token PENALARAN lebih dulu, dan penalaran itu ikut memakan
- * jatah `max_tokens`. Kalau jatahnya habis sebelum JSON-nya keluar, yang
- * dikembalikan Groq adalah `json_validate_failed` dengan `failed_generation`
- * kosong — terbaca seperti model yang tidak sanggup, padahal ia cuma terpotong.
+ * Efek sampingnya menguntungkan: seluruh jatah token panggilan kedua kembali,
+ * dan `max_tokens` panggilan pertama tidak perlu lagi berbagi jatah semenit.
  *
- * Diukur pada prompt ini (input 1.220 token):
- *   gpt-oss-120b, max_tokens 200    GAGAL json_validate_failed
- *   gpt-oss-120b, max_tokens 4000   OK — 736 token keluar, 3,9 dtk  <- dipakai
- *   qwen3.6-27b,  max_tokens 4000   OK
- *   groq/compound                   GAGAL "Request Entity Too Large"
+ * ## `bottleneck` UNTUK PANEL ADMIN SAJA
  *
- * 120b dipilih karena pengetahuan perangkat kerasnya paling luas di antara yang
- * tersisa, dan itulah seluruh isi pekerjaan di sini.
+ * Ia tetap dihitung dan tetap tersimpan, tapi halaman pelanggan tidak boleh
+ * merendernya (keputusan yang sama, 26 Agustus 2026). Bagi pembeli, "CPU 78 /
+ * GPU 91" bukan informasi yang bisa ditindaklanjuti; bagi staff yang sedang
+ * menyusun paket, ia justru penanda paling cepat bahwa ada komponen yang
+ * menahan yang lain.
+ *
+ * ## Kenapa BUKAN `groq/compound`, meski TPM-nya terlihat 70.000
+ *
+ * `groq/compound` bukan model melainkan ROUTER: ia memanggil model lain di
+ * dalamnya (`meta-llama/llama-4-scout`, lalu `openai/gpt-oss-120b`). Header
+ * `x-ratelimit-limit-tokens` di endpoint compound memang membalas 70.000, tapi
+ * yang benar-benar mengikat adalah TPM model DI DALAMNYA — diukur 26 Agustus
+ * 2026, permintaan seukuran prompt ini langsung ditolak:
+ *
+ *     429 Rate limit reached for model `meta-llama/llama-4-scout-17b-16e-instruct`
+ *         … tokens per minute (TPM): Limit 30000, Used 27359, Requested 13501
+ *
+ * Perhatikan `Requested 13501` untuk permintaan yang isinya 1.255 token input
+ * dan `max_tokens` 8.000: router itu menggandakan pemakaian karena menjalankan
+ * beberapa model internal. Catatan lama di berkas ini juga sudah mencatat
+ * compound membalas 413 "Request Entity Too Large" pada prompt sebesar ini.
+ *
+ * ## Yang benar-benar memecahkan soal token: SKEMA JSON, bukan modelnya
+ *
+ * Matriksnya `game × 3 resolusi × 3 setelan` — dua belas game berarti 108 baris
+ * FPS. Dengan kunci panjang (`gameId`/`resolution`/`quality`/`avg`/`low`) itu di
+ * luar jangkauan. Dengan kunci pendek (`g`/`r`/`q`/`a`/`l`) ia muat dengan
+ * lapang. Diukur pada paket tujuh komponen dan dua belas game:
+ *
+ *     prompt 672 token, keluaran 2.836 token (52 penalaran), 5,9 detik
+ *     108 dari 108 sel terisi, finish_reason "stop", JSON sah
+ *
+ * Kuncinya tetap EKSPLISIT, bukan array berurutan tanpa nama. Array berurutan
+ * memang lebih hemat lagi, tapi model yang menukar urutan menghasilkan angka
+ * yang salah secara diam-diam — dan angka FPS yang salah tidak punya gejala
+ * apa pun sampai ada pelanggan yang mengeluh.
  */
 const MODEL = "openai/gpt-oss-120b"
 
@@ -58,21 +87,12 @@ const MODEL = "openai/gpt-oss-120b"
  * Penalaran rendah — dan itu keputusan yang sempat terbalik.
  *
  * Pada percobaan pertama `low` terlihat lebih buruk: ia membuang Red Dead
- * Redemption 2 dari daftar FPS (padahal RTX 4060 menjalankannya dengan wajar)
- * dan menulis "RAM 8 GB single channel" untuk paket yang jelas-jelas sudah
- * 16 GB dual channel. Dua-duanya ternyata BUKAN soal penalaran, melainkan
- * cacat prompt: contoh JSON di bawah dulu berisi nilai yang terlihat masuk akal
- * ("8 GB single channel" → "16 GB dual channel"), dan model menyalinnya sebagai
- * fakta alih-alih membaca daftar komponen.
- *
- * Setelah contohnya diganti placeholder dan aturan 5 & 7 dipertegas, `low`
- * menghasilkan mutu yang setara `medium` dengan sepertiga token:
- *
- *   low     856 token keluar (318 penalaran), 3,4 dtk
- *   medium  2.292 token keluar (1.697 penalaran), 8,1 dtk
- *
- * Yang 2.292 itu tinggal 208 token dari batas `max_tokens` — terlalu mepet
- * untuk paket dengan daftar game penuh.
+ * Redemption 2 dari daftar FPS dan menulis "RAM 8 GB single channel" untuk
+ * paket yang jelas-jelas sudah 16 GB dual channel. Dua-duanya ternyata BUKAN
+ * soal penalaran, melainkan cacat prompt: contoh JSON dulu berisi nilai yang
+ * terlihat masuk akal, dan model menyalinnya sebagai fakta alih-alih membaca
+ * daftar komponen. Setelah contohnya diganti placeholder, `low` menghasilkan
+ * mutu setara `medium` dengan sepertiga token.
  *
  * Pelajarannya untuk perubahan berikutnya: kalau keluarannya salah, periksa
  * dulu promptnya sebelum menaikkan jatah berpikir model.
@@ -84,34 +104,26 @@ const REASONING_EFFORT = "low"
  *
  * Nol membuat model gampang terjebak pola jawaban yang sama untuk paket yang
  * berbeda tipis. Terlalu tinggi membuat dua kali "hitung ulang" pada paket yang
- * sama persis menghasilkan angka yang berbeda jauh — dan staff kehilangan alasan
- * untuk mempercayai angka mana pun. 0,2 cukup rapat untuk itu.
+ * sama persis menghasilkan angka yang berbeda jauh — dan staff kehilangan
+ * alasan untuk mempercayai angka mana pun. 0,2 cukup rapat untuk itu.
  */
 const TEMPERATURE = 0.2
 
 /**
- * HARUS memuat token penalaran, bukan cuma JSON-nya.
+ * Keluaran terukur untuk matriks penuh: 2.836 token. 4.000 memberi kelonggaran
+ * untuk paket berkomponen banyak tanpa memakan jatah semenit habis sekaligus.
  *
- * Keluaran terukur pada delapan game: 856 token (318 di antaranya penalaran).
- * 2.500 memberi kelonggaran untuk daftar game yang penuh (12 baris) tanpa
- * membuat jatah semenit habis dalam satu panggilan.
- *
- * Ini juga alasan angkanya tidak dinaikkan lagi: `max_tokens` DIPESAN di muka
- * terhadap jatah TPM (lihat lib/api/groq/rate-limit.ts), dan TPM model ini
- * 8.000. Pada 2.500, dua kali "hitung" dalam satu menit masih muat
- * (2 x (1.220 + 2.500) = 7.440); pada 4.000 yang kedua sudah kena 429 —
- * padahal menghitung dua paket berturut-turut justru yang lazim dilakukan
- * staff.
+ * Jangan dinaikkan tanpa mengukur: `max_tokens` DIPESAN di muka terhadap TPM
+ * (8.000 untuk model ini), jadi menaikkannya justru MEMPERSEMPIT daftar
+ * komponen yang masih boleh dikirim.
  */
-const MAX_TOKENS = 2500
+const MAX_TOKENS = 4000
 
 /** Jaring pengaman bentuk badan permintaan; paket nyata jauh di bawah ini. */
 const MAX_SLOTS = 24
 
-type SlotMasuk = {
-  stepId: string
-  options: { productId: number; quantity: number }[]
-}
+type ItemMasuk = { productId: number; variationId?: number; quantity: number }
+type SlotMasuk = { stepId: string; items: ItemMasuk[] }
 
 function bacaSlots(value: unknown): SlotMasuk[] {
   if (!Array.isArray(value)) return []
@@ -122,23 +134,64 @@ function bacaSlots(value: unknown): SlotMasuk[] {
     if (typeof mentah !== "object" || mentah === null) continue
     const slot = mentah as Record<string, unknown>
     if (typeof slot.stepId !== "string" || !slot.stepId) continue
-    if (!Array.isArray(slot.options)) continue
+    if (!Array.isArray(slot.items)) continue
 
-    const options = slot.options
-      .slice(0, MAX_OPTIONS_PER_SLOT)
+    const items = slot.items
+      .slice(0, MAX_ITEMS_PER_SLOT)
       .map((o) => (typeof o === "object" && o !== null ? (o as Record<string, unknown>) : null))
       .filter((o): o is Record<string, unknown> => o !== null)
       .filter((o) => typeof o.productId === "number" && o.productId > 0)
       .map((o) => ({
         productId: o.productId as number,
+        ...(typeof o.variationId === "number" && o.variationId > 0
+          ? { variationId: o.variationId as number }
+          : {}),
         quantity: typeof o.quantity === "number" && o.quantity > 0 ? (o.quantity as number) : 1,
       }))
 
-    if (options.length === 0) continue
-    hasil.push({ stepId: slot.stepId, options })
+    if (items.length === 0) continue
+    hasil.push({ stepId: slot.stepId, items })
   }
 
   return hasil
+}
+
+/** Angka aman dari jawaban model. */
+function angka(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0
+}
+
+/**
+ * Bentuk padat dari model → bentuk yang dimengerti `parsePrebuildPerformance`.
+ *
+ * Pemetaannya SATU ARAH dan tinggal di sini saja: yang tersimpan dan yang
+ * dibaca halaman selalu bentuk panjang. Kunci pendek adalah urusan kabel antara
+ * kita dan Groq, bukan bentuk data.
+ */
+function padatKePanjang(mentah: unknown): Record<string, unknown> {
+  const raw = typeof mentah === "object" && mentah !== null ? (mentah as Record<string, unknown>) : {}
+
+  const fpsRaw = Array.isArray(raw.fps) ? raw.fps : []
+  const fps = fpsRaw
+    .map((f) => (typeof f === "object" && f !== null ? (f as Record<string, unknown>) : null))
+    .filter((f): f is Record<string, unknown> => f !== null)
+    .map((f) => ({
+      gameId: typeof f.g === "string" ? f.g : "",
+      resolution: typeof f.r === "string" ? f.r : "",
+      quality: typeof f.q === "string" ? f.q : "",
+      avg: angka(f.a),
+      low: angka(f.l),
+    }))
+
+  const gaming = typeof raw.gaming === "object" && raw.gaming !== null ? (raw.gaming as Record<string, unknown>) : {}
+
+  return {
+    headline: raw.headline,
+    resolution: { tier: raw.tier, quality: raw.quality },
+    useCases: raw.useCases,
+    gaming: { suitable: gaming.suitable, note: gaming.note, fps },
+    bottleneck: raw.bottleneck,
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -175,22 +228,28 @@ export async function POST(req: NextRequest) {
     const [steps, games] = await Promise.all([getPcBuilderConfig(), getPcPrebuildGames()])
     const namaStep = new Map(steps.map((step) => [step.id, step.name]))
 
-    // Yang dianalisis adalah KOMBINASI BAWAAN — pilihan pertama tiap slot.
-    // Paket bercabang di HNS umumnya cuma bercabang pada RAM atau penyimpanan,
-    // dan menghitung seluruh kombinasi berarti belasan panggilan AI untuk
-    // selisih yang tidak mengubah kelas performanya.
-    const bawaan = slots.map((slot) => ({ ...slot.options[0], stepId: slot.stepId }))
-    const katalog = await getAnalysisProducts(bawaan.map((o) => o.productId))
+    // SELURUH barang dianalisis — semuanya memang terpasang bersamaan. Yang
+    // TIDAK ikut adalah `alternatives`: itu pilihan tukar, dan menganalisis
+    // seluruh kombinasinya berarti belasan panggilan AI untuk selisih yang
+    // tidak mengubah kelas performa paket.
+    const barang = slots.flatMap((slot) => slot.items.map((item) => ({ ...item, stepId: slot.stepId })))
 
-    const komponen = bawaan
-      .map((option) => {
-        const product = katalog.get(option.productId)
+    // Yang diminta id INDUKNYA, bukan variannya: kategori dan nama yang
+    // menjelaskan komponen menempel di induk. Baris VARIATION biasanya cuma
+    // mengulang nama induk plus satu nilai atribut, dan kategorinya sering
+    // kosong — dua-duanya justru bagian yang paling menolong model mengenali
+    // komponen.
+    const katalog = await getAnalysisProducts(barang.map((b) => b.productId))
+
+    const komponen = barang
+      .map((item) => {
+        const product = katalog.get(item.productId)
         if (!product) return null
 
-        const stepName = namaStep.get(option.stepId) ?? ""
+        const stepName = namaStep.get(item.stepId) ?? ""
         const role = detectComponentRole(stepName, product.categories[0], product.name)
 
-        return { stepName, role, product, quantity: option.quantity }
+        return { stepId: item.stepId, stepName, role, product, quantity: item.quantity }
       })
       .filter((k): k is NonNullable<typeof k> => k !== null)
 
@@ -218,7 +277,7 @@ export async function POST(req: NextRequest) {
       .map((k) => {
         const kategori = k.product.categories.slice(0, 2).join(" / ")
         const label = k.stepName || COMPONENT_ROLE_LABELS[k.role]
-        return `- ${label}${kategori ? ` [kategori: ${kategori}]` : ""}: ${k.product.name} x${k.quantity} (Rp ${k.product.price.toLocaleString("id-ID")})`
+        return `- [${k.role}] ${label}${kategori ? ` (${kategori})` : ""}: ${k.product.name} x${k.quantity} — Rp ${k.product.price.toLocaleString("id-ID")}`
       })
       .join("\n")
 
@@ -228,31 +287,31 @@ export async function POST(req: NextRequest) {
 
     const prompt = `Kamu konsultan IT profesional di HNS IT Center Batam yang juga paham cara menjelaskan produk ke calon pembeli awam. Kamu menilai sebuah paket PC rakitan.
 
-KOMPONEN PAKET:
+KOMPONEN PAKET (tanda kurung siku di depan adalah PERAN komponen):
 ${daftarKomponen}
 
 DAFTAR USE CASE (hanya boleh memakai id di bawah, JANGAN membuat id baru):
 ${daftarUseCase}
 
-DAFTAR TINGKATAN RESOLUSI (pilih SATU id):
+DAFTAR TINGKATAN RESOLUSI (pilih SATU id untuk "tier"):
 ${daftarTier}
 
-DAFTAR GAME (hanya boleh memakai gameId di bawah):
+DAFTAR GAME (hanya boleh memakai id di bawah):
 ${daftarGame || "(kosong — kembalikan fps sebagai array kosong)"}
 
 ATURAN:
 1. Semua teks ditulis dalam Bahasa Indonesia yang wajar, ringkas, dan jujur. Tanpa hiperbola, tanpa tanda seru.
 2. "score" use case 0-100, mencerminkan seberapa cocok paket ini untuk kebutuhan itu.
-3. "quality" hanya boleh salah satu dari: ${PREBUILD_QUALITY_PRESETS.join(", ")}.
-4. Estimasi FPS dibuat pada resolusi 1080p. "quality" tiap game mengikuti setelan yang kamu tulis di "resolution.quality", KECUALI game yang menuntut setelan lebih rendah supaya tetap nyaman — untuk game itu tulis setelan yang benar-benar kamu pakai. "low" adalah 1% low: lazimnya 60-80% dari "avg", dan tidak pernah melebihinya.
-5. Masukkan SEMUA game yang masih bisa dijalankan paket ini, walaupun hanya pada setelan rendah. Buang dari daftar fps HANYA game yang benar-benar tidak bisa jalan. Kalau paket ini memang bukan untuk gaming, isi "suitable": false dan jelaskan alasannya di "note" — daftar fps-nya tetap diisi untuk game yang masih sanggup dijalankan.
-6. "bottleneck" adalah perkiraan beban relatif 0-100 saat gaming 1080p. Selisih yang lebar berarti satu komponen menahan yang lain; jelaskan dalam satu kalimat di "verdict".
-7. Maksimal ${MAX_UPGRADE_SUGGESTIONS} saran upgrade, diurut dari yang paling berdampak. Hanya sebut komponen yang ADA di daftar di atas. "from" WAJIB menggambarkan komponen yang sekarang benar-benar dipakai paket ini — baca ulang daftar komponen di atas sebelum menulisnya, jangan menebak dan jangan menyalin dari contoh. Jangan menyarankan penggantian ke sesuatu yang setara atau lebih rendah. "priority" hanya boleh: tinggi, sedang, rendah.
+3. "quality" di tingkat atas hanya boleh salah satu dari: ${PREBUILD_QUALITY_PRESETS.join(", ")}. Itu vonis kelas paket secara keseluruhan.
+4. MATRIKS FPS — ini bagian terpenting. Untuk SETIAP game di daftar, isi SEMUA ${PREBUILD_FPS_RESOLUTIONS.length * PREBUILD_FPS_QUALITIES.length} kombinasi: "r" salah satu dari ${PREBUILD_FPS_RESOLUTIONS.join("/")} dan "q" salah satu dari ${PREBUILD_FPS_QUALITIES.join("/")}. Jadi ${PREBUILD_FPS_RESOLUTIONS.length * PREBUILD_FPS_QUALITIES.length} baris per game, tanpa ada yang dilewati.
+5. "a" adalah FPS rata-rata, "l" adalah 1% low. "l" lazimnya 60-80% dari "a" dan TIDAK PERNAH melebihinya. Angkanya harus turun secara masuk akal saat resolusi naik dan saat setelan naik.
+6. Masukkan SEMUA game, walaupun hanya sanggup pada setelan rendah — tulis angka apa adanya, termasuk kalau di bawah 30. Kalau paket ini memang bukan untuk gaming, isi "gaming":{"suitable":false,...} dan jelaskan alasannya di "note"; matriksnya TETAP diisi.
+7. "bottleneck" adalah perkiraan beban relatif 0-100 saat gaming 1080p — WAJIB diisi angka sebenarnya, bukan nol. Selisih yang lebar berarti satu komponen menahan yang lain; jelaskan dalam satu kalimat di "verdict".
 8. JANGAN menyebut harga, diskon, promo, atau perbandingan harga di teks mana pun. Angka rupiah di atas hanya konteks kelas paket.
 9. JANGAN mengarang komponen yang tidak ada di daftar.
 
-Balas HANYA JSON dengan bentuk persis seperti ini. Setiap <…> diganti nilai sebenarnya; JANGAN menyalin teks contohnya:
-{"headline":"<satu sampai dua kalimat rangkuman untuk calon pembeli>","resolution":{"tier":"<satu id dari daftar tingkatan resolusi>","quality":"<satu dari ${PREBUILD_QUALITY_PRESETS.join("|")}>"},"useCases":[{"id":"<id use case dari daftar>","score":0}],"gaming":{"suitable":true,"note":"<kosongkan kalau tidak ada yang perlu diperingatkan>","fps":[{"gameId":"<id game dari daftar>","avg":0,"low":0,"quality":"<setelan grafis>"}]},"bottleneck":{"cpu":0,"gpu":0,"verdict":"<satu kalimat>"},"upgrades":[{"component":"<nama komponen>","from":"<keadaan komponen itu SEKARANG menurut daftar di atas>","to":"<usulan penggantinya>","impact":"<satu kalimat dampaknya>","priority":"<tinggi|sedang|rendah>"}]}`
+Balas HANYA JSON dengan bentuk persis seperti ini, memakai kunci pendek. Setiap <…> diganti nilai sebenarnya; JANGAN menyalin teks contohnya:
+{"headline":"<satu sampai dua kalimat rangkuman untuk calon pembeli>","tier":"<satu id dari daftar tingkatan resolusi>","quality":"<satu dari ${PREBUILD_QUALITY_PRESETS.join("|")}>","useCases":[{"id":"<id use case dari daftar>","score":0}],"gaming":{"suitable":true,"note":"<kosongkan kalau tidak ada yang perlu diperingatkan>"},"fps":[{"g":"<id game>","r":"<${PREBUILD_FPS_RESOLUTIONS.join("|")}>","q":"<${PREBUILD_FPS_QUALITIES.join("|")}>","a":0,"l":0}],"bottleneck":{"cpu":0,"gpu":0,"verdict":"<satu kalimat>"}}`
 
     // Dicegat sebelum memanggil Groq: kalau dibiarkan lewat, yang kembali
     // adalah 413 mentah berisi id organisasi dan tautan penagihan — dan
@@ -298,13 +357,15 @@ Balas HANYA JSON dengan bentuk persis seperti ini. Setiap <…> diganti nilai se
       )
     }
 
+    const panjang = padatKePanjang(mentah)
+
     // Parser yang SAMA dengan yang dipakai saat membaca dari database. Jawaban
     // model diperlakukan persis seperti data asing lain: id di luar katalog
     // dibuang, angka dijepit, teks dipotong. Yang ditambahkan di sini hanya dua
     // hal yang tidak boleh datang dari model — sidik jari komponen dan waktu
     // pembuatannya.
     const performance = parsePrebuildPerformance({
-      ...(typeof mentah === "object" && mentah !== null ? mentah : {}),
+      ...panjang,
       fingerprint,
       generatedAt: new Date().toISOString(),
       // Selalu draf. Yang memutuskan sebuah perkiraan layak dilihat pelanggan

@@ -4,37 +4,46 @@ import { ArrowLeft } from "lucide-react"
 
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
-import { PrebuildDetail } from "@/features/pc-prebuild/components/prebuild-detail"
-import { PrebuildGallery } from "@/features/pc-prebuild/components/prebuild-gallery"
-import { PerformancePanel } from "@/features/pc-prebuild/components/performance/performance-panel"
-import { ResolutionFlag } from "@/features/pc-prebuild/components/performance/resolution-flag"
-import { getPcBuilderConfig } from "@/lib/pc-builder/config"
-import { getPcPrebuildConfig, getPcPrebuildGames } from "@/lib/pc-prebuild/config"
-import { resolvePrebuildPresets } from "@/lib/pc-prebuild/resolve"
+import { getPcPrebuildConfig } from "@/lib/pc-prebuild/config"
+
+export const metadata = {
+  title: "PC Prebuild — HNS IT Center",
+  description: "Spesifikasi lengkap paket PC rakitan dari HNS IT Center Batam.",
+}
 
 type Props = { params: Promise<{ id: string }> }
 
-export async function generateMetadata({ params }: Props) {
-  const { id } = await params
-  const config = await getPcPrebuildConfig()
-  const preset = config.presets.find((p) => p.id === id)
-
-  if (!preset) return { title: "Paket tidak ditemukan — HNS IT Center" }
-
-  return {
-    title: `${preset.name} — PC Prebuild HNS IT Center`,
-    description:
-      preset.summary || `Spesifikasi lengkap paket ${preset.name} dari HNS IT Center Batam.`,
-  }
-}
-
 /**
- * Detail satu paket: spesifikasi lengkapnya, pemilihan varian, dan dua jalan
- * keluar — pesan apa adanya, atau ubah dulu di PC Builder.
+ * PLACEHOLDER — tampilan halaman ini sedang dirancang ulang dari nol (26 Agt 2026).
  *
- * Halaman ini hanya merakit datanya. Pemilihan varian butuh keadaan di klien,
- * jadi tampilannya ada di `PrebuildDetail` — tapi seluruh harga sudah selesai
- * dibaca dari katalog di sini, sebelum sampai ke browser.
+ * SELURUH `src/features/pc-prebuild/` sudah dihapus — desain lamanya beserta
+ * panel performanya. Kalau perlu melihatnya lagi:
+ * `git show f33f698:src/features/pc-prebuild/components/`
+ *
+ * Yang TIDAK ikut dihapus dan siap dipakai desain baru:
+ * - `resolvePrebuildPresets()`   spesifikasi + harga & stok segar dari katalog
+ * - `getPcPrebuildGames()`       daftar game untuk grid FPS
+ * - `prepareBuildWhatsApp()`     di `features/builder/actions-whatsapp.ts`
+ * - `saveBuildAction()`          di `features/builder/actions-save.ts`
+ *
+ * DUA hal yang TIDAK boleh dirender di halaman ini saat dibangun nanti:
+ * - `performance.bottleneck` — untuk panel admin saja (keputusan 26 Agt 2026).
+ *   Bagi pembeli, "CPU 78 / GPU 91" bukan informasi yang bisa ditindaklanjuti.
+ * - Saran upgrade — fiturnya dibuang seluruhnya, bukan disembunyikan.
+ *
+ * Dua jebakan yang sudah pernah menggigit saat merakit ulang tombolnya
+ * (`docs/11-pc-prebuild.md` §7) — `tsc --noEmit` TIDAK menangkap keduanya,
+ * hanya `next build`:
+ * 1. JANGAN `import type` dari berkas bertanda `"use server"`. Turbopack
+ *    memperlakukan setiap export di dalamnya sebagai server action. Deklarasikan
+ *    ulang tipenya di pemanggil.
+ * 2. JANGAN mengimpor NILAI dari `lib/pc-prebuild/config.ts` ke Client
+ *    Component — `getPrisma()` ikut terseret ke bundle browser. Batas ada di
+ *    `lib/pc-prebuild/limits.ts` justru karena itu.
+ *
+ * Dan aturan harga tetap berlaku: klien boleh MENJUMLAHKAN harga satuan yang
+ * dikirim server, tapi tidak boleh menurunkan harga baru dari rumus
+ * (CLAUDE.md §2.7).
  */
 export default async function PrebuildDetailPage({ params }: Props) {
   const { id } = await params
@@ -42,16 +51,10 @@ export default async function PrebuildDetailPage({ params }: Props) {
 
   if (!config.enabled) redirect("/build-pc")
 
+  // Id yang tidak dikenal tetap 404 walau halamannya masih kosong — supaya
+  // tautan lama yang sudah tersebar tidak berujung ke halaman yang seolah ada.
   const preset = config.presets.find((p) => p.id === id)
   if (!preset) notFound()
-
-  const [steps, games] = await Promise.all([getPcBuilderConfig(), getPcPrebuildGames()])
-  const [resolved] = await resolvePrebuildPresets([preset], steps)
-
-  // `performancePublic` sudah disaring di `resolve.ts`: draf dan analisis yang
-  // komponennya sudah berubah bernilai null di sini. Halaman ini tidak perlu
-  // tahu aturannya — lihat catatan di ResolvedPrebuildPreset.
-  const performance = resolved.performancePublic
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -66,37 +69,9 @@ export default async function PrebuildDetailPage({ params }: Props) {
             Semua paket
           </Link>
 
-          <h1 className="text-3xl font-extrabold tracking-tight md:text-4xl">{resolved.name}</h1>
-          {resolved.summary && (
-            <p className="mt-2 max-w-2xl text-muted-foreground">{resolved.summary}</p>
-          )}
-
-          <PrebuildDetail
-            presetId={resolved.id}
-            namaPaket={resolved.name}
-            gallery={
-              <PrebuildGallery
-                images={resolved.images}
-                nama={resolved.name}
-                badge={performance ? <ResolutionFlag performance={performance} /> : null}
-              />
-            }
-            performance={
-              performance ? <PerformancePanel performance={performance} games={games} /> : null
-            }
-            slots={resolved.slots.map((slot) => ({
-              stepId: slot.stepId,
-              stepName: slot.stepName,
-              branching: slot.branching,
-              defaultIndex: slot.defaultIndex,
-              options: slot.options.map((option) => ({
-                productId: option.productId,
-                quantity: option.quantity,
-                label: option.label,
-                product: option.product,
-              })),
-            }))}
-          />
+          <p className="py-24 text-center text-sm text-muted-foreground">
+            Halaman detail paket sedang dirancang ulang.
+          </p>
         </div>
       </main>
       <Footer />

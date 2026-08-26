@@ -2,17 +2,18 @@
  * Hasil analisis performa satu paket PC Prebuild — bentuk data, katalog tetap,
  * dan parsernya.
  *
- * Berkas ini SENGAJA tidak mengimpor apa pun, seperti `limits.ts`. Panel admin
- * dan panel publik dua-duanya Client Component, dan keduanya butuh katalog di
- * bawah. Mengimpornya dari `config.ts` akan menyeret `getPrisma()` ke bundle
- * browser dan menggagalkan build Turbopack (lihat docs/11-pc-prebuild.md §7).
+ * Berkas ini SENGAJA tidak mengimpor apa pun kecuali `limits.ts` (yang juga
+ * tidak mengimpor apa pun). Panel admin dan panel publik dua-duanya Client
+ * Component dan keduanya butuh katalog di bawah; mengimpornya dari `config.ts`
+ * akan menyeret `getPrisma()` ke bundle browser dan menggagalkan build
+ * Turbopack (lihat docs/11-pc-prebuild.md §7).
  *
  * ## Kenapa katalognya TETAP, bukan bebas dari AI
  *
- * Use case dan tingkatan resolusi adalah daftar tertutup yang ditetapkan di
- * sini; AI hanya MEMILIH dari daftar ini dan memberi skor. Kalau labelnya boleh
- * dikarang tiap kali dihitung, dua paket sekelas bisa berbunyi "1440p Ultra"
- * dan "QHD High", atau "Gaming Kompetitif" dan "Esports" — pelanggan tidak bisa
+ * Use case, tingkatan resolusi, setelan grafis, dan sumbu matriks FPS adalah
+ * daftar tertutup yang ditetapkan di sini; AI hanya MEMILIH dari daftar ini dan
+ * memberi skor. Kalau labelnya boleh dikarang tiap kali dihitung, dua paket
+ * sekelas bisa berbunyi "1440p Ultra" dan "QHD High" — pelanggan tidak bisa
  * membandingkan paket, dan badge di kartu kehilangan artinya sebagai penanda.
  * Id yang tidak dikenal DIBUANG parser, bukan ditampilkan apa adanya.
  *
@@ -24,7 +25,6 @@
  * bisa dipertanggungjawabkan HNS, bukan angka yang muncul begitu saja dari
  * sebuah model.
  */
-
 /** Bagian tetap: kebutuhan pemakai yang diskor AI, 0-100. */
 export const PREBUILD_USE_CASES = [
   {
@@ -69,12 +69,11 @@ export type PrebuildUseCaseId = (typeof PREBUILD_USE_CASES)[number]["id"]
 const USE_CASE_IDS = new Set<string>(PREBUILD_USE_CASES.map((u) => u.id))
 
 /**
- * Tingkatan resolusi — inilah yang jadi badge pita di atas foto paket, sejajar
- * dengan flag diskon di kartu produk.
+ * Tingkatan resolusi — inilah yang jadi badge kelas paket.
  *
  * `office` ada supaya paket yang memang bukan untuk game tidak dipaksa memakai
- * angka resolusi yang menyesatkan. Labelnya sengaja pendek: badge pita cuma
- * muat beberapa karakter.
+ * angka resolusi yang menyesatkan. Labelnya sengaja pendek: badge cuma muat
+ * beberapa karakter.
  */
 export const PREBUILD_RESOLUTION_TIERS = [
   { id: "office", label: "Office", description: "Untuk kerja dan multimedia, bukan game berat." },
@@ -88,32 +87,82 @@ export type PrebuildResolutionTierId = (typeof PREBUILD_RESOLUTION_TIERS)[number
 
 const RESOLUTION_TIER_IDS = new Set<string>(PREBUILD_RESOLUTION_TIERS.map((t) => t.id))
 
-/** Setelan grafis. Tetap juga, dengan alasan yang sama seperti tingkatan resolusi. */
+/** Setelan grafis untuk vonis kelas paket. Tetap, dengan alasan yang sama. */
 export const PREBUILD_QUALITY_PRESETS = ["Low", "Medium", "High", "Ultra"] as const
 
 export type PrebuildQuality = (typeof PREBUILD_QUALITY_PRESETS)[number]
 
 const QUALITY_VALUES = new Set<string>(PREBUILD_QUALITY_PRESETS)
 
-export const PREBUILD_UPGRADE_PRIORITIES = ["tinggi", "sedang", "rendah"] as const
-
-export type PrebuildUpgradePriority = (typeof PREBUILD_UPGRADE_PRIORITIES)[number]
-
-const PRIORITY_VALUES = new Set<string>(PREBUILD_UPGRADE_PRIORITIES)
+/* ------------------------------------------------------------------------- *
+ * Matriks FPS
+ * ------------------------------------------------------------------------- */
 
 /**
- * Empat saran cukup. Lebih dari itu daftarnya berhenti terbaca sebagai saran
- * dan berubah jadi katalog — dan saran kelima dari sebuah perkiraan hampir
- * selalu sudah di luar yang bisa dipertanggungjawabkan.
+ * Sumbu matriks estimasi FPS: 3 resolusi × 3 setelan = 9 kombinasi per game.
+ *
+ * Sebelumnya hanya ADA SATU patokan (1080p, setelan disebut per baris). Itu
+ * membuat angka antar paket bisa dibandingkan, tapi tidak menjawab pertanyaan
+ * yang sebenarnya diajukan pembeli: "kalau saya turunkan ke 720p Low, cukup
+ * tidak?". Matriksnya menjawab itu tanpa kehilangan sifat terbandingkan —
+ * karena sumbunya TETAP, bukan dikarang model per paket.
+ *
+ * TIGA resolusi, bukan empat. 4K sengaja tidak masuk: pada paket yang sanggup
+ * 4K, angkanya sudah bisa disimpulkan dari 1440p, dan setiap kombinasi tambahan
+ * mengalikan jumlah angka yang harus dikeluarkan model untuk SETIAP game.
  */
-export const MAX_UPGRADE_SUGGESTIONS = 4
+export const PREBUILD_FPS_RESOLUTIONS = ["720p", "1080p", "1440p"] as const
+
+export type PrebuildFpsResolution = (typeof PREBUILD_FPS_RESOLUTIONS)[number]
+
+const FPS_RESOLUTION_VALUES = new Set<string>(PREBUILD_FPS_RESOLUTIONS)
+
+/**
+ * Setelan grafis di matriks — TANPA "Ultra".
+ *
+ * Sengaja subset dari `PREBUILD_QUALITY_PRESETS` (jadi tetap assignable ke
+ * `PrebuildQuality`). "Ultra" tetap sah sebagai vonis kelas paket, tapi sebagai
+ * sumbu matriks ia menambah tiga kombinasi lagi per game untuk perbedaan yang
+ * di banyak game tidak terasa dibanding "High".
+ */
+export const PREBUILD_FPS_QUALITIES = ["Low", "Medium", "High"] as const
+
+export type PrebuildFpsQuality = (typeof PREBUILD_FPS_QUALITIES)[number]
+
+const FPS_QUALITY_VALUES = new Set<string>(PREBUILD_FPS_QUALITIES)
+
+/**
+ * Patokan untuk data LAMA yang tidak menyimpan resolusi.
+ *
+ * Versi pertama fitur ini memakai satu patokan tetap 1080p dan menuliskannya di
+ * dokumentasi. Entri lama karena itu dibaca sebagai 1080p — bukan dibuang, dan
+ * bukan pula ditebak dari angkanya.
+ */
+const DEFAULT_FPS_RESOLUTION: PrebuildFpsResolution = "1080p"
+
+/**
+ * ## Saran upgrade SENGAJA tidak ada, dan jangan ditambahkan kembali
+ *
+ * Versi 24–26 Agustus 2026 sempat punya `upgrades` — daftar komponen yang
+ * disarankan diganti, lengkap dengan produk pengganti yang dipilih AI dari
+ * katalog lewat panggilan Groq kedua. Seluruhnya dibuang 26 Agustus 2026 atas
+ * keputusan pemilik produk.
+ *
+ * Alasannya bukan teknis: yang mengunggah produk di HNS sudah berkompeten
+ * menilai kelas komponen, jadi saran mesin di atas penilaian mereka tidak
+ * menambah apa pun — sementara saran yang meleset tetap harus ditolak CS di
+ * depan pelanggan. Fitur yang akurasinya tidak bisa dijamin dan gunanya tipis
+ * lebih baik tidak ada daripada ada dengan peringatan.
+ *
+ * Membuangnya juga menghapus panggilan Groq kedua beserta seluruh jatah
+ * tokennya.
+ */
 
 /** Batas panjang teks, supaya jawaban model yang meleset tidak merusak tata letak. */
 const MAX_HEADLINE = 240
 const MAX_NOTE = 240
 const MAX_VERDICT = 160
 const MAX_SHORT_TEXT = 80
-const MAX_IMPACT = 140
 
 /** FPS di atas ini tidak masuk akal untuk PC rakitan mana pun — jelas salah baca. */
 const MAX_FPS = 1000
@@ -121,23 +170,14 @@ const MAX_FPS = 1000
 export type PrebuildFpsEntry = {
   /** Menunjuk `id` di daftar game (PC_PREBUILD_GAMES). */
   gameId: string
+  /** Sumbu pertama matriks. Data lama tanpa bidang ini dibaca sebagai 1080p. */
+  resolution: PrebuildFpsResolution
+  /** Sumbu kedua matriks. */
+  quality: PrebuildFpsQuality
   /** FPS rata-rata. */
   avg: number
   /** 1% low — angka yang menentukan terasa patah atau tidak. Tidak pernah lebih besar dari `avg`. */
   low: number
-  quality: PrebuildQuality
-}
-
-export type PrebuildUpgrade = {
-  /** Komponen yang disarankan diganti, mis. "RAM". */
-  component: string
-  /** Keadaan sekarang, mis. "8 GB single channel". */
-  from: string
-  /** Usulannya, mis. "16 GB dual channel". */
-  to: string
-  /** Dampaknya dalam satu kalimat. */
-  impact: string
-  priority: PrebuildUpgradePriority
 }
 
 export type PrebuildPerformance = {
@@ -164,43 +204,68 @@ export type PrebuildPerformance = {
     suitable: boolean
     note: string
     /**
-     * Perkiraan FPS. Tetap diisi untuk game yang MASIH sanggup dijalankan
-     * walaupun `suitable` bernilai `false` — pelanggan yang melihat PC kantor
-     * tetap ingin tahu Minecraft-nya jalan berapa.
+     * Matriks perkiraan FPS — satu entri per (game × resolusi × setelan).
+     *
+     * Tetap diisi untuk game yang MASIH sanggup dijalankan walaupun `suitable`
+     * bernilai `false`: pelanggan yang melihat PC kantor tetap ingin tahu
+     * Minecraft-nya jalan berapa.
      */
     fps: PrebuildFpsEntry[]
   }
-  /** Beban relatif 0-100. Selisih yang lebar = ada komponen yang menahan yang lain. */
+  /**
+   * Beban relatif 0-100. Selisih yang lebar = ada komponen yang menahan yang
+   * lain.
+   *
+   * **UNTUK PANEL ADMIN SAJA — jangan dirender di halaman pelanggan.**
+   * Keputusan 26 Agustus 2026. Ia alat bantu staff menilai susunan yang sedang
+   * dirakit; bagi pembeli, "CPU 78 / GPU 91" bukan informasi yang bisa
+   * ditindaklanjuti, dan angka yang terbaca seperti nilai rapor justru membuat
+   * paket yang sehat terlihat cacat.
+   */
   bottleneck: { cpu: number; gpu: number; verdict: string }
-  upgrades: PrebuildUpgrade[]
 }
 
 /** Bentuk minimal yang dibutuhkan sidik jari — sengaja tidak menuntut tipe preset penuh. */
+export type FingerprintItem = {
+  productId: number
+  variationId?: number
+  quantity: number
+}
+
 export type FingerprintSlot = {
   stepId: string
-  options: readonly { productId: number; quantity: number }[]
+  items: readonly FingerprintItem[]
 }
 
 /**
  * Sidik jari komponen sebuah paket.
  *
- * URUTAN PILIHAN IKUT DIHITUNG, dan itu disengaja: pilihan pertama adalah
- * bawaan, jadi menukar urutannya mengubah komponen yang dianalisis walaupun
- * himpunan produknya sama persis.
+ * URUTAN IKUT DIHITUNG, dan itu disengaja: barang pertama dalam sebuah langkah
+ * — dan pilihan pertama dalam sebuah barang — adalah bawaan, jadi menukar
+ * urutannya mengubah komponen yang dianalisis walaupun himpunan produknya sama
+ * persis.
  *
- * Berawalan versi supaya kalau formatnya berubah nanti, seluruh hasil lama
- * otomatis dianggap basi dan dihitung ulang — bukan dibandingkan dengan aturan
- * yang sudah tidak berlaku.
+ * VARIAN IKUT DIHITUNG. Dua paket yang memakai produk induk sama tapi varian
+ * berbeda (1 TB vs 2 TB) adalah dua rakitan berbeda, dan analisis yang dihitung
+ * untuk salah satunya tidak berlaku untuk yang lain.
+ *
+ * Berawalan versi supaya kalau formatnya berubah, seluruh hasil lama otomatis
+ * dianggap basi dan dihitung ulang — bukan dibandingkan dengan aturan yang
+ * sudah tidak berlaku. `v2` menandai pindahnya `options` ke `items` bervarian;
+ * seluruh analisis yang dihitung sebelum itu memang perlu dihitung ulang,
+ * karena matriks FPS-nya pun berubah bentuk.
  */
 export function fingerprintSlots(slots: readonly FingerprintSlot[]): string {
   const bagian = [...slots]
     .sort((a, b) => a.stepId.localeCompare(b.stepId))
-    .map(
-      (slot) =>
-        `${slot.stepId}:${slot.options.map((o) => `${o.productId}*${o.quantity}`).join(",")}`
-    )
+    .map((slot) => {
+      const items = slot.items
+        .map((i) => `${i.productId}${i.variationId ? `~${i.variationId}` : ""}*${i.quantity}`)
+        .join(",")
+      return `${slot.stepId}:${items}`
+    })
 
-  return `v1|${bagian.join("|")}`
+  return `v2|${bagian.join("|")}`
 }
 
 /** Hasil sudah tidak cocok dengan komponen paket saat ini. */
@@ -247,44 +312,40 @@ function toUseCase(value: unknown): { id: PrebuildUseCaseId; score: number } | n
   return { id: raw.id as PrebuildUseCaseId, score: jepit(raw.score, 0, 100) }
 }
 
+/**
+ * Setelan grafis untuk matriks.
+ *
+ * "Ultra" dari data lama JATUH ke "High", bukan dibuang: sumbu matriks tidak
+ * mengenal Ultra, dan membuang barisnya berarti kehilangan angka yang sudah
+ * pernah dihitung untuk game itu.
+ */
+function toFpsQuality(value: unknown): PrebuildFpsQuality {
+  const quality = teks(value, MAX_SHORT_TEXT)
+  if (FPS_QUALITY_VALUES.has(quality)) return quality as PrebuildFpsQuality
+  if (quality === "Ultra") return "High"
+  return "Medium"
+}
+
 function toFps(value: unknown): PrebuildFpsEntry | null {
   if (typeof value !== "object" || value === null) return null
   const raw = value as Record<string, unknown>
   const gameId = teks(raw.gameId, MAX_SHORT_TEXT)
   if (!gameId) return null
 
+  const resolution = teks(raw.resolution, MAX_SHORT_TEXT)
   const avg = jepit(raw.avg, 0, MAX_FPS)
   // `low` yang lebih tinggi dari rata-rata mustahil — dijepit, bukan dibuang,
   // supaya satu angka meleset tidak menghilangkan seluruh baris game.
   const low = Math.min(jepit(raw.low, 0, MAX_FPS), avg)
-  const quality = teks(raw.quality, MAX_SHORT_TEXT)
 
   return {
     gameId,
+    resolution: FPS_RESOLUTION_VALUES.has(resolution)
+      ? (resolution as PrebuildFpsResolution)
+      : DEFAULT_FPS_RESOLUTION,
+    quality: toFpsQuality(raw.quality),
     avg,
     low,
-    quality: QUALITY_VALUES.has(quality) ? (quality as PrebuildQuality) : "Medium",
-  }
-}
-
-function toUpgrade(value: unknown): PrebuildUpgrade | null {
-  if (typeof value !== "object" || value === null) return null
-  const raw = value as Record<string, unknown>
-
-  const component = teks(raw.component, MAX_SHORT_TEXT)
-  const to = teks(raw.to, MAX_SHORT_TEXT)
-  // Saran tanpa komponen atau tanpa usulan bukan saran. Dibuang di sini supaya
-  // panelnya tidak pernah merender baris kosong.
-  if (!component || !to) return null
-
-  const priority = teks(raw.priority, MAX_SHORT_TEXT).toLowerCase()
-
-  return {
-    component,
-    from: teks(raw.from, MAX_SHORT_TEXT),
-    to,
-    impact: teks(raw.impact, MAX_IMPACT),
-    priority: PRIORITY_VALUES.has(priority) ? (priority as PrebuildUpgradePriority) : "sedang",
   }
 }
 
@@ -332,17 +393,19 @@ export function parsePrebuildPerformance(value: unknown): PrebuildPerformance | 
       : {}
 
   const fpsRaw = Array.isArray(gamingRaw.fps) ? gamingRaw.fps : []
-  const gameTerpakai = new Set<string>()
+  const selKeisi = new Set<string>()
   const fps = fpsRaw
     .map(toFps)
     .filter((f): f is PrebuildFpsEntry => f !== null)
     .filter((f) => {
-      // Satu game satu baris. Entri untuk game yang sudah dihapus staff dari
-      // daftar disaring belakangan saat dirender — parser ini tidak tahu daftar
+      // Satu SEL matriks satu baris — kuncinya (game × resolusi × setelan),
+      // bukan lagi game saja. Entri untuk game yang sudah dihapus staff dari
+      // daftar disaring belakangan saat dirender: parser ini tidak tahu daftar
       // game yang berlaku, dan membuangnya di sini berarti hasilnya hilang
       // permanen begitu staff menyembunyikan satu game sementara.
-      if (gameTerpakai.has(f.gameId)) return false
-      gameTerpakai.add(f.gameId)
+      const kunci = `${f.gameId}|${f.resolution}|${f.quality}`
+      if (selKeisi.has(kunci)) return false
+      selKeisi.add(kunci)
       return true
     })
 
@@ -350,8 +413,6 @@ export function parsePrebuildPerformance(value: unknown): PrebuildPerformance | 
     typeof raw.bottleneck === "object" && raw.bottleneck !== null
       ? (raw.bottleneck as Record<string, unknown>)
       : {}
-
-  const upgradesRaw = Array.isArray(raw.upgrades) ? raw.upgrades : []
 
   return {
     fingerprint,
@@ -376,9 +437,24 @@ export function parsePrebuildPerformance(value: unknown): PrebuildPerformance | 
       gpu: jepit(bottleneckRaw.gpu, 0, 100),
       verdict: teks(bottleneckRaw.verdict, MAX_VERDICT),
     },
-    upgrades: upgradesRaw
-      .map(toUpgrade)
-      .filter((u): u is PrebuildUpgrade => u !== null)
-      .slice(0, MAX_UPGRADE_SUGGESTIONS),
   }
+}
+
+/**
+ * Cari satu sel matriks. `null` = kombinasi itu tidak dihitung model.
+ *
+ * Dipakai chart dan panel: keduanya harus membedakan "0 FPS" (tidak jalan) dari
+ * "tidak ada datanya" — menggambar batang nol untuk sel yang tidak dihitung
+ * membuat paket terlihat tidak sanggup padahal sekadar tidak ditanyakan.
+ */
+export function findFpsEntry(
+  fps: readonly PrebuildFpsEntry[],
+  gameId: string,
+  resolution: PrebuildFpsResolution,
+  quality: PrebuildFpsQuality
+): PrebuildFpsEntry | null {
+  return (
+    fps.find((f) => f.gameId === gameId && f.resolution === resolution && f.quality === quality) ??
+    null
+  )
 }

@@ -312,6 +312,12 @@
   --color-success: var(--text-500);
   --color-warning: #d97706;
   --color-info: var(--secondary-500);
+
+  /* Tailwind bawaan berhenti di `7xl` (80rem). Panel admin yang isinya dua
+     kolom kartu butuh satu tingkat lagi supaya kolomnya tidak sesempit di
+     layar 1440px. Menambah token di sini, bukan menulis `max-w-[96rem]` di
+     satu berkas, supaya lebarnya sama di setiap halaman yang memakainya. */
+  --container-8xl: 96rem;
 }
 
 
