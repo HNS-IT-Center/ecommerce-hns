@@ -2,7 +2,11 @@ import { redirect } from "next/navigation"
 
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
-import { getPcPrebuildConfig } from "@/lib/pc-prebuild/config"
+import { PrebuildDeck } from "@/features/pc-prebuild/components/prebuild-deck"
+import { toPrebuildView } from "@/features/pc-prebuild/lib/to-view"
+import { getPcBuilderConfig } from "@/lib/pc-builder/config"
+import { getPcPrebuildConfig, getPcPrebuildGames } from "@/lib/pc-prebuild/config"
+import { resolvePrebuildPresets } from "@/lib/pc-prebuild/resolve"
 
 export const metadata = {
   title: "PC Prebuild — HNS IT Center",
@@ -11,39 +15,48 @@ export const metadata = {
 }
 
 /**
- * PLACEHOLDER — tampilan halaman ini sedang dirancang ulang dari nol (26 Agt 2026).
+ * Daftar paket rakitan siap pakai.
  *
- * Desain lama sengaja DIHAPUS, bukan dikomentari, supaya tidak ada yang
- * diam-diam menyalinnya kembali. Kalau perlu melihatnya lagi:
- * `git show f33f698:src/app/pc-prebuild/page.tsx`
- *
- * Lapis data TIDAK ikut dihapus dan siap dipakai desain baru:
- * - `getPcPrebuildConfig()`     konfigurasi paket (settings DB, kunci PC_PREBUILD_CONFIG)
- * - `getPcBuilderConfig()`      daftar langkah wizard
- * - `resolvePrebuildPresets()`  harga & stok dibaca segar dari katalog
- *
- * Aturan yang tetap mengikat saat merakit ulang UI-nya — rinciannya di
- * `docs/11-pc-prebuild.md`:
- * - Harga HANYA berasal dari katalog. Tidak ada perkalian, persentase, atau
- *   potongan yang dihitung di klien (CLAUDE.md §2.7).
- * - Tautan varian membawa `productId`, BUKAN indeks pilihan.
- * - Hanya `performancePublic` yang boleh tampil ke pelanggan — `performance`
- *   apa adanya masih berisi draf dan hasil basi.
+ * Harga dan stok TIDAK tersimpan di preset — `resolvePrebuildPresets()` membaca
+ * keduanya segar dari katalog setiap kali halaman ini dirender (CLAUDE.md §2.7,
+ * docs/11-pc-prebuild.md §3). Yang sampai ke komponen sudah lewat
+ * `toPrebuildView()`, jadi hanya analisis yang sudah ditayangkan staff dan belum
+ * basi yang bisa terlihat pelanggan.
  */
 export default async function PcPrebuildPage() {
   const config = await getPcPrebuildConfig()
 
   // Sakelar mati = rute ini tidak ada bagi pelanggan (docs/11-pc-prebuild.md §5).
-  // Dipertahankan meski halamannya masih kosong: mematikan bukan menghapus.
+  // Presetnya tetap tersimpan; mematikan bukan menghapus.
   if (!config.enabled) redirect("/build-pc")
 
+  const [steps, games] = await Promise.all([getPcBuilderConfig(), getPcPrebuildGames()])
+  const resolved = await resolvePrebuildPresets(config.presets, steps)
+  const views = resolved.map((preset) => toPrebuildView(preset, steps))
+
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-dvh flex-col bg-background">
       <Header />
-      <main className="flex flex-1 items-center justify-center px-4 py-24">
-        <p className="text-center text-sm text-muted-foreground">
-          Halaman PC Prebuild sedang dirancang ulang.
-        </p>
+      {/* `min-h-dvh` ada di SINI juga, bukan cuma di pembungkus luar. Yang di
+          luar hanya menjamin footer tidak naik ke tengah layar saat paketnya
+          sedikit; yang di sini menjamin area isinya sendiri setinggi satu layar
+          penuh. Konsekuensinya disengaja: halaman selalu bisa digulir sedikit
+          melewati layar, sepanjang header + footer. */}
+      <main className="min-h-dvh flex-1">
+        <div className="mx-auto max-w-7xl px-4 py-8 md:px-6 md:py-12">
+          <header className="mb-8 max-w-2xl">
+            <h1 className="text-2xl font-extrabold tracking-tight md:text-3xl">
+              Paket PC Siap Pakai
+            </h1>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground md:text-base">
+              Rakitan yang sudah disusun teknisi HNS — komponennya cocok satu sama lain dan siap
+              dipesan. Geser kartu untuk melihat perkiraan performanya, atau buka paketnya kalau
+              ingin menukar komponen dulu.
+            </p>
+          </header>
+
+          <PrebuildDeck views={views} games={games} />
+        </div>
       </main>
       <Footer />
     </div>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import {
   Cpu,
   Info,
@@ -13,6 +13,7 @@ import {
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { Switch } from "@/components/ui/switch"
 import type { PcPrebuildSlot } from "@/lib/pc-prebuild/config"
+import { checkFpsPlausibility, type FpsWarning } from "@/lib/pc-prebuild/fps-plausibility"
 import type { PrebuildGame } from "@/lib/pc-prebuild/games"
 import {
   PREBUILD_FPS_QUALITIES,
@@ -21,7 +22,7 @@ import {
   PREBUILD_USE_CASES,
   type PrebuildPerformance,
 } from "@/lib/pc-prebuild/performance"
-import { FpsMatrixChart } from "./fps-matrix-chart"
+import { FpsMatrixChart } from "@/features/pc-prebuild/components/fps-matrix-chart"
 
 /**
  * Panel "Analisis dengan AI" untuk satu paket.
@@ -69,6 +70,14 @@ export function AnalysisPanel({
   const [error, setError] = useState<string | null>(null)
 
   const jumlahSel = games.length * PREBUILD_FPS_RESOLUTIONS.length * PREBUILD_FPS_QUALITIES.length
+
+  // Dihitung ulang setiap kali angkanya berubah — termasuk saat staff menyunting
+  // manual, bukan cuma setelah AI menjawab. Suntingan tangan bisa keliru dengan
+  // cara yang sama persis, dan justru itu yang paling sulit ditangkap mata.
+  const peringatanFps = useMemo(
+    () => (performance ? checkFpsPlausibility(performance.gaming.fps, games) : []),
+    [performance, games]
+  )
 
   async function hitung() {
     setMenghitung(true)
@@ -251,6 +260,7 @@ export function AnalysisPanel({
                 onChange({ ...performance, gaming: { ...performance.gaming, fps } })
               }
             />
+            <FpsWarnings warnings={peringatanFps} />
           </div>
 
           <div className="rounded-xl border bg-card p-4">
@@ -289,6 +299,38 @@ export function AnalysisPanel({
         confirmLabel={performance ? "Hitung ulang" : "Jalankan analisis"}
         onConfirm={hitung}
       />
+    </div>
+  )
+}
+
+/**
+ * Temuan kewajaran matriks FPS — MENANDAI, bukan memperbaiki.
+ *
+ * Yang muncul di sini cuma hal yang bisa diputuskan mesin: urutan sel yang
+ * terbalik, rasio 1% low yang mustahil, sel yang belum terisi. Apakah angkanya
+ * sendiri tepat untuk paket ini tetap penilaian staff — dan justru itu sebabnya
+ * daftar ini tidak boleh menghalangi penyimpanan. Peringatan yang memblokir
+ * akan mendorong orang mengarang angka supaya lolos, bukan memeriksanya.
+ *
+ * Tidak dirender sama sekali kalau tidak ada temuan: kotak kosong bertuliskan
+ * "tidak ada masalah" cuma menambah yang harus dibaca staff setiap kali.
+ */
+function FpsWarnings({ warnings }: { warnings: FpsWarning[] }) {
+  if (warnings.length === 0) return null
+
+  return (
+    <div className="mt-3 rounded-lg border border-warning/40 bg-warning/5 p-3">
+      <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-warning">
+        <TriangleAlert className="h-3.5 w-3.5" />
+        Perlu diperiksa ({warnings.length})
+      </p>
+      <ul className="space-y-1">
+        {warnings.map((w, i) => (
+          <li key={`${w.gameId}-${i}`} className="text-[11px] leading-relaxed text-muted-foreground">
+            <span className="font-semibold text-foreground">{w.gameName}</span> — {w.message}
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

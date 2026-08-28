@@ -1,8 +1,9 @@
 "use client"
 
-import { useCartStore } from "@/store/cart"
+import { useCartStore, type CartItem } from "@/store/cart"
+import { groupCartItems, groupTotal, type CartGroup } from "@/lib/cart/grouping"
 import { formatRupiah } from "@/lib/utils"
-import { Trash2, Plus, Minus, ShoppingBag, ArrowRight, X } from "lucide-react"
+import { Trash2, Plus, Minus, ShoppingBag, ArrowRight, X, PackageOpen } from "lucide-react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -28,6 +29,9 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
     toggleSelectAll,
     getSelectedTotalPrice,
     clearCart,
+    removeBundle,
+    updateBundleQuantity,
+    toggleSelectBundle,
   } = useCartStore()
   const mounted = useIsHydrated()
   const router = useRouter()
@@ -52,6 +56,11 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
   const allSelected = items.length > 0 && items.every((i) => i.selected !== false)
   const selectedCount = items.filter((i) => i.selected !== false).length
   const totalUnits = items.reduce((sum, i) => sum + i.quantity, 0)
+
+  // Komponen paket PC Prebuild dikelompokkan jadi satu kartu — di panel sesempit
+  // ini, tujuh baris komponen berserakan membuat isi keranjang mustahil dibaca
+  // sekilas, dan tidak ada yang menandai bahwa ketujuhnya satu rakitan.
+  const groups = groupCartItems(items)
 
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open)
@@ -171,133 +180,31 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
 
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3 sm:px-6 sm:py-4">
               <ul className="space-y-2.5">
-                {items.map((item) => {
-                  const isPending = pendingRemoveId === item.id
-                  const isLast = item.quantity <= 1
-
-                  return (
-                    <li
-                      key={item.id}
-                      className="relative overflow-hidden rounded-xl border border-border/60 bg-card transition-colors"
-                    >
-                      <div
-                        onClick={() => !isPending && toggleSelect(item.id)}
-                        className="flex cursor-pointer items-start gap-3 p-3"
-                      >
-                        <Checkbox
-                          checked={item.selected !== false}
-                          onCheckedChange={() => toggleSelect(item.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          className="mt-0.5 shrink-0"
-                          aria-label={`Pilih ${item.name}`}
-                        />
-
-                        {/* Gambar mengecil di layar sempit supaya nama produk
-                            tetap kebagian ruang baca yang layak. */}
-                        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-muted sm:h-20 sm:w-20">
-                          {item.image ? (
-                            <Image
-                              src={item.image}
-                              alt={item.name}
-                              fill
-                              sizes="80px"
-                              className="object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center">
-                              <ShoppingBag className="h-6 w-6 text-muted-foreground/30" />
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                          <h4 className="line-clamp-2 text-sm font-semibold leading-snug">
-                            {item.name}
-                          </h4>
-                          {item.variationLabel && (
-                            <p className="text-xs text-muted-foreground">
-                              {item.variationLabel}
-                            </p>
-                          )}
-
-                          <div className="mt-0.5 flex flex-wrap items-center justify-between gap-2">
-                            <span className="text-sm font-bold tabular-nums text-sale-red">
-                              {formatRupiah(item.price * item.quantity)}
-                            </span>
-
-                            {/* Target sentuh 32px: di bawah itu tombolnya sulit
-                                dikenai jempol pada layar kecil. */}
-                            <div
-                              className="flex items-center rounded-lg border bg-background"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <button
-                                onClick={() =>
-                                  isLast
-                                    ? setPendingRemoveId(item.id)
-                                    : updateQuantity(item.id, item.quantity - 1)
-                                }
-                                className={`flex h-8 w-8 cursor-pointer items-center justify-center rounded-l-lg transition-colors ${
-                                  isLast
-                                    ? "text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                                }`}
-                                aria-label={
-                                  isLast ? `Hapus ${item.name}` : `Kurangi jumlah ${item.name}`
-                                }
-                              >
-                                {isLast ? (
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                ) : (
-                                  <Minus className="h-3.5 w-3.5" />
-                                )}
-                              </button>
-
-                              <span className="flex h-8 min-w-8 items-center justify-center px-1 text-xs font-semibold tabular-nums">
-                                {item.quantity}
-                              </span>
-
-                              <button
-                                onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-r-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                                aria-label={`Tambah jumlah ${item.name}`}
-                              >
-                                <Plus className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Konfirmasi menutupi kartunya sendiri — jelas item mana
-                          yang dimaksud, tanpa dialog yang menghentikan semuanya. */}
-                      {isPending && (
-                        <div className="absolute inset-0 z-10 flex items-center justify-between gap-3 bg-card/95 px-3 backdrop-blur-sm">
-                          <p className="min-w-0 flex-1 text-xs font-medium">
-                            Hapus item ini dari keranjang?
-                          </p>
-                          <div className="flex shrink-0 gap-2">
-                            <button
-                              onClick={() => setPendingRemoveId(null)}
-                              className="cursor-pointer rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-muted"
-                            >
-                              Batal
-                            </button>
-                            <button
-                              onClick={() => {
-                                removeItem(item.id)
-                                setPendingRemoveId(null)
-                              }}
-                              className="cursor-pointer rounded-md bg-destructive px-3 py-1.5 text-xs font-bold text-white transition-opacity hover:opacity-90"
-                            >
-                              Hapus
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </li>
+                {groups.map((group) =>
+                  group.kind === "bundle" ? (
+                    <BundleCard
+                      key={group.key}
+                      group={group}
+                      // Kunci konfirmasi diberi awalan supaya tidak pernah
+                      // bertabrakan dengan id baris keranjang biasa.
+                      pending={pendingRemoveId === `bundle:${group.key}`}
+                      onPending={setPendingRemoveId}
+                      onToggle={() => toggleSelectBundle(group.key)}
+                      onQuantity={(quantity) => updateBundleQuantity(group.key, quantity)}
+                      onRemove={() => removeBundle(group.key)}
+                    />
+                  ) : (
+                    <ItemCard
+                      key={group.key}
+                      item={group.item}
+                      pending={pendingRemoveId === group.item.id}
+                      onPending={setPendingRemoveId}
+                      onToggle={() => toggleSelect(group.item.id)}
+                      onQuantity={(quantity) => updateQuantity(group.item.id, quantity)}
+                      onRemove={() => removeItem(group.item.id)}
+                    />
                   )
-                })}
+                )}
               </ul>
             </div>
 
@@ -363,5 +270,252 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
         }}
       />
     </Sheet>
+  )
+}
+
+/* ------------------------------------------------------------------------- *
+ * Kartu barang & kartu paket
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Konfirmasi hapus yang menutupi kartunya sendiri.
+ *
+ * Dipakai kartu barang dan kartu paket. Sengaja bukan dialog: jelas mana yang
+ * dimaksud tanpa menghentikan seluruh panel untuk perbuatan sekecil ini.
+ */
+function OverlayKonfirmasi({
+  teks,
+  onCancel,
+  onConfirm,
+}: {
+  teks: string
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="absolute inset-0 z-10 flex items-center justify-between gap-3 bg-card/95 px-3 backdrop-blur-sm">
+      <p className="min-w-0 flex-1 text-xs font-medium">{teks}</p>
+      <div className="flex shrink-0 gap-2">
+        <button
+          onClick={onCancel}
+          className="cursor-pointer rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-muted"
+        >
+          Batal
+        </button>
+        <button
+          onClick={onConfirm}
+          className="cursor-pointer rounded-md bg-destructive px-3 py-1.5 text-xs font-bold text-white transition-opacity hover:opacity-90"
+        >
+          Hapus
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** Stepper jumlah. Tombol `−` berubah jadi ikon hapus saat tinggal satu. */
+function Stepper({
+  quantity,
+  label,
+  onQuantity,
+  onLast,
+}: {
+  quantity: number
+  label: string
+  onQuantity: (quantity: number) => void
+  onLast: () => void
+}) {
+  const isLast = quantity <= 1
+
+  return (
+    <div
+      className="flex items-center rounded-lg border bg-background"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        onClick={() => (isLast ? onLast() : onQuantity(quantity - 1))}
+        className={`flex h-8 w-8 cursor-pointer items-center justify-center rounded-l-lg transition-colors ${
+          isLast
+            ? "text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+        }`}
+        aria-label={isLast ? `Hapus ${label}` : `Kurangi jumlah ${label}`}
+      >
+        {isLast ? <Trash2 className="h-3.5 w-3.5" /> : <Minus className="h-3.5 w-3.5" />}
+      </button>
+
+      <span className="flex h-8 min-w-8 items-center justify-center px-1 text-xs font-semibold tabular-nums">
+        {quantity}
+      </span>
+
+      <button
+        onClick={() => onQuantity(quantity + 1)}
+        className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-r-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        aria-label={`Tambah jumlah ${label}`}
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  )
+}
+
+function ItemCard({
+  item,
+  pending,
+  onPending,
+  onToggle,
+  onQuantity,
+  onRemove,
+}: {
+  item: CartItem
+  pending: boolean
+  onPending: (id: string | null) => void
+  onToggle: () => void
+  onQuantity: (quantity: number) => void
+  onRemove: () => void
+}) {
+  return (
+    <li className="relative overflow-hidden rounded-xl border border-border/60 bg-card transition-colors">
+      <div
+        onClick={() => !pending && onToggle()}
+        className="flex cursor-pointer items-start gap-3 p-3"
+      >
+        <Checkbox
+          checked={item.selected !== false}
+          onCheckedChange={onToggle}
+          onClick={(e) => e.stopPropagation()}
+          className="mt-0.5 shrink-0"
+          aria-label={`Pilih ${item.name}`}
+        />
+
+        {/* Gambar mengecil di layar sempit supaya nama produk tetap kebagian
+            ruang baca yang layak. */}
+        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-muted sm:h-20 sm:w-20">
+          {item.image ? (
+            <Image src={item.image} alt={item.name} fill sizes="80px" className="object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center">
+              <ShoppingBag className="h-6 w-6 text-muted-foreground/30" />
+            </div>
+          )}
+        </div>
+
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <h4 className="line-clamp-2 text-sm font-semibold leading-snug">{item.name}</h4>
+          {item.variationLabel && (
+            <p className="text-xs text-muted-foreground">{item.variationLabel}</p>
+          )}
+
+          <div className="mt-0.5 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-sm font-bold tabular-nums text-sale-red">
+              {formatRupiah(item.price * item.quantity)}
+            </span>
+
+            {/* Target sentuh 32px: di bawah itu tombolnya sulit dikenai jempol
+                pada layar kecil. */}
+            <Stepper
+              quantity={item.quantity}
+              label={item.name}
+              onQuantity={onQuantity}
+              onLast={() => onPending(item.id)}
+            />
+          </div>
+        </div>
+      </div>
+
+      {pending && (
+        <OverlayKonfirmasi
+          teks="Hapus item ini dari keranjang?"
+          onCancel={() => onPending(null)}
+          onConfirm={() => {
+            onRemove()
+            onPending(null)
+          }}
+        />
+      )}
+    </li>
+  )
+}
+
+/**
+ * Satu paket rakitan di panel keranjang.
+ *
+ * Komponennya disebut sebagai daftar nama ringkas tanpa foto dan tanpa harga
+ * satuan: di panel selebar ini, tujuh kartu bergambar mengubur barang lain di
+ * keranjang, sementara yang perlu diketahui pelanggan cuma "paket ini isinya
+ * apa saja". Rinciannya tinggal satu ketukan di `/cart`.
+ *
+ * Centang, jumlah, dan hapus semuanya bekerja untuk SELURUH paket — tidak ada
+ * jalan untuk mengeluarkan satu komponen dan merusak rakitannya tanpa sadar.
+ */
+function BundleCard({
+  group,
+  pending,
+  onPending,
+  onToggle,
+  onQuantity,
+  onRemove,
+}: {
+  group: Extract<CartGroup, { kind: "bundle" }>
+  pending: boolean
+  onPending: (id: string | null) => void
+  onToggle: () => void
+  onQuantity: (quantity: number) => void
+  onRemove: () => void
+}) {
+  const terpilih = group.lines.every((l) => l.selected !== false)
+
+  return (
+    <li className="relative overflow-hidden rounded-xl border border-brand-green/30 bg-card transition-colors">
+      <div
+        onClick={() => !pending && onToggle()}
+        className="flex cursor-pointer items-start gap-3 p-3"
+      >
+        <Checkbox
+          checked={terpilih}
+          onCheckedChange={onToggle}
+          onClick={(e) => e.stopPropagation()}
+          className="mt-0.5 shrink-0"
+          aria-label={`Pilih paket ${group.name}`}
+        />
+
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <span className="inline-flex w-fit items-center gap-1 rounded-md bg-brand-green/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-green">
+            <PackageOpen className="h-3 w-3" />
+            Paket Rakitan
+          </span>
+
+          <h4 className="line-clamp-2 text-sm font-semibold leading-snug">{group.name}</h4>
+
+          <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+            {group.lines.map((l) => l.name).join(" · ")}
+          </p>
+
+          <div className="mt-0.5 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-sm font-bold tabular-nums text-sale-red">
+              {formatRupiah(groupTotal(group, (line) => line.price))}
+            </span>
+
+            <Stepper
+              quantity={group.quantity}
+              label={`paket ${group.name}`}
+              onQuantity={onQuantity}
+              onLast={() => onPending(`bundle:${group.key}`)}
+            />
+          </div>
+        </div>
+      </div>
+
+      {pending && (
+        <OverlayKonfirmasi
+          teks="Hapus seluruh paket ini dari keranjang?"
+          onCancel={() => onPending(null)}
+          onConfirm={() => {
+            onRemove()
+            onPending(null)
+          }}
+        />
+      )}
+    </li>
   )
 }

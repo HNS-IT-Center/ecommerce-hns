@@ -1,6 +1,5 @@
 "use client"
 
-import Image from "next/image"
 import { useMemo, useState } from "react"
 import { Pencil, Check } from "lucide-react"
 
@@ -13,9 +12,21 @@ import {
   type PrebuildFpsQuality,
   type PrebuildFpsResolution,
 } from "@/lib/pc-prebuild/performance"
+import { fpsTone } from "../lib/fps-tone"
+import { GameMark } from "./game-mark"
 
 /**
  * Matriks estimasi FPS sebagai batang horizontal, dengan dua sumbu filter.
+ *
+ * DIPAKAI DUA TEMPAT: panel analisis di `/admin/pc-prebuild/<id>` (dengan
+ * `onChange`, jadi angkanya bisa disunting staff) dan halaman paket di
+ * `/pc-prebuild/<id>` (tanpa `onChange`, baca-saja). Karena itu ia tinggal di
+ * `features/`, bukan di folder `_components` milik panel admin — halaman
+ * pelanggan yang mengimpor dari dalam `app/admin/` adalah jalur yang akan
+ * diputus orang berikutnya yang merapikan panel.
+ *
+ * Kalau disalin jadi dua, ambang warna FPS-nya pelan-pelan berbeda antara yang
+ * dilihat staff saat menyusun paket dan yang dilihat pelanggan saat membelinya.
  *
  * ## Skalanya TETAP, bukan mengikuti isi filter
  *
@@ -37,16 +48,6 @@ type Props = {
   games: PrebuildGame[]
   /** Kosongkan untuk tampilan baca-saja (mis. pratinjau). */
   onChange?: (fps: PrebuildFpsEntry[]) => void
-}
-
-/** Ambang yang menentukan warna batang. Bukan selera — ini batas yang dirasakan pemain. */
-function nadaFps(avg: number): { bar: string; text: string } {
-  // 30 = batas layak dimainkan, 60 = batas terasa mulus, 100+ = ranah layar
-  // berrefresh tinggi. Tiga ambang yang sama dipakai panel pelanggan nanti.
-  if (avg >= 100) return { bar: "bg-brand-green", text: "text-brand-green" }
-  if (avg >= 60) return { bar: "bg-success", text: "text-success" }
-  if (avg >= 30) return { bar: "bg-warning", text: "text-warning" }
-  return { bar: "bg-sale-red", text: "text-sale-red" }
 }
 
 export function FpsMatrixChart({ fps, games, onChange }: Props) {
@@ -134,7 +135,7 @@ export function FpsMatrixChart({ fps, games, onChange }: Props) {
 
       <div className="space-y-2.5">
         {baris.map(({ game, entry }) => {
-          const nada = nadaFps(entry?.avg ?? 0)
+          const nada = fpsTone(entry?.avg ?? 0)
           const lebarAvg = entry ? Math.max(2, (entry.avg / puncak) * 100) : 0
           const lebarLow = entry ? Math.max(1, (entry.low / puncak) * 100) : 0
 
@@ -258,23 +259,3 @@ function FilterGroup<T extends string>({
   )
 }
 
-/** Logo game, atau inisialnya kalau staff belum mengunggah logo. */
-function GameMark({ game }: { game: PrebuildGame }) {
-  if (game.logo) {
-    return (
-      <Image
-        src={game.logo}
-        alt=""
-        width={24}
-        height={24}
-        className="h-6 w-6 shrink-0 rounded border bg-white object-contain"
-      />
-    )
-  }
-
-  return (
-    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded border bg-muted text-[10px] font-bold text-muted-foreground">
-      {game.name.slice(0, 2).toUpperCase()}
-    </span>
-  )
-}

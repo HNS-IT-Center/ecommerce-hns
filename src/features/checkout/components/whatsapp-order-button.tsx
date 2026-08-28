@@ -76,6 +76,15 @@ export function WhatsAppOrderButton({ onPriced }: Props) {
           displayedName: i.variationLabel
             ? `${i.name} (${i.variationLabel})`
             : i.name,
+          // Sama seperti di `useCatalogPricing`: keterangan paket ikut supaya
+          // rakitan ditulis sebagai satu blok bernama di pesan CS.
+          ...(i.bundle
+            ? {
+                bundleKey: i.bundle.key,
+                bundleName: i.bundle.name,
+                bundleQuantity: i.bundle.quantity,
+              }
+            : {}),
         })),
       );
 

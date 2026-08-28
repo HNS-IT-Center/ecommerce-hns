@@ -440,6 +440,34 @@ atas nama kita.
 | `POST /api/admin/generate-short-description` | Deskripsi singkat produk | `llama-3.3-70b-versatile` ⚠️ | 300 |
 | `POST /api/admin/pc-prebuild-performance` | Analisis performa paket PC Prebuild — badan: `{ presetId, name, slots }`, balasan: `{ performance }` | `openai/gpt-oss-120b` (`reasoning_effort: low`) | 4000 |
 
+### `pc-prebuild-performance`: angkanya berjangkar (28 Agustus 2026)
+
+Bentuk badan dan balasan **tidak berubah** — yang berubah isi promptnya. Sampai
+28 Agustus 2026 angka FPS sepenuhnya berasal dari ingatan model atas nama
+produk retail, sehingga bisa meleset berkali lipat dan berubah skala antar
+perhitungan. Tiga tambahan menambatkannya:
+
+| Berkas | Perannya |
+|---|---|
+| [`lib/pc-prebuild/hardware-specs.ts`](../src/lib/pc-prebuild/hardware-specs.ts) | Nama retail → spesifikasi terurai. Model menerima `RTX 4060, VRAM 8GB`, bukan `"VGA GEFORCE RTX 4060 EAGLE OC 8GB"`. |
+| [`lib/pc-prebuild/performance-reference.ts`](../src/lib/pc-prebuild/performance-reference.ts) | Tangga GPU, bobot per game, plafon prosesor, batas VRAM/RAM, penskalaan antar sel. ~1.170 token. |
+| [`lib/pc-prebuild/fps-plausibility.ts`](../src/lib/pc-prebuild/fps-plausibility.ts) | Menandai urutan sel terbalik & rasio 1% low mustahil, di panel admin. Tidak memperbaiki apa pun. |
+
+**Anggaran token masih lapang:** prompt penuh ~1.945 token dari anggaran 3.500
+(`inputTokenBudget` pada `openai/gpt-oss-120b` dengan `max_tokens` 4.000). Kalau
+tabel acuannya diperpanjang, ukur ulang — `checkInputFits` menolak lebih dulu
+dengan pesan jelas, tapi itu berarti paket berkomponen banyak tidak bisa
+dianalisis.
+
+Yang IKUT DIBUANG dan jangan dikembalikan: aturan prompt *"angkanya harus turun
+secara masuk akal saat resolusi naik"*. Ia memaksa kurva GPU-bound untuk semua
+game, padahal CS2 dan Valorant di 720p dibatasi prosesor — akibatnya paket
+ber-prosesor lemah tampil sanggup ratusan FPS hanya karena resolusinya
+diturunkan.
+
+Ini tetap perkiraan AI, bukan hasil ukur; hasilnya tetap draf yang disetujui
+staff lebih dulu.
+
 ### `pc-prebuild-performance`: satu panggilan, dan sempat dua
 
 Selama 24–26 Agustus 2026 endpoint ini menjalankan panggilan KEDUA ke
@@ -539,3 +567,80 @@ dijepit, teks dipotong. Rinciannya di
 - ❌ Fetch di dalam loop tanpa `Promise.all` (waterfall).
 - ❌ Skip error handling ("nanti aja" — jangan).
 - ❌ Menyimpan data produk permanen ke database Next.js (langgar aturan di 01-business-context.md).
+
+---
+
+## 13. Keranjang: paket PC Prebuild sebagai satu blok (28 Agustus 2026)
+
+Ditambahkan bersama halaman pelanggan `/pc-prebuild` — lihat
+[`docs/11-pc-prebuild.md`](./11-pc-prebuild.md).
+
+### Paket TIDAK punya jalur harga sendiri
+
+Satu paket berisi 6–8 produk, dan yang masuk keranjang adalah **komponennya
+satu per satu**, bukan satu baris "paket". Tiap baris tetap membawa `productId`
+katalog yang sungguhan, jadi `priceCartFromCatalog()` bekerja persis seperti
+untuk barang lepas: satu kueri, harga dibaca ulang di server, varian tetap
+dibaca dari baris variannya.
+
+Alternatifnya — satu baris keranjang untuk seluruh paket — menuntut jalur harga
+KEDUA di server, karena paket tidak punya `productId`. Jalur harga adalah satu-
+satunya tempat di repo ini yang paling tidak boleh punya dua versi (CLAUDE.md
+§2.7), jadi yang dipilih adalah menjadikannya satu kesatuan di lapisan
+**tampilan** saja:
+
+| Lapis | Bentuknya |
+|---|---|
+| `store/cart.ts` | baris terpisah, masing-masing membawa `bundle: CartBundleRef` |
+| `lib/cart/grouping.ts` | `groupCartItems()` mengembalikannya jadi satu blok |
+| `/cart`, panel keranjang, `/checkout` | satu blok bernama, satu harga, tanpa harga satuan |
+| `prepareCheckoutWhatsApp` | satu nomor bernama di pesan, komponennya menjorok |
+
+`groupCartItems()` dipakai **ketiga** halaman itu. Kalau tiap halaman
+mengelompokkan sendiri, cepat atau lambat ada satu yang menampilkan tujuh
+komponen berserakan sementara dua lainnya menampilkannya sebagai paket — dan
+pelanggan tidak punya cara tahu mana yang benar.
+
+### `CartItem.id` sekarang punya segmen ketiga
+
+```
+"123"              produk biasa
+"123_456"          varian — 456 yang memegang harga
+"123_456_bKUNCI"   komponen paket (varian)
+"123__bKUNCI"      komponen paket (bukan varian) — segmen tengah kosong
+```
+
+Segmen ketiga membuat satu produk bisa hidup di dua paket sekaligus, atau di
+sebuah paket sekaligus berdiri sendiri, tanpa `addItem` menggabungkan keduanya.
+**Segmen 0 dan 1 tidak boleh berpindah tempat:** `priceBearingId()` di
+`features/checkout/actions.ts` membaca segmen ke-2 untuk menentukan baris mana
+yang memegang harga. Ketiga bentuk lama masih beredar di localStorage pelanggan
+dan wajib terus dibaca — keranjang tidak pernah dimigrasi.
+
+### `prepareCheckoutWhatsApp`: baris dirakit dari INPUT, bukan dari `cart.lines`
+
+`priceCartFromCatalog()` **menggabungkan** baris berid sama — perilaku yang benar
+untuk menghitung, tapi merusak begitu produk yang sama bisa berada di sebuah
+paket sekaligus berdiri sendiri: yang tergabung kehilangan paketnya, dan
+`unitPriceByCartItemId` cuma terisi untuk salah satu barisnya.
+
+Karena itu hasil kueri dipakai sebagai **kamus harga** (`id → unitPrice`), dan
+daftar yang dikirim dirakit dari input klien. Harga yang dipakai tetap
+seluruhnya dari katalog; yang datang dari klien hanya id, kuantitas, dan
+keterangan paket.
+
+`CheckoutLineInput` bertambah tiga bidang **opsional** — `bundleKey`,
+`bundleName`, `bundleQuantity` — dan ketiganya HANYA memengaruhi cara pesan
+disusun.
+
+### Paket yang komponennya hilang TIDAK dikirim, seluruhnya
+
+Kalau satu komponen sudah ditarik dari katalog, **seluruh paketnya** ditahan —
+bukan komponennya saja yang dibuang. PC yang kehilangan motherboard-nya bukan
+pesanan yang lebih murah, ia pesanan yang tidak bisa dipenuhi, dan totalnya akan
+terlihat sah sampai CS membukanya.
+
+Ditegakkan **di server** (`prepareCheckoutWhatsApp`), dan dicerminkan di klien
+lewat `isGroupBlocked()` supaya tombolnya tidak menjanjikan sesuatu yang akan
+ditolak. Yang memutuskan mengeluarkan paketnya tetap pelanggan; tidak ada yang
+dihapus otomatis.

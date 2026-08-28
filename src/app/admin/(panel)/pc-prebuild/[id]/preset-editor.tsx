@@ -580,11 +580,25 @@ function BilahLengket({ children }: { children: React.ReactNode }) {
     // Ambang `md` bisa terlampaui tanpa `resize` — memutar tablet, misalnya.
     layarLebar.addEventListener("change", periksa)
 
+    // Menutup/membuka sidebar TIDAK menghasilkan `resize`: jendelanya tidak
+    // berubah ukuran, yang berubah cuma lebar kolom isi. Tanpa pengamat ini
+    // bilah yang sedang `fixed` bertahan dengan `left`/`width` lamanya sampai
+    // ada guliran berikutnya yang kebetulan mengukur ulang — itulah kenapa
+    // lebarnya dulu baru ikut menyesuaikan setelah halaman di-scroll.
+    //
+    // Yang diamati penampungnya, bukan jendela: ia ikut menyempit bersama
+    // sidebar. `ResizeObserver` menyala tiap bingkai selama transisi 200ms
+    // sidebar (`transition-[width]` di `components/ui/sidebar.tsx`), jadi
+    // bilahnya bergerak mulus bersamanya, bukan melompat setelah animasi usai.
+    const pengamat = new ResizeObserver(periksa)
+    if (penampung.current) pengamat.observe(penampung.current)
+
     return () => {
       cancelAnimationFrame(bingkai)
       window.removeEventListener("scroll", periksa, { capture: true })
       window.removeEventListener("resize", periksa)
       layarLebar.removeEventListener("change", periksa)
+      pengamat.disconnect()
     }
   }, [])
 

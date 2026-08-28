@@ -65,8 +65,10 @@ export type CheckoutLineInput = CartLineRequest & {
    */
   displayedName: string;
   /**
-   * Id baris keranjang: `"<productId>"` untuk produk biasa, atau
-   * `"<productId>_<variationId>"` untuk varian (lihat `CartItem.id`).
+   * Id baris keranjang: `"<productId>"` untuk produk biasa,
+   * `"<productId>_<variationId>"` untuk varian, dan bentuk bersegmen ketiga
+   * untuk komponen paket PC Prebuild (lihat `CartItem.id` dan
+   * `priceBearingId` di bawah).
    *
    * WAJIB dikirim. Untuk produk variable, `productId` menyimpan id INDUK,
    * sementara harga yang dilihat pelanggan berasal dari variannya. Tanpa id
@@ -74,6 +76,17 @@ export type CheckoutLineInput = CartLineRequest & {
    * sering nol atau harga termurah, dan CS menerima total yang salah.
    */
   cartItemId: string;
+  /**
+   * Terisi kalau baris ini komponen dari paket PC Prebuild.
+   *
+   * Ketiganya HANYA memengaruhi cara pesan disusun — harga tetap dibaca ulang
+   * per `productId` seperti baris lain. Paket tidak punya jalur harga sendiri;
+   * lihat `CartBundleRef` di store/cart.ts.
+   */
+  bundleKey?: string;
+  bundleName?: string;
+  /** Jumlah paket, untuk keterangan "x2 paket" di kepala blok. */
+  bundleQuantity?: number;
 };
 
 /**
@@ -82,10 +95,21 @@ export type CheckoutLineInput = CartLineRequest & {
  * Varian bukan tabel tersendiri di skema ini: ia baris `Product` sendiri yang
  * menunjuk induknya lewat relasi `ProductVariations`. Jadi id varian bisa
  * dikueri persis seperti id produk biasa — yang penting memilih id yang tepat.
+ *
+ * `cartItemId` punya TIGA bentuk yang harus dibaca semuanya:
+ *
+ *   "123"              produk biasa
+ *   "123_456"          varian — 456 yang memegang harga
+ *   "123_456_bKUNCI"   komponen paket PC Prebuild (varian atau bukan)
+ *   "123__bKUNCI"      komponen paket yang bukan varian — segmen tengah kosong
+ *
+ * Segmen KE-2 yang dibaca, apa pun yang menyusul sesudahnya. Bentuk pertama dan
+ * kedua masih beredar di localStorage pelanggan lama, jadi ketiganya wajib
+ * ditangani sampai kapan pun — keranjang tidak pernah dimigrasi.
  */
 function priceBearingId(line: CheckoutLineInput): number {
-  const [, variationId] = String(line.cartItemId ?? "").split("_");
-  const varian = Number(variationId);
+  const segmen = String(line.cartItemId ?? "").split("_");
+  const varian = Number(segmen[1]);
   return Number.isSafeInteger(varian) && varian > 0 ? varian : Number(line.productId);
 }
 
@@ -118,15 +142,67 @@ const MAX_URL_LENGTH = 4000;
 
 const rupiah = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
 
-function buildDetailedMessage(lines: PricedCartLine[], total: number): string {
-  const daftar = lines
-    .map((l, i) => {
-      const sku = l.sku ? ` (SKU: ${l.sku})` : "";
-      return `${i + 1}. ${l.name}${sku}\n   ${l.quantity} x ${rupiah(l.unitPrice)} = ${rupiah(l.lineTotal)}`;
+
+/**
+ * Satu baris yang benar-benar dikirim ke CS.
+ *
+ * Sengaja dirakit dari INPUT KLIEN yang dilekati harga katalog, bukan langsung
+ * dari `cart.lines`. Sebabnya `priceCartFromCatalog` MENGGABUNGKAN baris
+ * berid sama (dua "RAM 16GB" jadi satu baris berjumlah 2) — perilaku yang benar
+ * untuk menghitung, tapi merusak begitu produk yang sama bisa berada di sebuah
+ * paket sekaligus berdiri sendiri di keranjang. Yang tergabung akan kehilangan
+ * paketnya, dan `unitPriceByCartItemId` cuma terisi untuk salah satu barisnya.
+ *
+ * Harganya tetap satu-satunya yang sah: `unitPrice` di sini SELALU berasal dari
+ * hasil kueri katalog, tidak pernah dari angka kiriman klien.
+ */
+type BarisTerkirim = {
+  cartItemId: string;
+  /** Id yang memegang harga — id varian kalau barisnya sebuah varian. */
+  productId: number;
+  name: string;
+  sku: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+};
+
+/** Blok pesan: satu barang lepas, atau satu paket beserta isinya. */
+type BlokPesan =
+  | { kind: "item"; baris: BarisTerkirim }
+  | { kind: "bundle"; name: string; quantity: number; baris: BarisTerkirim[]; total: number };
+
+function jumlahUnit(blok: BlokPesan[]): number {
+  return blok.reduce(
+    (n, b) => n + (b.kind === "item" ? b.baris.quantity : b.baris.reduce((m, l) => m + l.quantity, 0)),
+    0,
+  );
+}
+
+/**
+ * Pesan rinci.
+ *
+ * Paket ditulis sebagai SATU nomor bernama, dengan komponennya menjorok di
+ * bawahnya tanpa harga satuan dan satu total untuk seluruh paket. Kalau
+ * komponennya ditulis rata bersama barang lepas, CS menerima tujuh baris yang
+ * tidak punya cara dibedakan dari tujuh barang terpisah — lalu mengambilnya
+ * satu per satu dari rak dan menghitung ongkos rakitnya sebagai nol.
+ */
+function buildDetailedMessage(blok: BlokPesan[], total: number): string {
+  const daftar = blok
+    .map((b, i) => {
+      if (b.kind === "item") {
+        const sku = b.baris.sku ? ` (SKU: ${b.baris.sku})` : "";
+        return `${i + 1}. ${b.baris.name}${sku}\n   ${b.baris.quantity} x ${rupiah(b.baris.unitPrice)} = ${rupiah(b.baris.lineTotal)}`;
+      }
+
+      const isi = b.baris.map((l) => `   - ${l.name} (x${l.quantity})`).join("\n");
+      const jumlahPaket = b.quantity > 1 ? ` (${b.quantity} paket)` : "";
+      return `${i + 1}. *PAKET: ${b.name}*${jumlahPaket}\n${isi}\n   Total paket: ${rupiah(b.total)}`;
     })
     .join("\n");
 
-  const unit = lines.reduce((n, l) => n + l.quantity, 0);
+  const unit = jumlahUnit(blok);
 
   return (
     `Halo HNS IT Center, saya ingin memesan barang berikut:\n\n${daftar}\n\n` +
@@ -141,11 +217,28 @@ function buildDetailedMessage(lines: PricedCartLine[], total: number): string {
  * Menyebutkan jumlah barang dan total, lalu meminta CS mengambil rinciannya.
  * Sengaja TIDAK memuat sebagian daftar: daftar yang terpotong di tengah terlihat
  * lengkap, dan CS tidak punya cara tahu ada yang hilang.
+ *
+ * Nama paket TETAP disebut walau rinciannya tidak — paket adalah hal yang
+ * dipesan sebagai satu barang, dan menghitungnya sebagai "7 jenis barang" akan
+ * membuat CS menduga isinya salah sejak kalimat pertama.
  */
-function buildSummaryMessage(lines: PricedCartLine[], total: number): string {
-  const unit = lines.reduce((n, l) => n + l.quantity, 0);
+function buildSummaryMessage(blok: BlokPesan[], total: number): string {
+  const unit = jumlahUnit(blok);
+  const paket = blok.filter((b) => b.kind === "bundle");
+  const lepas = blok.length - paket.length;
+
+  const sebutanPaket = paket
+    .map((b) => (b.kind === "bundle" ? `"${b.name}"${b.quantity > 1 ? ` x${b.quantity}` : ""}` : ""))
+    .join(", ");
+
+  const isi =
+    paket.length > 0
+      ? `${paket.length} paket rakitan (${sebutanPaket})` +
+        (lepas > 0 ? ` dan ${lepas} jenis barang lain` : "")
+      : `${lepas} jenis barang`;
+
   return (
-    `Halo HNS IT Center, saya ingin memesan ${lines.length} jenis barang ` +
+    `Halo HNS IT Center, saya ingin memesan ${isi} ` +
     `(${unit} unit) dengan total ${rupiah(total)}.\n\n` +
     `Daftarnya terlalu panjang untuk dikirim lewat pesan ini — mohon dibantu ` +
     `buka keranjang saya bersama CS supaya rinciannya bisa dicek satu per satu. ` +
@@ -184,54 +277,125 @@ export async function prepareCheckoutWhatsApp(
     return { ok: false, reason: "no-store" };
   }
 
-  // Harga yang berubah sejak halaman dimuat. Dilaporkan supaya pelanggan
-  // melihatnya sendiri — angka tidak pernah diganti diam-diam.
-  // Dikunci dengan id pemegang harga, bukan `productId`, supaya baris varian
-  // dicocokkan dengan hasil kueri yang benar.
-  const dimintaPerId = new Map(input.map((l) => [priceBearingId(l), l]));
-  const changes: PriceChange[] = [];
-  for (const l of cart.lines) {
-    const diminta = dimintaPerId.get(l.productId);
-    if (!diminta) continue;
-    const lama = Number(diminta.displayedUnitPrice);
-    if (Number.isFinite(lama) && lama > 0 && lama !== l.unitPrice) {
-      changes.push({ name: l.name, oldUnitPrice: lama, newUnitPrice: l.unitPrice });
-    }
-  }
+  // Harga katalog dikunci id pemegang harga. Satu baris hasil kueri bisa
+  // melayani BEBERAPA baris keranjang (produk yang sama di paket dan di luar
+  // paket), jadi ia dipakai sebagai kamus, bukan sebagai daftar kiriman.
+  const katalog = new Map(cart.lines.map((l) => [l.productId, l]));
+  const tidakTersedia = new Set(cart.unavailableProductIds);
+
+  const unavailableCartItemIds = input
+    .filter((l) => tidakTersedia.has(priceBearingId(l)))
+    .map((l) => l.cartItemId);
 
   // Namanya diambil dari keranjang klien: produk yang sudah tidak terbit tidak
   // punya nama untuk dibaca di server. Ini hanya keterangan untuk pelanggan,
   // tidak pernah ikut ke pesan WhatsApp.
-  const removedNames = cart.unavailableProductIds.map(
-    (id) => dimintaPerId.get(id)?.displayedName?.trim() || `Produk #${id}`,
+  const removedNames = input
+    .filter((l) => tidakTersedia.has(priceBearingId(l)))
+    .map((l) => l.displayedName?.trim() || `Produk #${l.productId}`);
+
+  /**
+   * Paket yang salah satu komponennya sudah ditarik dari katalog TIDAK
+   * dikirim — seluruhnya, bukan cuma komponen yang hilang.
+   *
+   * PC yang kehilangan motherboard-nya bukan pesanan yang lebih murah, ia
+   * pesanan yang tidak bisa dipenuhi. Membuang komponennya diam-diam dan tetap
+   * mengirim sisanya membuat CS menerima rakitan cacat dengan total yang
+   * kelihatan sah — persis jenis selisih yang harus ditolak di depan pelanggan.
+   */
+  const paketDiblokir = new Set(
+    input
+      .filter((l) => l.bundleKey && tidakTersedia.has(priceBearingId(l)))
+      .map((l) => l.bundleKey as string),
   );
-  const unavailableCartItemIds = cart.unavailableProductIds
-    .map((id) => dimintaPerId.get(id)?.cartItemId)
-    .filter((v): v is string => typeof v === "string");
 
   const unitPriceByCartItemId: Record<string, number> = {};
-  for (const l of cart.lines) {
-    const cartItemId = dimintaPerId.get(l.productId)?.cartItemId;
-    if (cartItemId) unitPriceByCartItemId[cartItemId] = l.unitPrice;
+  const changes: PriceChange[] = [];
+  const blok: BlokPesan[] = [];
+  const indeksPaket = new Map<string, number>();
+
+  for (const l of input) {
+    const row = katalog.get(priceBearingId(l));
+    if (!row) continue;
+
+    // Harga yang tampil di keranjang dilaporkan apa adanya walau paketnya
+    // diblokir: pelanggan tetap berhak melihat angka barisnya sendiri.
+    unitPriceByCartItemId[l.cartItemId] = row.unitPrice;
+
+    const lama = Number(l.displayedUnitPrice);
+    if (Number.isFinite(lama) && lama > 0 && lama !== row.unitPrice) {
+      changes.push({ name: row.name, oldUnitPrice: lama, newUnitPrice: row.unitPrice });
+    }
+
+    if (l.bundleKey && paketDiblokir.has(l.bundleKey)) continue;
+
+    const baris: BarisTerkirim = {
+      cartItemId: l.cartItemId,
+      productId: row.productId,
+      name: row.name,
+      sku: row.sku,
+      quantity: l.quantity,
+      unitPrice: row.unitPrice,
+      lineTotal: row.unitPrice * l.quantity,
+    };
+
+    if (!l.bundleKey) {
+      blok.push({ kind: "item", baris });
+      continue;
+    }
+
+    const sudahAda = indeksPaket.get(l.bundleKey);
+    if (sudahAda === undefined) {
+      indeksPaket.set(l.bundleKey, blok.length);
+      blok.push({
+        kind: "bundle",
+        name: l.bundleName?.trim() || "Paket Rakitan",
+        quantity: Math.max(1, Math.floor(Number(l.bundleQuantity) || 1)),
+        baris: [baris],
+        total: baris.lineTotal,
+      });
+      continue;
+    }
+
+    const paket = blok[sudahAda];
+    if (paket.kind === "bundle") {
+      paket.baris.push(baris);
+      paket.total += baris.lineTotal;
+    }
   }
+
+  if (blok.length === 0) {
+    return { ok: false, reason: "all-unavailable" };
+  }
+
+  const lines = blok.flatMap((b) => (b.kind === "item" ? [b.baris] : b.baris));
+  // Totalnya dihitung dari baris yang BENAR-BENAR dikirim, bukan `cart.total` —
+  // paket yang diblokir sudah tidak ikut, dan angka di layar harus sama dengan
+  // angka di pesan.
+  const total = lines.reduce((n, l) => n + l.lineTotal, 0);
 
   // `normalizePhone`, bukan sekadar membuang non-digit: nomor tersimpan dalam
   // bentuk lokal ("0821-6970-3377") dan wa.me menolak awalan 0 — tautannya
   // terbuka tapi tidak menemukan siapa pun.
   const nomor = normalizePhone(cabangUtama.phone);
-  const rinci = buildDetailedMessage(cart.lines, cart.total);
+  const rinci = buildDetailedMessage(blok, total);
   const urlRinci = `https://wa.me/${nomor}?text=${encodeURIComponent(rinci)}`;
 
   const perluRingkas = urlRinci.length > MAX_URL_LENGTH;
-  const pesan = perluRingkas
-    ? buildSummaryMessage(cart.lines, cart.total)
-    : rinci;
+  const pesan = perluRingkas ? buildSummaryMessage(blok, total) : rinci;
 
   return {
     ok: true,
     waUrl: `https://wa.me/${nomor}?text=${encodeURIComponent(pesan)}`,
-    lines: cart.lines,
-    total: cart.total,
+    lines: lines.map((l) => ({
+      productId: l.productId,
+      name: l.name,
+      sku: l.sku,
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+      lineTotal: l.lineTotal,
+    })),
+    total,
     removedNames,
     unitPriceByCartItemId,
     unavailableCartItemIds,

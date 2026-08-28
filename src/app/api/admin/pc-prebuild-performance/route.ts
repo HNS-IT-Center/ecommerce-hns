@@ -13,6 +13,18 @@ import {
   type PrebuildComponentRole,
 } from "@/lib/pc-prebuild/component-roles"
 import { getPcPrebuildGames } from "@/lib/pc-prebuild/config"
+import {
+  combineRamSpecs,
+  describeCpu,
+  describeGpu,
+  describeRam,
+  parseCpuSpec,
+  parseGpuSpec,
+  parseRamSpec,
+  type CpuSpec,
+  type GpuSpec,
+  type RamSpec,
+} from "@/lib/pc-prebuild/hardware-specs"
 import { MAX_ITEMS_PER_SLOT } from "@/lib/pc-prebuild/limits"
 import {
   PREBUILD_FPS_QUALITIES,
@@ -23,12 +35,38 @@ import {
   fingerprintSlots,
   parsePrebuildPerformance,
 } from "@/lib/pc-prebuild/performance"
+import { PERFORMANCE_REFERENCE, gameWeightHint } from "@/lib/pc-prebuild/performance-reference"
 
 /**
  * Menghitung perkiraan performa satu paket PC Prebuild lewat Groq.
  *
  * Yang dihasilkan: kelas resolusi, kecocokan per use case, matriks estimasi
  * FPS, dan perkiraan keseimbangan CPU/GPU. **Satu panggilan, satu model.**
+ *
+ * ## Angkanya BERJANGKAR, bukan dari ingatan model (28 Agustus 2026)
+ *
+ * Sampai 28 Agustus 2026, angka FPS sepenuhnya berasal dari ingatan model atas
+ * nama produk retail. Akibatnya dua-duanya buruk: angkanya bisa meleset
+ * berkali lipat, dan dua kali hitung pada paket sekelas bisa menghasilkan skala
+ * yang sama sekali berbeda. Tiga hal ditambahkan untuk menambatkannya:
+ *
+ * 1. **Spesifikasi terurai** (`hardware-specs.ts`) — model menerima
+ *    `RTX 4060, VRAM 8GB` alih-alih `"VGA GEFORCE RTX 4060 EAGLE OC 8GB"`,
+ *    jadi ia tidak lagi menghabiskan perhatian untuk mengurai nama. Ini juga
+ *    yang akhirnya membuat `16GB (2x8GB)` terbaca sebagai dual channel.
+ * 2. **Tabel acuan** (`performance-reference.ts`) — tangga GPU, plafon
+ *    prosesor, batas VRAM/RAM, dan penskalaan antar sel.
+ * 3. **Pemeriksa kewajaran** (`fps-plausibility.ts`) — menandai urutan sel yang
+ *    terbalik dan rasio 1% low yang mustahil, di panel admin.
+ *
+ * Aturan prompt lama *"angkanya harus turun secara masuk akal saat resolusi
+ * naik"* IKUT DIBUANG, dan itu perbaikan tersendiri: ia memaksa kurva
+ * GPU-bound untuk semua game, padahal CS2 dan Valorant di 720p dibatasi
+ * prosesor dan memang TIDAK naik banyak saat resolusi diturunkan. Aturan itu
+ * membuat paket ber-prosesor lemah tampil sanggup ratusan FPS.
+ *
+ * Ini tetap perkiraan AI, bukan hasil ukur. Karena itu hasilnya tetap draf
+ * yang disunting dan disetujui staff lebih dulu.
  *
  * ## Saran upgrade SENGAJA tidak ada — jangan ditambahkan kembali
  *
@@ -161,6 +199,69 @@ function angka(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0
 }
 
+type KomponenTerurai = {
+  role: PrebuildComponentRole
+  product: { name: string }
+  quantity: number
+}
+
+/**
+ * Tiga komponen yang menentukan FPS, sudah terurai jadi spesifikasi.
+ *
+ * Sebelum ini, model menerima nama retail apa adanya — "VGA GEFORCE RTX 4060
+ * EAGLE OC 8GB" — dan harus mengurai sendiri mana chip dan mana VRAM sebelum
+ * sempat menilai. Uraian itu meleset di tempat yang paling menentukan, dan
+ * catatan di kepala berkas ini mencatat salah satunya: model pernah menulis
+ * "RAM 8 GB single channel" untuk paket yang jelas 16 GB dual channel.
+ *
+ * Daftar komponen lengkap TETAP dikirim (harga, kategori, komponen lain yang
+ * tidak diurai di sini); blok ini menambahi, bukan menggantikan.
+ *
+ * Kosong = tidak ada satu pun yang dikenali. Blok ini kemudian tidak dikirim
+ * sama sekali — lebih baik model bekerja dari nama aslinya daripada dari
+ * spesifikasi yang setengah terisi dan terbaca seolah lengkap.
+ */
+function ringkasSpesifikasi(komponen: readonly KomponenTerurai[]): string {
+  const baris: string[] = []
+
+  const gpu = komponen
+    .filter((k) => k.role === "gpu")
+    .map((k) => parseGpuSpec(k.product.name))
+    .filter((s): s is GpuSpec => s !== null)
+
+  const cpu = komponen
+    .filter((k) => k.role === "cpu")
+    .map((k) => parseCpuSpec(k.product.name))
+    .filter((s): s is CpuSpec => s !== null)
+
+  const ram = combineRamSpecs(
+    komponen
+      .filter((k) => k.role === "ram")
+      .map((k) => ({ spec: parseRamSpec(k.product.name), quantity: k.quantity }))
+      .filter((r): r is { spec: RamSpec; quantity: number } => r.spec !== null)
+  )
+
+  if (gpu.length > 0) {
+    baris.push(`- GPU: ${gpu.map(describeGpu).join(" + ")}`)
+  } else if (cpu.length > 0) {
+    // Paket tanpa VGA diskrit adalah kasus nyata di HNS (lihat
+    // REQUIRED_ANALYSIS_ROLES), dan yang menggantikannya adalah grafis di
+    // prosesor. Kalau prosesornya tidak punya grafis sama sekali, itu justru
+    // yang paling penting diketahui model.
+    const igpu = cpu[0].integratedGpu
+    baris.push(
+      igpu
+        ? `- GPU: tidak ada VGA diskrit — grafisnya dari prosesor (${igpu})`
+        : "- GPU: tidak ada VGA diskrit DAN prosesornya tanpa grafis terintegrasi"
+    )
+  }
+
+  if (cpu.length > 0) baris.push(`- CPU: ${cpu.map(describeCpu).join(" + ")}`)
+  if (ram) baris.push(`- RAM: ${describeRam(ram)}`)
+
+  return baris.join("\n")
+}
+
 /**
  * Bentuk padat dari model → bentuk yang dimengerti `parsePrebuildPerformance`.
  *
@@ -283,12 +384,30 @@ export async function POST(req: NextRequest) {
 
     const daftarUseCase = PREBUILD_USE_CASES.map((u) => `- ${u.id} = ${u.label}: ${u.description}`).join("\n")
     const daftarTier = PREBUILD_RESOLUTION_TIERS.map((t) => `- ${t.id} = ${t.description}`).join("\n")
-    const daftarGame = games.map((g) => `- ${g.id} = ${g.name}`).join("\n")
+    // Bobot ditempelkan ke BARIS GAME-nya, bukan cuma tersedia sebagai daftar
+    // kelas terpisah di tabel acuan. Daftar terpisah terbukti tidak cukup:
+    // model membacanya sebagai keterangan lalu tetap mengeluarkan angka seragam
+    // untuk semua game (dilaporkan 28 Agustus 2026 — Roblox sama dengan Apex).
+    const daftarGame = games
+      .map((g) => {
+        const bobot = gameWeightHint(g.id, g.name)
+        return `- ${g.id} = ${g.name} [berat: ${bobot ?? "tentukan sendiri"} dari game AAA berat]`
+      })
+      .join("\n")
+
+    const spesifikasi = ringkasSpesifikasi(komponen)
+    const blokSpesifikasi = spesifikasi
+      ? `\nSPESIFIKASI KUNCI (sudah diurai dari nama produk di atas — PAKAI INI, jangan mengurai ulang namanya):\n${spesifikasi}\n`
+      : ""
 
     const prompt = `Kamu konsultan IT profesional di HNS IT Center Batam yang juga paham cara menjelaskan produk ke calon pembeli awam. Kamu menilai sebuah paket PC rakitan.
 
 KOMPONEN PAKET (tanda kurung siku di depan adalah PERAN komponen):
 ${daftarKomponen}
+${blokSpesifikasi}
+BATAS WAJAR — untuk MEMERIKSA jawabanmu setelah kamu menentukannya. Ini BUKAN rumus, dan angka di bawah bukan bahan perkalian berantai:
+
+${PERFORMANCE_REFERENCE}
 
 DAFTAR USE CASE (hanya boleh memakai id di bawah, JANGAN membuat id baru):
 ${daftarUseCase}
@@ -304,11 +423,15 @@ ATURAN:
 2. "score" use case 0-100, mencerminkan seberapa cocok paket ini untuk kebutuhan itu.
 3. "quality" di tingkat atas hanya boleh salah satu dari: ${PREBUILD_QUALITY_PRESETS.join(", ")}. Itu vonis kelas paket secara keseluruhan.
 4. MATRIKS FPS — ini bagian terpenting. Untuk SETIAP game di daftar, isi SEMUA ${PREBUILD_FPS_RESOLUTIONS.length * PREBUILD_FPS_QUALITIES.length} kombinasi: "r" salah satu dari ${PREBUILD_FPS_RESOLUTIONS.join("/")} dan "q" salah satu dari ${PREBUILD_FPS_QUALITIES.join("/")}. Jadi ${PREBUILD_FPS_RESOLUTIONS.length * PREBUILD_FPS_QUALITIES.length} baris per game, tanpa ada yang dilewati.
-5. "a" adalah FPS rata-rata, "l" adalah 1% low. "l" lazimnya 60-80% dari "a" dan TIDAK PERNAH melebihinya. Angkanya harus turun secara masuk akal saat resolusi naik dan saat setelan naik.
-6. Masukkan SEMUA game, walaupun hanya sanggup pada setelan rendah — tulis angka apa adanya, termasuk kalau di bawah 30. Kalau paket ini memang bukan untuk gaming, isi "gaming":{"suitable":false,...} dan jelaskan alasannya di "note"; matriksnya TETAP diisi.
-7. "bottleneck" adalah perkiraan beban relatif 0-100 saat gaming 1080p — WAJIB diisi angka sebenarnya, bukan nol. Selisih yang lebar berarti satu komponen menahan yang lain; jelaskan dalam satu kalimat di "verdict".
-8. JANGAN menyebut harga, diskon, promo, atau perbandingan harga di teks mana pun. Angka rupiah di atas hanya konteks kelas paket.
-9. JANGAN mengarang komponen yang tidak ada di daftar.
+5. Perkirakan tiap sel DARI PENGETAHUANMU tentang performa nyata kombinasi perangkat keras ini pada game tersebut — kamu sudah tahu kira-kira berapa FPS kartu dan prosesor seperti ini menghasilkan di game-game itu. Kerjakan GAME PER GAME. Jangan memakai satu rumus yang sama untuk semua game.
+5b. SESUDAH menentukan angkanya, periksa terhadap BATAS WAJAR di atas: titik periksa GPU, berat game, plafon prosesor, batas VRAM/RAM, dan arah antar sel. Perbaiki yang jelas keluar batas. Kalau perkiraanmu berbeda tipis dari batas itu, ikuti perkiraanmu — batas itu kasar. Kalau berbeda jauh, perkiraanmu yang perlu ditinjau.
+5c. SETIAP GAME PUNYA ANGKA SENDIRI. Pada paket yang sama persis, Valorant atau Roblox berkali lipat lebih tinggi daripada Red Dead Redemption 2 — selisihnya bisa lima kali. Dua game yang berbeda berat TIDAK BOLEH keluar dengan angka yang sama atau hampir sama, kecuali dua-duanya memang sedang tertahan plafon prosesor yang sama.
+6. "a" adalah FPS rata-rata, "l" adalah 1% low. "l" TIDAK PERNAH melebihi "a", dan rasionya mengikuti bagian 1% LOW di tabel acuan — termasuk rasio rendah saat VRAM atau RAM kurang, karena di situlah kekurangan itu terlihat.
+7. FPS memang turun saat resolusi atau setelan dinaikkan — KECUALI kalau sel itu sudah tertahan plafon prosesor. Pada game esports dengan prosesor kelas menengah ke bawah, 720p dan 1080p boleh hampir sama; itu bukan kesalahan, itu justru jawaban yang benar dan jangan dipaksa turun.
+8. Masukkan SEMUA game, walaupun hanya sanggup pada setelan rendah — tulis angka apa adanya, termasuk kalau di bawah 30. Kalau paket ini memang bukan untuk gaming, isi "gaming":{"suitable":false,...} dan jelaskan alasannya di "note"; matriksnya TETAP diisi.
+9. "bottleneck" adalah perkiraan beban relatif 0-100 saat gaming 1080p — WAJIB diisi angka sebenarnya, bukan nol. Selisih yang lebar berarti satu komponen menahan yang lain; jelaskan dalam satu kalimat di "verdict".
+10. JANGAN menyebut harga, diskon, promo, atau perbandingan harga di teks mana pun. Angka rupiah di atas hanya konteks kelas paket.
+11. JANGAN mengarang komponen yang tidak ada di daftar.
 
 Balas HANYA JSON dengan bentuk persis seperti ini, memakai kunci pendek. Setiap <…> diganti nilai sebenarnya; JANGAN menyalin teks contohnya:
 {"headline":"<satu sampai dua kalimat rangkuman untuk calon pembeli>","tier":"<satu id dari daftar tingkatan resolusi>","quality":"<satu dari ${PREBUILD_QUALITY_PRESETS.join("|")}>","useCases":[{"id":"<id use case dari daftar>","score":0}],"gaming":{"suitable":true,"note":"<kosongkan kalau tidak ada yang perlu diperingatkan>"},"fps":[{"g":"<id game>","r":"<${PREBUILD_FPS_RESOLUTIONS.join("|")}>","q":"<${PREBUILD_FPS_QUALITIES.join("|")}>","a":0,"l":0}],"bottleneck":{"cpu":0,"gpu":0,"verdict":"<satu kalimat>"}}`

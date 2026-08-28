@@ -7,12 +7,12 @@
 > karena beberapa di antaranya terlihat seperti detail sepele padahal justru
 > menahan kerusakan yang sudah pernah terjadi di tempat lain di repo ini.
 >
-> **Status per 26 Agustus 2026 — sedang dirancang ulang.**
-> Panel admin sudah dirombak total: deck kartu di `/admin/pc-prebuild`, editor
-> per paket di `/admin/pc-prebuild/[id]`, daftar game pindah ke rutenya sendiri.
-> **Halaman pelanggan (`/pc-prebuild` dan `/pc-prebuild/[id]`) masih placeholder**
-> — desain lamanya dihapus dan yang baru belum dibuat. Lapis datanya utuh dan
-> siap dipakai; lihat komentar di kedua berkas halaman itu.
+> **Status per 28 Agustus 2026 — lengkap.**
+> Panel admin dirombak total 26 Agustus: deck kartu di `/admin/pc-prebuild`,
+> editor per paket di `/admin/pc-prebuild/[id]`, daftar game di rutenya sendiri.
+> Halaman pelanggan (`/pc-prebuild` dan `/pc-prebuild/[id]`) dibangun ulang
+> 28 Agustus — rinciannya di §11, termasuk "Masukkan Keranjang" yang sebelumnya
+> tercatat sebagai keputusan yang belum diambil.
 
 ---
 
@@ -36,15 +36,14 @@ Alurnya:
         │                     3 analisis  (AI → matriks FPS → chart berfilter)
         └─ /games           daftar game untuk grid FPS
         ↓
-/pc-prebuild                ⚠️ PLACEHOLDER — desain baru belum dibuat
-/pc-prebuild/<id>           ⚠️ PLACEHOLDER — desain baru belum dibuat
-        ↓ (yang sudah ada dan tetap berfungsi)
+/pc-prebuild                DECK kartu dua sisi — depan: foto + komponen,
+        │                   belakang: kecocokan + FPS berfilter
+        └─ /<id>            DETAIL: galeri, panel performa, isi paket,
+                            bilah aksi (keranjang / ubah rakitan)
+        ↓
 /build-pc?preset=<id>&pick=…  memuat paket ke wizard
+keranjang → /checkout → WhatsApp CS   (paket sebagai satu blok bernama)
 ```
-
-Yang **masih hidup** di sisi pelanggan: pemuatan preset ke wizard
-(`app/build-pc/page.tsx`) — ia sudah mengerti bentuk data baru, termasuk
-beberapa barang dalam satu langkah.
 
 ---
 
@@ -88,9 +87,9 @@ beberapa barang dalam satu langkah.
 Generasi sebelumnya cuma punya `options`, yang artinya "pilihan tukar" — jadi
 dua barang sekaligus dalam satu langkah memang tidak bisa dinyatakan.
 
-**Tampilan pemilihan tukar di sisi pelanggan belum dirancang ulang.** Bidangnya
-sudah ada dan tersimpan supaya bentuk datanya tidak perlu dibongkar kedua
-kalinya saat fiturnya dinyalakan.
+Sejak 28 Agustus 2026 pilihan tukar bisa dipilih pelanggan langsung di halaman
+paket (`ComponentPicker`), dan pilihannya ikut ke dua tempat sekaligus: ke
+keranjang, dan ke `?pick=` saat paketnya dibuka di wizard.
 
 ### Varian: `productId` induk, `variationId` variannya
 
@@ -337,6 +336,91 @@ hasil masuk sebagai DRAF di state editor     (published: false)
 "Simpan"  →  tersimpan di dalam presetnya    (PC_PREBUILD_CONFIG)
 ```
 
+### Angka FPS berjangkar pada tabel acuan (28 Agustus 2026)
+
+Empat hari pertama fitur ini, angka FPS murni ingatan model atas nama produk.
+Dua akibatnya sama buruknya: melesetnya bisa berkali lipat, dan dua kali hitung
+pada paket sekelas menghasilkan skala yang berbeda — sehingga tidak ada angka
+yang punya alasan untuk dipercaya.
+
+Sekarang model bekerja dari tiga penambat:
+
+1. **Spesifikasi terurai** — [`hardware-specs.ts`](../src/lib/pc-prebuild/hardware-specs.ts)
+   mengubah `"VGA GEFORCE RTX 4060 EAGLE OC 8GB"` jadi `RTX 4060, VRAM 8GB`.
+   Ini juga yang membuat `32GB (2x16GB)` akhirnya terbaca sebagai dual channel,
+   dan kuantitas ikut dihitung — dua keping "8GB DDR4" adalah 16GB dual
+   channel, bukan 8GB single channel.
+2. **Tabel acuan** — [`performance-reference.ts`](../src/lib/pc-prebuild/performance-reference.ts):
+   tangga GPU pada 1080p Medium, **bobot per game**, plafon prosesor, batas
+   VRAM/RAM, penskalaan antar sel. Sengaja berupa RENTANG, bukan angka tunggal:
+   angka tunggal mengundang model menyalinnya bulat-bulat — cacat yang persis
+   pernah terjadi di endpoint ini lewat contoh JSON.
+3. **Pemeriksa kewajaran** — [`fps-plausibility.ts`](../src/lib/pc-prebuild/fps-plausibility.ts)
+   menandai urutan sel yang terbalik, sel kosong, rasio 1% low yang mustahil,
+   dan **angka yang seragam antar game**. Ia **menandai, tidak memperbaiki**:
+   membetulkan urutan otomatis akan menyembunyikan bahwa modelnya sedang
+   keliru. Peringatannya juga tidak memblokir penyimpanan — peringatan yang
+   memblokir mendorong orang mengarang angka supaya lolos.
+
+   Pemeriksaan **lintas-game** ditambahkan setelah cacat bobot di atas lolos
+   sepenuhnya dari pemeriksaan per-game: tiap sel-nya wajar, urutannya benar,
+   rasio 1% low-nya benar. Yang menyingkapnya hanya membandingkan antar game —
+   tiga game atau lebih berangka sama persis, atau sebaran seluruh daftar di
+   bawah 1,5x. Temuan lintas-game sengaja didahulukan dalam daftar supaya tidak
+   terpotong `MAX_WARNINGS` pada matriks yang justru paling bermasalah.
+
+**Tabelnya ALAT PERIKSA, bukan resep — dan itu koreksi atas percobaan kedua.**
+Versi kedua (28 Agustus 2026) menyuruh model menurunkan angka lewat rantai:
+titik GPU × bobot game × penskalaan resolusi × penskalaan setelan, lalu
+dijepit plafon prosesor. Lima langkah, masing-masing punya rentang — dan
+rentang yang bertumpuk membuat ujung bawah dan ujung atas rantai berjarak tiga
+kali lipat untuk sel yang sama. Dua-duanya "sah" menurut tabel, jadi tabel yang
+seharusnya menambatkan justru **melebarkan** ruang jawaban. Hasilnya dilaporkan
+lebih buruk daripada sebelum tabel ada.
+
+Yang terlewat: model sudah tahu RTX 4060 di Valorant kira-kira berapa — itu
+angka yang banyak dibahas publik. Rantai perkalian membuang pengetahuan itu dan
+menggantinya dengan galat yang menumpuk.
+
+Urutannya sekarang dibalik: **model menjawab per game dari pengetahuannya, lalu
+memeriksa jawabannya terhadap batas.** Yang jelas keluar batas diperbaiki; beda
+tipis mengikuti perkiraan model, karena batasnya sendiri kasar. Jangan
+mengembalikannya jadi rumus.
+
+**Berat per game — jangan dihapus.** Percobaan pertama tabel acuan (28 Agustus
+2026) hanya memberi SATU angka per GPU untuk "game AAA", tanpa keterangan bahwa
+Valorant jauh lebih ringan daripada Red Dead Redemption 2. Hasilnya seluruh
+game keluar dengan angka yang nyaris sama — Roblox disamakan dengan Apex
+Legends. Yang memperbaikinya dua hal sekaligus:
+
+- Angka TITIK PERIKSA GPU bermakna **game AAA berat**, bukan
+  rata-rata semua game. Ia lantai terberat, bukan titik tengah.
+- Bobot ditempelkan **ke baris game-nya sendiri** di `DAFTAR GAME`, bukan cuma
+  tersedia sebagai daftar kelas terpisah. Daftar terpisah terbukti dibaca model
+  sebagai keterangan lalu diabaikan; bobot yang menempel di baris yang sedang
+  dikerjakan jauh lebih sulit dilewati.
+
+Pencocokannya lewat **kata kunci pada nama, bukan id** (`gameWeightHint`) —
+daftar game diatur staff dan id-nya hasil `slugifyGameId` dari nama yang mereka
+ketik, jadi "Apex Legends Season 20" tetap mendapat bobot Apex. Game yang tidak
+dikenali **tidak diberi bobot bawaan**: menambal dengan berat "sama" justru
+mengembalikan cacat yang sedang diperbaiki, karena itu kelas terberat.
+
+**Plafon prosesor, bukan pengurang persen.** Prosesor tidak memotong FPS dalam
+persen, ia memasang batas atas: `fps = min(kemampuanGPU, plafonCPU)`. Bedanya
+nyata — pada RTX 4060 dengan prosesor kelas bawah, di 1440p prosesornya tidak
+merugikan sama sekali, sementara di 720p ia memotong lebih dari separuh. Satu
+angka persen tidak mungkin benar di dua ujung itu sekaligus.
+
+Konsekuensi yang **disengaja**: pada game esports dengan prosesor menengah ke
+bawah, angka 720p dan 1080p bisa hampir sama. Itu jawaban yang benar, dan
+`ORDER_TOLERANCE` di pemeriksa kewajaran sengaja memberi ruang untuk itu.
+
+**Ini tetap perkiraan, bukan pengukuran.** Tabel acuannya rangkuman benchmark
+publik, bukan hasil ukur HNS atas unit yang dijualnya. Kalau suatu hari teknisi
+mengukur rakitan sungguhan, angka ukur itu masuk ke `performance-reference.ts`
+dan seluruh analisis berikutnya ikut terkalibrasi ulang.
+
 ### Matriks FPS: 3 resolusi × 3 setelan
 
 Sejak 26 Agustus 2026 estimasi FPS bukan lagi satu patokan tetap 1080p,
@@ -544,12 +628,117 @@ tiga kali lipat token.
 
 ## 10. Yang belum ada
 
-- **Masukkan keranjang** dari halaman paket. Perlu keputusan lebih dulu: paket
-  berisi 6–8 produk, dan memasukkannya sebagai item terpisah membuat pelanggan
-  bisa menghapus satu lalu merusak rakitannya tanpa sadar.
 - **Catatan garansi & estimasi waktu rakit** di halaman detail. Isinya kebijakan
   HNS, bukan sesuatu yang boleh dikarang.
 - **Kategori paket** (gaming / kantor / editing) kalau jumlah paketnya bertambah
   banyak.
+- **Analisis performa per kombinasi pilihan tukar.** Yang dianalisis tetap
+  bawaannya saja (§9); pelanggan yang menukar prosesor melihat angka FPS yang
+  sebenarnya berlaku untuk prosesor bawaan.
 - Halaman ini masih **daftar paket**, bukan halaman jualan bergaya editorial.
   Mengubah ke sana butuh foto rakitan yang bagus dan naskah — bukan pekerjaan CSS.
+
+---
+
+## 11. Halaman pelanggan (28 Agustus 2026)
+
+### `/pc-prebuild` — kartu dua sisi
+
+Sisi depan menjawab "isinya apa", sisi belakang menjawab "sanggup apa". Keduanya
+menerangkan paket yang SAMA, dan itulah alasan mereka satu kartu yang digeser
+alih-alih dua kartu bersebelahan: dua kartu terpisah membuat orang membandingkan
+sisi belakang paket A dengan sisi depan paket B.
+
+- **Depan** — foto, nama, lalu daftar komponen berikon yang digulir.
+- **Belakang** — chip kecocokan penggunaan, dua baris filter (3 resolusi ×
+  3 setelan), lalu daftar game: logo di kiri, `FPS rata-rata / 1% low` di kanan.
+  **Angka, bukan chart.** Yang dicari di daftar paket adalah sesuatu yang bisa
+  langsung dibandingkan antar kartu; batang butuh ruang yang di kartu tidak ada.
+  Chart-nya tetap ada di halaman detail.
+- Paket **tanpa `performancePublic` tidak punya sisi belakang** sama sekali —
+  tombol gesernya pun tidak dirender. Sisi kosong berisi "belum dianalisis" cuma
+  memberi tahu pelanggan tentang pekerjaan internal HNS yang bukan urusannya.
+- Kartu paket bercabang menampilkan **"mulai dari" `minTotal`**, bukan `total`.
+
+**Tautan, tombol, dan drag.** Tautan yang menutupi kartu di `z-10`; kendali
+(panah, filter) di `z-20` supaya bisa ditekan tanpa membuka halaman detail.
+Daftar yang digulir juga di `z-20` — kalau ia di bawah tautan, gulirannya jalan
+tapi setiap sentuhan ikut membuka halaman. Sebagai gantinya daftar itu punya
+`onClick` sendiri ke halaman yang sama; tautan aslinya tetap ada untuk keyboard
+dan pembaca layar. Drag dikunci `drag="x"` supaya tidak berebut dengan guliran
+vertikal di dalam kartu.
+
+### `/pc-prebuild/<id>` — detail
+
+Galeri kiri (memakai `ProductGallery` milik halaman produk — komponen yang sama,
+bukan salinan), panel performa kanan, isi paket grid dua kolom, bilah aksi
+sticky di bawah.
+
+- **Harga per komponen sengaja tidak ditampilkan.** Yang dijual adalah paketnya;
+  harga satuan di tiap baris mengundang pelanggan menjumlahkan sendiri lalu
+  menawar selisihnya, dan angka hasil penjumlahan itu bukan angka yang bisa
+  dipenuhi CS.
+- **Total di bilah aksi ikut pilihan tukar.** Ini penjumlahan harga satuan
+  katalog yang dikirim server — bukan harga yang diturunkan dari rumus (§3,
+  CLAUDE.md §2.7). Server tetap menghitung ulang seluruhnya saat memesan.
+- "Ubah Rakitan" membawa pilihan yang sedang aktif ke `?pick=`, dan yang
+  dicantumkan hanya barang yang **punya** pilihan tukar — barang tanpa cabang
+  toh cuma punya satu kemungkinan.
+
+### `toPrebuildView()` adalah pintu satu-satunya ke klien
+
+`ResolvedPrebuildPreset` **tidak** dioper apa adanya ke komponen. `resolve.ts`
+bertanda `server-only` dan bentuknya memuat hal yang tidak boleh menyeberang:
+`performance` apa adanya (draf, hasil basi) dan `bottleneck` yang khusus admin.
+`toPrebuildView()` di `features/pc-prebuild/lib/to-view.ts` yang memutuskan apa
+yang lewat — satu tempat, bukan diulang di tiap halaman.
+
+Ia juga yang **membuang pilihan yang produknya sudah hilang** dari katalog:
+tombol pilihan yang menunjuk produk tidak ada hanya menghasilkan slot kosong di
+wizard, dan `/build-pc` memang sudah melewatinya saat memuat preset — jadi
+menampilkannya di sini berarti dua halaman bercerita berbeda. Barang yang
+SELURUH pilihannya hilang tidak disembunyikan, ia ditandai.
+
+### Urutan komponen
+
+Processor → RAM → Penyimpanan → Graphics Card dipatok di depan; sisanya
+mengikuti urutan langkah di `/admin/pc-builder`. Yang sudah ditarik ke atas
+**tidak muncul lagi** di bawah. Paket yang tidak punya salah satunya (kantor
+ber-grafis terintegrasi) cuma kehilangan barisnya — sisanya naik, bukan
+menyisakan lubang.
+
+Perannya ditebak `detectComponentRole()`, daftar kata kunci yang sama dengan
+tombol admin dan endpoint AI (§9). Ikonnya dikunci ke **peran**, bukan ke nama
+langkah — kalau ia mencocokkan namanya sendiri, "VGA" bisa dapat ikon kartu
+grafis di kartu sementara analisisnya menganggapnya komponen lain.
+
+### Masukkan keranjang: satu blok, bukan tujuh barang
+
+Keputusan 28 Agustus 2026, menggantikan catatan "perlu keputusan lebih dulu"
+yang sebelumnya ada di §10.
+
+| Pertanyaan | Keputusan |
+|---|---|
+| Bentuk di keranjang | Satu blok bernama, komponen terdaftar di bawahnya tanpa harga satuan, **satu harga untuk keseluruhan** |
+| Hapus | Menghapus **paketnya**, bukan komponennya satu per satu |
+| Tambah paket yang sama | Jumlah **paket** jadi 2; kuantitas komponen ikut dikali dan tidak bisa diubah sendiri |
+| Pilihan tukar berbeda | **Dua paket terpisah** — kunci bundle = id preset + kombinasi pilihan |
+| Pesan ke CS | Satu nomor bernama + komponennya menjorok, tanpa harga satuan |
+| Komponen hilang saat checkout | **Seluruh paket ditahan**, pelanggan yang memutuskan |
+
+Bentuk penyimpanannya, alasan kenapa paket tidak punya jalur harga sendiri, dan
+perubahan pada `CartItem.id` serta `prepareCheckoutWhatsApp` ada di
+[`docs/05-data-fetching.md` §13](./05-data-fetching.md).
+
+### `FpsMatrixChart` pindah ke `features/`
+
+Dulu di `app/admin/(panel)/pc-prebuild/_components/`. Sekarang dipakai DUA
+tempat — panel admin (dengan `onChange`, angkanya bisa disunting) dan halaman
+paket (tanpa `onChange`, baca-saja) — jadi ia tinggal di
+`features/pc-prebuild/components/`. Halaman pelanggan yang mengimpor dari dalam
+`app/admin/` adalah jalur yang akan diputus orang berikutnya yang merapikan
+panel.
+
+Ambang warna FPS ikut keluar ke `lib/fps-tone.ts` karena kartu memakainya juga.
+Kalau ambangnya disalin, paket yang sama bisa terlihat "hijau" di layar staff
+dan "kuning" di layar pelanggan.

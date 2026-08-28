@@ -41,6 +41,16 @@ function toInput(items: CartItem[]) {
     quantity: i.quantity,
     displayedUnitPrice: i.price,
     displayedName: i.variationLabel ? `${i.name} (${i.variationLabel})` : i.name,
+    // Keterangan paket ikut dikirim supaya pesan ke CS menulis rakitan sebagai
+    // satu blok bernama. Ia tidak menyentuh harga sama sekali — harga tetap
+    // dibaca ulang per produk di server.
+    ...(i.bundle
+      ? {
+          bundleKey: i.bundle.key,
+          bundleName: i.bundle.name,
+          bundleQuantity: i.bundle.quantity,
+        }
+      : {}),
   }));
 }
 
