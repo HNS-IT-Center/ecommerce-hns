@@ -13,6 +13,7 @@ import { getProductsPaginated } from "@/lib/api/woocommerce/products"
 import { getBrands } from "@/lib/api/woocommerce/brands"
 import { getPrisma } from "@/lib/prisma/client"
 import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper"
+import { getStockDisplayMode } from "@/lib/api/stock-display"
 import { collectCategoryAndDescendantIds } from "@/lib/utils/category-tree"
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet"
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden"
@@ -109,7 +110,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
       })
     : { products: [], totalPages: 0, total: 0 }
 
-  const products = wooProducts.map(mapWooProductToUI)
+  const stockDisplayMode = await getStockDisplayMode()
+  const products = wooProducts.map((p) => mapWooProductToUI(p, stockDisplayMode))
 
   const basePathParams = new URLSearchParams()
   if (q) basePathParams.set(SEARCH_PARAM, q)

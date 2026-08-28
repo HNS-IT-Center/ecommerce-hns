@@ -1,6 +1,7 @@
 import "server-only"
 
 import { getPrisma } from "@/lib/prisma/client"
+import { displayStockCount, getStockDisplayMode } from "@/lib/api/stock-display"
 
 /** Batas jumlah rakitan yang boleh disimpan satu akun. */
 export const MAX_SAVED_BUILDS_PER_CUSTOMER = 20
@@ -348,6 +349,10 @@ export async function getSavedBuildForBuilder(
     : []
   const byId = new Map(products.map((p) => [p.id, p]))
 
+  // Rakitan tersimpan dibuka kembali di PC Builder, jadi ketersediaannya harus
+  // dibaca dengan sakelar yang sama seperti katalog.
+  const stockDisplayMode = await getStockDisplayMode()
+
   const selections: BuilderReadySelections = {}
   for (const ref of refs) {
     const product = byId.get(ref.productId)
@@ -366,7 +371,10 @@ export async function getSavedBuildForBuilder(
       regularPrice,
       salePrice,
       sold: product.viewCount || 0,
-      stock: product.stockStatus === "OUTOFSTOCK" ? 0 : (product.stockQty ?? 10),
+      stock: displayStockCount(
+        product.stockStatus === "OUTOFSTOCK" ? 0 : (product.stockQty ?? 10),
+        stockDisplayMode
+      ),
       image: product.images[0]?.url,
       attributes: product.attributes.map((a) => ({
         attributeId: a.attribute.id,

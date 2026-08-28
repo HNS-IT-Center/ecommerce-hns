@@ -3,6 +3,7 @@
 import { getPrisma } from "@/lib/prisma/client"
 import { BuilderProduct } from "@/store/new-builder"
 import { Prisma } from "@prisma/client"
+import { displayStockCount, getStockDisplayMode } from "@/lib/api/stock-display"
 
 export async function fetchBuilderProducts({
   categoryIds,
@@ -141,6 +142,10 @@ export async function fetchBuilderProducts({
     }
   })
 
+  // Sakelar tampilan stok di /admin/produk ikut berlaku di PC Builder: kartu
+  // komponennya menurunkan ketersediaan dari `stock > 0`.
+  const stockDisplayMode = await getStockDisplayMode()
+
   const hasMore = products.length > limit
   const paginatedProducts = products.slice(0, limit)
 
@@ -159,7 +164,10 @@ export async function fetchBuilderProducts({
       regularPrice: regularPriceNum,
       salePrice: salePriceNum,
       sold: p.viewCount || 0, // Mocking sold with viewCount just for UI display if needed, though product table has no "sold" field natively here.
-      stock: p.stockStatus === "OUTOFSTOCK" ? 0 : (p.stockQty ?? 10), // Treat null as having some stock for now
+      stock: displayStockCount(
+        p.stockStatus === "OUTOFSTOCK" ? 0 : (p.stockQty ?? 10),
+        stockDisplayMode
+      ),
       image: p.images[0]?.url,
       attributes: p.attributes.map(a => ({
         attributeId: a.attribute.id,
@@ -221,6 +229,8 @@ export async function fetchBuilderProductsByIds(ids: number[]): Promise<BuilderP
     }
   })
 
+  const stockDisplayMode = await getStockDisplayMode()
+
   return products.map(p => {
     const salePriceNum = p.salePrice ? Number(p.salePrice) : 0;
     const regularPriceNum = p.regularPrice ? Number(p.regularPrice) : 0;
@@ -235,7 +245,10 @@ export async function fetchBuilderProductsByIds(ids: number[]): Promise<BuilderP
       regularPrice: regularPriceNum,
       salePrice: salePriceNum,
       sold: p.viewCount || 0,
-      stock: p.stockStatus === "OUTOFSTOCK" ? 0 : (p.stockQty ?? 10),
+      stock: displayStockCount(
+        p.stockStatus === "OUTOFSTOCK" ? 0 : (p.stockQty ?? 10),
+        stockDisplayMode
+      ),
       image: p.images[0]?.url,
       attributes: p.attributes.map(a => ({
         attributeId: a.attribute.id,

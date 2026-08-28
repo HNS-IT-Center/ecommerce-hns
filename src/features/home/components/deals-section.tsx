@@ -1,5 +1,6 @@
 import { getProducts } from "@/lib/api/woocommerce/products";
 import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper";
+import { getStockDisplayMode } from "@/lib/api/stock-display";
 import { DealsCountdown } from "./deals-countdown";
 import { DealsCarousel } from "./deals-carousel";
 
@@ -9,7 +10,8 @@ export async function DealsSection() {
 
   try {
     const wooProducts = await getProducts({ onSale: true, perPage: 30 });
-    products = wooProducts.map(mapWooProductToUI);
+    const stockDisplayMode = await getStockDisplayMode();
+    products = wooProducts.map((p) => mapWooProductToUI(p, stockDisplayMode));
     
     // Extract earliest sale end date
     for (const wProd of wooProducts) {

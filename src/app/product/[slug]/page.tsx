@@ -15,6 +15,12 @@ import { resolveSiteUrl } from "@/lib/utils/site-url"
 import { calculateProductPrice } from "@/features/product/lib/calculate-product-price"
 import { formatRupiah } from "@/lib/utils"
 import { env } from "@/config/env"
+import {
+  displayStockQuantity,
+  displayStockStatus,
+  displayVariationStock,
+  getStockDisplayMode,
+} from "@/lib/api/stock-display"
 
 type ProductPageProps = {
   params: Promise<{ slug: string }>
@@ -42,6 +48,11 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
   if (!product) notFound()
 
+  // Sakelar global di /admin/produk. Yang berubah hanya yang DITAMPILKAN —
+  // `product.stock_status` dari katalog tidak ikut ditulis ulang.
+  const stockDisplayMode = await getStockDisplayMode()
+  const shownStockStatus = displayStockStatus(product.stock_status, stockDisplayMode)
+
   // QR produk ikut host yang sedang dibuka, bukan nilai tetap dari env —
   // supaya kode yang dipindai dari halaman production tidak menunjuk localhost.
   const siteUrl = await resolveSiteUrl()
@@ -55,10 +66,11 @@ export default async function ProductPage({ params }: ProductPageProps) {
     onSale: product.on_sale,
   })
 
-  const variations =
+  const variations = (
     product.type === "variable" && product.variations.length > 0
       ? await getProductVariations(product.id)
       : []
+  ).map((variation) => displayVariationStock(variation, stockDisplayMode))
 
   // Atribut yang benar-benar dipakai untuk memilih varian (`variation: true`) —
   // atribut lain (mis. "Motherboard Size") cuma informasi spek, bukan pilihan.
@@ -185,7 +197,10 @@ export default async function ProductPage({ params }: ProductPageProps) {
       url: `${siteUrl}/product/${product.slug}`,
       priceCurrency: "IDR",
       price: product.price,
-      availability: availabilityMap[product.stock_status] ?? "https://schema.org/OutOfStock",
+      // Mengikuti status yang DITAMPILKAN, bukan status katalog: structured
+      // data yang bilang "habis" sementara halamannya bilang "Tersedia" adalah
+      // ketidakcocokan yang justru dihukum Google.
+      availability: availabilityMap[shownStockStatus] ?? "https://schema.org/OutOfStock",
     },
     ...(product.rating_count > 0 && {
       aggregateRating: {
@@ -263,8 +278,12 @@ export default async function ProductPage({ params }: ProductPageProps) {
               salePrice: product.sale_price,
               onSale: product.on_sale,
               type: product.type,
-              stockStatus: product.stock_status,
-              stockQuantity: product.stock_quantity,
+              stockStatus: shownStockStatus,
+              stockQuantity: displayStockQuantity(
+                product.stock_status,
+                product.stock_quantity,
+                stockDisplayMode
+              ),
               averageRating: product.average_rating,
               ratingCount: product.rating_count,
               whatsappNumber: env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER,

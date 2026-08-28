@@ -7,6 +7,7 @@ import { toPrebuildView } from "@/features/pc-prebuild/lib/to-view"
 import { getPcBuilderConfig } from "@/lib/pc-builder/config"
 import { getPcPrebuildConfig, getPcPrebuildGames } from "@/lib/pc-prebuild/config"
 import { resolvePrebuildPresets } from "@/lib/pc-prebuild/resolve"
+import { getStockDisplayMode } from "@/lib/api/stock-display"
 
 export const metadata = {
   title: "PC Prebuild — HNS IT Center",
@@ -31,7 +32,8 @@ export default async function PcPrebuildPage() {
   if (!config.enabled) redirect("/build-pc")
 
   const [steps, games] = await Promise.all([getPcBuilderConfig(), getPcPrebuildGames()])
-  const resolved = await resolvePrebuildPresets(config.presets, steps)
+  const stockDisplayMode = await getStockDisplayMode()
+  const resolved = await resolvePrebuildPresets(config.presets, steps, stockDisplayMode)
   const views = resolved.map((preset) => toPrebuildView(preset, steps))
 
   return (

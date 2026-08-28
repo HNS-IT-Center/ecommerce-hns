@@ -1,8 +1,25 @@
 import type { Product as WooProduct } from "@/types/woocommerce";
 import type { Product as UIProduct } from "@/components/ui/product-card";
 import { getProductBadge } from "@/lib/utils/product";
+import {
+  DEFAULT_STOCK_DISPLAY_MODE,
+  displayStockCount,
+  type StockDisplayMode,
+} from "@/lib/api/stock-display";
 
-export function mapWooProductToUI(woo: WooProduct): UIProduct {
+/**
+ * `stockDisplayMode` sengaja jadi parameter, bukan dibaca di dalam fungsi ini:
+ * fungsinya sinkron dan dipanggil dari delapan tempat, sebagian di dalam
+ * `unstable_cache`. Kalau modenya dibaca di sini, nilainya ikut terkunci ke
+ * entri cache dan sakelar admin tidak berpengaruh sampai cache-nya kedaluwarsa.
+ *
+ * Bawaannya `actual` supaya pemanggil yang bukan storefront (mis. panel admin)
+ * tidak pernah ikut tertutupi tanpa sengaja.
+ */
+export function mapWooProductToUI(
+  woo: WooProduct,
+  stockDisplayMode: StockDisplayMode = DEFAULT_STOCK_DISPLAY_MODE
+): UIProduct {
   const imageUrl = woo.images?.[0]?.src ?? "/images/placeholder.svg";
 
   const brandName = woo.brands?.[0]?.name ?? "";
@@ -31,7 +48,10 @@ export function mapWooProductToUI(woo: WooProduct): UIProduct {
     image_url: imageUrl,
     sold: woo.total_sales ?? 0,
     badge: getProductBadge(woo),
-    stock: woo.stock_quantity ?? (woo.stock_status === "instock" ? 99 : 0),
+    stock: displayStockCount(
+      woo.stock_quantity ?? (woo.stock_status === "instock" ? 99 : 0),
+      stockDisplayMode
+    ),
     type: woo.type,
     average_rating: parseFloat(woo.average_rating || "0"),
     rating_count: woo.rating_count ?? 0,

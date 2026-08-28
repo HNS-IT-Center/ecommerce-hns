@@ -9,6 +9,7 @@ import { getProductsPaginated } from "@/lib/api/woocommerce/products"
 import { getBrands } from "@/lib/api/woocommerce/brands"
 import { getPrisma } from "@/lib/prisma/client"
 import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper"
+import { getStockDisplayMode } from "@/lib/api/stock-display"
 import { collectCategoryAndDescendantIds } from "@/lib/utils/category-tree"
 import type { GetProductsParams } from "@/types/woocommerce"
 
@@ -96,7 +97,8 @@ export default async function ShopPage({ searchParams }: ShopPageProps) {
     order
   })
 
-  const products = wooProducts.map(mapWooProductToUI)
+  const stockDisplayMode = await getStockDisplayMode()
+  const products = wooProducts.map((p) => mapWooProductToUI(p, stockDisplayMode))
 
   const basePathParams = new URLSearchParams()
   if (resolvedParams.category) {

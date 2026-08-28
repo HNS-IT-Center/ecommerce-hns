@@ -3,6 +3,11 @@ import "server-only"
 import { unstable_cache } from "next/cache"
 
 import { getPrisma } from "@/lib/prisma/client"
+import {
+  DEFAULT_STOCK_DISPLAY_MODE,
+  displayStockCount,
+  type StockDisplayMode,
+} from "@/lib/api/stock-display"
 import type { PcBuilderStepConfig } from "@/lib/pc-builder/config"
 import { collectPresetProductIds, type PcPrebuildPreset } from "@/lib/pc-prebuild/config"
 import {
@@ -152,7 +157,10 @@ export type ResolvedPrebuildPreset = {
  * `salePrice` adalah satu-satunya potongan yang sah menurut CLAUDE.md §2.7, dan
  * ia dibaca apa adanya di sini — tidak ada perkalian, tidak ada persentase.
  */
-export async function getPrebuildProducts(ids: number[]): Promise<Map<number, PrebuildProduct>> {
+export async function getPrebuildProducts(
+  ids: number[],
+  stockDisplayMode: StockDisplayMode = DEFAULT_STOCK_DISPLAY_MODE
+): Promise<Map<number, PrebuildProduct>> {
   const unik = [...new Set(ids)].filter((id) => Number.isFinite(id) && id > 0)
   if (unik.length === 0) return new Map()
 
@@ -210,7 +218,15 @@ export async function getPrebuildProducts(ids: number[]): Promise<Map<number, Pr
     { revalidate: 300, tags: ["pc-prebuild-products"] }
   )
 
-  return new Map((await fetcher()).map((p) => [p.id, p]))
+  // Sakelar tampilan stok diterapkan DI LUAR `unstable_cache`. Kalau modenya
+  // dibaca di dalam fetcher, nilainya ikut terkunci ke entri cache dan
+  // perubahan di panel admin baru terasa setelah 5 menit — bukan seketika.
+  return new Map(
+    (await fetcher()).map((p) => [
+      p.id,
+      { ...p, stock: displayStockCount(p.stock, stockDisplayMode) },
+    ])
+  )
 }
 
 /** Baris yang menentukan harga: variannya kalau ada, kalau tidak produknya sendiri. */
@@ -236,10 +252,18 @@ function hargaBaris(product: PrebuildProduct | null, quantity: number): number {
  */
 export async function resolvePrebuildPresets(
   presets: PcPrebuildPreset[],
-  steps: PcBuilderStepConfig[]
+  steps: PcBuilderStepConfig[],
+  /**
+   * Bawaannya `actual` supaya panel admin (`/admin/pc-prebuild`) tetap melihat
+   * stok yang sebenarnya; halaman pelanggan yang meneruskan mode aslinya.
+   */
+  stockDisplayMode: StockDisplayMode = DEFAULT_STOCK_DISPLAY_MODE
 ): Promise<ResolvedPrebuildPreset[]> {
   // Termasuk id varian — lihat `collectPresetProductIds`.
-  const katalog = await getPrebuildProducts(presets.flatMap(collectPresetProductIds))
+  const katalog = await getPrebuildProducts(
+    presets.flatMap(collectPresetProductIds),
+    stockDisplayMode
+  )
   const namaStep = new Map(steps.map((step) => [step.id, step.name]))
 
   return presets.map((preset) => {

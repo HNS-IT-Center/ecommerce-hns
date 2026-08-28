@@ -3,6 +3,7 @@ import { ArrowRight } from "lucide-react";
 import { ProductCard, type Product } from "@/components/ui/product-card";
 import { getProducts } from "@/lib/api/woocommerce/products";
 import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper";
+import { getStockDisplayMode } from "@/lib/api/stock-display";
 
 interface ToolsCrossSellProps {
   title: string;
@@ -17,7 +18,8 @@ export async function ToolsCrossSell({ title, searchQuery, categorySlug }: Tools
   let products: Product[] = [];
   try {
     const wooProducts = await getProducts({ search: searchQuery, category: categorySlug, perPage: 6 });
-    products = wooProducts.map(mapWooProductToUI);
+    const stockDisplayMode = await getStockDisplayMode();
+    products = wooProducts.map((p) => mapWooProductToUI(p, stockDisplayMode));
   } catch (error) {
     console.error("Failed to fetch cross-sell products", error);
   }

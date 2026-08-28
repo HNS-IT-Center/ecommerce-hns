@@ -1,5 +1,6 @@
 import { getProducts } from "@/lib/api/woocommerce/products"
 import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper"
+import { getStockDisplayMode } from "@/lib/api/stock-display"
 import { NewItemsTabsClient } from "./new-items-tabs-client"
 import type { Product } from "@/components/ui/product-card"
 
@@ -36,7 +37,8 @@ export async function NewItemsTabs() {
     }
     
     wooProducts.sort(() => random() - 0.5)
-    initialProducts = wooProducts.slice(0, 30).map(mapWooProductToUI)
+    const stockDisplayMode = await getStockDisplayMode()
+    initialProducts = wooProducts.slice(0, 30).map((p) => mapWooProductToUI(p, stockDisplayMode))
   } catch (error) {
     console.error("Failed to fetch initial products:", error)
   }

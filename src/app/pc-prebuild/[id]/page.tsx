@@ -7,6 +7,7 @@ import { toPrebuildView } from "@/features/pc-prebuild/lib/to-view"
 import { getPcBuilderConfig } from "@/lib/pc-builder/config"
 import { getPcPrebuildConfig, getPcPrebuildGames } from "@/lib/pc-prebuild/config"
 import { resolvePrebuildPresets } from "@/lib/pc-prebuild/resolve"
+import { getStockDisplayMode } from "@/lib/api/stock-display"
 
 type Props = { params: Promise<{ id: string }> }
 
@@ -48,7 +49,8 @@ export default async function PrebuildDetailPage({ params }: Props) {
   if (!preset) notFound()
 
   const [steps, games] = await Promise.all([getPcBuilderConfig(), getPcPrebuildGames()])
-  const [resolved] = await resolvePrebuildPresets([preset], steps)
+  const stockDisplayMode = await getStockDisplayMode()
+  const [resolved] = await resolvePrebuildPresets([preset], steps, stockDisplayMode)
   const view = toPrebuildView(resolved, steps)
 
   return (

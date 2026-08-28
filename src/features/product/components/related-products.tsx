@@ -1,6 +1,7 @@
 import { ProductCard, type Product } from "@/components/ui/product-card";
 import { getProducts } from "@/lib/api/woocommerce/products";
 import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper";
+import { getStockDisplayMode } from "@/lib/api/stock-display";
 
 interface RelatedProductsProps {
   categoryId: number;
@@ -18,7 +19,8 @@ export async function RelatedProducts({
       perPage: 6,
       exclude: [excludeId],
     });
-    products = wooProducts.map(mapWooProductToUI);
+    const stockDisplayMode = await getStockDisplayMode();
+    products = wooProducts.map((p) => mapWooProductToUI(p, stockDisplayMode));
   } catch {
     // silently fail
   }

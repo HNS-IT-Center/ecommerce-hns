@@ -13,6 +13,12 @@ import {
 import type { BulkApplyState, BulkPreviewState } from "./state"
 import { getPrisma } from "@/lib/prisma/client"
 import { buildProductLogEntries, diffProductChanges } from "@/lib/logs/product-log"
+import {
+  STOCK_DISPLAY_CACHE_TAG,
+  isStockDisplayMode,
+  saveStockDisplayMode,
+  type StockDisplayMode,
+} from "@/lib/api/stock-display"
 import type { ProductInput } from "@/types/woocommerce"
 
 /**
@@ -287,5 +293,41 @@ export async function bulkUpdateProductStatusAction(ids: number[], actionType: s
       return { error: error.message }
     }
     return { error: "Gagal menerapkan perubahan massal." }
+  }
+}
+
+/**
+ * Sakelar global "tampilkan / sembunyikan stok habis".
+ *
+ * Yang ditulis hanya satu baris di tabel `settings` — `stockStatus` tiap produk
+ * tidak disentuh sama sekali, jadi tidak ada yang perlu dipulihkan kalau staff
+ * mengembalikan sakelarnya.
+ *
+ * `revalidatePath("/", "layout")` WAJIB ada dan tidak bisa digantikan oleh
+ * `updateTag` saja. Tag itu hanya membuang hasil baca pengaturannya; HTML
+ * halaman katalog dan halaman produk yang sudah ter-prerender masih memegang
+ * label stok lama, dan gejalanya menyesatkan — sebagian halaman ikut berubah,
+ * sebagian tidak.
+ */
+export async function updateStockDisplayModeAction(mode: StockDisplayMode) {
+  try {
+    await requireAuth()
+
+    if (!isStockDisplayMode(mode)) {
+      return { error: "Mode tampilan stok tidak dikenali." }
+    }
+
+    await saveStockDisplayMode(mode)
+
+    updateTag(STOCK_DISPLAY_CACHE_TAG)
+    revalidatePath("/", "layout")
+    revalidatePath("/admin/produk")
+
+    return { error: null }
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return { error: error.message }
+    }
+    return { error: "Gagal menyimpan pengaturan tampilan stok." }
   }
 }

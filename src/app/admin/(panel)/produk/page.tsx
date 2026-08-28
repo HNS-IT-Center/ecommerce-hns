@@ -2,7 +2,9 @@ import Link from "next/link"
 import { Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react"
 import { getProductsPaginated, getProductAttributes } from "@/lib/api/woocommerce/products"
 import { getCategoriesForAdmin } from "@/lib/api/woocommerce/categories"
+import { getStockDisplayMode } from "@/lib/api/stock-display"
 import { ProductDataTable } from "./product-data-table"
+import { StockDisplayToggle } from "./stock-display-toggle"
 
 type Props = {
   searchParams: Promise<{
@@ -36,7 +38,7 @@ export default async function AdminProdukPage({ searchParams }: Props) {
   const apiType =
     type_filter === "simple" || type_filter === "variable" ? type_filter : undefined
 
-  const [{ products, totalPages }, categories, attributeOptions] = await Promise.all([
+  const [{ products, totalPages }, categories, attributeOptions, stockDisplayMode] = await Promise.all([
     getProductsPaginated({
       search: q,
       page: currentPage,
@@ -49,6 +51,7 @@ export default async function AdminProdukPage({ searchParams }: Props) {
     }),
     getCategoriesForAdmin(),
     getProductAttributes(),
+    getStockDisplayMode(),
   ])
 
   const rows = products.map((product) => ({
@@ -83,7 +86,15 @@ export default async function AdminProdukPage({ searchParams }: Props) {
         </Link>
       </div>
 
+      {/* Sakelar tampilan stok berdiri di atas tabel, bukan di dalam bilah
+          filter: filter di sana hanya mengubah apa yang dilihat staff di
+          halaman ini, sedangkan sakelar ini mengubah apa yang dilihat
+          PELANGGAN di seluruh situs. */}
       <div className="mt-6">
+        <StockDisplayToggle mode={stockDisplayMode} />
+      </div>
+
+      <div className="mt-4">
         <ProductDataTable
           products={rows}
           attributeOptions={attributeOptions}
