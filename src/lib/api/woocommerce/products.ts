@@ -1,5 +1,5 @@
 import { revalidateTag, unstable_cache } from "next/cache";
-import { ProductStatus, ProductType, StockStatus, type Prisma } from "@prisma/client";
+import { ProductSource, ProductStatus, ProductType, StockStatus, type Prisma } from "@prisma/client";
 import { getPrisma } from "@/lib/prisma/client";
 import { prismaProductToWoo, productInclude, STOCK_STATUS_TO_WOO } from "./db-mapper";
 import type {
@@ -799,6 +799,28 @@ export async function bulkAssignCategory(
 }
 
 /**
+ * Awal pita nomor `wooId` untuk produk yang dibuat di panel admin.
+ *
+ * `wooId` awalnya dinomori dari `max(wooId) + 1` atas SELURUH tabel, yang
+ * berarti produk buatan panel mengambil nomor dari ruang yang sama dengan post
+ * ID WordPress. Selama katalog belum disinkronkan, itu tidak terasa. Begitu
+ * sinkronisasi berjalan, keduanya mulai membagikan nomor berikutnya secara
+ * bersamaan: pada 28 Agustus 2026 `wooId` tertinggi kita 34397 sementara
+ * WooCommerce sudah di 35598, jadi produk berikutnya yang dibuat staff dan
+ * produk berikutnya yang dibuat di WordPress sama-sama menuju nomor yang sama —
+ * dan `@unique` pada kolom itu yang akan menggagalkan salah satunya.
+ *
+ * 900.000.000 dipilih karena jauh di atas post ID WordPress mana pun yang masuk
+ * akal, dan masih aman di dalam `Int` MySQL (batas 2.147.483.647).
+ *
+ * Tiga produk lokal yang lahir sebelum pita ini ada tetap memakai nomor lamanya
+ * (34394 / 34396 / 34397). Nomor itu tidak dipakai WooCommerce, dan menomori
+ * ulang baris yang sudah dirujuk di tempat lain lebih berisiko daripada
+ * membiarkannya — kolom `source` yang menjaga mereka, bukan besar nomornya.
+ */
+export const LOCAL_WOO_ID_BASE = 900_000_000;
+
+/**
  * `client` sengaja bisa diisi transaction client: saat membuat banyak varian
  * sekaligus, id harus dihitung dari data DI DALAM transaksi yang sedang
  * berjalan. Membacanya lewat koneksi lain akan melewatkan baris yang baru
@@ -806,8 +828,11 @@ export async function bulkAssignCategory(
  * sama sampai unique constraint-nya gagal.
  */
 async function nextWooId(client: Prisma.TransactionClient | ReturnType<typeof getPrisma> = getPrisma()): Promise<number> {
-  const result = await client.product.aggregate({ _max: { wooId: true } });
-  return (result._max.wooId ?? 0) + 1;
+  const result = await client.product.aggregate({
+    _max: { wooId: true },
+    where: { wooId: { gte: LOCAL_WOO_ID_BASE } },
+  });
+  return Math.max(result._max.wooId ?? 0, LOCAL_WOO_ID_BASE - 1) + 1;
 }
 
 async function replaceProductRelations(
@@ -958,11 +983,26 @@ async function resolveAttributeValueId(
  * Varian lama yang tidak lagi ada di input akan DIHAPUS, jadi pemanggil wajib
  * mengirim daftar varian yang lengkap, bukan sebagian.
  */
+/**
+ * Asal-usul varian yang BARU dibuat.
+ *
+ * Kosong (perilaku bawaan) berarti varian lahir di panel admin: ia mendapat
+ * nomor dari pita LOCAL dan ditandai LOCAL, sama seperti produk buatan panel.
+ *
+ * Importer sinkronisasi mengoper `WOO`, dan itu mengubah dua hal sekaligus:
+ * variannya ditandai WOO **dan** memakai id WooCommerce aslinya. Tanpa itu,
+ * varian hasil import mendapat nomor pita lokal dan tidak akan pernah bisa
+ * dicocokkan lagi dengan sumbernya — harga varian berhenti bisa disinkronkan,
+ * dan import berikutnya menggandakannya alih-alih mengenalinya.
+ */
+type VariationOrigin = { source: ProductSource } | undefined
+
 async function syncProductVariations(
   tx: Prisma.TransactionClient,
   parent: { id: number; name: string; status: ProductStatus },
   variationAttributes: string[],
   variations: NonNullable<ProductInput["variations"]>,
+  origin?: VariationOrigin,
 ): Promise<void> {
   // Dipetakan lewat `wooId`, BUKAN id database.
   //
@@ -1015,11 +1055,15 @@ async function syncProductVariations(
       await tx.product.update({ where: { id: matchedId }, data });
       variationId = matchedId;
     } else {
-      const wooId = await nextWooId(tx);
+      const wooId =
+        origin?.source === ProductSource.WOO && variation.id !== undefined
+          ? variation.id
+          : await nextWooId(tx);
       const created = await tx.product.create({
         data: {
           ...data,
           wooId,
+          source: origin?.source ?? ProductSource.LOCAL,
           type: ProductType.VARIATION,
           parentId: parent.id,
           slug: slugify(name, wooId),
@@ -1148,7 +1192,7 @@ const EXPIRE_NOW = { expire: 0 } as const;
  * berubah setiap kali nama produk diganti — tanpa membuang slug LAMA, halaman
  * dengan alamat sebelumnya tetap menyajikan isi usang.
  */
-function invalidateProductCaches(options: {
+export function invalidateProductCaches(options: {
   wooId?: number;
   slugs?: (string | null | undefined)[];
 }): void {
@@ -1184,9 +1228,29 @@ async function refetchAsWoo(productId: number): Promise<Product> {
 }
 
 /** Buat produk baru (dipakai admin panel). Tulis langsung ke Prisma DB (lihat CLAUDE.md §2.2 — WooCommerce tidak lagi dipakai untuk data produk). Gambar sudah diupload ke Cloudflare R2 sebelum sampai sini (lihat lib/api/cloudflare/r2.ts, dipanggil lewat POST /api/admin/media), di sini cuma menyimpan URL-nya. BUKAN WordPress Media API — jalur itu sudah mati. */
-export async function createProduct(input: ProductInput): Promise<Product> {
+/**
+ * Penyimpangan yang HANYA boleh dipakai importer sinkronisasi WooCommerce.
+ *
+ * Produk yang dibuat di panel admin selalu mendapat nomor dari pita LOCAL dan
+ * ditandai `LOCAL` — itu yang menjaganya dari ditimpa sinkronisasi. Produk yang
+ * diimpor dari WooCommerce justru harus memakai nomor asli WooCommerce dan
+ * ditandai `WOO`, supaya bisa dicocokkan lagi di sinkronisasi berikutnya.
+ *
+ * Jangan mengoper `wooId` dari masukan pengguna: nomornya harus benar-benar
+ * berasal dari WooCommerce, kalau tidak produk lokal dan produk WooCommerce
+ * bisa berebut nomor yang sama lagi.
+ */
+export type CreateProductOptions = {
+  wooId?: number;
+  source?: ProductSource;
+};
+
+export async function createProduct(
+  input: ProductInput,
+  options: CreateProductOptions = {},
+): Promise<Product> {
   const prisma = getPrisma();
-  const wooId = await nextWooId();
+  const wooId = options.wooId ?? (await nextWooId());
   const slug = slugify(input.name, wooId);
   const stockQty = input.stock_quantity ?? null;
   // Status stok datang eksplisit dari form (Tersedia/Stok Habis) sekarang —
@@ -1208,6 +1272,7 @@ export async function createProduct(input: ProductInput): Promise<Product> {
     const product = await tx.product.create({
       data: {
         wooId,
+        source: options.source ?? ProductSource.LOCAL,
         type: isVariable ? ProductType.VARIABLE : ProductType.SIMPLE,
         status,
         name: input.name,
@@ -1235,10 +1300,18 @@ export async function createProduct(input: ProductInput): Promise<Product> {
         { id: product.id, name: product.name, status },
         input.variation_attributes ?? [],
         input.variations ?? [],
+        options.source ? { source: options.source } : undefined,
       );
     }
     return product;
-  }, { timeout: 30000 });
+  },
+  // `maxWait` dinaikkan dari bawaan 2 detik. Kolam koneksi project ini
+  // hanya 1 saat dev dan 3 di produksi, jadi satu permintaan lain yang
+  // sedang berjalan sudah cukup membuat transaksi ini gagal MULAI — bukan
+  // karena kerjanya berat, tapi karena giliran koneksinya tidak kunjung
+  // datang. Menunggu lebih lama jauh lebih baik daripada menolak pekerjaan
+  // yang sebenarnya sanggup dikerjakan.
+  { timeout: 30000, maxWait: 15000 });
 
   const result = await refetchAsWoo(created.id);
   invalidateProductCaches({ wooId, slugs: [slug] });

@@ -644,3 +644,179 @@ Ditegakkan **di server** (`prepareCheckoutWhatsApp`), dan dicerminkan di klien
 lewat `isGroupBlocked()` supaya tombolnya tidak menjanjikan sesuatu yang akan
 ditolak. Yang memutuskan mengeluarkan paketnya tetap pelanggan; tidak ada yang
 dihapus otomatis.
+
+---
+
+## Sinkronisasi WooCommerce (`lib/api/woocommerce/sync/`)
+
+> Ditambahkan 29 Agustus 2026. Baca ini sebelum menyentuh apa pun di folder itu.
+
+### Kenapa ada folder yang benar-benar memanggil WooCommerce
+
+Sisa `lib/api/woocommerce/` sudah tidak memanggil WooCommerce sama sekali —
+namanya historis, isinya query Prisma (CLAUDE.md §2.2). Folder `sync/` adalah
+**satu-satunya pengecualian**: ia bicara ke WooCommerce lewat HTTP.
+
+Alasannya faktual, bukan warisan: situs WordPress lama **masih dipakai staff
+setiap hari**. Saat fitur ini dibuat, produk terakhir di WooCommerce dimodifikasi
+pada hari yang sama, dan 167 produk lahir di sana setelah katalog kita diimpor.
+
+### Berkas
+
+| Berkas | Tugas |
+|---|---|
+| `types.ts` | Bentuk data. Murni tipe — aman diimpor Client Component. |
+| `remote.ts` | Mengambil produk dari WooCommerce REST (paginasi, 4 permintaan paralel, batas 80 halaman). |
+| `local.ts` | Satu kueri Prisma untuk seluruh katalog + nama kategori + jejak suntingan harga. |
+| `diff.ts` | **Fungsi murni.** Membandingkan kedua sisi. Tanpa database, tanpa jaringan. |
+| `preview.ts` | Merangkai ketiganya. Tidak menulis apa pun. |
+
+### Endpoint
+
+`POST /api/admin/sync/preview` — dijaga `requireAuth()`, `dynamic = "force-dynamic"`,
+`maxDuration = 60`. Body: `{ modifiedAfter?: string | null }`. **Hanya membaca.**
+
+Memakai POST walaupun sifatnya membaca, supaya hasilnya tidak pernah masuk cache:
+pratinjau yang basi menampilkan selisih harga yang sudah tidak ada.
+
+### Dua jebakan yang sudah ditemukan dan ditutup
+
+**1. Induk produk variable tidak punya harga sendiri.** WooCommerce menyimpan
+harga di tiap varian dan membiarkan `regular_price` induknya kosong. Versi
+pertama membandingkannya apa adanya dan melaporkan **1.312** perubahan harga —
+823 di antaranya "ubah menjadi kosong" untuk setiap produk variable yang kita
+punya. Menerapkannya berarti menghapus harga yang tampil ke pelanggan untuk
+seperempat katalog (CLAUDE.md §2.7). Sekarang induk variable dilewati sebelum
+apa pun dibandingkan, jumlahnya dilaporkan lewat `skippedVariableParents`, dan
+angka yang sebenarnya adalah **489**.
+
+Aturan umumnya: **harga kosong di sumber berarti "tidak dinyatakan di sana",
+bukan "harganya nol".** Sinkronisasi tidak pernah mengosongkan harga.
+
+**2. `date_created_gmt`, bukan `date_created`.** WooCommerce mengirim waktu GMT
+tanpa akhiran `Z`; `new Date()` menafsirkannya sebagai waktu lokal dan meleset
+tujuh jam di WIB. Cukup untuk salah mengelompokkan produk yang dibuat pagi hari.
+
+### Yang BELUM tercakup
+
+> Daftar hidup beserta siapa yang memegangnya ada di
+> [`docs/12-kendala-terbuka.md`](./12-kendala-terbuka.md).
+
+- **Harga varian.** Endpoint `/products` tidak mengembalikan varian, dan
+  perubahan harga varian tidak selalu mendorong `date_modified` induknya.
+  Menyusurinya berarti satu permintaan per induk variable (823 saat ini).
+- **Varian yang hilang dari induk yang sudah ada** (±216 saat fitur ini dibuat).
+- **Penghapusan.** Produk yang hilang atau di-trash di WooCommerce tidak
+  disentuh, dan memang tidak akan pernah disentuh oleh fitur ini.
+
+### Penerapan harga (`sync/apply.ts` → `POST /api/admin/sync/apply`)
+
+Body permintaan **hanya berisi daftar `wooId`** — tidak ada harga di dalamnya.
+Harganya diambil ulang dari WooCommerce di dalam `applyPriceChanges`
+(`fetchRemoteProductsByIds`). Dua alasan, keduanya nyata:
+
+1. Endpoint yang menerima harga dari klien berarti siapa pun yang bisa
+   memanggilnya bisa menetapkan harga katalog (CLAUDE.md §2.7).
+2. Pratinjau bisa berumur beberapa menit. Menuliskan angka dari pratinjau
+   berarti menyimpan harga yang mungkin sudah berubah lagi di sumbernya.
+
+**Penjagaan diulang di titik penulisan**, bukan dipercayakan pada pratinjau —
+urutannya: tidak ada di katalog → `source = LOCAL` → tidak ada di WooCommerce →
+induk variable → harga kosong di sumber → harga sudah sama. Sisi kita diperiksa
+lebih dulu dengan sengaja: produk buatan panel umumnya tidak ada di WooCommerce,
+dan kalau urutannya dibalik ia ditolak dengan alasan "terhapus di sana" — benar
+hasilnya, menyesatkan keterangannya.
+
+Ditulis per **50 produk per transaksi**: satu transaksi untuk ratusan baris
+berisiko melewati batas waktu, dan kegagalan di baris ke-400 akan membatalkan
+399 pembaruan yang sudah benar. Setiap potongan tetap utuh — harga dan baris
+lognya tersimpan bersama atau tidak sama sekali.
+
+#### Aksi log `SYNC_PRICE`
+
+Perubahan dari sinkronisasi dicatat sebagai **`SYNC_PRICE`**, bukan
+`UPDATE_PRICE`. Bedanya bukan kosmetik: pratinjau menandai produk yang harganya
+"pernah disunting staff" dengan membaca `product_logs`, jadi kalau penerapannya
+sendiri ikut tercatat sebagai `UPDATE_PRICE`, **seluruh produk akan tertandai
+setelah sekali penerapan** dan tandanya berhenti berarti apa-apa.
+`local.ts` karena itu mengecualikan `SYNC_PRICE` saat menghitung
+`priceEditedWooIds`.
+
+Barisnya tetap disusun lewat `lib/logs/product-log.ts` seperti semua penulis log
+lain (helper itu menerima `priceAction` opsional). `userName` diisi nama admin
+yang menekan tombol — yang memutuskan menerapkan tetap orang.
+
+`logs-table.tsx` mengenali aksi ini: label "Sinkron Harga (WooCommerce)", warna
+badge sendiri, dan nilainya ikut diformat sebagai rupiah.
+
+### Import produk baru (`sync/import.ts` → `POST /api/admin/sync/import`)
+
+**Memakai ulang `createProduct()`** — jalur yang sama dengan form produk di panel
+admin — bukan menulis pembuatan produk versi kedua. Fungsi itu sudah menangani
+kategori (termasuk menandai yang terdalam sebagai kategori utama), gambar,
+upsert atribut ke master data, upsert brand, dan varian.
+
+Bedanya hanya lewat `CreateProductOptions`: nomornya memakai id asli WooCommerce
+dan barisnya ditandai `source = WOO`.
+
+#### Varian harus mewarisi asal-usul induknya
+
+Versi pertama melewatkan ini dan cacatnya baru ketahuan saat pengujian: varian
+hasil import mendapat nomor dari **pita LOCAL** (900000000+) dan ditandai
+`LOCAL`, karena `syncProductVariations` selalu memanggil `nextWooId()` untuk
+varian baru. Akibatnya varian itu tidak akan pernah bisa dicocokkan lagi dengan
+WooCommerce — harga varian berhenti bisa disinkronkan, dan import berikutnya
+menggandakannya alih-alih mengenalinya.
+
+Sekarang `syncProductVariations` menerima `VariationOrigin`. Kosong (bawaan)
+berarti varian lahir di panel admin: pita LOCAL, ditandai `LOCAL`. Importer
+mengoper `WOO`, dan varian memakai id WooCommerce-nya sendiri.
+
+#### Status: ikut WooCommerce, kecuali kategorinya tidak ketemu
+
+Kategori WooCommerce dicocokkan dengan taksonomi kita **berdasarkan nama**
+(`Category` tidak punya `wooId` — taksonominya hasil kurasi berbasis `path`).
+Saat fitur ini dibuat, 161 dari 170 produk cocok.
+
+Yang tidak cocok **tidak ditebak**: produknya turun jadi `draft` apa pun
+statusnya di WooCommerce. Produk tanpa kategori tidak punya rumah di navigasi
+maupun breadcrumb, dan katalog ini sudah menanggung ribuan produk seperti itu.
+
+#### Gambar dipindahkan ke host media sendiri
+
+URL gambar dari WooCommerce ditulis ulang ke `media.hnsitcenter.com` lewat
+`toMediaUrl()`: host media memangkas `/wp-content/uploads`, jadi
+`hnsitcenter.id/wp-content/uploads/2026/08/x.webp` menjadi
+`media.hnsitcenter.com/2026/08/x.webp`. Pemetaan itu bukan tebakan — ia
+mengikuti bentuk 12.832 baris yang sudah ada sejak import katalog pertama.
+URL yang bentuknya di luar dugaan dikembalikan apa adanya, tidak dipaksa.
+
+Baris yang terlanjur tersimpan dengan host lama sudah dipindahkan sekali jalan
+oleh `scripts/archive/rewrite-product-image-host.mjs` (875 baris, 29 Agustus
+2026). Sesudahnya seluruh 13.707 gambar berada di satu host.
+
+> **Yang harus diketahui:** saat pemindahan ini dilakukan, berkas unggahan
+> 2026/08 ke atas **belum ada** di host media dan menjawab **404**, sementara
+> URL WordPress aslinya menjawab 200. Jadi gambar produk hasil import akan
+> kosong sampai sinkronisasi media menyusul — pekerjaan terpisah di luar
+> aplikasi ini. Keputusannya diambil sadar: lebih baik katalog menunjuk satu
+> host dan menunggu berkasnya menyusul daripada bercabang jadi dua host yang
+> harus dijaga selamanya.
+
+Catatan: `NEXT_PUBLIC_IMAGE_DOMAIN` di `config/env.ts` **terlihat** seperti
+tempat host ini seharusnya tinggal, tapi variabel itu kode mati — tidak dibaca
+satu berkas pun, dan isinya masih host WordPress lama. Jangan membangun di
+atasnya sebelum ia dibereskan.
+
+#### Kegagalan setelah commit
+
+`createProduct` membuang cache Next **setelah** transaksinya commit. Kalau
+langkah terakhir itu yang gagal, produknya sudah benar-benar ada — melaporkannya
+sebagai gagal akan membuat staff mengimpornya lagi, dan percobaan kedua menabrak
+`@unique` pada `woo_id` tanpa penjelasan yang masuk akal. Importer karena itu
+memeriksa dulu apakah barisnya ada sebelum menyimpulkan gagal.
+
+#### Aksi log `SYNC_IMPORT`
+
+Setiap produk yang masuk mencatat satu baris `SYNC_IMPORT` dengan `userName`
+admin yang menekan tombol. `logs-table.tsx` mengenalinya.

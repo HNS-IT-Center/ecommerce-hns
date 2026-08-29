@@ -260,6 +260,26 @@ enum CatalogVisibility {
   HIDDEN
 }
 
+/**
+ * Asal-usul sebuah baris produk.
+ *
+ * Dipakai sinkronisasi WooCommerce untuk tahu baris mana yang boleh ia sentuh.
+ * Bukan sekadar penanda: `woo_id` produk buatan panel admin dulu diambil dari
+ * `max(woo_id) + 1`, yaitu ruang angka YANG SAMA dengan post ID WordPress.
+ * Saat kolom ini ditambahkan, `woo_id` tertinggi kita 34397 sementara
+ * WooCommerce sudah memakai 35598 — sekali katalognya disinkronkan, produk
+ * berikutnya yang dibuat staff akan berebut nomor dengan produk yang dibuat di
+ * WordPress, dan `@unique` pada `woo_id` yang akan menggagalkannya.
+ *
+ * Karena itu produk LOCAL sekarang dinomori dari pita tinggi (lihat
+ * `LOCAL_WOO_ID_BASE` di lib/api/woocommerce/products.ts), dan sinkronisasi
+ * melewatinya.
+ */
+enum ProductSource {
+  WOO   // Berasal dari WooCommerce. Boleh disegarkan oleh sinkronisasi.
+  LOCAL // Dibuat di panel admin. Sinkronisasi TIDAK boleh menyentuhnya.
+}
+
 enum BannerDisplayMode {
   IMAGE_ONLY // Gambar mengisi seluruh slide; tanpa overlay teks / scrim gelap
   IMAGE_TEXT // Perilaku bawaan: gambar + overlay teks
@@ -270,6 +290,16 @@ enum BannerDisplayMode {
 model Product {
   id    Int @id @default(autoincrement())
   wooId Int @unique @map("woo_id") // ID asli WooCommerce, untuk sinkronisasi
+
+  /// Defaultnya sengaja LOCAL, bukan WOO.
+  ///
+  /// Dua arah salahnya tidak setara: baris WOO yang salah ditandai LOCAL cuma
+  /// berhenti menerima pembaruan harga, sedangkan baris LOCAL yang salah
+  /// ditandai WOO bisa ditimpa — atau bertabrakan nomor — oleh sinkronisasi.
+  /// Kode yang lupa menyebut kolom ini karena itu jatuh ke pilihan yang tidak
+  /// merusak data, dan importer WooCommerce-lah yang wajib menyatakan WOO
+  /// secara eksplisit.
+  source ProductSource @default(LOCAL)
 
   type       ProductType
   status     ProductStatus     @default(DRAFT)

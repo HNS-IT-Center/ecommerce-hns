@@ -55,6 +55,8 @@ type Props = {
  */
 const ACTION_LABELS: Record<string, string> = {
   UPDATE_PRICE: "Update Harga",
+  SYNC_PRICE: "Sinkron Harga (WooCommerce)",
+  SYNC_IMPORT: "Import dari WooCommerce",
   EDIT_PRODUCT: "Edit Produk",
   QUICK_EDIT: "Quick Edit",
   UPLOAD_PRODUCTS: "Tambah Produk",
@@ -357,6 +359,8 @@ export function LogsTable({
     if (logAction.startsWith('BULK_')) return 'bg-orange-100 text-orange-800'
     switch(logAction) {
       case 'UPDATE_PRICE': return 'bg-blue-100 text-blue-800'
+      case 'SYNC_PRICE': return 'bg-cyan-100 text-cyan-800'
+      case 'SYNC_IMPORT': return 'bg-teal-100 text-teal-800'
       case 'EDIT_PRODUCT': return 'bg-amber-100 text-amber-800'
       case 'QUICK_EDIT': return 'bg-purple-100 text-purple-800'
       case 'UPLOAD_PRODUCTS': return 'bg-green-100 text-green-800'
@@ -368,7 +372,7 @@ export function LogsTable({
   const formatLogValue = (logAction: string, val: string | null) => {
     // String kosong pada harga berarti "tidak ada harga obral", bukan nol.
     if (val === null || val === "") return "-"
-    if (logAction !== 'UPDATE_PRICE') return val
+    if (logAction !== 'UPDATE_PRICE' && logAction !== 'SYNC_PRICE') return val
 
     const num = Number(val)
     if (!isNaN(num)) return formatRupiah(num)

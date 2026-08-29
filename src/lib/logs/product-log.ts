@@ -238,12 +238,21 @@ function summarize(changes: ProductChange[], action: string): ProductLogEntry {
  * saat dua baris punya `createdAt` yang sama persis, jadi urutan tampilnya
  * tetap tetap dari waktu ke waktu.
  */
-export function buildProductLogEntries(changes: ProductChange[]): ProductLogEntry[] {
+export function buildProductLogEntries(
+  changes: ProductChange[],
+  options: { priceAction?: string } = {},
+): ProductLogEntry[] {
   const priceChanges = changes.filter((c) => PRICE_FIELDS.has(c.field))
   const otherChanges = changes.filter((c) => !PRICE_FIELDS.has(c.field))
 
   const entries: ProductLogEntry[] = []
-  if (priceChanges.length > 0) entries.push(summarize(priceChanges, "UPDATE_PRICE"))
+  // `priceAction` ada supaya perubahan harga yang datang dari sinkronisasi
+  // WooCommerce tidak menyamar sebagai suntingan manusia. Bedanya bukan
+  // kosmetik: pratinjau sinkronisasi menandai produk yang harganya "pernah
+  // disunting staff" dengan membaca tabel ini, dan kalau penerapannya sendiri
+  // ikut tercatat sebagai UPDATE_PRICE, seluruh produk akan tertandai setelah
+  // sekali penerapan dan tanda itu berhenti berarti apa-apa.
+  if (priceChanges.length > 0) entries.push(summarize(priceChanges, options.priceAction ?? "UPDATE_PRICE"))
   if (otherChanges.length > 0) entries.push(summarize(otherChanges, "EDIT_PRODUCT"))
 
   return entries
