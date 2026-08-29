@@ -1304,7 +1304,14 @@ export async function createProduct(
       );
     }
     return product;
-  }, { timeout: 30000 });
+  },
+  // `maxWait` dinaikkan dari bawaan 2 detik. Kolam koneksi project ini
+  // hanya 1 saat dev dan 3 di produksi, jadi satu permintaan lain yang
+  // sedang berjalan sudah cukup membuat transaksi ini gagal MULAI — bukan
+  // karena kerjanya berat, tapi karena giliran koneksinya tidak kunjung
+  // datang. Menunggu lebih lama jauh lebih baik daripada menolak pekerjaan
+  // yang sebenarnya sanggup dikerjakan.
+  { timeout: 30000, maxWait: 15000 });
 
   const result = await refetchAsWoo(created.id);
   invalidateProductCaches({ wooId, slugs: [slug] });

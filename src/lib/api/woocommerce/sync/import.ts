@@ -27,14 +27,24 @@ import type { ImportResult, RemoteProduct, RemoteVariation } from "./types"
 const MAX_IDS = 1000
 
 /**
- * Berapa produk diimpor bersamaan.
+ * Produk diimpor SATU PER SATU. Angka ini sengaja 1, bukan sekadar kecil.
  *
- * Setiap produk berarti satu transaksi database, dan produk variable menambah
- * satu permintaan HTTP untuk variannya. Tiga sekaligus sudah memangkas waktu
- * tunggu tanpa menahan banyak koneksi MariaDB — batas Hostinger 500 koneksi per
- * jam, dan skrip yang rakus pernah menghabiskannya sendirian.
+ * Kolam koneksi project ini dibatasi keras di lib/prisma/client.ts —
+ * **1 koneksi saat dev, 3 di produksi** — karena Hostinger membatasi user
+ * database pada 500 koneksi per jam. Setiap produk yang diimpor membuka satu
+ * transaksi yang berumur relatif panjang (produk + gambar + atribut + varian).
+ *
+ * Versi pertama memakai 3, dan itu keliru: tiga transaksi berebut satu koneksi,
+ * `maxWait` bawaan Prisma hanya 2 detik, dan importnya gagal dengan
+ * "Unable to start a transaction in the given time" — 5 dari 170 produk pada
+ * percobaan sungguhan. Kegagalannya bersih (transaksinya tidak pernah mulai,
+ * jadi tidak ada baris separuh jadi), tapi tetap pekerjaan yang harus diulang
+ * tanpa alasan.
+ *
+ * Menaikkan angka ini tidak akan mempercepat apa pun selama kolamnya masih
+ * sesempit itu — ia hanya memindahkan waktu tunggu menjadi kegagalan.
  */
-const CONCURRENCY = 3
+const CONCURRENCY = 1
 
 /** WooCommerce punya tipe yang tidak didukung form produk kita. */
 const SUPPORTED_TYPES = new Set(["simple", "variable"])
