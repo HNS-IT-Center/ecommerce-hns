@@ -83,10 +83,20 @@ export function BannerForm({ banner, action }: BannerFormProps) {
     setUploading(true)
     setUploadError(null)
     try {
-      // Dikompres di browser dulu, sama seperti gambar produk — banner beresolusi
-      // kamera bisa berukuran beberapa MB dan itu yang dimuat pertama kali oleh
-      // setiap pengunjung beranda.
-      const { file: compressed } = await compressImage(file)
+      // Dikompres di browser dulu — banner beresolusi kamera bisa berukuran
+      // beberapa MB dan itu yang dimuat pertama kali oleh setiap pengunjung
+      // beranda.
+      //
+      // Batasnya SENGAJA lebih tinggi dari gambar produk (1600). Banner tampil
+      // selebar container beranda (1232 CSS px), yang di layar DPR 2 menuntut
+      // ~2464 piksel nyata; di 1600 peramban memperbesarnya dan teks yang sudah
+      // dibakar ke dalam gambar (mode "Gambar Saja") terlihat pecah. Kualitas
+      // 0.95 juga dinaikkan karena banner promo berisi bidang warna rata dan
+      // huruf tajam — bagian yang paling cepat rusak oleh WebP lossy.
+      const { file: compressed } = await compressImage(file, {
+        maxDimension: 2560,
+        quality: 0.95,
+      })
       const formData = new FormData()
       formData.append("file", compressed)
       const res = await fetch("/api/admin/media", { method: "POST", body: formData })
@@ -149,7 +159,8 @@ export function BannerForm({ banner, action }: BannerFormProps) {
               </div>
               <p className="text-[11px] text-muted-foreground">
                 Pilih <strong>Gambar Saja</strong> kalau banner sudah mengandung teks di dalam gambarnya.
-                Ukuran ideal: <strong>1200 × 600 px</strong> (rasio 2:1).
+                Ukuran ideal: <strong>2560 × 1280 px</strong> (rasio 2:1). Jangan di bawah 1920 px —
+                gambar yang lebih kecil akan terlihat pecah di layar beresolusi tinggi.
               </p>
             </CardContent>
           </Card>

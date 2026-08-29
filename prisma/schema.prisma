@@ -33,11 +33,9 @@ datasource db {
 
 /**
  * Pengguna admin panel.
- *
  * Sengaja BUKAN tabel Auth.js. Panel ini dipakai segelintir PIC internal, tidak
  * ada pendaftaran mandiri, dan akun dibuat manual lewat script — jadi provider
  * OAuth beserta tabel Account/Session-nya adalah mesin yang tidak terpakai.
- *
  * `email` adalah kunci sambungan antar cara login. Kalau nanti Google atau SSO
  * ditambahkan, identitas yang mereka buktikan dicocokkan ke baris ini; tabel
  * inilah yang memutuskan siapa boleh masuk, bukan providernya. Saat itu tiba,
@@ -45,9 +43,9 @@ datasource db {
  * dibuat sekarang karena dengan satu provider ia kolom kosong.
  */
 model User {
-  id           String  @id @default(uuid())
-  email        String  @unique @db.VarChar(191)
-  name         String  @db.VarChar(191)
+  id    String @id @default(uuid())
+  email String @unique @db.VarChar(191)
+  name  String @db.VarChar(191)
 
   /// Cara masuk kedua, di samping email — WAJIB, bukan pilihan. Setiap akun
   /// admin punya dua identitas dan keduanya bisa dipakai masuk; kalau kolomnya
@@ -56,7 +54,7 @@ model User {
   /// Disimpan huruf kecil, tidak boleh mengandung '@'. Larangan itu yang membuat
   /// pemilahan "ini email atau username" tidak pernah ambigu, dan mencegah
   /// seseorang mendaftarkan username berbentuk email milik orang lain.
-  username String @unique @db.VarChar(191)
+  username     String  @unique @db.VarChar(191)
   // scrypt: "salt:hash" heksadesimal, dihitung dengan crypto bawaan Node.
   passwordHash String  @map("password_hash") @db.VarChar(255)
   image        String? @db.VarChar(1000)
@@ -105,7 +103,7 @@ model User {
 }
 
 model Store {
-  id        String @id
+  id String @id
 
   /// Alamat halaman cabang, terpisah dari `id`.
   ///
@@ -183,16 +181,13 @@ model Store {
 
 /**
  * Jam buka satu toko, satu baris per hari.
- *
  * `dayOfWeek` mengikuti `Date.getDay()` JavaScript — 0 Minggu sampai 6 Sabtu —
  * supaya tidak ada penerjemahan diam-diam antara nilai yang disimpan dan nilai
  * yang dipakai kode saat menentukan "apakah toko buka sekarang".
- *
  * `isClosed` ada karena "tutup" bukan sekadar jam kosong: hari yang tidak
  * tercatat sama sekali berarti "belum diisi staff", dan itu berbeda dari "hari
  * ini memang libur". Membedakan keduanya mencegah halaman menampilkan toko buka
  * 24 jam hanya karena barisnya belum sempat diisi.
- *
  * Jam disimpan sebagai teks "HH:MM" 24 jam, bukan DateTime: yang dicatat adalah
  * waktu dinding yang berulang tiap minggu, bukan satu titik waktu — menyimpannya
  * sebagai DateTime memaksa tanggal palsu dan mengundang pergeseran zona waktu.
@@ -248,8 +243,8 @@ enum ProductType {
 
 enum ProductStatus {
   PUBLISHED // CSV "Telah Terbit" = 1   (4.775 baris)
-  DRAFT     // CSV "Telah Terbit" = 0   (287 baris)
-  PRIVATE   // CSV "Telah Terbit" = -1  (72 baris)
+  DRAFT // CSV "Telah Terbit" = 0   (287 baris)
+  PRIVATE // CSV "Telah Terbit" = -1  (72 baris)
 }
 
 enum StockStatus {
@@ -276,23 +271,23 @@ model Product {
   id    Int @id @default(autoincrement())
   wooId Int @unique @map("woo_id") // ID asli WooCommerce, untuk sinkronisasi
 
-  type   ProductType
-  status ProductStatus     @default(DRAFT)
+  type       ProductType
+  status     ProductStatus     @default(DRAFT)
   visibility CatalogVisibility @default(VISIBLE)
 
   // 27,2% terisi di sumber. NULL diperbolehkan; multiple NULL sah di MySQL/MariaDB.
   sku  String? @unique @db.VarChar(100)
   gtin String? @db.VarChar(50)
 
-  name String  @db.VarChar(500)
-  slug String  @unique @db.VarChar(191)
+  name String @db.VarChar(500)
+  slug String @unique @db.VarChar(191)
 
   shortDescription String? @map("short_description") @db.Text
   description      String? @db.MediumText
 
   // Harga rupiah. Decimal(14,2) menampung sampai Rp 999.999.999.999,99
   regularPrice Decimal? @map("regular_price") @db.Decimal(14, 2)
-  salePrice    Decimal? @map("sale_price")    @db.Decimal(14, 2)
+  salePrice    Decimal? @map("sale_price") @db.Decimal(14, 2)
 
   // Batas akhir masa obral. NULL = obral tanpa batas waktu.
   // Kolomnya TIDAK dikosongkan otomatis saat lewat tanggal — nilai obral tetap
@@ -301,11 +296,11 @@ model Product {
   // pada detik tanggalnya tanpa bergantung pada cron yang bisa saja mati.
   saleEndDate DateTime? @map("sale_end_date")
 
-  stockStatus  StockStatus? @map("stock_status")
-  stockQty     Int?         @map("stock_qty")
-  backordersAllowed Boolean? @map("backorders_allowed")
-  soldIndividually  Boolean? @map("sold_individually")
-  reviewsAllowed    Boolean? @map("reviews_allowed")
+  stockStatus       StockStatus? @map("stock_status")
+  stockQty          Int?         @map("stock_qty")
+  backordersAllowed Boolean?     @map("backorders_allowed")
+  soldIndividually  Boolean?     @map("sold_individually")
+  reviewsAllowed    Boolean?     @map("reviews_allowed")
 
   // Satu video per produk — link eksternal (YouTube/Vimeo/mp4) atau URL R2 hasil upload.
   videoUrl String? @map("video_url") @db.VarChar(1000)
@@ -344,12 +339,56 @@ model Product {
 // --------------------------------------------------------------------------- banner promo
 
 /**
+ * Kampanye yang menaungi beberapa banner sekaligus — mis. "Promo Agustus 2026".
+ * Batch adalah alat kontrol admin, BUKAN pengelompokan tampilan. Beranda tetap
+ * memperlihatkan satu deret slide datar; pengunjung tidak pernah melihat batch.
+ * Karena itu batch sengaja TIDAK punya urutannya sendiri — urutan hanya ada di
+ * `PromoBanner.sortOrder`, satu daftar untuk seluruh beranda. Kalau batch juga
+ * punya urutan, ada dua angka yang menentukan satu hal yang sama dan salah
+ * satunya pasti akan menang diam-diam.
+ * Gunanya tiga: satu saklar untuk mematikan seluruh kampanye, satu jadwal yang
+ * menggantikan pengetikan tanggal berulang di tiap banner anggotanya, dan
+ * catatan arsip — kampanye yang sudah lewat tetap terdaftar beserta anggotanya,
+ * supaya staff bisa melihat kembali "Agustus dulu isinya banner apa saja".
+ */
+model BannerBatch {
+  id String @id @default(uuid())
+
+  name String @db.VarChar(150)
+
+  /// Gerbang induk. Banner anggotanya baru tayang kalau ini juga menyala.
+  isActive Boolean @default(true) @map("is_active")
+
+  /// Jadwal setingkat kampanye. Berpotongan dengan jadwal tiap banner —
+  /// keduanya harus sedang tayang. Lihat `bannerLiveState` di lib/utils/banner.
+  startsAt DateTime? @map("starts_at")
+  endsAt   DateTime? @map("ends_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /**
+   * Soft delete, mengikuti `users` dan `stores` (CLAUDE.md §2.8): ini data
+   * operasional milik HNS yang dihapus staff karena salah input, bukan data
+   * pribadi orang lain.
+   * Di sini ada alasan tambahan yang khusus. Kampanye yang sudah lewat justru
+   * yang ingin disimpan — batch ADALAH arsipnya. Menghapus barisnya sungguhan
+   * akan memicu `onDelete: SetNull` pada seluruh banner anggotanya, sehingga
+   * keterangan "banner ini bagian dari Promo Agustus 2026" lenyap dari
+   * tiap-tiap banner. Yang hilang persis catatan yang mau disimpan.
+   */
+  deletedAt DateTime? @map("deleted_at")
+
+  banners PromoBanner[]
+
+  @@map("banner_batches")
+}
+
+/**
  * Slide hero di beranda.
- *
  * Sebelumnya berupa array yang ditulis langsung di dalam
  * features/home/components/hero-carousel.tsx, sehingga mengganti promo mingguan
  * berarti menyunting kode dan menunggu deploy.
- *
  * `startsAt`/`endsAt` TIDAK ditegakkan lewat cron. Sama seperti masa berlaku
  * harga obral, jadwalnya dihitung saat dibaca (lihat lib/api/banners.ts) supaya
  * promo mulai dan berhenti tepat waktu tanpa bergantung pada job yang bisa mati.
@@ -362,7 +401,7 @@ model PromoBanner {
   subtitle String? @db.VarChar(500)
 
   ctaLabel String? @map("cta_label") @db.VarChar(100)
-  ctaHref  String? @map("cta_href")  @db.VarChar(1000)
+  ctaHref  String? @map("cta_href") @db.VarChar(1000)
 
   /// Gambar latar opsional. Kalau kosong, slide memakai warna solid `bgClass`.
   imageUrl String? @map("image_url") @db.VarChar(1000)
@@ -370,6 +409,23 @@ model PromoBanner {
 
   displayMode BannerDisplayMode @default(IMAGE_TEXT) @map("display_mode")
 
+  /**
+   * Kampanye penaung, opsional — banner tanpa batch berdiri sendiri.
+   * `onDelete: SetNull`, BUKAN Cascade. Menghapus batch adalah tindakan
+   * merapikan ("kampanye Agustus sudah lewat"), dan tidak ada orang yang
+   * bermaksud ikut menghapus gambar-gambarnya saat melakukannya. Banner-nya
+   * tetap hidup dan hanya kehilangan labelnya.
+   */
+  batchId String?      @map("batch_id")
+  batch   BannerBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  /**
+   * Urutan tampil di beranda, 0 paling atas.
+   * Ditulis ulang seluruhnya (0..n-1) oleh `reorderBanners` setiap kali daftar
+   * di admin diseret. Angkanya TIDAK lagi bisa diketik lewat form banner:
+   * kolom isian dan daftar seret adalah dua sumber kebenaran untuk hal yang
+   * sama, dan yang satu akan menimpa yang lain tanpa diketahui staff.
+   */
   sortOrder Int     @default(0) @map("sort_order")
   isActive  Boolean @default(true) @map("is_active")
 
@@ -380,6 +436,7 @@ model PromoBanner {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([isActive, sortOrder])
+  @@index([batchId])
   @@map("promo_banners")
 }
 
@@ -503,8 +560,8 @@ model Attribute {
   id   Int    @id @default(autoincrement())
   name String @unique @db.VarChar(191)
 
-  values             AttributeValue[]
-  productAttributes  ProductAttribute[]
+  values            AttributeValue[]
+  productAttributes ProductAttribute[]
 
   @@map("attributes")
 }
@@ -586,21 +643,19 @@ model ProductLog {
 
 /**
  * Quotation rakitan PC yang pernah dicetak dari /build-pc.
- *
  * Satu baris = satu KOMBINASI komponen unik, bukan satu klik Print. Dua orang
  * yang merakit isi yang sama persis akan berbagi baris ini. Tanpa dedupe itu,
  * tabel akan penuh duplikat karena satu orang biasa menekan Print berkali-kali
  * untuk rakitan yang sama.
- *
  * `items` menyimpan snapshot harga saat quotation diterbitkan, supaya halaman
  * verifikasi /q/[code] bisa membandingkannya dengan harga terkini dan
  * menandai kalau ada selisih. `updatedAt` menandai kapan snapshot itu terakhir
  * disegarkan.
  */
 model PcBuildQuote {
-  id   Int    @id @default(autoincrement())
+  id          Int    @id @default(autoincrement())
   // Kode yang dicetak di PDF, mis. "HNSPC-260804-7K3M".
-  code String @unique @db.VarChar(32)
+  code        String @unique @db.VarChar(32)
   // SHA-256 dari daftar `productId:qty` terurut. Inilah kunci dedupe-nya.
   contentHash String @unique @map("content_hash") @db.VarChar(64)
 
@@ -633,7 +688,6 @@ model PcBuildQuote {
 
 /**
  * Rakitan yang DIKIRIM pelanggan ke HNS lewat tombol "Kirim ke HNS".
- *
  * Tabel sendiri, bukan kolom tambahan di `PcBuildQuote`, dan alasannya struktural.
  * `contentHash` di sana `@unique`, sehingga dua baris dengan isi rakitan sama
  * mustahil ada. Kalau identitas pengirim ditaruh di tabel itu, kiriman pelanggan
@@ -641,12 +695,10 @@ model PcBuildQuote {
  * `update` dan MENIMPA datanya — dan pelanggan kedua yang mengirim rakitan sama
  * menimpa yang pertama. Rakitan dari preset yang sama menghasilkan hash identik,
  * jadi kebetulan itu tidak jarang.
- *
  * Perbedaan yang mendasarinya: untuk quotation cetak, isi rakitan ADALAH identitas
  * dokumen — dua cetakan dengan isi sama memang satu dokumen. Untuk kiriman
  * pelanggan, yang menjadi identitas adalah PENGIRIMNYA. Dua orang mengirim rakitan
  * RTX 4060 yang sama adalah dua prospek, bukan satu.
- *
  * Karena itu tidak ada constraint unik apa pun di sini: satu baris per kiriman,
  * selalu.
  */
@@ -696,18 +748,16 @@ model PcBuildSubmission {
  * lihat docs/09-google-oauth-setup.md §1 kenapa keduanya tidak boleh
  * disatukan (googleId di `users` berarti siapa pun yang membuat akun Google
  * atas email seorang staf bisa masuk ke panel admin).
- *
  * Rancangan final ada di docs/09 §8 — dicatat ulang di sini karena kolomnya
  * sengaja minim, dan alasan "kenapa tidak lebih" sama pentingnya dengan
  * "kenapa ada":
  * - Kunci identitas adalah `googleSub`, BUKAN email. Email bisa diganti
- *   pemiliknya di akun Google; kalau itu jadi kunci, akun yang sudah punya
- *   rakitan tersimpan bisa "hilang" begitu emailnya berubah.
+ * pemiliknya di akun Google; kalau itu jadi kunci, akun yang sudah punya
+ * rakitan tersimpan bisa "hilang" begitu emailnya berubah.
  * - Tidak ada access/refresh token yang disimpan — dipakai sekali saat
- *   login lalu dibuang.
+ * login lalu dibuang.
  * - Tidak ada foto profil — halaman akun tidak memakainya, dan data pribadi
- *   paling aman adalah yang tidak pernah disimpan.
- *
+ * paling aman adalah yang tidak pernah disimpan.
  * Penghapusan akun ini HARD DELETE (lihat CLAUDE.md §2.8), bukan soft
  * delete seperti `users`/`stores`. Ini data pribadi milik pelanggan sendiri;
  * kalau mereka minta dihapus, menyembunyikan barisnya lewat `deletedAt`
@@ -783,7 +833,7 @@ model Customer {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  savedBuilds SavedPcBuild[]
+  savedBuilds        SavedPcBuild[]
   verificationTokens CustomerVerificationToken[]
 
   @@map("customers")
@@ -825,7 +875,6 @@ model CustomerVerificationToken {
  * `PcBuildQuote`/`PcBuildSubmission` — dua sistem itu adalah snapshot harga
  * BEKU untuk dokumen penawaran cetak (harganya sengaja tidak pernah berubah
  * setelah dicetak, demi `/verify/[code]`).
- *
  * Rakitan tersimpan berbeda: harga yang DIBAYAR selalu harga katalog
  * TERKINI (dibaca ulang dari `Product` setiap kali ditampilkan — nama,
  * gambar, ketersediaan pun begitu; lihat CLAUDE.md §2.7), TAPI `items` juga
@@ -835,7 +884,6 @@ model CustomerVerificationToken {
  * membandingkan `PcBuildQuote.items[].price` dengan harga sekarang. Harga
  * acuan ini murni pembanding tampilan, bukan angka yang pernah dipakai
  * sebagai dasar pembayaran/checkout.
- *
  * Layer pembaca (lib/api/saved-pc-builds.ts) yang menghitung selisihnya dan
  * menandai komponen yang sudah dihapus/di-draft-kan staff sebagai "tidak
  * tersedia" — bukan kolom di sini.
@@ -862,19 +910,16 @@ model SavedPcBuild {
 
 /**
  * Jejak penghapusan akun pelanggan.
- *
  * Penghapusan akun pelanggan bersifat permanen (CLAUDE.md §2.8: hard delete,
  * cascade ke rakitan tersimpan). Tanpa tabel ini, tindakan yang paling tidak
  * bisa dibatalkan di seluruh panel justru satu-satunya yang tidak meninggalkan
  * bekas apa pun — tidak ada cara menjawab "siapa yang menghapus akun ini, dan
  * atas dasar apa" beberapa bulan kemudian.
- *
  * YANG SENGAJA TIDAK DISIMPAN: email, nama, nomor HP, username. Justru itulah
  * data yang pelanggan minta dihapus. Menyalinnya ke tabel audit berarti
  * penghapusannya tidak pernah benar-benar terjadi — persis masalah yang dibahas
  * §2.8 soal kenapa akun pelanggan tidak boleh soft delete. Yang tersisa di sini
  * hanyalah UUID tak bermakna, angka, dan kalimat yang ditulis staff sendiri.
- *
  * TIDAK ADA foreign key ke `customers`. Bukan kelalaian: barisnya sudah tidak
  * ada saat log ini ditulis, jadi FK justru akan menolak penyimpanannya. Relasi
  * apa pun ke tabel itu juga berisiko menahan penghapusan yang seharusnya jalan.

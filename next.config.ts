@@ -8,6 +8,14 @@ const nextConfig: NextConfig = {
     root: __dirname,
   },
   images: {
+    /**
+     * Next 16 hanya melayani nilai `quality` yang terdaftar di sini — di luar
+     * daftar ini permintaannya ditolak, bukan diturunkan diam-diam. 75 tetap
+     * ada karena itu bawaan yang dipakai seluruh gambar produk; 90 khusus untuk
+     * banner beranda, yang teksnya sudah dibakar ke dalam gambar dan paling
+     * cepat rusak oleh WebP lossy (lihat hero-carousel.tsx).
+     */
+    qualities: [75, 90],
     remotePatterns: [
       {
         protocol: "https",

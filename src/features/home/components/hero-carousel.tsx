@@ -34,6 +34,22 @@ export function HeroCarousel({ slides }: { slides: HeroSlide[] }) {
   // Number of dots is fixed by our slides, so derive it instead of storing it.
   const count = slides.length
 
+  /**
+   * Apakah slide selain yang pertama sudah boleh mengunduh gambarnya.
+   *
+   * Embla merender SELURUH slide ke DOM sekaligus, jadi tanpa penahan ini
+   * kelima banner ikut antre sejak permintaan pertama — dan pada layar DPR 2
+   * satu banner bisa 300-450 KB, sehingga slide 2-5 menyeret ~1,5 MB melewati
+   * jalur yang sedang dipakai gambar LCP. Yang diukur LCP cuma slide pertama;
+   * sisanya baru terlihat paling cepat 5 detik kemudian saat rotasi.
+   *
+   * Membiarkannya `lazy` selamanya bukan jawabannya: slide 2-5 berada di luar
+   * viewport karena digeser transform, jadi lazy menundanya sampai giliran
+   * tayang — pada koneksi lambat pengunjung menatap panel warna kosong. Jadi
+   * kita tahan sebentar, lalu lepas begitu jalur kritis lengang.
+   */
+  const [loadRestOfSlides, setLoadRestOfSlides] = React.useState(false)
+
   React.useEffect(() => {
     if (!api) return
 
@@ -47,6 +63,26 @@ export function HeroCarousel({ slides }: { slides: HeroSlide[] }) {
       api.off("select", onSelect)
     }
   }, [api])
+
+  /**
+   * Lepas penahan gambar slide 2-5 setelah peramban menganggur.
+   *
+   * `requestIdleCallback` menunggu jalur kritis selesai, dan `timeout: 2000`
+   * memastikan halaman yang tidak pernah benar-benar menganggur tetap kebagian
+   * — jauh sebelum rotasi pertama pada detik ke-5. Safari belum punya API ini,
+   * jadi ada jalur `setTimeout` sebagai gantinya.
+   */
+  React.useEffect(() => {
+    const release = () => setLoadRestOfSlides(true)
+
+    if (typeof window.requestIdleCallback === "function") {
+      const handle = window.requestIdleCallback(release, { timeout: 2000 })
+      return () => window.cancelIdleCallback(handle)
+    }
+
+    const handle = window.setTimeout(release, 1200)
+    return () => window.clearTimeout(handle)
+  }, [])
 
   // Auto-play effect
   React.useEffect(() => {
@@ -65,19 +101,48 @@ export function HeroCarousel({ slides }: { slides: HeroSlide[] }) {
     <div className="relative w-full max-w-7xl mx-auto px-4 md:px-6 mt-6">
       <Carousel setApi={setApi} className="w-full" opts={{ loop: true }}>
         <CarouselContent>
-          {slides.map((slide) => (
+          {slides.map((slide, index) => (
             <CarouselItem key={slide.id}>
               <div
                 className={`relative flex aspect-[2/1] w-full flex-col justify-center rounded-3xl ${slide.bgClass} p-8 md:p-16 text-white shadow-xl overflow-hidden`}
               >
                 {slide.imageUrl ? (
                   <>
+                    {/*
+                      Hanya slide pertama yang `priority`. Embla merender SELURUH
+                      slide ke DOM sekaligus, jadi `priority` tanpa syarat memasang
+                      preload berprioritas tinggi untuk kelima banner — lima
+                      permintaan yang berebut jalur dengan gambar LCP yang
+                      sebenarnya, yaitu slide pertama itu sendiri.
+
+                      Sisanya menunggu `loadRestOfSlides` (lihat efek idle di
+                      atas): `lazy` sampai jalur kritis lengang, lalu `eager`.
+                      Dibiarkan `lazy` terus, slide 2-5 baru diunduh saat gilirannya
+                      tayang dan pengunjung berkoneksi lambat menatap panel warna
+                      kosong; dibiarkan `eager` sejak awal, ~1,5 MB ikut berebut
+                      jalur dengan gambar LCP. Menahannya sebentar memberi keduanya.
+
+                      `quality` 90, bukan bawaan 75: banner promo berisi bidang
+                      warna rata dan teks yang sudah dibakar ke dalam gambar, dan di
+                      situlah artefak WebP lossy paling terlihat — apalagi ini
+                      pengodean lossy KEDUA, setelah kompresi di browser waktu
+                      unggah. Nilainya wajib terdaftar di `images.qualities` pada
+                      next.config.ts, kalau tidak Next menolak permintaannya.
+
+                      `sizes` menyebut lebar nyata container, bukan 100vw:
+                      `max-w-7xl` (1280) dikurangi `px-4 md:px-6` menyisakan 1232px
+                      begitu viewport mencapai 1280.
+                    */}
                     <Image
                       src={slide.imageUrl}
                       alt=""
                       fill
-                      priority
-                      sizes="(max-width: 1280px) 100vw, 1280px"
+                      priority={index === 0}
+                      loading={
+                        index === 0 ? undefined : loadRestOfSlides ? "eager" : "lazy"
+                      }
+                      quality={90}
+                      sizes="(max-width: 767px) calc(100vw - 2rem), (max-width: 1279px) calc(100vw - 3rem), 1232px"
                       className="object-cover"
                     />
                     {/* Scrim gelap hanya untuk mode IMAGE_TEXT agar teks terbaca */}
