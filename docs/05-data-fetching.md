@@ -699,6 +699,9 @@ tujuh jam di WIB. Cukup untuk salah mengelompokkan produk yang dibuat pagi hari.
 
 ### Yang BELUM tercakup
 
+> Daftar hidup beserta siapa yang memegangnya ada di
+> [`docs/12-kendala-terbuka.md`](./12-kendala-terbuka.md).
+
 - **Harga varian.** Endpoint `/products` tidak mengembalikan varian, dan
   perubahan harga varian tidak selalu mendorong `date_modified` induknya.
   Menyusurinya berarti satu permintaan per induk variable (823 saat ini).
