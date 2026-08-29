@@ -1,5 +1,6 @@
 import { ProductSource } from "@prisma/client"
 
+import { env } from "@/config/env"
 import { getPrisma } from "@/lib/prisma/client"
 import { decodeHtmlEntities } from "@/lib/utils/html"
 import type { ProductInput, ProductVariationInput } from "@/types/woocommerce"
@@ -46,6 +47,50 @@ const MAX_IDS = 1000
  */
 const CONCURRENCY = 1
 
+/**
+ * Host tempat gambar produk disajikan.
+ *
+ * Seluruh katalog memakai satu host ini (13.707 baris per 29 Agustus 2026),
+ * dan produk hasil import ikut ke sana supaya tidak lahir host kedua yang
+ * harus dijaga selamanya.
+ *
+ * Konstanta, bukan env: `NEXT_PUBLIC_IMAGE_DOMAIN` terlihat seperti
+ * tempatnya, tapi variabel itu kode mati — dideklarasikan di config/env.ts,
+ * tidak dibaca satu berkas pun, dan isinya masih host WordPress lama.
+ * Membangun di atasnya berarti mewarisi jebakan itu.
+ */
+const MEDIA_CDN_ORIGIN = "https://media.hnsitcenter.com"
+
+/**
+ * URL gambar WooCommerce -> host media kita.
+ *
+ * WooCommerce menyajikan berkas di `<situs>/wp-content/uploads/2026/08/x.webp`,
+ * sedangkan host media memangkas `/wp-content/uploads` —
+ * `media.hnsitcenter.com/2026/08/x.webp`. Pemetaan itu bukan tebakan;
+ * ia mengikuti bentuk 12.832 baris yang sudah ada sebelum fitur ini.
+ *
+ * PERHATIAN: pemindahan berkasnya sendiri ke host media adalah pekerjaan
+ * terpisah di luar aplikasi ini. Saat baris ini ditulis, berkas unggahan
+ * 2026/08 ke atas BELUM ada di sana dan menjawab 404 — jadi gambar produk
+ * baru akan kosong sampai sinkronisasi media menyusul. Itu keputusan yang
+ * diambil sadar supaya katalog tidak bercabang ke dua host.
+ *
+ * URL yang bentuknya di luar dugaan dikembalikan APA ADANYA, bukan dipaksa:
+ * menebak lebih buruk daripada membiarkan satu URL tetap menunjuk sumber
+ * yang benar-benar melayaninya.
+ */
+export function toMediaUrl(src: string): string {
+  // Tanpa regex, sengaja: garis miring penutup diperiksa apa adanya supaya
+  // tidak ada lapisan escape yang bisa salah tulis.
+  const base = env.WOOCOMMERCE_URL.endsWith("/")
+    ? env.WOOCOMMERCE_URL.slice(0, -1)
+    : env.WOOCOMMERCE_URL
+  const uploadsPrefix = base + "/wp-content/uploads/"
+  return src.startsWith(uploadsPrefix)
+    ? `${MEDIA_CDN_ORIGIN}/${src.slice(uploadsPrefix.length)}`
+    : src
+}
+
 /** WooCommerce punya tipe yang tidak didukung form produk kita. */
 const SUPPORTED_TYPES = new Set(["simple", "variable"])
 
@@ -80,7 +125,7 @@ function mapVariations(variations: RemoteVariation[]): ProductVariationInput[] {
       sale_price: variation.sale_price || undefined,
       stock_status: mapStockStatus(variation.stock_status),
       stock_quantity: variation.stock_quantity,
-      image_url: variation.image?.src ?? null,
+      image_url: variation.image ? toMediaUrl(variation.image.src) : null,
     }
   })
 }
@@ -98,12 +143,8 @@ export function buildProductInput(
 ): ProductInput {
   const isVariable = remote.type === "variable"
 
-  // URL gambar disimpan APA ADANYA dari WooCommerce (host `hnsitcenter.id`),
-  // tidak ditulis ulang ke `media.hnsitcenter.com`. Berkas-berkas baru memang
-  // tidak ada di CDN itu — jalur yang ditulis ulang menjawab 404 — dan host
-  // aslinya sudah diizinkan di `next.config.ts`. Pemindahan gambar ke R2
-  // adalah pekerjaan terpisah.
-  const images = remote.images.map((image) => ({ url: image.src }))
+  // Dipindahkan ke host media kita — lihat `toMediaUrl`.
+  const images = remote.images.map((image) => ({ url: toMediaUrl(image.src) }))
 
   // Atribut pembeda varian tidak ikut sebagai atribut biasa: `createProduct`
   // menuliskannya sendiri dari daftar varian, dan memasukkannya dua kali

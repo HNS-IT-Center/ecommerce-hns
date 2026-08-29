@@ -779,13 +779,31 @@ Yang tidak cocok **tidak ditebak**: produknya turun jadi `draft` apa pun
 statusnya di WooCommerce. Produk tanpa kategori tidak punya rumah di navigasi
 maupun breadcrumb, dan katalog ini sudah menanggung ribuan produk seperti itu.
 
-#### Gambar tetap di host WordPress
+#### Gambar dipindahkan ke host media sendiri
 
-URL disimpan **apa adanya** dari WooCommerce (`hnsitcenter.id`), tidak ditulis
-ulang ke `media.hnsitcenter.com`. Sudah diuji: berkas yang sama di jalur CDN
-menjawab **404** — CDN itu hanya memuat berkas lama. Host aslinya sudah ada di
-`remotePatterns` `next.config.ts`, jadi gambarnya tampil. Pemindahan ke R2
-adalah pekerjaan terpisah.
+URL gambar dari WooCommerce ditulis ulang ke `media.hnsitcenter.com` lewat
+`toMediaUrl()`: host media memangkas `/wp-content/uploads`, jadi
+`hnsitcenter.id/wp-content/uploads/2026/08/x.webp` menjadi
+`media.hnsitcenter.com/2026/08/x.webp`. Pemetaan itu bukan tebakan — ia
+mengikuti bentuk 12.832 baris yang sudah ada sejak import katalog pertama.
+URL yang bentuknya di luar dugaan dikembalikan apa adanya, tidak dipaksa.
+
+Baris yang terlanjur tersimpan dengan host lama sudah dipindahkan sekali jalan
+oleh `scripts/archive/rewrite-product-image-host.mjs` (875 baris, 29 Agustus
+2026). Sesudahnya seluruh 13.707 gambar berada di satu host.
+
+> **Yang harus diketahui:** saat pemindahan ini dilakukan, berkas unggahan
+> 2026/08 ke atas **belum ada** di host media dan menjawab **404**, sementara
+> URL WordPress aslinya menjawab 200. Jadi gambar produk hasil import akan
+> kosong sampai sinkronisasi media menyusul — pekerjaan terpisah di luar
+> aplikasi ini. Keputusannya diambil sadar: lebih baik katalog menunjuk satu
+> host dan menunggu berkasnya menyusul daripada bercabang jadi dua host yang
+> harus dijaga selamanya.
+
+Catatan: `NEXT_PUBLIC_IMAGE_DOMAIN` di `config/env.ts` **terlihat** seperti
+tempat host ini seharusnya tinggal, tapi variabel itu kode mati — tidak dibaca
+satu berkas pun, dan isinya masih host WordPress lama. Jangan membangun di
+atasnya sebelum ia dibereskan.
 
 #### Kegagalan setelah commit
 
