@@ -155,3 +155,18 @@ wc-product-export-*.csv
 
 # Dump rollback yang dibuat script migrasi data — artefak lokal, bukan sumber.
 scripts/backup-*.json
+
+# Dump SQL di akar repo — cadangan database, BUKAN bagian dari aplikasi.
+#
+# Isinya bukan sekadar besar: dump WordPress/aplikasi memuat email dan nama
+# pelanggan, hash password, serta akun admin. Satu `git add -A` yang tidak
+# disengaja akan mengirim semua itu ke repo publik, dan menghapusnya kemudian
+# tidak menghapusnya dari riwayat.
+#
+# Polanya sengaja diawali garis miring: `/*.sql` hanya mencakup akar repo,
+# sehingga `prisma/migrations/**/migration.sql` — yang justru WAJIB ikut git —
+# tidak ikut terabaikan.
+#
+# docs/10 §4 memang meminta dump disimpan DI LUAR folder repo. Baris ini jaring
+# pengaman kalau ada yang terlanjur mengunduhnya ke sini.
+/*.sql
