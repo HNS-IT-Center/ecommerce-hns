@@ -13,6 +13,28 @@ export type QuoteLineItem = {
   price: number
   quantity: number
   stepName: string | null
+  /**
+   * Opsi varian yang dipilih pelanggan, mis. "1TB · Hitam" — beserta nama
+   * induknya. Keduanya `undefined` untuk komponen biasa.
+   *
+   * Kolom `items` bertipe Json, jadi menambah medan di sini TIDAK butuh
+   * migrasi dan TIDAK merusak baris lama: quotation yang dicetak sebelum
+   * medan ini ada tinggal tidak memilikinya, dan pembacanya jatuh ke `name`.
+   *
+   * Kenapa dicatat terpisah dan tidak diandalkan dari `name` saja: nama baris
+   * varian tidak bisa dipercaya sebagai pembeda — varian warisan impor
+   * WooCommerce sering hanya mengulang nama induknya utuh, sehingga dua baris
+   * di build log bisa terbaca identik untuk dua barang yang berbeda harga.
+   * Lihat `lib/utils/variation.ts`.
+   *
+   * TIDAK ikut ke `computeContentHash`: yang menentukan identitas dokumen
+   * adalah id, kuantitas, dan harga. Varian yang berbeda sudah pasti id yang
+   * berbeda, jadi menambahkannya ke hash tidak memisahkan apa pun yang belum
+   * terpisah — tapi akan menerbitkan kode baru untuk quotation lama yang isinya
+   * tidak berubah sama sekali.
+   */
+  parentName?: string | null
+  variationLabel?: string | null
 }
 
 /**

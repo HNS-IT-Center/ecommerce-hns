@@ -3,7 +3,6 @@
 import {
   priceCartFromCatalog,
   type CartLineRequest,
-  type PricedCartLine,
 } from "@/lib/api/woocommerce/cart-pricing";
 import { getActiveStores } from "@/lib/api/stores";
 import { normalizePhone } from "@/features/stores/lib/maps";
@@ -25,12 +24,31 @@ export type PriceChange = {
   newUnitPrice: number;
 };
 
+/**
+ * Baris yang dilaporkan balik ke halaman checkout.
+ *
+ * Sengaja tipe sendiri, bukan `PricedCartLine` milik lapisan penetapan harga.
+ * Keduanya memang mirip, tapi tidak pernah sama: yang ini tidak membawa
+ * `cartItemId`, dan sejak lapisan harga ikut melaporkan nama induk & label
+ * varian, ia juga tidak membawa keduanya — keranjang sudah menyimpan
+ * `variationLabel`-nya sendiri untuk ditampilkan. Meminjam tipe itu berarti
+ * menjanjikan medan yang tidak pernah diisi di sini.
+ */
+export type CheckoutResultLine = {
+  productId: number;
+  name: string;
+  sku: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+};
+
 export type PrepareCheckoutResult =
   | { ok: false; reason: "empty" | "all-unavailable" | "no-store" }
   | {
       ok: true;
       waUrl: string;
-      lines: PricedCartLine[];
+      lines: CheckoutResultLine[];
       total: number;
       /** Barang yang tidak lagi bisa dijual — sudah dikeluarkan dari pesan. */
       removedNames: string[];

@@ -2,6 +2,26 @@ import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import { PcBuilderStepConfig } from "@/lib/pc-builder/config"
 
+/**
+ * Satu pilihan varian pada produk bervarian.
+ *
+ * `id`-nya adalah id baris VARIATION di tabel `products` — baris varian juga
+ * sebuah Product, jadi dialah yang memegang harga, stok, dan SKU. Begitu
+ * dipilih, id inilah yang menjadi `BuilderProduct.id`, sehingga seluruh jalur
+ * hilir (penetapan harga katalog, quotation cetak, rakitan tersimpan) tidak
+ * perlu tahu apa pun soal varian: bagi mereka ia produk biasa dengan id biasa.
+ */
+export type BuilderVariation = {
+  id: number
+  /** Nilai atribut pembedanya, mis. "1TB · Hitam". */
+  label: string
+  price: number
+  regularPrice: number
+  salePrice: number
+  stock: number
+  image?: string
+}
+
 export type BuilderProduct = {
   id: number
   name: string
@@ -13,7 +33,32 @@ export type BuilderProduct = {
   sold: number
   stock: number
   type: string
+  /**
+   * Atribut yang dipakai memeriksa kompatibilitas antar step (Socket, Form
+   * Factor, dst).
+   *
+   * Untuk pilihan hasil varian, isinya atribut INDUK — bukan atribut baris
+   * variannya sendiri. Atribut sebuah varian adalah atribut PEMBEDA-nya
+   * (Kapasitas, Warna), dan socket sebuah motherboard tidak pernah tercatat di
+   * sana. Kalau atribut varian yang dipakai, langkah yang bergantung pada
+   * socket akan membuang pilihan yang sebenarnya cocok — diam-diam, tanpa
+   * pesan apa pun.
+   */
   attributes: { attributeId: number, attributeName: string, valueId: number, valueName: string }[]
+  /** Terisi hanya pada pilihan hasil varian: id baris induk yang bertipe VARIABLE. */
+  parentId?: number
+  /** Nama induk. Sama isinya dengan `name`, disimpan terpisah supaya `displayVariationName` bisa dipakai apa adanya. */
+  parentName?: string
+  /** Nilai atribut pembeda varian yang dipilih, mis. "1TB · Hitam". */
+  variationLabel?: string
+  /**
+   * Varian yang tersedia. Pada kartu katalog: anak-anak dari induk VARIABLE
+   * ini. Pada pilihan yang sudah masuk rakitan: saudara-saudaranya — sengaja
+   * ikut disimpan supaya tombol "Ganti varian" tetap bekerja setelah halaman
+   * dimuat ulang dari localStorage, tanpa bergantung pada produknya kebetulan
+   * ada di halaman grid yang sedang terbuka.
+   */
+  variations?: BuilderVariation[]
 }
 
 export type BuilderSelection = {

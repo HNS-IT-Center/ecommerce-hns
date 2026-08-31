@@ -274,20 +274,33 @@ termasuk `export type`. Build gagal dengan "Export … doesn't exist in target
 module". Deklarasikan ulang tipenya di pemanggil. Berlaku untuk
 `actions-whatsapp.ts` dan `actions-save.ts`.
 
-**3. Wizard PC Builder MENGUNCI `type: "SIMPLE"` — panel prebuild tidak.**
-`fetchBuilderProducts` di `features/builder/actions.ts` menyaring habis produk
-VARIABLE beserta variannya, jadi di wizard skenario "pilih produk lalu pilih
-variannya" memang tidak pernah terjadi. Panel prebuild membutuhkannya, dan
-karena itu ada jalur query TERPISAH di
-[`lib/pc-prebuild/products.ts`](../src/lib/pc-prebuild/products.ts).
+**3. Produk bervarian: dua jalur query, satu aturan.**
+Wizard PC Builder dulu MENGUNCI `type: "SIMPLE"` karena belum punya UI untuk
+memilih varian. Sejak 31 Agustus 2026 kunci itu dibuka bersamaan dengan
+hadirnya `features/builder/components/variation-picker-dialog.tsx`: kartu
+produk VARIABLE membuka pemilih varian, dan yang masuk rakitan adalah baris
+VARIATION-nya (lihat catatan di bawah). `fetchBuilderProducts` dan
+[`lib/pc-prebuild/products.ts`](../src/lib/pc-prebuild/products.ts) sekarang
+menyaring hal yang sama (`type: { in: ["SIMPLE", "VARIABLE"] }`) — yang
+membedakan tinggal pemakainya: satu melayani pelanggan lengkap dengan sakelar
+tampilan stok, satu melayani panel admin.
 
-**Jangan "menyederhanakan" dengan melonggarkan filter di `fetchBuilderProducts`.**
-Wizard dipakai pelanggan dan tidak punya UI untuk memilih varian; produk
-VARIABLE yang bocor ke sana akan masuk keranjang tanpa varian — harganya nol
-atau harga induk yang bukan harga barang mana pun. Perhatikan juga bahwa induk
-VARIABLE sering berharga nol, jadi query prebuild harus punya cabang `OR`
-khusus untuk induk yang variannya berharga; tanpa itu seluruh produk bervarian
-hilang justru dari panel yang dibuat untuk menanganinya.
+**Yang TIDAK boleh diubah:** produk VARIABLE tidak boleh masuk rakitan tanpa
+varian, di sisi mana pun. Harga induknya sering nol dan bukan harga barang mana
+pun. Kalau pemilih variannya suatu hari dibongkar, kunci `SIMPLE` harus
+kembali bersamanya — keduanya satu paket.
+
+Perhatikan juga bahwa induk VARIABLE sering berharga nol, jadi KEDUA query
+harus punya cabang `OR` khusus untuk induk yang variannya berharga; tanpa itu
+seluruh produk bervarian hilang dari daftar.
+
+**Id yang masuk rakitan adalah id baris VARIATION, bukan id induk.** Baris
+varian juga sebuah `Product` dengan harga, stok, dan SKU sendiri, jadi seluruh
+jalur hilir — `priceCartFromCatalog`, `/build-pc/print`, `recordPcBuildQuote`,
+`SavedPcBuild` — memperlakukannya sebagai produk biasa dan tidak perlu tahu apa
+pun soal varian. Yang dilaporkan terpisah hanyalah `parentName` dan
+`variationLabel`, untuk ditampilkan; aturan penyusunan labelnya ada di
+[`lib/utils/variation.ts`](../src/lib/utils/variation.ts).
 
 **4. `product.id` internal, BUKAN `wooId`.**
 `fetchBuilderProducts` mengembalikan `id: p.id`, dan itulah yang masuk ke store

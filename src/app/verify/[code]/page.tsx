@@ -193,6 +193,15 @@ export default async function VerifyQuotePage({
                       </p>
                     )}
                     <p className="text-sm font-semibold leading-snug">{row.name}</p>
+                    {/* Opsi varian yang dipilih. Dokumen penawaran yang tidak
+                        menyebutkannya tidak bisa diverifikasi terhadap barang
+                        yang sebenarnya dipesan. Quotation lama tidak
+                        memilikinya dan tampil apa adanya. */}
+                    {row.variationLabel && (
+                      <p className="mt-0.5 text-xs font-bold text-sale-red">
+                        {row.variationLabel}
+                      </p>
+                    )}
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {formatRupiah(row.price)} &times; {row.quantity}
                     </p>

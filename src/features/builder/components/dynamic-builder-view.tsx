@@ -1,7 +1,12 @@
 "use client"
 
 import { useEffect, useRef, useState, useMemo } from "react"
-import { useNewBuilderStore, BuilderProduct, type BuilderSelection } from "@/store/new-builder"
+import {
+  useNewBuilderStore,
+  BuilderProduct,
+  type BuilderSelection,
+  type BuilderVariation,
+} from "@/store/new-builder"
 import { PcBuilderStepConfig } from "@/lib/pc-builder/config"
 import { formatRupiah } from "@/lib/utils"
 import { fetchBuilderProducts } from "../actions"
@@ -12,7 +17,9 @@ import {
   UnavailableNotice,
   UnverifiedPriceNotice,
 } from "@/components/shared/price-change-notice"
-import { ProductCardBuilder } from "./product-card-builder"
+import { ProductCardBuilder, type SelectedVariationLine } from "./product-card-builder"
+import { VariationPickerDialog } from "./variation-picker-dialog"
+import { cheapestAvailableVariation } from "@/lib/utils/variation"
 import { SaveBuildDialog } from "./save-build-dialog"
 import { StartNewBuildDialog } from "./start-new-build-dialog"
 import { Check, Edit2, MessageCircle, Printer, Search, X, Loader2, RotateCcw, XCircle, History } from "lucide-react"
@@ -69,6 +76,28 @@ export function DynamicBuilderView({
   // setelah simpan sukses. Direset begitu SaveBuildDialog ditutup.
   const [saveDialogIsForNewBuild, setSaveDialogIsForNewBuild] = useState(false)
   const [isStartNewDialogOpen, setIsStartNewDialogOpen] = useState(false)
+  /**
+   * Pemilih varian: APA yang ditampilkan, dan APAKAH sedang terbuka — sengaja
+   * dua state, bukan satu `BuilderProduct | null`.
+   *
+   * Alasannya bukan selera. `VariationPickerDialog` WAJIB selalu ter-mount dan
+   * dikendalikan lewat prop `open`; membungkusnya dalam `{produk && …}`
+   * membuatnya lahir dalam keadaan terbuka, dan itu bertabrakan dengan
+   * `useBackToClose` sehingga dialognya tertutup pada detik yang sama ia
+   * dibuka — tanpa error, tanpa apa pun di layar. Penjelasan lengkap ada di
+   * berkas dialognya.
+   *
+   * Produknya sengaja TIDAK dikosongkan saat ditutup: isinya harus tetap ada
+   * selama animasi tutup berjalan, kalau tidak dialognya berkedip kosong
+   * sepersekian detik sebelum hilang.
+   *
+   * Yang disimpan adalah PRODUKNYA, bukan sekadar id: kartu induk bisa berasal
+   * dari grid maupun dari rakitan yang dimuat dari localStorage, dan dialognya
+   * harus tetap bisa ditampilkan walau produknya tidak ada di halaman grid yang
+   * sedang terbuka.
+   */
+  const [variationPicker, setVariationPicker] = useState<BuilderProduct | null>(null)
+  const [isVariationPickerOpen, setIsVariationPickerOpen] = useState(false)
   // `null` = belum dievaluasi (sebelum hydration selesai). Dievaluasi TEPAT
   // SEKALI saat `mounted` pertama kali jadi true — lihat efek di bawah.
   // Bukan `useMemo` dari `selections`: kalau begitu, banner ini akan
@@ -395,6 +424,60 @@ export function DynamicBuilderView({
   }
 
   /**
+   * Satu varian dipilih dari `VariationPickerDialog`.
+   *
+   * Yang masuk rakitan adalah BARIS VARIANNYA (`variation.id`), bukan induknya.
+   * Baris varian juga sebuah `Product` dengan harga, stok, dan SKU sendiri,
+   * jadi seluruh jalur hilir — penetapan harga katalog, quotation cetak, pesan
+   * WhatsApp, rakitan tersimpan — tidak perlu tahu apa pun soal varian: bagi
+   * mereka ia produk biasa dengan id biasa. Inilah alasan pendekatan ini
+   * dipilih, dan ia sudah dipakai lebih dulu oleh pemuatan paket PC Prebuild di
+   * `app/build-pc/page.tsx`.
+   *
+   * `attributes` sengaja diwarisi dari INDUK, bukan dari baris variannya.
+   * Atribut sebuah varian adalah atribut pembedanya (Kapasitas, Warna); socket
+   * sebuah motherboard tidak pernah tercatat di sana. Memakai atribut varian
+   * akan membuat langkah yang bergantung pada socket membuang pilihan yang
+   * sebenarnya cocok — diam-diam, tanpa pesan apa pun.
+   */
+  const handlePickVariation = (parent: BuilderProduct, variation: BuilderVariation) => {
+    if (!activeStep) return
+
+    const item: BuilderProduct = {
+      ...parent,
+      id: variation.id,
+      price: variation.price,
+      regularPrice: variation.regularPrice,
+      salePrice: variation.salePrice,
+      stock: variation.stock,
+      image: variation.image ?? parent.image,
+      type: "VARIATION",
+      // `parent.parentId ?? parent.id`: kartunya bisa berupa induk asli dari
+      // grid, atau induk yang dipulihkan dari pilihan yang sudah ada di
+      // rakitan. Keduanya harus menghasilkan id induk yang sama.
+      parentId: parent.parentId ?? parent.id,
+      parentName: parent.name,
+      variationLabel: variation.label,
+      variations: parent.variations,
+    }
+
+    selectProduct(activeStep.id, item)
+    toastManager.add({
+      title: "Komponen Ditambahkan",
+      description: `${activeStep.name}: ${variation.label}`,
+      timeout: 2000,
+      data: { variant: "success" },
+    })
+
+    // Di langkah yang cuma menampung satu komponen, opsi berikutnya MENGGANTI
+    // yang barusan dipilih — membiarkan dialognya terbuka di sana hanya
+    // mengundang salah tekan. Di langkah yang boleh berisi banyak (Storage,
+    // RAM), dialognya justru dibiarkan terbuka supaya dua varian bisa diambil
+    // berturut-turut tanpa membukanya dua kali.
+    if (!activeStep.allowMultiple) setIsVariationPickerOpen(false)
+  }
+
+  /**
    * Rakitan dikosongkan HANYA di sini dan di tombol Reset yang sudah ada —
    * tidak pernah otomatis. Dipanggil dari `StartNewBuildDialog` setelah
    * pelanggan memilih "Mulai Tanpa Simpan"/"Mulai Rakitan Baru" secara
@@ -422,7 +505,48 @@ export function DynamicBuilderView({
 
   // Sort selected items to top
   const activeStepSelections = activeStep ? (Array.isArray(selections[activeStep.id]) ? selections[activeStep.id] : []) : []
-  const selectedProductIds = new Set(activeStepSelections.map(s => s.product.id))
+
+  /**
+   * Kartu di grid adalah INDUK; yang masuk rakitan adalah BARIS VARIANNYA.
+   * Karena itu setiap pencocokan "kartu ini sudah dipilih?" harus lewat id
+   * kartunya, bukan id baris yang tersimpan — kalau tidak, kartu induk sebuah
+   * varian yang sudah dipilih akan tampil seolah belum tersentuh, dan
+   * pelanggan memilihnya lagi dari nol.
+   */
+  const cardIdOf = (product: { id: number; parentId?: number }) => product.parentId ?? product.id
+
+  const selectedCardIds = new Set(activeStepSelections.map(s => cardIdOf(s.product)))
+
+  /**
+   * Memulihkan kartu INDUK dari satu pilihan varian yang tersimpan di rakitan.
+   *
+   * Dipakai hanya untuk komponen yang tidak ada di halaman grid yang sedang
+   * dimuat (lihat `selectedButNotLoaded` di bawah). Harga yang dipasang adalah
+   * varian termurah yang masih ada stoknya — aturan yang SAMA dengan yang
+   * dipakai server saat menyusun kartu induk, lewat fungsi yang sama
+   * (`cheapestAvailableVariation`), supaya kartu pulihan ini tidak pernah
+   * menampilkan angka yang berbeda dari kartu aslinya.
+   */
+  const kartuIndukDariPilihan = (product: BuilderProduct): BuilderProduct => {
+    if (!product.parentId || !product.variations || product.variations.length === 0) {
+      return product
+    }
+
+    const termurah = cheapestAvailableVariation(product.variations)
+
+    return {
+      ...product,
+      id: product.parentId,
+      name: product.parentName ?? product.name,
+      price: termurah?.price ?? product.price,
+      regularPrice: termurah?.regularPrice ?? product.regularPrice,
+      salePrice: termurah?.salePrice ?? product.salePrice,
+      stock: product.variations.reduce((max, v) => Math.max(max, v.stock), 0),
+      parentId: undefined,
+      parentName: undefined,
+      variationLabel: undefined,
+    }
+  }
 
   /**
    * Komponen yang sudah dipilih SELALU ikut ditampilkan, walau tidak ada di
@@ -444,14 +568,24 @@ export function DynamicBuilderView({
    */
   const loadedProductIds = new Set(products.map(p => p.id))
   const searchTerm = debouncedSearch.trim().toLowerCase()
-  const selectedButNotLoaded = activeStepSelections
-    .filter(s => !loadedProductIds.has(s.product.id))
-    .map(s => s.product)
-    .filter(p => !searchTerm || p.name.toLowerCase().includes(searchTerm))
+
+  // Dua varian dari induk yang sama menghasilkan SATU kartu, bukan dua — karena
+  // itu dikumpulkan lewat Map ber-kunci id kartu, bukan lewat `.map()`.
+  const kartuPulihan = new Map<number, BuilderProduct>()
+  for (const sel of activeStepSelections) {
+    const cardId = cardIdOf(sel.product)
+    if (loadedProductIds.has(cardId) || kartuPulihan.has(cardId)) continue
+
+    const kartu = kartuIndukDariPilihan(sel.product)
+    if (searchTerm && !kartu.name.toLowerCase().includes(searchTerm)) continue
+
+    kartuPulihan.set(cardId, kartu)
+  }
+  const selectedButNotLoaded = [...kartuPulihan.values()]
 
   const sortedProducts = [...selectedButNotLoaded, ...products].sort((a, b) => {
-    const aSelected = selectedProductIds.has(a.id)
-    const bSelected = selectedProductIds.has(b.id)
+    const aSelected = selectedCardIds.has(a.id)
+    const bSelected = selectedCardIds.has(b.id)
     if (aSelected && !bSelected) return -1
     if (!aSelected && bSelected) return 1
     return 0
@@ -554,6 +688,17 @@ export function DynamicBuilderView({
                 <div className="mt-1 text-xs font-semibold leading-snug line-clamp-2">
                   {sel.product.name}
                 </div>
+                {/* Opsi varian ditulis sebagai barisnya sendiri, bukan
+                    disambung ke nama produk: inilah satu-satunya yang
+                    membedakan dua baris yang namanya sama persis, dan ia harus
+                    tetap terbaca walau namanya sudah terpotong dua baris di
+                    atas. Label yang sama ikut ke PDF quotation, pesan WhatsApp,
+                    dan build log di /admin/logs. */}
+                {sel.product.variationLabel && (
+                  <div className="mt-0.5 inline-flex max-w-full items-center rounded bg-blue-600/10 px-1.5 py-0.5 text-[10px] font-bold leading-tight text-blue-700 dark:text-blue-300">
+                    <span className="truncate">{sel.product.variationLabel}</span>
+                  </div>
+                )}
                 <div className="mt-1 flex items-baseline gap-1.5">
                   <span className="text-xs font-black text-sale-red">
                     {isUnavailable(sel.product)
@@ -841,25 +986,31 @@ export function DynamicBuilderView({
             harus tetap melihatnya, bukan kehilangan jejaknya setelah
             perubahan pertama. */}
         {presetPending && presetLoad && (
-          <div className="mb-6 mt-[112px] md:mt-0 flex flex-col items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900 dark:bg-amber-950/30 print:hidden sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-            <div className="text-amber-900 dark:text-amber-200">
-              <span className="font-semibold">Muat paket &ldquo;{presetLoad.name}&rdquo;?</span>{" "}
+          /* Warnanya tetap amber, BUKAN biru seperti banner di bawah: ini
+             banner peringatan — menekan tombolnya membuang rakitan yang sedang
+             disusun. Yang dinaikkan cuma kontrasnya, mengikuti perlakuan yang
+             sama dengan banner "rakitan sebelumnya": tulisan hitam di atas
+             amber pastel, tombol berlatar putih yang menjadi gelap saat
+             disentuh. */
+          <div className="mb-6 mt-[112px] md:mt-0 flex flex-col items-start gap-2 rounded-xl border border-amber-300 bg-amber-100 px-4 py-3 text-sm text-neutral-900 dark:border-amber-800/60 dark:bg-amber-200/90 dark:text-neutral-900 print:hidden sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+            <div>
+              <span className="font-bold">Muat paket &ldquo;{presetLoad.name}&rdquo;?</span>{" "}
               Rakitan yang sedang kamu susun akan diganti.
             </div>
-            <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
+            <div className="flex shrink-0 items-center gap-1.5 self-end sm:self-auto">
               <button
                 onClick={() => {
                   hydrateSelections(presetLoad.selections)
                   setPresetPending(false)
                   setShowPreviousBuildBanner(false)
                 }}
-                className="cursor-pointer rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-700"
+                className="cursor-pointer rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-xs font-bold text-neutral-900 shadow-sm transition-colors hover:border-neutral-900 hover:bg-neutral-900 hover:text-white"
               >
                 Muat paket
               </button>
               <button
                 onClick={() => setPresetPending(false)}
-                className="cursor-pointer rounded-lg px-2.5 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100 dark:text-amber-200 dark:hover:bg-amber-900/40"
+                className="cursor-pointer rounded-lg border border-transparent px-2.5 py-1.5 text-xs font-semibold text-neutral-900 transition-colors hover:bg-neutral-900/10"
               >
                 Pertahankan rakitan saya
               </button>
@@ -868,22 +1019,32 @@ export function DynamicBuilderView({
         )}
 
         {showPreviousBuildBanner && (
-          <div className="mb-6 mt-[112px] md:mt-0 flex flex-col items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm dark:border-blue-900 dark:bg-blue-950/30 print:hidden sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-            <div className="flex items-center gap-2 text-blue-800 dark:text-blue-300">
+          /* Latar biru pastel dengan tulisan HITAM, bukan biru di atas biru.
+             Versi sebelumnya memakai `text-blue-800` di atas `bg-blue-50` —
+             dua warna bertetangga yang membuat kalimatnya nyaris menyatu dengan
+             latarnya dan susah dibaca.
+
+             Warnanya ditulis eksplisit (`bg-blue-100`, `text-neutral-900`) dan
+             TIDAK ikut berbalik di mode gelap: banner ini harus tetap kartu
+             pastel bertulisan hitam di kedua tema, sama seperti banner amber di
+             atasnya. Karena itu varian `dark:` di sini menyetel ulang ke nilai
+             terang, bukan menggelapkannya. */
+          <div className="mb-6 mt-[112px] md:mt-0 flex flex-col items-start gap-2 rounded-xl border border-blue-300 bg-blue-100 px-4 py-3 text-sm text-neutral-900 dark:border-blue-700/60 dark:bg-blue-200/90 dark:text-neutral-900 print:hidden sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+            <div className="flex items-center gap-2">
               <History className="h-4 w-4 shrink-0" />
-              <span className="font-medium">Melanjutkan rakitan sebelumnya</span>
+              <span className="font-semibold">Melanjutkan rakitan sebelumnya</span>
             </div>
-            <div className="flex shrink-0 items-center gap-1 self-end sm:self-auto">
+            <div className="flex shrink-0 items-center gap-1.5 self-end sm:self-auto">
               <button
                 onClick={() => setIsStartNewDialogOpen(true)}
-                className="cursor-pointer rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-800 hover:bg-blue-100 dark:text-blue-300 dark:hover:bg-blue-900/40"
+                className="cursor-pointer rounded-lg border border-blue-400 bg-white px-3 py-1.5 text-xs font-bold text-neutral-900 shadow-sm transition-colors hover:border-neutral-900 hover:bg-neutral-900 hover:text-white"
               >
                 Mulai Rakitan Baru
               </button>
               <button
                 onClick={() => setShowPreviousBuildBanner(false)}
                 aria-label="Tutup pemberitahuan"
-                className="cursor-pointer rounded-lg p-1.5 text-blue-800 hover:bg-blue-100 dark:text-blue-300 dark:hover:bg-blue-900/40"
+                className="cursor-pointer rounded-lg border border-transparent p-1.5 text-neutral-900 transition-colors hover:bg-neutral-900/10"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -1010,14 +1171,51 @@ export function DynamicBuilderView({
             <div className="space-y-6 print:hidden">
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
                 {sortedProducts.map(product => {
-                  const sel = activeStepSelections.find(s => s.product.id === product.id)
-                  const quantity = sel ? sel.quantity : 0
+                  const punyaVarian = (product.variations?.length ?? 0) > 0
+
+                  // Satu kartu induk bisa menyumbang BEBERAPA baris rakitan
+                  // (dua NVMe berbeda kapasitas), jadi yang dikumpulkan di sini
+                  // adalah seluruh barisnya, bukan satu.
+                  const barisKartu = activeStepSelections.filter(
+                    s => cardIdOf(s.product) === product.id
+                  )
+                  const quantity = barisKartu.reduce((total, s) => total + s.quantity, 0)
+
+                  // Disaring dengan `parentId`, BUKAN dengan `variationLabel`:
+                  // varian yang kebetulan tidak punya nilai atribut sama sekali
+                  // tetap sebuah varian, dan membuangnya di sini akan membuat
+                  // kartunya tampak terpilih tapi tanpa satu pun pengatur
+                  // kuantitas — tidak bisa dikurangi, tidak bisa dihapus.
+                  const selectedVariations: SelectedVariationLine[] = barisKartu
+                    .filter(s => s.product.parentId)
+                    .map(s => ({
+                      variationId: s.product.id,
+                      label: s.product.variationLabel ?? s.product.name,
+                      quantity: s.quantity,
+                      // Stok dari daftar varian kartu ini kalau ada — itu hasil
+                      // pembacaan katalog barusan, sedangkan angka di dalam
+                      // pilihan tersimpan bisa berumur berminggu-minggu.
+                      stock:
+                        product.variations?.find(v => v.id === s.product.id)?.stock ??
+                        s.product.stock,
+                    }))
+
                   return (
                     <ProductCardBuilder 
                       key={product.id}
                       product={product}
                       quantity={quantity}
                       onSelect={() => {
+                        // Produk bervarian TIDAK PERNAH masuk rakitan langsung
+                        // dari kartunya: harga induknya sering nol dan bukan
+                        // harga barang mana pun (CLAUDE.md §2.7). Tombolnya
+                        // membuka pemilih varian, dan varian itulah yang masuk.
+                        if (punyaVarian) {
+                          setVariationPicker(product)
+                          setIsVariationPickerOpen(true)
+                          return
+                        }
+
                         selectProduct(activeStep!.id, product)
                         toastManager.add({
                           title: "Komponen Ditambahkan",
@@ -1027,6 +1225,11 @@ export function DynamicBuilderView({
                         })
                       }}
                       onUpdateQuantity={(q) => updateQuantity(activeStep!.id, product.id, q)}
+                      onUpdateVariationQuantity={(variationId, q) =>
+                        updateQuantity(activeStep!.id, variationId, q)
+                      }
+                      selectedVariations={selectedVariations}
+                      allowMultiple={activeStep?.allowMultiple ?? false}
                       displayAttributeIds={configuredAttributeIds}
                     />
                   )
@@ -1068,6 +1271,27 @@ export function DynamicBuilderView({
         }}
         onConfirm={handleConfirmSaveBuild}
         onSaved={saveDialogIsForNewBuild ? handleDiscardAndStartNew : undefined}
+      />
+
+      {/* SELALU dirender — lihat catatan "Selalu ter-mount" di
+          variation-picker-dialog.tsx. Membungkusnya dalam `{variationPicker &&
+          …}` membuat dialognya tidak pernah sempat terlihat. */}
+      <VariationPickerDialog
+        open={isVariationPickerOpen}
+        onOpenChange={(next) => {
+          if (!next) setIsVariationPickerOpen(false)
+        }}
+        product={variationPicker}
+        selectedVariationIds={
+          variationPicker
+            ? activeStepSelections
+                .filter((s) => cardIdOf(s.product) === variationPicker.id)
+                .map((s) => s.product.id)
+            : []
+        }
+        onPick={(variation) => {
+          if (variationPicker) handlePickVariation(variationPicker, variation)
+        }}
       />
 
       <StartNewBuildDialog

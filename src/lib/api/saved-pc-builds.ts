@@ -2,6 +2,7 @@ import "server-only"
 
 import { getPrisma } from "@/lib/prisma/client"
 import { displayStockCount, getStockDisplayMode } from "@/lib/api/stock-display"
+import { buildVariationLabel } from "@/lib/utils/variation"
 
 /** Batas jumlah rakitan yang boleh disimpan satu akun. */
 export const MAX_SAVED_BUILDS_PER_CUSTOMER = 20
@@ -52,6 +53,13 @@ export type ResolvedBuildItem = {
     /** Harga satuan katalog SAAT INI. */
     currentPrice: number
     image: string | null
+    /**
+     * Opsi varian yang dipilih, mis. "1TB · Hitam". `null` untuk komponen
+     * biasa. Dilaporkan terpisah dari `name` supaya halaman bisa
+     * menampilkannya sebagai barisnya sendiri — dua kapasitas dari SSD yang
+     * sama bisa tersimpan dengan nama yang persis sama.
+     */
+    variationLabel: string | null
   } | null
   /** `currentPrice - savedPrice` per satuan. Positif = naik. `null` kalau produk tidak tersedia. */
   priceDelta: number | null
@@ -112,6 +120,16 @@ async function resolveBuild(id: string, name: string, itemsJson: unknown, create
           regularPrice: true,
           salePrice: true,
           images: { orderBy: { position: "asc" }, take: 1, select: { url: true } },
+          // Terisi hanya kalau barisnya sebuah varian: nama & foto ditumpangkan
+          // dari induk, pembedanya diambil dari nilai atributnya sendiri.
+          parent: {
+            select: {
+              name: true,
+              slug: true,
+              images: { orderBy: { position: "asc" }, take: 1, select: { url: true } },
+            },
+          },
+          attributes: { select: { value: { select: { value: true } } } },
         },
       })
     : []
@@ -141,10 +159,13 @@ async function resolveBuild(id: string, name: string, itemsJson: unknown, create
       savedPrice: ref.price,
       product: {
         id: product.id,
-        name: product.name,
-        slug: product.slug,
+        name: product.parent?.name ?? product.name,
+        slug: product.parent?.slug ?? product.slug,
         currentPrice,
-        image: product.images[0]?.url ?? null,
+        image: product.images[0]?.url ?? product.parent?.images[0]?.url ?? null,
+        variationLabel: product.parent
+          ? buildVariationLabel(product.attributes.map((a) => a.value.value))
+          : null,
       },
       priceDelta,
     }
@@ -300,6 +321,19 @@ export type BuilderReadyProduct = {
   stock: number
   type: string
   attributes: { attributeId: number; attributeName: string; valueId: number; valueName: string }[]
+  /** Sama artinya dengan medan bernama sama di `BuilderProduct` — lihat store/new-builder.ts. */
+  parentId?: number
+  parentName?: string
+  variationLabel?: string
+  variations?: {
+    id: number
+    label: string
+    price: number
+    regularPrice: number
+    salePrice: number
+    stock: number
+    image?: string
+  }[]
 }
 
 export type BuilderReadySelections = Record<string, { product: BuilderReadyProduct; quantity: number }[]>
@@ -344,6 +378,42 @@ export async function getSavedBuildForBuilder(
               value: { select: { id: true, value: true } },
             },
           },
+          /**
+           * Terisi hanya kalau barisnya sebuah varian. Dari sini datang tiga
+           * hal yang tidak dimiliki baris varian itu sendiri: nama yang layak
+           * dibaca, ATRIBUT KOMPATIBILITAS (socket, form factor — atribut
+           * varian hanyalah pembedanya: kapasitas, warna), dan daftar saudara
+           * variannya supaya tombol "Ganti Opsi" di wizard langsung berfungsi
+           * tanpa memuat ulang apa pun.
+           */
+          parent: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              images: { orderBy: { position: "asc" }, take: 1, select: { url: true } },
+              attributes: {
+                select: {
+                  attribute: { select: { id: true, name: true } },
+                  value: { select: { id: true, value: true } },
+                },
+              },
+              variations: {
+                where: { status: "PUBLISHED" },
+                orderBy: { id: "asc" },
+                select: {
+                  id: true,
+                  name: true,
+                  regularPrice: true,
+                  salePrice: true,
+                  stockQty: true,
+                  stockStatus: true,
+                  images: { orderBy: { position: "asc" }, take: 1, select: { url: true } },
+                  attributes: { select: { value: { select: { value: true } } } },
+                },
+              },
+            },
+          },
         },
       })
     : []
@@ -362,10 +432,15 @@ export async function getSavedBuildForBuilder(
     const salePrice = product.salePrice ? Number(product.salePrice) : 0
     const price = salePrice > 0 ? salePrice : regularPrice
 
+    const induk = product.parent
+
     const builderProduct: BuilderReadyProduct = {
       id: product.id,
-      name: product.name,
-      slug: product.slug,
+      // Nama induk untuk baris varian: varian warisan impor WooCommerce sering
+      // bernama sama persis dengan induknya, jadi pembedanya HARUS
+      // `variationLabel`, bukan `name`.
+      name: induk?.name ?? product.name,
+      slug: induk?.slug ?? product.slug,
       type: product.type,
       price,
       regularPrice,
@@ -375,13 +450,38 @@ export async function getSavedBuildForBuilder(
         product.stockStatus === "OUTOFSTOCK" ? 0 : (product.stockQty ?? 10),
         stockDisplayMode
       ),
-      image: product.images[0]?.url,
-      attributes: product.attributes.map((a) => ({
+      image: product.images[0]?.url ?? induk?.images[0]?.url,
+      // Atribut kompatibilitas dari INDUK — alasannya ada di select di atas.
+      attributes: (induk?.attributes ?? product.attributes).map((a) => ({
         attributeId: a.attribute.id,
         attributeName: a.attribute.name,
         valueId: a.value.id,
         valueName: a.value.value,
       })),
+      ...(induk
+        ? {
+            parentId: induk.id,
+            parentName: induk.name,
+            variationLabel:
+              buildVariationLabel(product.attributes.map((a) => a.value.value)) ?? undefined,
+            variations: induk.variations.map((v) => {
+              const vRegular = v.regularPrice ? Number(v.regularPrice) : 0
+              const vSale = v.salePrice ? Number(v.salePrice) : 0
+              return {
+                id: v.id,
+                label: buildVariationLabel(v.attributes.map((a) => a.value.value)) ?? v.name,
+                price: vSale > 0 ? vSale : vRegular,
+                regularPrice: vRegular,
+                salePrice: vSale,
+                stock: displayStockCount(
+                  v.stockStatus === "OUTOFSTOCK" ? 0 : (v.stockQty ?? 10),
+                  stockDisplayMode
+                ),
+                image: v.images[0]?.url,
+              }
+            }),
+          }
+        : {}),
     }
 
     if (!selections[ref.stepId]) selections[ref.stepId] = []

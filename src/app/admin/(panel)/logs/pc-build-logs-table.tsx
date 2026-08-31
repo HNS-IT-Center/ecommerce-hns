@@ -24,6 +24,12 @@ export type PcBuildQuoteRow = {
     price: number
     quantity: number
     stepName: string | null
+    /**
+     * Opsi varian yang dipilih pelanggan, mis. "1TB · Hitam". Opsional karena
+     * quotation yang dicetak sebelum medan ini ada tidak memilikinya — bukan
+     * karena boleh diabaikan saat ada.
+     */
+    variationLabel?: string | null
   }>
   total: number
   itemCount: number
@@ -213,6 +219,16 @@ export function PcBuildLogsTable({ quotes, totalPages, currentPage }: Props) {
                         </p>
                       )}
                       <p className="text-xs font-semibold leading-snug">{item.name}</p>
+                      {/* Opsi variannya ditulis sebagai barisnya sendiri: dua
+                          kapasitas dari SSD yang sama tersimpan dengan `name`
+                          yang bisa persis sama, jadi tanpa baris ini staff
+                          melihat dua komponen kembar dengan dua harga berbeda
+                          dan tidak punya cara tahu mana yang mana. */}
+                      {item.variationLabel && (
+                        <p className="mt-0.5 inline-flex rounded bg-blue-600/10 px-1.5 py-0.5 text-[10px] font-bold leading-tight text-blue-700 dark:text-blue-300">
+                          {item.variationLabel}
+                        </p>
+                      )}
                       <p className="mt-0.5 text-[11px] text-muted-foreground">
                         {formatRupiah(item.price)} &times; {item.quantity}
                       </p>

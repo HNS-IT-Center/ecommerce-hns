@@ -3,6 +3,7 @@
 import { priceCartFromCatalog } from "@/lib/api/woocommerce/cart-pricing";
 import { getActiveStores } from "@/lib/api/stores";
 import { normalizePhone } from "@/features/stores/lib/maps";
+import { displayVariationName } from "@/lib/utils/variation";
 
 /**
  * Menyiapkan pesan WhatsApp untuk rakitan PC, dengan harga dari katalog.
@@ -74,7 +75,12 @@ export async function prepareBuildWhatsApp(
     const step = stepPerId.get(l.productId);
     const prefix = step ? `${step}: ` : "";
     const qty = l.quantity > 1 ? ` x${l.quantity}` : "";
-    return `- ${prefix}${l.name}${qty} (${rupiah(l.lineTotal)})`;
+    // Opsi varian WAJIB ikut ke pesan. Rakitan yang menyebut "SSD Samsung 980"
+    // tanpa kapasitasnya adalah rakitan yang harganya tidak bisa dicocokkan CS
+    // dengan barang mana pun di rak — dan selisih antara 1TB dan 4TB pada
+    // rakitan puluhan juta bukan selisih yang bisa dibereskan di chat.
+    const nama = displayVariationName(l);
+    return `- ${prefix}${nama}${qty} (${rupiah(l.lineTotal)})`;
   });
 
   const rinci =

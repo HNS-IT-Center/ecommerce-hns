@@ -3,23 +3,29 @@ import "server-only"
 import { Prisma } from "@prisma/client"
 
 import { getPrisma } from "@/lib/prisma/client"
+import { buildVariationLabel } from "@/lib/utils/variation"
 
 /**
  * Pencarian produk untuk panel PC Prebuild.
  *
  * ## Kenapa TIDAK memakai `fetchBuilderProducts`
  *
- * Wizard PC Builder mengunci `type: "SIMPLE"`
- * ([features/builder/actions.ts](../../features/builder/actions.ts)). Produk
- * bertipe VARIABLE beserta seluruh VARIATION-nya disaring habis sebelum sampai
- * ke wizard — jadi di sana skenario "pilih produk, lalu pilih variannya" memang
- * tidak pernah terjadi.
+ * Dulu alasannya tipe: wizard mengunci `type: "SIMPLE"` karena belum punya UI
+ * untuk memilih varian. Alasan itu sudah gugur — sejak
+ * `VariationPickerDialog` ada, `fetchBuilderProducts` juga mengembalikan
+ * SIMPLE + VARIABLE dengan aturan yang sama persis seperti di sini
+ * ([features/builder/actions.ts](../../features/builder/actions.ts)).
  *
- * Panel prebuild membutuhkannya. Yang TIDAK boleh dilakukan adalah melonggarkan
- * filter di `fetchBuilderProducts`: wizard dipakai pelanggan dan tidak punya UI
- * untuk memilih varian, jadi produk VARIABLE yang bocor ke sana akan masuk
- * keranjang tanpa varian — harganya nol atau harga induk yang bukan harga
- * barang mana pun. Berkas ini karena itu berdiri sendiri.
+ * Yang tersisa sebagai pembeda adalah PEMAKAINYA. Berkas ini melayani panel
+ * admin: tidak menerapkan sakelar tampilan stok pelanggan, tidak memakai bentuk
+ * `BuilderProduct` milik store wizard, dan bebas berubah mengikuti kebutuhan
+ * penyusunan paket tanpa menyentuh jalur yang dipakai pelanggan. Menyatukan
+ * keduanya berarti setiap perubahan di panel admin ikut mengubah grid yang
+ * dilihat pelanggan.
+ *
+ * Yang HARUS tetap dijaga: produk VARIABLE tidak boleh masuk rakitan tanpa
+ * varian, di sisi mana pun. Harga induknya sering nol dan bukan harga barang
+ * mana pun (CLAUDE.md §2.7).
  *
  * ## Aturan harga & stok SAMA PERSIS
  *
@@ -116,17 +122,12 @@ const PILIH_PRODUK = {
 type BarisProduk = Prisma.ProductGetPayload<{ select: typeof PILIH_PRODUK }>
 
 /**
- * Label varian dirangkai dari NILAI ATRIBUTnya, bukan dari `name`.
- *
- * Nama baris VARIATION di WooCommerce biasanya mengulang seluruh nama induk
- * ("SSD SAMSUNG 980 NVME M.2 - 1TB"), yang di dalam daftar varian jadi
- * pengulangan panjang yang menyembunyikan satu-satunya bagian yang membedakan.
- * Kalau atributnya kosong, barulah namanya dipakai apa adanya.
+ * Label varian dirangkai dari NILAI ATRIBUTnya, bukan dari `name` — alasan
+ * lengkapnya ada di `lib/utils/variation.ts`. Kalau atributnya kosong, barulah
+ * namanya dipakai apa adanya.
  */
 function labelVarian(varian: BarisProduk["variations"][number]): string {
-  const nilai = varian.attributes.map((a) => a.value.value.trim()).filter(Boolean)
-  if (nilai.length > 0) return nilai.join(" · ")
-  return varian.name
+  return buildVariationLabel(varian.attributes.map((a) => a.value.value)) ?? varian.name
 }
 
 function petakan(p: BarisProduk): PrebuildPickerProduct {

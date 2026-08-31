@@ -5,6 +5,7 @@ import {
 } from "@/lib/pc-builder/config"
 import { formatRupiah } from "@/lib/utils"
 import { recordPcBuildQuote } from "@/lib/api/pc-build-quotes"
+import { buildVariationLabel } from "@/lib/utils/variation"
 import { env } from "@/config/env"
 import { PrintClientComponent } from "./print-client-component"
 
@@ -130,6 +131,17 @@ export default async function PrintPcBuilderPage({
           take: 1,
           select: { url: true },
         },
+        // Terisi hanya kalau barisnya sebuah varian. Opsi yang dipilih
+        // pelanggan (mis. "1TB · Hitam") HARUS tercetak: quotation yang
+        // menyebut "SSD Samsung 980" tanpa kapasitasnya adalah dokumen yang
+        // tidak bisa dicocokkan dengan barang mana pun di rak.
+        parent: {
+          select: {
+            name: true,
+            images: { orderBy: { position: "asc" }, take: 1, select: { url: true } },
+          },
+        },
+        attributes: { select: { value: { select: { value: true } } } },
       },
     }),
     getPcBuilderConfig(),
@@ -151,11 +163,20 @@ export default async function PrintPcBuilderPage({
       const regularPrice = product.regularPrice ? Number(product.regularPrice) : 0
       const price = salePrice > 0 ? salePrice : regularPrice
 
+      // Nama induk yang dipakai, bukan nama baris variannya: varian warisan
+      // impor WooCommerce sering bernama sama persis dengan induknya, jadi yang
+      // membedakan HARUS labelnya. Lihat lib/utils/variation.ts.
+      const variationLabel = product.parent
+        ? buildVariationLabel(product.attributes.map((a) => a.value.value))
+        : null
+
       return {
         id: product.id,
-        name: product.name,
+        name: product.parent?.name ?? product.name,
+        parentName: product.parent?.name ?? null,
+        variationLabel,
         sku: product.sku,
-        image: product.images[0]?.url,
+        image: product.images[0]?.url ?? product.parent?.images[0]?.url,
         price,
         quantity: item.quantity,
         subtotal: price * item.quantity,
@@ -212,6 +233,8 @@ export default async function PrintPcBuilderPage({
       lineItems.map((item) => ({
         productId: item.id,
         name: item.name,
+        parentName: item.parentName,
+        variationLabel: item.variationLabel,
         sku: item.sku,
         image: item.image,
         price: item.price,
@@ -366,6 +389,11 @@ export default async function PrintPcBuilderPage({
                     {/* Nama panjang membungkus ke bawah, tidak dipotong. */}
                     <td className="py-2 pr-2.5 align-middle">
                       <p className="text-[11.5px] font-bold leading-snug">{item.name}</p>
+                      {item.variationLabel && (
+                        <p className="mt-0.5 text-[10px] font-bold leading-none" style={{ color: INK_RED }}>
+                          {item.variationLabel}
+                        </p>
+                      )}
                       {item.sku && (
                         <p className="mt-0.5 text-[9px] leading-none" style={{ color: INK_GRAY }}>
                           SKU {item.sku}

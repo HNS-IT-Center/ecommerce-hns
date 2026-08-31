@@ -647,6 +647,78 @@ dihapus otomatis.
 
 ---
 
+## 14. PC Builder: produk bervarian (31 Agustus 2026)
+
+### `fetchBuilderProducts` tidak lagi mengunci `type: "SIMPLE"`
+
+Filternya kini `type: { in: ["SIMPLE", "VARIABLE"] }`, ditambah cabang `OR`
+untuk induk VARIABLE yang harganya nol tapi variannya berharga — tanpa cabang
+itu seluruh produk bervarian tetap hilang walau filternya sudah longgar.
+VARIATION **tidak** ikut: ia dipilih lewat induknya, bukan berdiri sendiri di
+grid.
+
+Pelonggaran ini SATU PAKET dengan
+`features/builder/components/variation-picker-dialog.tsx`. Kuncinya dulu ada
+justru karena wizard tidak punya cara memilih varian; kalau dialog itu suatu
+hari dibongkar, kuncinya harus kembali bersamanya.
+
+### Yang masuk rakitan adalah id baris VARIATION
+
+Baris varian juga sebuah `Product` dengan harga, stok, dan SKU sendiri. Karena
+itu `BuilderProduct.id` diisi id variannya, dan seluruh jalur hilir tidak
+berubah sama sekali:
+
+| Jalur | Perlakuannya |
+|---|---|
+| `priceCartFromCatalog()` | produk biasa, satu id |
+| `/build-pc/print?items=` | format `stepId:productId:qty` tetap, tautan lama tetap sah |
+| `recordPcBuildQuote()` | satu baris item, seperti komponen lain |
+| `SavedPcBuild.items` | `{ stepId, productId, quantity, price }` tetap |
+
+Alternatifnya — menyimpan id induk + `variationId` terpisah — menuntut
+perubahan di kelima bentuk di atas sekaligus, termasuk format URL yang sudah
+tersebar lewat WhatsApp. Jalur harga adalah tempat yang paling tidak boleh
+disentuh tanpa alasan (CLAUDE.md §2.7).
+
+Konsekuensi yang harus diingat: `BuilderProduct.attributes` untuk pilihan
+varian diisi dari **INDUK**, bukan dari baris variannya. Atribut sebuah varian
+adalah pembedanya (Kapasitas, Warna); socket sebuah motherboard tidak pernah
+tercatat di sana, dan memakai atribut varian akan membuat langkah yang
+bergantung pada socket membuang pilihan yang sebenarnya cocok — diam-diam.
+
+### Opsi yang dipilih dilaporkan terpisah, tidak disambung ke `name`
+
+Tiga lapisan baca bertambah dua medan, keduanya `null` untuk komponen biasa:
+
+| Lapisan | Medan baru |
+|---|---|
+| `PricedCartLine` (`cart-pricing.ts`) | `parentName`, `variationLabel` |
+| `QuoteLineItem` (`pc-build-quotes.ts`) | `parentName?`, `variationLabel?` |
+| `ResolvedBuildItem.product` (`saved-pc-builds.ts`) | `variationLabel` |
+
+Semuanya dirangkai lewat satu aturan di
+[`lib/utils/variation.ts`](../src/lib/utils/variation.ts), yang menyusun label
+dari **nilai atribut** — bukan dari `name`. Nama baris varian tidak bisa
+dipercaya sebagai pembeda: varian warisan impor WooCommerce sering hanya
+mengulang nama induknya utuh, sehingga dua baris bisa terbaca identik untuk dua
+barang berbeda harga.
+
+`name` sendiri sengaja TIDAK diubah isinya. `prepareCheckoutWhatsApp`
+memakainya apa adanya untuk pesan pemesanan dan daftar barang yang hilang;
+menyisipkan label ke dalamnya berarti mengubah jalur checkout demi kebutuhan PC
+Builder. Karena itu pula `PrepareCheckoutResult.lines` sekarang bertipe
+`CheckoutResultLine` sendiri, bukan meminjam `PricedCartLine` — ia memang tidak
+pernah mengisi kedua medan itu.
+
+`QuoteLineItem` menumpang kolom `items` yang bertipe Json, jadi tambahan ini
+**tidak butuh migrasi** dan tidak merusak quotation lama: yang dicetak sebelum
+medan ini ada tinggal tidak memilikinya, dan pembacanya jatuh ke `name`.
+Keduanya juga TIDAK ikut ke `computeContentHash` — varian berbeda sudah pasti
+id berbeda, jadi menambahkannya tidak memisahkan apa pun yang belum terpisah,
+tapi akan menerbitkan kode baru untuk quotation lama yang isinya tidak berubah.
+
+---
+
 ## Sinkronisasi WooCommerce (`lib/api/woocommerce/sync/`)
 
 > Ditambahkan 29 Agustus 2026. Baca ini sebelum menyentuh apa pun di folder itu.

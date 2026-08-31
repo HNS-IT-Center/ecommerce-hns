@@ -1,6 +1,7 @@
 import { ProductStatus } from "@prisma/client";
 import { getPrisma } from "@/lib/prisma/client";
 import { decodeHtmlEntities } from "@/lib/utils/html";
+import { buildVariationLabel } from "@/lib/utils/variation";
 
 /**
  * Membaca ulang harga keranjang dari database.
@@ -34,6 +35,23 @@ export type PricedCartLine = {
   /** Harga satuan menurut katalog, sesudah obral yang masih berlaku. */
   unitPrice: number;
   lineTotal: number;
+  /**
+   * Terisi HANYA kalau barisnya sebuah varian: nama induknya, dan nilai atribut
+   * pembedanya (mis. "1TB · Hitam").
+   *
+   * Keduanya sengaja dilaporkan TERPISAH dari `name`, bukan disambung ke
+   * dalamnya. `name` sudah dipakai apa adanya oleh checkout (`features/
+   * checkout/actions.ts`) untuk pesan WhatsApp dan daftar barang yang hilang;
+   * mengubah isinya berarti mengubah jalur pemesanan yang sudah berjalan demi
+   * kebutuhan PC Builder. Pemanggil yang memang butuh nama lengkapnya
+   * merangkainya sendiri lewat `displayVariationName`.
+   *
+   * Kenapa label tidak diambil dari `name` saja: nama baris varian tidak bisa
+   * dipercaya sebagai pembeda — varian warisan impor WooCommerce sering hanya
+   * mengulang nama induknya utuh. Lihat `lib/utils/variation.ts`.
+   */
+  parentName: string | null;
+  variationLabel: string | null;
 };
 
 export type PricedCart = {
@@ -117,6 +135,10 @@ export async function priceCartFromCatalog(
       regularPrice: true,
       salePrice: true,
       saleEndDate: true,
+      // Terisi hanya untuk baris VARIATION. Tanpa keduanya, CS menerima dua
+      // baris bernama sama persis untuk dua barang yang berbeda kapasitas.
+      parent: { select: { name: true } },
+      attributes: { select: { value: { select: { value: true } } } },
     },
   });
 
@@ -144,6 +166,13 @@ export async function priceCartFromCatalog(
       quantity,
       unitPrice,
       lineTotal: unitPrice * quantity,
+      parentName: row.parent ? decodeHtmlEntities(row.parent.name) : null,
+      // Atribut hanya berarti sebagai "varian" kalau barisnya memang punya
+      // induk. Produk biasa juga punya atribut, dan menampilkannya sebagai
+      // varian akan membuat setiap barang tampak bervarian.
+      variationLabel: row.parent
+        ? buildVariationLabel(row.attributes.map((a) => a.value.value))
+        : null,
     });
   }
 

@@ -91,6 +91,14 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                   {item.product ? (
                     <>
                       <div className="truncate text-sm font-semibold">{item.product.name}</div>
+                      {/* Opsi varian yang dipilih. Tanpa baris ini, dua
+                          kapasitas dari SSD yang sama tampil sebagai dua baris
+                          bernama identik dengan harga berbeda. */}
+                      {item.product.variationLabel && (
+                        <div className="mt-0.5 inline-flex rounded bg-blue-600/10 px-1.5 py-0.5 text-[10px] font-bold leading-tight text-blue-700 dark:text-blue-300">
+                          {item.product.variationLabel}
+                        </div>
+                      )}
                       <div className="mt-0.5 flex items-baseline gap-1.5">
                         <span className="text-sm font-bold text-sale-red">
                           {formatRupiah(item.product.currentPrice * item.quantity)}

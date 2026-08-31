@@ -3,6 +3,7 @@ import "server-only"
 import { unstable_cache } from "next/cache"
 
 import { getPrisma } from "@/lib/prisma/client"
+import { buildVariationLabel, displayVariationName } from "@/lib/utils/variation"
 import {
   DEFAULT_STOCK_DISPLAY_MODE,
   displayStockCount,
@@ -53,10 +54,7 @@ export type PrebuildProduct = {
 
 /** Nama yang layak dibaca manusia: induk + varian kalau ada. */
 export function namaTampil(product: PrebuildProduct): string {
-  if (product.parentName && product.variationLabel) {
-    return `${product.parentName} — ${product.variationLabel}`
-  }
-  return product.name
+  return displayVariationName(product)
 }
 
 export type ResolvedPrebuildAlternative = {
@@ -197,7 +195,7 @@ export async function getPrebuildProducts(
       return rows.map((p) => {
         const sale = p.salePrice ? Number(p.salePrice) : 0
         const regular = p.regularPrice ? Number(p.regularPrice) : 0
-        const nilaiAtribut = p.attributes.map((a) => a.value.value.trim()).filter(Boolean)
+        const labelAtribut = buildVariationLabel(p.attributes.map((a) => a.value.value))
 
         return {
           id: p.id,
@@ -210,7 +208,7 @@ export async function getPrebuildProducts(
           // Label varian hanya berarti kalau barisnya memang punya induk.
           // Produk SIMPLE juga punya atribut, dan menampilkannya sebagai
           // "varian" akan membuat setiap komponen tampak bervarian.
-          variationLabel: p.parent && nilaiAtribut.length > 0 ? nilaiAtribut.join(" · ") : null,
+          variationLabel: p.parent ? labelAtribut : null,
         }
       })
     },
