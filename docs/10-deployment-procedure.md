@@ -82,6 +82,38 @@ npx prisma migrate status
 
 ---
 
+### Migrasi ikut berjalan saat build (31 Agustus 2026)
+
+`npm run build` sekarang berbunyi **`prisma migrate deploy && next build`**.
+
+Alasannya sebuah kegagalan deploy yang nyata: migrasi `add_banner_batches` dibuat
+dan di-commit pada 29 Agustus, tapi tidak pernah diterapkan ke database. Karena
+Prisma Client menyertakan seluruh kolom skalar di setiap query, **semua**
+pembacaan `promo_banners` gagal dengan `P2022 — The column
+promo_banners.batch_id does not exist`, bukan hanya yang menyentuh kolom baru
+itu. Beranda ikut mati, dan build deploy berhenti di langkah prerender `/`.
+
+Yang menerapkan migrasi dulu cuma ingatan orang. Sekarang tidak lagi.
+
+**Yang perlu diingat tentang perubahan ini:**
+
+- Setiap deploy menjalankan migrasi ke database yang ditunjuk `DATABASE_URL`
+  **environment itu** — termasuk deployment preview kalau URL-nya sama dengan
+  produksi. Periksa `DATABASE_URL` tiap environment sebelum mengandalkan ini.
+- Migrasi berjalan **sebelum** kode baru hidup. Aman untuk migrasi yang menambah
+  (kolom nullable, tabel baru). Untuk migrasi yang membuang kolom, versi lama
+  yang masih melayani permintaan akan patah selama jeda itu — pecah jadi dua
+  deploy: tambah dulu, buang setelah kode lama tidak dipakai lagi.
+- `migrate deploy` tidak pernah menawarkan reset dan hanya menerapkan yang belum
+  tercatat, jadi menjalankannya berulang kali tidak berbahaya.
+- Butuh build tanpa menyentuh database (mis. memeriksa kompilasi di laptop):
+  **`npm run build:app`** — `next build` saja.
+
+Ini TIDAK menggantikan `docs/08`: migrasi tetap dibuat dan SQL-nya tetap dibaca
+manusia sebelum di-commit. Yang otomatis hanya penerapannya.
+
+---
+
 ## 3. Sebelum commit
 
 ```bash
