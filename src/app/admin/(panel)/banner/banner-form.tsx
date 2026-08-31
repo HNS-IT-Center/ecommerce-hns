@@ -1,16 +1,27 @@
 "use client"
 
 import * as React from "react"
-import { Loader2, Upload, X, ImageIcon, Megaphone, CalendarClock, Palette, MonitorPlay } from "lucide-react"
+import { Loader2, Upload, X, ImageIcon, Megaphone, CalendarClock, Palette, MonitorPlay, Layers, Plus } from "lucide-react"
 import type { PromoBanner, BannerDisplayMode } from "@prisma/client"
 
-import { BANNER_BG_OPTIONS } from "@/lib/utils/banner"
+import { BANNER_BG_OPTIONS, toDateInputValue } from "@/lib/utils/banner"
 import { compressImage } from "@/lib/utils/image-compression"
+// Hanya TIPE — lihat catatan di `banner-list.tsx`.
+import type { BatchOption } from "@/lib/api/banner-batches"
+import { BatchFormDialog } from "./batch-form-dialog"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 
 const FIELD_TEXT = "text-xs md:text-xs"
@@ -20,24 +31,19 @@ const TEXTAREA_CLASS =
 type BannerFormProps = {
   banner?: PromoBanner
   action: (formData: FormData) => void
+  /** Kampanye yang bisa dipilih. Kosong berarti belum ada satu pun dibuat. */
+  batches: BatchOption[]
 }
 
 /**
- * Tanggal untuk `<input type="date">`, dibaca dalam zona waktu setempat.
+ * Dua nilai semu di dalam dropdown kampanye.
  *
- * JANGAN memakai `toISOString().split("T")[0]` di sini. Tanggal mulai disimpan
- * sebagai awal hari waktu setempat (00:00), yang di WIB berarti pukul 17:00 UTC
- * pada tanggal SEBELUMNYA — sehingga membuka halaman sunting akan menampilkan
- * tanggal mulai mundur satu hari, dan menyimpannya kembali menggeser jadwalnya
- * satu hari lagi setiap kali disunting.
+ * Keduanya TIDAK pernah ikut tersimpan: "none" diterjemahkan jadi string
+ * kosong (kolomnya nullable), dan "new" hanya membuka dialog tanpa mengubah
+ * pilihan. Diawali garis bawah supaya tidak mungkin bertabrakan dengan uuid.
  */
-function toDateInput(value: Date | null | undefined): string {
-  if (!value) return ""
-  const year = value.getFullYear()
-  const month = String(value.getMonth() + 1).padStart(2, "0")
-  const day = String(value.getDate()).padStart(2, "0")
-  return `${year}-${month}-${day}`
-}
+const NO_BATCH_VALUE = "__none__"
+const NEW_BATCH_VALUE = "__new__"
 
 function SectionHeading({
   icon: Icon,
@@ -58,8 +64,26 @@ function SectionHeading({
   )
 }
 
-export function BannerForm({ banner, action }: BannerFormProps) {
+export function BannerForm({ banner, action, batches }: BannerFormProps) {
   const isEdit = Boolean(banner)
+
+  /**
+   * Daftar kampanye ditahan di state, bukan dipakai langsung dari prop:
+   * kampanye yang baru dibuat lewat dialog harus langsung muncul di dropdown
+   * ini tanpa memuat ulang halaman — formulir banner yang sedang diisi akan
+   * hilang kalau halamannya dimuat ulang.
+   */
+  const [batchOptions, setBatchOptions] = React.useState<BatchOption[]>(batches)
+  const [batchId, setBatchId] = React.useState(banner?.batchId ?? "")
+  const [newBatchOpen, setNewBatchOpen] = React.useState(false)
+
+  /**
+   * Banner ini menunjuk kampanye yang sudah dihapus (soft delete) — barisnya
+   * masih ada sebagai catatan, tapi tidak lagi ditawarkan di dropdown. Tetap
+   * ditampilkan sebagai pilihan supaya menyimpan formulir tidak diam-diam
+   * melepas kaitannya, dan staff bisa melepaskannya sendiri kalau memang mau.
+   */
+  const hasArchivedBatch = Boolean(batchId) && !batchOptions.some((b) => b.id === batchId)
 
   const [imageUrl, setImageUrl] = React.useState(banner?.imageUrl ?? "")
   const [uploading, setUploading] = React.useState(false)
@@ -117,6 +141,7 @@ export function BannerForm({ banner, action }: BannerFormProps) {
       <input type="hidden" name="imageUrl" value={imageUrl} />
       <input type="hidden" name="bgClass" value={bgClass} />
       <input type="hidden" name="displayMode" value={displayMode} />
+      <input type="hidden" name="batchId" value={batchId} />
 
       <div className="sticky top-0 z-30 -mx-1 flex items-center justify-between gap-3 rounded-xl border border-border bg-background/85 px-3 py-2.5 backdrop-blur-md">
         <p className="text-xs text-muted-foreground">
@@ -258,7 +283,7 @@ export function BannerForm({ banner, action }: BannerFormProps) {
             <CardHeader>
               <SectionHeading
                 icon={CalendarClock}
-                title="Jadwal & Urutan"
+                title="Jadwal & Status"
                 accent="bg-warning/10 text-warning"
               />
             </CardHeader>
@@ -272,7 +297,7 @@ export function BannerForm({ banner, action }: BannerFormProps) {
                     id="startsAt"
                     name="startsAt"
                     type="date"
-                    defaultValue={toDateInput(banner?.startsAt)}
+                    defaultValue={toDateInputValue(banner?.startsAt)}
                     className={FIELD_TEXT}
                   />
                 </div>
@@ -284,7 +309,7 @@ export function BannerForm({ banner, action }: BannerFormProps) {
                     id="endsAt"
                     name="endsAt"
                     type="date"
-                    defaultValue={toDateInput(banner?.endsAt)}
+                    defaultValue={toDateInputValue(banner?.endsAt)}
                     className={FIELD_TEXT}
                   />
                 </div>
@@ -294,33 +319,82 @@ export function BannerForm({ banner, action }: BannerFormProps) {
                 dimatikan manual. Kosongkan keduanya kalau banner tayang terus.
               </p>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <Label htmlFor="sortOrder" className="mb-1.5">
-                    Urutan Tampil
-                  </Label>
-                  <Input
-                    id="sortOrder"
-                    name="sortOrder"
-                    type="number"
-                    defaultValue={banner?.sortOrder ?? 0}
-                    className={FIELD_TEXT}
-                    onWheel={(e) => e.currentTarget.blur()}
-                  />
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    Angka lebih kecil tampil lebih dulu.
-                  </p>
-                </div>
-                <div>
-                  <Label className="mb-1.5">Aktif</Label>
-                  <div className="flex h-8 items-center gap-2">
-                    <Switch name="isActive" defaultChecked={banner?.isActive ?? true} />
-                    <span className="text-xs text-muted-foreground">
-                      Matikan untuk menyembunyikan tanpa menghapus.
-                    </span>
-                  </div>
+              <div>
+                <Label className="mb-1.5">Aktif</Label>
+                <div className="flex h-8 items-center gap-2">
+                  <Switch name="isActive" defaultChecked={banner?.isActive ?? true} />
+                  <span className="text-xs text-muted-foreground">
+                    Matikan untuk menyembunyikan tanpa menghapus.
+                  </span>
                 </div>
               </div>
+
+              {/* Kolom "Urutan Tampil" sengaja tidak ada di sini. Kotak angka
+                  dan daftar seret adalah dua sumber kebenaran untuk hal yang
+                  sama, dan yang satu akan menimpa yang lain tanpa diketahui
+                  staff. Penulisnya sekarang hanya daftar di halaman Banner. */}
+              <p className="text-[11px] text-muted-foreground">
+                Urutan tampil diatur dengan menyeret banner di halaman{" "}
+                <strong>Banner Promo</strong>, bukan di formulir ini. Banner baru masuk ke
+                urutan paling bawah.
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Kampanye */}
+          <Card>
+            <CardHeader>
+              <SectionHeading icon={Layers} title="Kampanye" accent="bg-primary/10 text-primary" />
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Select
+                value={batchId || NO_BATCH_VALUE}
+                onValueChange={(value: string | null) => {
+                  if (!value) return
+                  // Membuka dialog TANPA mengubah pilihan — nilai semu ini
+                  // tidak boleh mendarat di state, apalagi ikut tersimpan.
+                  if (value === NEW_BATCH_VALUE) {
+                    setNewBatchOpen(true)
+                    return
+                  }
+                  setBatchId(value === NO_BATCH_VALUE ? "" : value)
+                }}
+              >
+                <SelectTrigger className="w-full" aria-label="Kampanye">
+                  <SelectValue placeholder="Tanpa kampanye" />
+                </SelectTrigger>
+                <SelectContent
+                  side="bottom"
+                  align="start"
+                  sideOffset={4}
+                  alignItemWithTrigger={false}
+                >
+                  <SelectItem value={NO_BATCH_VALUE}>Tanpa kampanye</SelectItem>
+
+                  {hasArchivedBatch && (
+                    <SelectItem value={batchId}>Kampanye yang sudah dihapus</SelectItem>
+                  )}
+
+                  {batchOptions.map((batch) => (
+                    <SelectItem key={batch.id} value={batch.id}>
+                      {batch.name}
+                      {!batch.isActive && " · nonaktif"}
+                    </SelectItem>
+                  ))}
+
+                  <SelectSeparator />
+                  <SelectItem value={NEW_BATCH_VALUE}>
+                    <Plus className="h-3.5 w-3.5" />
+                    Buat kampanye baru…
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+
+              <p className="text-[11px] text-muted-foreground">
+                Opsional. Banner yang punya kampanye baru tayang kalau kampanye induknya juga
+                sedang tayang — berguna untuk mematikan satu promo berisi beberapa banner
+                sekaligus, tanpa menyentuh banner lain.
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -440,6 +514,18 @@ export function BannerForm({ banner, action }: BannerFormProps) {
           </Card>
         </div>
       </div>
+
+      {/* Dirender di dalam <form> banner, tapi isinya keluar lewat portal —
+          lihat catatan `stopPropagation` di batch-form-dialog.tsx. */}
+      <BatchFormDialog
+        open={newBatchOpen}
+        onOpenChange={setNewBatchOpen}
+        batch={null}
+        onSaved={(batch) => {
+          setBatchOptions((previous) => [batch, ...previous])
+          setBatchId(batch.id)
+        }}
+      />
     </form>
   )
 }

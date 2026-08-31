@@ -892,3 +892,92 @@ memeriksa dulu apakah barisnya ada sebelum menyimpulkan gagal.
 
 Setiap produk yang masuk mencatat satu baris `SYNC_IMPORT` dengan `userName`
 admin yang menekan tombol. `logs-table.tsx` mengenalinya.
+
+## 15. Banner: kampanye penaung (`banner_batches`) — 31 Agustus 2026
+
+Model `BannerBatch` sudah ada di skema sejak commit `87fe725` (29 Agustus),
+tapi tanpa satu baris kode pun yang memakainya. Bagian ini mencatat lapisan
+data yang akhirnya mengisinya.
+
+### Dua lapisan, satu query
+
+| Berkas | Isinya |
+|---|---|
+| [`lib/api/banners.ts`](../src/lib/api/banners.ts) | banner + relasi `batch` |
+| [`lib/api/banner-batches.ts`](../src/lib/api/banner-batches.ts) | CRUD kampanye untuk panel admin |
+
+`banner-batches.ts` **tidak** memakai `unstable_cache`. Gerbang tayang milik
+kampanye dibaca lewat `include: { batch: true }` di `getActiveBanners()` — satu
+query, satu entri cache, satu tag (`promo-banners`). Cache kedua hanya menambah
+tempat yang bisa basi sendiri, dan yang basi di sini berarti banner promo
+tayang atau hilang di waktu yang salah.
+
+### Gerbangnya dihitung saat dibaca, sama seperti jadwal banner
+
+`effectiveBannerState()` di [`lib/utils/banner.ts`](../src/lib/utils/banner.ts)
+menggabungkan dua jadwal: banner baru tayang kalau **dirinya sendiri DAN
+kampanye penaungnya** sama-sama sedang tayang. Perhitungannya tetap di luar
+`unstable_cache` dengan alasan yang sudah ditulis di berkas itu — "sekarang"
+yang dipakai harus saat permintaan, bukan saat entri cache dibuat.
+
+Fungsinya murni (tanpa Prisma) supaya daftar di admin dan penyaring di beranda
+memakai aturan yang sama persis. Kalau lencana "Tayang" di admin dan isi
+beranda bisa berbeda, yang salah bukan datanya — melainkan ada dua aturan.
+
+### Kampanye yang dihapus BERHENTI menjadi gerbang
+
+`softDeleteBatch()` hanya mengisi `deletedAt` (CLAUDE.md §2.8 — ini data
+operasional HNS, dan barisnya justru arsip kampanyenya). Baik
+`getActiveBanners()` maupun daftar admin menyaring kampanye ber-`deletedAt`
+menjadi `null` sebelum dipakai sebagai gerbang: setelah dihapus ia tinggal
+label pada tiap banner, bukan lagi penentu tayang.
+
+Akibat yang disengaja: menghapus kampanye yang sedang mematikan banner membuat
+banner itu kembali mengikuti setelannya sendiri — dan bisa langsung tayang.
+Karena itu `getAllBatches()` ikut menghitung `heldBannerCount`, dan dialog
+konfirmasi hapus menyebut angkanya sebelum staff menekan Hapus. Alternatifnya
+(kampanye terhapus tetap menahan) membuat banner bisa tersembunyi selamanya
+oleh baris yang sudah tidak muncul di layar mana pun.
+
+### Revalidation
+
+Seluruh aksi kampanye (`createBannerBatch`, `updateBannerBatch`,
+`deleteBannerBatch` di `app/admin/(panel)/banner/actions.ts`) memanggil
+`revalidateBannerPages()` yang sama dengan aksi banner: tag `promo-banners`,
+lalu `/admin/banner` dan `/`. Mengubah jadwal kampanye mengubah isi beranda,
+jadi keduanya tidak boleh dipisah.
+
+### Urutan tampil: blok kampanye dulu, lalu `sortOrder`
+
+`sortBannersForDisplay()` (di `lib/utils/banner.ts`) adalah satu-satunya aturan
+urutan, dipakai `getActiveBanners()` **dan** daftar admin:
+
+1. Banner milik kampanye yang **sedang tayang** naik ke depan sebagai satu
+   blok — kalau kampanyenya punya enam banner, keenamnya yang pertama dilihat
+   pengunjung.
+2. Di dalam masing-masing blok, urut menurut `sortOrder`.
+
+Kampanye yang belum mulai, sudah berakhir, dimatikan, atau dihapus tidak
+mengunci apa pun; anggotanya ikut antre seperti banner biasa.
+
+### `sortOrder` hanya ditulis oleh `reorderBanners`
+
+Kolom isian "Urutan Tampil" sudah **dibuang** dari formulir banner. Kotak angka
+dan daftar seret adalah dua sumber kebenaran untuk hal yang sama, dan yang satu
+menimpa yang lain tanpa diketahui staff — persis yang sudah diperingatkan
+komentar di `prisma/schema.prisma`.
+
+| Operasi | Perlakuan `sortOrder` |
+|---|---|
+| `createBanner()` | `max(sortOrder) + 1` — banner baru selalu paling bawah |
+| `updateBanner()` | tidak disentuh sama sekali |
+| `reorderBanners(ids)` | menulis ulang **seluruhnya** jadi 0..n-1 dalam satu transaksi |
+
+`ids` wajib memuat SELURUH banner, bukan hanya yang sedang tayang: menulis ulang
+sebagian membuat nomor yang tidak ikut ditulis bertabrakan dengan yang baru, dan
+dua banner yang berbagi nomor membuat beranda memilih salah satunya sembarang.
+Satu transaksi dipakai supaya tidak pernah ada keadaan separuh lama separuh baru.
+
+Di sisi klien urutannya ditahan `useOptimistic`, bukan state biasa — baris pindah
+seketika saat dilepas, lalu kembali mengikuti data server begitu
+`router.refresh()` selesai. Tidak ada salinan urutan yang hidup sendiri di klien.
