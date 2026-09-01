@@ -1,6 +1,7 @@
 import { revalidateTag, unstable_cache } from "next/cache";
 import { ProductSource, ProductStatus, ProductType, StockStatus, type Prisma } from "@prisma/client";
 import { getPrisma } from "@/lib/prisma/client";
+import { enqueueProductSync } from "@/lib/sync/enqueue";
 import { prismaProductToWoo, productInclude, STOCK_STATUS_TO_WOO } from "./db-mapper";
 import type {
   Product,
@@ -1406,6 +1407,19 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
   // membuang yang lama, alamat sebelumnya tetap menyajikan isi usang sampai
   // masa cache-nya habis.
   invalidateProductCaches({ wooId: id, slugs: [existing.slug, updated.slug] });
+
+  // Antre push ke WooCommerce. Dipasang di sini, bukan di server action, karena
+  // SEMUA jalur perubahan produk bermuara ke fungsi ini — pemanggil keempat
+  // yang dibuat nanti otomatis ikut terantre tanpa perlu ada yang mengingatnya.
+  //
+  // `existing.id`, BUKAN `id`: parameter fungsi ini adalah wooId (lihat
+  // findUnique di awal), sedangkan enqueue menerima Product.id lokal.
+  //
+  // Ditaruh setelah update berhasil — kalau update melempar, tidak ada yang
+  // perlu diantrekan. Fungsinya sendiri tidak pernah melempar dan dibatasi
+  // 3 detik, jadi baris ini tidak bisa menggagalkan atau menahan simpanan admin.
+  await enqueueProductSync(existing.id, "update_product");
+
   return result;
 }
 
