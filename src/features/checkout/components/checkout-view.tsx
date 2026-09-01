@@ -7,6 +7,7 @@ import {
   groupCartItems,
   groupLines,
   groupTotal,
+  groupsTotal,
   isGroupBlocked,
   type CartGroup,
 } from "@/lib/cart/grouping"
@@ -37,9 +38,6 @@ export function CheckoutView() {
   // Only show selected items
   const selectedItems = items.filter(item => item.selected !== false)
   const cartTotal = getSelectedTotalPrice()
-  const displayedTotal = catalogPricing?.total ?? cartTotal
-  const priceWasCorrected =
-    catalogPricing !== null && catalogPricing.total !== cartTotal
 
   /** Harga satuan yang ditampilkan: katalog kalau sudah dibaca, keranjang kalau belum. */
   const unitPriceOf = (item: CartItem) =>
@@ -50,6 +48,30 @@ export function CheckoutView() {
 
   const groups = groupCartItems(selectedItems)
   const takTersedia = catalogPricing?.unavailableCartItemIds ?? []
+
+  /**
+   * Dijumlahkan dari kelompok yang sedang tampil, BUKAN diambil dari
+   * `catalogPricing.total`.
+   *
+   * `catalogPricing` adalah potret dari detik tombol WhatsApp ditekan, dan ia
+   * tidak diperbarui sesudahnya. Keranjang masih bisa berubah selagi halaman
+   * ini terbuka — lewat panel keranjang, atau dari tab lain yang berbagi
+   * localStorage yang sama. Kalau totalnya diambil dari potret itu, ringkasan
+   * akan membeku sementara baris-barisnya (yang memakai `unitPriceOf`) ikut
+   * berubah, dan pelanggan melihat dua angka yang tidak cocok satu sama lain.
+   *
+   * Sama alasannya dengan `/cart` dan panel `/build-pc` — lihat
+   * `groupsTotal` di lib/cart/grouping.ts.
+   */
+  const displayedTotal = groupsTotal(groups, unitPriceOf, takTersedia)
+
+  /**
+   * Dibandingkan terhadap total menurut harga keranjang. Kalau katalog sudah
+   * dibaca dan angkanya bergeser, sebabnya disebutkan — bukan angkanya diganti
+   * diam-diam.
+   */
+  const priceWasCorrected =
+    catalogPricing !== null && displayedTotal !== cartTotal
 
   // Barang yang sudah tidak terbit tidak ikut dihitung — ia juga tidak ikut
   // dikirim ke CS. Untuk paket, satu komponen yang hilang menahan SELURUH

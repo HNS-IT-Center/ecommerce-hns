@@ -5,6 +5,7 @@ import {
   groupCartItems,
   groupLines,
   groupTotal,
+  groupsTotal,
   isGroupBlocked,
   type CartGroup,
 } from "@/lib/cart/grouping"
@@ -88,8 +89,38 @@ export function CartView() {
   )
 
   const totalUnits = itemTerkirim.reduce((sum, item) => sum + item.quantity, 0)
-  const displayedTotal =
-    pricing?.total ?? items.reduce((sum, i) => sum + i.price * i.quantity, 0)
+
+  /**
+   * Dijumlahkan dari kelompok yang sedang tampil, BUKAN diambil dari
+   * `pricing.total`.
+   *
+   * Dulu baris ini berbunyi `pricing?.total ?? items.reduce(...)`, dan itu
+   * bug uang yang berjalan diam-diam: `pricing` dibaca SEKALI per kunjungan
+   * (`useCatalogPricing`, flag `sudahJalan`). Begitu ia terisi, mengubah
+   * kuantitas atau menghapus barang tidak lagi menggeser totalnya sesenpun —
+   * baris per barang tetap ikut berubah karena memakai `unitPriceOf`,
+   * sehingga ringkasan menampilkan angka yang tidak sama dengan penjumlahan
+   * daftar di sebelahnya. Fallback `items.reduce` juga tidak pernah terpakai
+   * lagi setelah pembacaan pertama berhasil, jadi tidak ada yang menolong.
+   *
+   * `groupsTotal` memakai `unitPriceOf` yang sama dengan baris-barisnya,
+   * jadi kedua angka itu sekarang mustahil berbeda. Ia juga mengecualikan paket
+   * yang ditahan — yang memang tidak ikut dikirim ke CS.
+   */
+  const displayedTotal = groupsTotal(groups, unitPriceOf, takTersedia)
+
+  /**
+   * Barang yang belum sempat diverifikasi ke katalog — yaitu yang masuk
+   * keranjang SETELAH pembacaan sekali itu (mis. dari tab lain, atau lewat
+   * panel keranjang). Harganya masih angka localStorage, jadi ia wajib
+   * disebutkan, bukan dijumlahkan diam-diam.
+   */
+  const belumDiverifikasi =
+    pricing === null
+      ? []
+      : itemTerkirim.filter(
+          (i) => pricing.unitPriceByCartItemId[i.id] === undefined
+        )
 
   /**
    * Item yang menunggu konfirmasi hapus. Sama seperti di panel keranjang:
@@ -223,6 +254,15 @@ export function CartView() {
               <p className="text-xs leading-relaxed text-sale-red">
                 {pricing.unavailableCartItemIds.length} barang sudah tidak
                 tersedia dan tidak ikut dihitung.
+              </p>
+            )}
+
+            {!loading && belumDiverifikasi.length > 0 && (
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {belumDiverifikasi.length === 1 ? "Satu barang" : `${belumDiverifikasi.length} barang`}{" "}
+                masuk setelah harga diperiksa, jadi angkanya belum
+                diverifikasi ke katalog. Harga terkini dipastikan saat Anda
+                menekan Checkout.
               </p>
             )}
 

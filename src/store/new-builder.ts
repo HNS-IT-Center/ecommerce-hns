@@ -66,6 +66,40 @@ export type BuilderSelection = {
   quantity: number
 }
 
+/**
+ * Menjumlahkan seluruh komponen rakitan menurut harga satuan yang diberikan
+ * PEMANGGIL — satu-satunya penjumlahan rakitan yang ada di project ini.
+ *
+ * `unitPriceOf` dioper dari luar dengan alasan yang sama seperti `groupTotal`
+ * di lib/cart/grouping.ts: di panel `/build-pc` harga satuannya berasal dari
+ * katalog (`useBuilderCatalogPricing`), bukan dari angka yang mengendap di
+ * localStorage. Menjumlahkan harga satuan katalog boleh — yang dilarang
+ * CLAUDE.md §2.7 adalah menurunkan harga baru dari rumus.
+ *
+ * `skip` dipakai membuang komponen yang sudah tidak terbit di katalog, supaya
+ * total di layar sama dengan total yang berangkat ke CS.
+ *
+ * Sengaja fungsi lepas, bukan method store: ia dipanggil saat render dengan
+ * harga katalog yang TIDAK tersimpan di store, dan menaruhnya di dalam store
+ * hanya akan mengundang orang menjumlahkan harga localStorage lagi.
+ */
+export function sumBuilderSelections(
+  selections: Record<string, BuilderSelection[]>,
+  unitPriceOf: (selection: BuilderSelection) => number,
+  skip?: (selection: BuilderSelection) => boolean
+): number {
+  return Object.values(selections).reduce((total, stepSelections) => {
+    if (!Array.isArray(stepSelections)) return total
+    return (
+      total +
+      stepSelections.reduce((sum, sel) => {
+        if (skip?.(sel)) return sum
+        return sum + unitPriceOf(sel) * sel.quantity
+      }, 0)
+    )
+  }, 0)
+}
+
 interface NewBuilderState {
   steps: PcBuilderStepConfig[]
   selections: Record<string, BuilderSelection[]> // stepId -> array of selected products
@@ -78,7 +112,6 @@ interface NewBuilderState {
   updateQuantity: (stepId: string, productId: number, quantity: number) => void
   setActiveStep: (stepId: string) => void
   setBudget: (budget: string) => void
-  getTotalPrice: () => number
   clearSelections: () => void
   /**
    * Timpa seluruh `selections` sekaligus, dipakai tombol "Lanjutkan di
@@ -93,7 +126,7 @@ interface NewBuilderState {
 
 export const useNewBuilderStore = create<NewBuilderState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
   steps: [],
   selections: {},
   activeStepId: null,
@@ -210,14 +243,6 @@ export const useNewBuilderStore = create<NewBuilderState>()(
   setActiveStep: (stepId) => set({ activeStepId: stepId }),
   
   setBudget: (budget) => set({ budget }),
-
-  getTotalPrice: () => {
-    const { selections } = get()
-    return Object.values(selections).reduce((total, stepSelections) => {
-      const stepTotal = stepSelections.reduce((sum, sel) => sum + (sel.product.price * sel.quantity), 0)
-      return total + stepTotal
-    }, 0)
-  },
 
   clearSelections: () => set({ selections: {} }),
 

@@ -1,7 +1,15 @@
 "use client"
 
 import { useCartStore, type CartItem } from "@/store/cart"
-import { groupCartItems, groupTotal, type CartGroup } from "@/lib/cart/grouping"
+import {
+  groupCartItems,
+  groupTotal,
+  groupsTotal,
+  isGroupBlocked,
+  type CartGroup,
+} from "@/lib/cart/grouping"
+import { useCatalogPricing } from "@/features/checkout/hooks/use-catalog-pricing"
+import { UnavailableNotice } from "@/components/shared/price-change-notice"
 import { formatRupiah } from "@/lib/utils"
 import { Trash2, Plus, Minus, ShoppingBag, ArrowRight, X, PackageOpen } from "lucide-react"
 import Image from "next/image"
@@ -17,7 +25,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { useIsHydrated } from "@/hooks/use-is-hydrated"
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 
 export function CartSheet({ children }: { children: React.ReactNode }) {
@@ -27,7 +35,6 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
     updateQuantity,
     toggleSelect,
     toggleSelectAll,
-    getSelectedTotalPrice,
     clearCart,
     removeBundle,
     updateBundleQuantity,
@@ -49,6 +56,29 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
    */
   const [pendingRemoveId, setPendingRemoveId] = useState<string | null>(null)
 
+  /**
+   * Harga di panel ini dulu SATU-SATUNYA total di situs yang tidak pernah
+   * dicocokkan ke katalog: ia menjumlahkan `item.price` dari localStorage,
+   * yang bisa berumur seminggu dan bisa disunting lewat devtools. Angkanya
+   * memang selalu bergerak saat kuantitas diubah — jadi ia tidak membeku
+   * seperti bug di `/cart` — tapi "bergerak" tidak sama dengan "benar".
+   *
+   * Dibaca saat panel DIBUKA, bukan saat halaman dimuat. Panel ini terpasang di
+   * header setiap halaman; membacanya otomatis saat mount berarti satu kueri
+   * untuk SETIAP kunjungan halaman apa pun di situs, dan kuota koneksi
+   * Hostinger tidak akan bertahan lama (alasan yang sama dijelaskan panjang di
+   * useBuilderCatalogPricing).
+   */
+  const { pricing, loading: pricingLoading, refresh: refreshPricing } =
+    useCatalogPricing()
+
+  /**
+   * Tanda isi keranjang saat katalog terakhir berhasil dibaca. Membuka panel
+   * berulang kali tanpa mengubah apa pun tidak perlu bertanya ulang ke
+   * database — isinya belum berubah, jawabannya pasti sama.
+   */
+  const tandaTerakhirDibaca = useRef<string | null>(null)
+
   if (!mounted) {
     return <div onClick={(e) => e.preventDefault()}>{children}</div>
   }
@@ -62,8 +92,83 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
   // sekilas, dan tidak ada yang menandai bahwa ketujuhnya satu rakitan.
   const groups = groupCartItems(items)
 
+  /** Harga satuan yang ditampilkan: katalog kalau sudah dibaca, keranjang kalau belum. */
+  const unitPriceOf = (item: CartItem) =>
+    pricing?.unitPriceByCartItemId[item.id] ?? item.price
+
+  const isUnavailable = (item: { id: string }) =>
+    pricing?.unavailableCartItemIds.includes(item.id) ?? false
+
+  const takTersedia = pricing?.unavailableCartItemIds ?? []
+
+  /**
+   * Total mengikuti aturan yang sama dengan `/cart` dan `/checkout`:
+   * dijumlahkan dari kelompok yang BENAR-BENAR akan dibawa ke checkout, memakai
+   * `unitPriceOf` yang sama dengan yang tampil di tiap kartu. Lihat
+   * `groupsTotal` di lib/cart/grouping.ts.
+   */
+  const selectedGroups = groupCartItems(items.filter((i) => i.selected !== false))
+  const displayedTotal = groupsTotal(selectedGroups, unitPriceOf, takTersedia)
+
+  const paketDitahan = selectedGroups.filter(
+    (g) => g.kind === "bundle" && isGroupBlocked(g, takTersedia)
+  )
+  const barangTakTersedia = selectedGroups.filter(
+    (g) => g.kind === "item" && isUnavailable(g.item)
+  )
+
+  /**
+   * Barang yang katalognya belum pernah ditanya soal dia — panel belum pernah
+   * dibuka sejak barang itu masuk, atau pembacaannya gagal. Angkanya masih dari
+   * localStorage, jadi disebutkan apa adanya.
+   */
+  const belumDiverifikasi =
+    pricing === null
+      ? items.filter((i) => i.selected !== false)
+      : items.filter(
+          (i) =>
+            i.selected !== false &&
+            pricing.unitPriceByCartItemId[i.id] === undefined &&
+            !pricing.unavailableCartItemIds.includes(i.id)
+        )
+
+  /**
+   * Keterangan barang/paket yang tidak ikut dihitung.
+   *
+   * Dipisah karena sebabnya beda: barang lepas memang sudah tidak terbit,
+   * sedangkan paket DITAHAN — komponennya yang hilang, bukan paketnya. Menyebut
+   * paket sebagai "tidak tersedia" membuat pelanggan mengira rakitannya sudah
+   * tidak dijual sama sekali.
+   */
+  const catatanTakTersedia = (() => {
+    const bagian: string[] = []
+    if (barangTakTersedia.length > 0) {
+      bagian.push(`${barangTakTersedia.length} barang sudah tidak tersedia`)
+    }
+    if (paketDitahan.length > 0) {
+      bagian.push(
+        `${paketDitahan.length} paket ditahan karena ada komponennya yang hilang`
+      )
+    }
+    if (bagian.length === 0) return null
+    return `${bagian.join(" dan ")} — tidak ikut dihitung.`
+  })()
+
+  /** Isi keranjang diringkas jadi satu string, untuk dibandingkan antar bukaan. */
+  const tandaKeranjang = items.map((i) => `${i.id}:${i.quantity}`).join(",")
+
+  const bacaKatalogKalauPerlu = async () => {
+    if (items.length === 0) return
+    if (tandaKeranjang === tandaTerakhirDibaca.current) return
+    const hasil = await refreshPricing()
+    // Tanda hanya dicatat kalau pembacaannya BERHASIL, supaya kegagalan jaringan
+    // masih bisa dicoba lagi dengan menutup dan membuka panel.
+    if (hasil) tandaTerakhirDibaca.current = tandaKeranjang
+  }
+
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open)
+    if (open) void bacaKatalogKalauPerlu()
     // Konfirmasi yang menggantung tidak boleh ikut hidup lagi saat panel dibuka
     // berikutnya — orangnya sudah lupa apa yang tadi mau dihapus.
     if (!open) setPendingRemoveId(null)
@@ -185,6 +290,8 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
                     <BundleCard
                       key={group.key}
                       group={group}
+                      unitPriceOf={unitPriceOf}
+                      blocked={isGroupBlocked(group, takTersedia)}
                       // Kunci konfirmasi diberi awalan supaya tidak pernah
                       // bertabrakan dengan id baris keranjang biasa.
                       pending={pendingRemoveId === `bundle:${group.key}`}
@@ -197,6 +304,8 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
                     <ItemCard
                       key={group.key}
                       item={group.item}
+                      unitPrice={unitPriceOf(group.item)}
+                      unavailable={isUnavailable(group.item)}
                       pending={pendingRemoveId === group.item.id}
                       onPending={setPendingRemoveId}
                       onToggle={() => toggleSelect(group.item.id)}
@@ -227,9 +336,33 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
                   <span className="tabular-nums">({selectedCount})</span> item
                 </span>
                 <span className="text-lg font-extrabold tabular-nums text-sale-red sm:text-xl">
-                  {formatRupiah(getSelectedTotalPrice())}
+                  {formatRupiah(displayedTotal)}
                 </span>
               </div>
+
+              {/* Satu baris keterangan saja — panel ini sempit, dan yang paling
+                  perlu diketahui adalah apakah angka di atas sudah dipastikan
+                  ke katalog atau belum. Rinciannya ada di /cart. */}
+              {pricingLoading ? (
+                <p className="text-[11px] leading-tight text-muted-foreground">
+                  Memeriksa harga terbaru…
+                </p>
+              ) : catatanTakTersedia ? (
+                <p className="text-[11px] leading-tight text-sale-red">
+                  {catatanTakTersedia}
+                </p>
+              ) : belumDiverifikasi.length > 0 ? (
+                <p className="text-[11px] leading-tight text-muted-foreground">
+                  Harga belum diverifikasi ke katalog.
+                </p>
+              ) : pricing && pricing.changes.length > 0 ? (
+                <p className="text-[11px] leading-tight text-muted-foreground">
+                  {pricing.changes.length === 1
+                    ? "Satu barang"
+                    : `${pricing.changes.length} barang`}{" "}
+                  disesuaikan dengan harga terbaru di katalog.
+                </p>
+              ) : null}
 
               <Button
                 className="h-12 w-full gap-2 text-base font-bold"
@@ -361,6 +494,8 @@ function Stepper({
 
 function ItemCard({
   item,
+  unitPrice,
+  unavailable,
   pending,
   onPending,
   onToggle,
@@ -368,6 +503,9 @@ function ItemCard({
   onRemove,
 }: {
   item: CartItem
+  /** Harga satuan menurut katalog; harga keranjang selagi katalog belum dibaca. */
+  unitPrice: number
+  unavailable: boolean
   pending: boolean
   onPending: (id: string | null) => void
   onToggle: () => void
@@ -406,9 +544,13 @@ function ItemCard({
             <p className="text-xs text-muted-foreground">{item.variationLabel}</p>
           )}
 
+          {unavailable && <UnavailableNotice name={item.name} density="compact" />}
+
           <div className="mt-0.5 flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm font-bold tabular-nums text-sale-red">
-              {formatRupiah(item.price * item.quantity)}
+              {/* Barang yang sudah tidak terbit tidak punya harga untuk
+                  ditampilkan — ia juga tidak ikut dihitung di total bawah. */}
+              {unavailable ? "—" : formatRupiah(unitPrice * item.quantity)}
             </span>
 
             {/* Target sentuh 32px: di bawah itu tombolnya sulit dikenai jempol
@@ -450,6 +592,8 @@ function ItemCard({
  */
 function BundleCard({
   group,
+  unitPriceOf,
+  blocked,
   pending,
   onPending,
   onToggle,
@@ -457,6 +601,10 @@ function BundleCard({
   onRemove,
 }: {
   group: Extract<CartGroup, { kind: "bundle" }>
+  /** Harga satuan katalog per komponen paket. */
+  unitPriceOf: (item: CartItem) => number
+  /** Ada komponennya yang sudah tidak terbit — paketnya ditahan seluruhnya. */
+  blocked: boolean
   pending: boolean
   onPending: (id: string | null) => void
   onToggle: () => void
@@ -491,9 +639,18 @@ function BundleCard({
             {group.lines.map((l) => l.name).join(" · ")}
           </p>
 
+          {/* Satu komponen hilang menahan SELURUH paket — PC tanpa motherboard
+              bukan pesanan yang lebih murah, ia pesanan yang tidak bisa
+              dipenuhi. Aturan yang sama ada di /cart dan ditegakkan server. */}
+          {blocked && (
+            <p className="inline-flex w-fit items-center rounded bg-sale-red/10 px-1.5 py-0.5 text-[10px] font-semibold leading-tight text-sale-red">
+              Ada komponen yang tidak tersedia
+            </p>
+          )}
+
           <div className="mt-0.5 flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm font-bold tabular-nums text-sale-red">
-              {formatRupiah(groupTotal(group, (line) => line.price))}
+              {formatRupiah(groupTotal(group, unitPriceOf))}
             </span>
 
             <Stepper

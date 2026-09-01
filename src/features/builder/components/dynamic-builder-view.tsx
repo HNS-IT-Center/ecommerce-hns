@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useMemo } from "react"
 import {
+  sumBuilderSelections,
   useNewBuilderStore,
   BuilderProduct,
   type BuilderSelection,
@@ -54,7 +55,7 @@ export function DynamicBuilderView({
 }: DynamicBuilderViewProps) {
   const { 
     steps, setSteps, selections, activeStepId, setActiveStep, 
-    selectProduct, removeProduct, updateQuantity, getTotalPrice, clearSelections,
+    selectProduct, removeProduct, updateQuantity, clearSelections,
     hydrateSelections
   } = useNewBuilderStore()
 
@@ -144,20 +145,89 @@ export function DynamicBuilderView({
     pricing?.changes.find((c) => c.productId === Number(product.id))
 
   /**
-   * `true` selama angka di panel belum dipastikan ke katalog.
+   * `true` kalau harga komponen INI belum dipastikan ke katalog.
    *
-   * Sengaja mencakup jendela SEBELUM pembacaan pertama dimulai, bukan hanya
-   * saat `pricingLoading` menyala: antara render pertama dan selesainya
-   * hydration localStorage, `pricing` masih null sementara panel sudah
-   * menampilkan angka dari store. Tanpa ini ada jeda di mana harga basi tampil
-   * tanpa penanda — keadaan yang justru sedang diperbaiki di sini.
+   * Dulu ini satu boolean untuk seluruh panel (`adaPilihan && !pricing`), dan
+   * itu meleset di kasus yang paling sering terjadi: katalog dibaca sekali saat
+   * halaman dibuka, lalu pelanggan menambah komponen lagi. `pricing` sudah
+   * terisi, jadi panel menyatakan semuanya terverifikasi — padahal komponen
+   * yang baru masuk sama sekali belum pernah dibaca harganya dan angkanya masih
+   * dari localStorage.
    *
+   * Diperiksa per komponen: id yang tidak ada di `unitPriceByProductId` DAN
+   * tidak ada di `unavailableProductIds` berarti katalog belum pernah ditanya
+   * soal dia. Komponen yang sudah terbukti hilang justru TERVERIFIKASI — ia
+   * ditandai lewat `UnavailableNotice`, bukan lewat penanda ini.
+   */
+  const priceUnverifiedFor = (product: { id: number }) => {
+    if (!pricing) return true
+    const id = Number(product.id)
+    return (
+      pricing.unitPriceByProductId[id] === undefined &&
+      !pricing.unavailableProductIds.includes(id)
+    )
+  }
+
+  /**
    * Rakitan kosong tidak dihitung: tidak ada angka untuk diragukan.
    */
   const adaPilihan = Object.values(selections).some(
     (v) => Array.isArray(v) && v.length > 0
   )
-  const priceUnverified = adaPilihan && !pricing
+
+  /** Ada MINIMAL SATU komponen yang angkanya belum dipastikan. */
+  const priceUnverified =
+    adaPilihan &&
+    Object.values(selections).some(
+      (v) => Array.isArray(v) && v.some((sel) => priceUnverifiedFor(sel.product))
+    )
+
+  /**
+   * Total yang tampil di panel — dijumlahkan dari komponen yang sedang terlihat,
+   * BUKAN diambil dari `pricing.total`.
+   *
+   * Baris ini dulu berbunyi `pricing?.total ?? getTotalPrice()`, dan di situlah
+   * bug-nya: `pricing` dibaca TEPAT SEKALI per kunjungan (lihat flag
+   * `sudahJalan` di useBuilderCatalogPricing). Begitu ia terisi oleh komponen
+   * pertama, `pricing.total` tidak pernah dihitung ulang, dan karena ia sudah
+   * bukan null, fallback `getTotalPrice()` yang reaktif itu tidak pernah
+   * terpakai lagi. Menambah komponen kedua, ketiga, dan seterusnya tidak
+   * menggeser totalnya sama sekali — sementara harga per barisnya ikut naik,
+   * karena baris memakai `unitPriceOf`. Panel menampilkan total yang lebih
+   * kecil dari penjumlahan isinya sendiri, tanpa penanda apa pun, pada rakitan
+   * yang nilainya puluhan juta.
+   *
+   * `getTotalPrice()` itu sendiri sudah DIHAPUS dari store — ia menjumlahkan
+   * harga localStorage, dan selama ia ada, ia akan terus terlihat seperti
+   * jawaban yang wajar untuk pertanyaan "berapa totalnya?".
+   *
+   * Sekarang total dan baris memakai `unitPriceOf` yang sama persis, jadi
+   * keduanya mustahil berbeda. Komponen yang sudah tidak terbit dikecualikan —
+   * ia juga tidak ikut dikirim ke CS.
+   *
+   * Yang BELUM terverifikasi tetap ikut dijumlahkan memakai harga localStorage,
+   * karena membuangnya justru menampilkan total yang lebih kecil dari isi
+   * rakitan. Sebagai gantinya `priceUnverified` menyala dan penandanya tampil
+   * tepat di bawah angka ini. Angka final ke CS tetap dibaca ulang di server
+   * saat tombol Konsultasi ditekan.
+   */
+  /**
+   * Keadaan penanda "belum diverifikasi", dipakai baris komponen maupun
+   * ringkasan di bawah. `pending` adalah keadaan yang paling sering terjadi
+   * sejak katalog hanya dibaca sekali: komponen yang ditambahkan sesudahnya
+   * tidak sedang diperiksa oleh siapa pun.
+   */
+  const unverifiedState: "loading" | "error" | "pending" = pricingError
+    ? "error"
+    : pricingLoading
+      ? "loading"
+      : "pending"
+
+  const displayedTotal = sumBuilderSelections(
+    selections,
+    (sel) => unitPriceOf(sel.product),
+    (sel) => isUnavailable(sel.product)
+  )
 
   useEffect(() => {
     setMounted(true)
@@ -718,10 +788,10 @@ export function DynamicBuilderView({
                   if (isUnavailable(sel.product)) {
                     return <UnavailableNotice name={sel.product.name} density="compact" />
                   }
-                  if (priceUnverified) {
+                  if (priceUnverifiedFor(sel.product)) {
                     return (
                       <UnverifiedPriceNotice
-                        state={pricingError ? "error" : "loading"}
+                        state={unverifiedState}
                         density="compact"
                       />
                     )
@@ -777,11 +847,10 @@ export function DynamicBuilderView({
           <div className="flex justify-between items-baseline">
             <span className="text-xs font-bold">Total</span>
             <span className="text-base font-black text-sale-red tabular-nums">
-              {/* `pricing.total` sudah mengecualikan komponen yang tidak
-                  tersedia. Fallback ke `getTotalPrice()` hanya berlaku selagi
-                  katalog belum terbaca — dan saat itu penandanya tampil di
-                  bawah. */}
-              {formatRupiah(pricing?.total ?? getTotalPrice())}
+              {/* Lihat `displayedTotal` di atas: dijumlahkan dari komponen
+                  yang sedang tampil, tidak pernah dari potret `pricing.total`
+                  yang hanya dibaca sekali per kunjungan. */}
+              {formatRupiah(displayedTotal)}
             </span>
           </div>
           <div className="flex justify-between items-baseline text-[11px] pt-0.5">
@@ -798,12 +867,14 @@ export function DynamicBuilderView({
                 pricingError ? "text-sale-red" : "text-muted-foreground"
               }`}
             >
-              {!pricingError && (
+              {unverifiedState === "loading" && (
                 <Loader2 className="h-2.5 w-2.5 shrink-0 animate-spin" aria-hidden="true" />
               )}
-              {pricingError
+              {unverifiedState === "error"
                 ? "Harga belum bisa diverifikasi. Angka di atas berasal dari rakitan tersimpan dan mungkin sudah berubah — CS akan mengonfirmasi harga terkini."
-                : "Memeriksa harga terbaru…"}
+                : unverifiedState === "loading"
+                  ? "Memeriksa harga terbaru…"
+                  : "Ada komponen yang harganya belum diverifikasi ke katalog. Angkanya dipastikan saat Anda menekan Konsultasi."}
             </p>
           )}
 

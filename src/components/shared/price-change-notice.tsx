@@ -139,25 +139,38 @@ export function UnavailableNotice({
 }
 
 /**
- * Penanda bahwa angka yang sedang tampil BELUM diverifikasi ke katalog —
- * dipakai selagi pembacaan harga berjalan, dan saat pembacaannya gagal.
+ * Penanda bahwa angka yang sedang tampil BELUM diverifikasi ke katalog.
  *
- * Ini bukan hiasan. Selama menunggu, yang tampil adalah harga dari
+ * Ini bukan hiasan. Selama belum diverifikasi, yang tampil adalah harga dari
  * localStorage, yaitu persis angka yang berpotensi basi. Tanpa penanda,
  * pelanggan melihat harga lama tanpa tahu itu sementara — keadaan yang sama
  * dengan sebelum perbaikan ini ada. Lihat CLAUDE.md §2.7.
+ *
+ * Tiga keadaan, dan ketiganya WAJIB dibedakan:
+ *
+ * - `loading` — pembacaan katalog sedang berjalan.
+ * - `error`   — pembacaannya gagal.
+ * - `pending` — tidak ada yang sedang berjalan, tapi barang ini memang belum
+ *   pernah ikut dibaca. Terjadi pada barang yang masuk SETELAH pembacaan
+ *   sekali-per-kunjungan itu.
+ *
+ * `pending` sengaja tidak digabung ke `loading`: memutar spinner "Memeriksa
+ * harga terbaru…" selagi tidak ada apa pun yang diperiksa adalah keterangan
+ * yang salah, dan ia tidak akan pernah berhenti berputar.
  */
 export function UnverifiedPriceNotice({
   state,
   density = "default",
 }: {
-  state: "loading" | "error";
+  state: "loading" | "error" | "pending";
   density?: Density;
 }) {
   const teks =
     state === "loading"
       ? "Memeriksa harga terbaru…"
-      : "Harga belum bisa diverifikasi";
+      : state === "pending"
+        ? "Harga belum diverifikasi"
+        : "Harga belum bisa diverifikasi";
 
   if (density === "compact") {
     return (

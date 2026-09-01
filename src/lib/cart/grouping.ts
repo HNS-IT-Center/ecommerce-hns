@@ -101,3 +101,35 @@ export function isGroupBlocked(group: CartGroup, unavailableCartItemIds: string[
   if (unavailableCartItemIds.length === 0) return false
   return groupLines(group).some((line) => unavailableCartItemIds.includes(line.id))
 }
+
+/**
+ * Total yang BOLEH ditampilkan sebagai "Total Belanja".
+ *
+ * Ia dijumlahkan dari kelompok yang sama persis dengan yang sedang dirender,
+ * memakai `unitPriceOf` yang sama pula — jadi angka besar di ringkasan tidak
+ * bisa lagi berbeda dari penjumlahan baris yang dilihat pelanggan.
+ *
+ * JANGAN kembali menampilkan `pricing.total` dari server apa adanya. Angka itu
+ * adalah POTRET keranjang pada detik katalog dibaca (sekali per kunjungan,
+ * lihat `useCatalogPricing`). Begitu pelanggan menambah barang atau mengubah
+ * kuantitas sesudahnya, potret itu tidak ikut berubah sementara baris-barisnya
+ * berubah — dan totalnya membeku di angka lama tanpa penanda apa pun. Persis
+ * itu yang terjadi di `/cart` dan panel `/build-pc`.
+ *
+ * Potret dari server tetap dipakai untuk hal yang memang statis: harga satuan
+ * per baris (`unitPriceOf`), daftar barang yang hilang, dan daftar perubahan
+ * harga. Yang tidak boleh diambil darinya hanyalah TOTAL — satu-satunya angka
+ * yang berubah setiap kali keranjang disentuh.
+ *
+ * Paket yang ditahan tidak ikut dihitung, sama seperti ia tidak ikut dikirim ke
+ * CS — lihat `isGroupBlocked`.
+ */
+export function groupsTotal(
+  groups: CartGroup[],
+  unitPriceOf: (item: CartItem) => number,
+  unavailableCartItemIds: string[] = []
+): number {
+  return groups
+    .filter((group) => !isGroupBlocked(group, unavailableCartItemIds))
+    .reduce((total, group) => total + groupTotal(group, unitPriceOf), 0)
+}
