@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { CameraOff, Loader2, RotateCcw, ScanLine, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { useCodeScanner, type ScannerFailure } from "@/features/search/hooks/use-code-scanner"
 import { parseScannedCode } from "@/features/search/lib/parse-scanned-code"
 import { resolveScannedProduct } from "@/features/search/services/search-service"
@@ -18,6 +19,20 @@ type ScannerOverlayProps = {
    */
   onOpenChange: (open: boolean, options?: { isNavigating?: boolean }) => void
 }
+
+/**
+ * Lama layar tunggu ditahan sebelum halaman produk dibuka.
+ *
+ * Pembacaan kode sering selesai dalam puluhan milidetik, dan berpindah halaman
+ * secepat itu terasa seperti layar melompat sendiri — staff tidak sempat
+ * melihat bahwa pemindaiannya berhasil, apalagi barang apa yang terbaca. Jeda
+ * ini bukan penundaan sia-sia: ia yang mengubah lompatan mendadak menjadi
+ * urutan yang bisa diikuti mata.
+ */
+const FEEDBACK_MS = 700
+
+/** Pilihan perbesaran. 1x = bidang pandang penuh kamera, tanpa perbesaran. */
+const ZOOM_STEPS = [1, 2, 3]
 
 /**
  * Pesan kegagalan kamera. Tiap sebab dapat kalimatnya sendiri — satu kalimat
@@ -51,6 +66,8 @@ const FAILURE_MESSAGE: Record<ScannerFailure, { title: string; hint: string }> =
   },
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
 /**
  * Pemindai QR & barcode produk, tampil sebagai lapisan penuh layar.
  *
@@ -75,10 +92,29 @@ const FAILURE_MESSAGE: Record<ScannerFailure, { title: string; hint: string }> =
 export function ScannerOverlay({ open, onOpenChange }: ScannerOverlayProps) {
   const router = useRouter()
   const [message, setMessage] = useState<string | null>(null)
-  const [isResolving, setIsResolving] = useState(false)
+  const [zoom, setZoom] = useState(1)
+
+  /**
+   * Layar tunggu setelah kode terbaca. `null` berarti masih memindai.
+   * `name` menyusul begitu produknya diketahui, jadi teksnya berubah dari
+   * sekadar "Memuat produk…" menjadi nama barang yang benar-benar dituju.
+   */
+  const [pending, setPending] = useState<{ name: string | null } | null>(null)
+
+  /** Kotak bidik. HANYA isi kotak inilah yang dibaca — lihat `useCodeScanner`. */
+  const frameRef = useRef<HTMLDivElement | null>(null)
 
   /** Menandai bahwa lapisan ini menaruh satu entri riwayat miliknya sendiri. */
   const historyEntryRef = useRef(false)
+
+  /**
+   * Menandai bahwa pengguna menutup pemindai selagi layar tunggu berjalan.
+   *
+   * Tanpa ini, menutup panel di tengah jeda tetap berakhir dengan perpindahan
+   * halaman beberapa ratus milidetik kemudian — halaman produk muncul sendiri
+   * padahal orangnya jelas-jelas sudah membatalkan.
+   */
+  const cancelledRef = useRef(false)
 
   /**
    * Menutup lapisan.
@@ -92,6 +128,8 @@ export function ScannerOverlay({ open, onOpenChange }: ScannerOverlayProps) {
    */
   const finish = useCallback(
     (options?: { isNavigating?: boolean }) => {
+      if (!options?.isNavigating) cancelledRef.current = true
+
       onOpenChange(false, options)
 
       if (historyEntryRef.current) {
@@ -108,6 +146,11 @@ export function ScannerOverlay({ open, onOpenChange }: ScannerOverlayProps) {
   useEffect(() => {
     if (!open) return
 
+    // Dibuka berarti belum ada yang dibatalkan. Ditaruh di sini, bukan di
+    // penyesuaian selama render di bawah, karena menulis ref selama render
+    // tidak diperbolehkan — nilainya bisa terbuang saat React mengulang render.
+    cancelledRef.current = false
+
     window.history.pushState({ hnsScanner: true }, "")
     historyEntryRef.current = true
 
@@ -115,6 +158,7 @@ export function ScannerOverlay({ open, onOpenChange }: ScannerOverlayProps) {
       // Entri sudah lepas oleh pop itu sendiri, jadi cukup dinolkan — memanggil
       // `finish()` di sini akan memicu `history.back()` kedua.
       historyEntryRef.current = false
+      cancelledRef.current = true
       onOpenChange(false)
     }
 
@@ -148,7 +192,7 @@ export function ScannerOverlay({ open, onOpenChange }: ScannerOverlayProps) {
   }, [open, finish])
 
   /**
-   * Pesan sisa dari pemindaian sebelumnya dibersihkan saat panel dibuka lagi.
+   * Keadaan sisa dari pemindaian sebelumnya dibersihkan saat panel dibuka lagi.
    *
    * Disesuaikan SELAMA RENDER, bukan lewat `useEffect`: menyetel state dari
    * dalam efek menghasilkan render bertingkat, dan pola ini yang dipakai di
@@ -160,19 +204,24 @@ export function ScannerOverlay({ open, onOpenChange }: ScannerOverlayProps) {
     setWasOpen(open)
     if (open) {
       setMessage(null)
-      setIsResolving(false)
+      setPending(null)
     }
   }
 
   const handleDetect = useCallback(
     async (raw: string) => {
-      setIsResolving(true)
       setMessage(null)
+      setPending({ name: null })
 
       const scanned = parseScannedCode(raw, window.location.hostname)
 
-      /** Tutup lalu berpindah — di tab yang sama, tanpa muat ulang halaman. */
-      const go = (path: string) => {
+      /**
+       * Tahan layar tunggu sejenak, lalu berpindah — di tab yang sama, tanpa
+       * muat ulang. Dibatalkan diam-diam kalau panelnya sudah ditutup orang.
+       */
+      const go = async (path: string) => {
+        await sleep(FEEDBACK_MS)
+        if (cancelledRef.current) return
         finish({ isNavigating: true })
         router.push(path)
       }
@@ -180,7 +229,7 @@ export function ScannerOverlay({ open, onOpenChange }: ScannerOverlayProps) {
       try {
         switch (scanned.kind) {
           case "product-slug":
-            go(`/product/${encodeURIComponent(scanned.slug)}`)
+            await go(`/product/${encodeURIComponent(scanned.slug)}`)
             return
 
           case "product-id": {
@@ -189,7 +238,8 @@ export function ScannerOverlay({ open, onOpenChange }: ScannerOverlayProps) {
               setMessage("Produk untuk QR ini sudah tidak ada di katalog.")
               break
             }
-            go(`/product/${encodeURIComponent(target.slug)}`)
+            setPending({ name: target.name })
+            await go(`/product/${encodeURIComponent(target.slug)}`)
             return
           }
 
@@ -200,12 +250,13 @@ export function ScannerOverlay({ open, onOpenChange }: ScannerOverlayProps) {
             // juga mencocokkan SKU secara longgar, jadi staff tetap mendapat
             // sesuatu untuk ditindaklanjuti.
             if (!target) {
-              go(`/search?q=${encodeURIComponent(scanned.sku)}`)
+              await go(`/search?q=${encodeURIComponent(scanned.sku)}`)
               return
             }
 
+            setPending({ name: target.name })
             const path = `/product/${encodeURIComponent(target.slug)}`
-            go(
+            await go(
               target.variationSku
                 ? `${path}?sku=${encodeURIComponent(target.variationSku)}`
                 : path
@@ -227,7 +278,7 @@ export function ScannerOverlay({ open, onOpenChange }: ScannerOverlayProps) {
         setMessage("Gagal menghubungi server. Periksa koneksi, lalu coba lagi.")
       }
 
-      setIsResolving(false)
+      setPending(null)
     },
     [finish, router]
   )
@@ -239,11 +290,16 @@ export function ScannerOverlay({ open, onOpenChange }: ScannerOverlayProps) {
     [handleDetect]
   )
 
-  const { videoRef, state, retry } = useCodeScanner({ active: open, onDetect })
+  const { videoRef, state, retry, cssZoom } = useCodeScanner({
+    active: open,
+    onDetect,
+    frameRef,
+    zoom,
+  })
 
   const handleRetry = () => {
     setMessage(null)
-    setIsResolving(false)
+    setPending(null)
     retry()
   }
 
@@ -260,7 +316,7 @@ export function ScannerOverlay({ open, onOpenChange }: ScannerOverlayProps) {
         type="button"
         onClick={() => finish()}
         aria-label="Tutup pemindai"
-        className="absolute top-4 right-4 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white transition-colors hover:bg-black/70"
+        className="absolute top-4 right-4 z-30 flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white transition-colors hover:bg-black/70"
       >
         <X className="h-5 w-5" />
       </button>
@@ -282,40 +338,80 @@ export function ScannerOverlay({ open, onOpenChange }: ScannerOverlayProps) {
           {/* `playsInline` & `muted` juga dipasang di hook lewat atribut DOM —
               di iPhone keduanya yang mencegah video direbut ke pemutar layar
               penuh milik iOS. Ditulis ulang di sini supaya render pertamanya
-              sudah benar, sebelum hook sempat berjalan. */}
+              sudah benar, sebelum hook sempat berjalan.
+
+              `cssZoom` hanya terpakai di perangkat yang kameranya tidak bisa
+              zoom sendiri (semua iPhone) — di perangkat lain nilainya 1 dan
+              perbesarannya dikerjakan lensa. Perhitungan potongan di
+              `computeSourceRect` memakai faktor yang sama, jadi yang terbaca
+              selalu sama dengan yang terlihat di dalam kotak. */}
           <video
             ref={videoRef}
             playsInline
             muted
             autoPlay
+            style={cssZoom !== 1 ? { transform: `scale(${cssZoom})` } : undefined}
             className="h-full w-full object-cover"
           />
 
           {/* Bingkai bidik. `pointer-events-none` supaya tidak menghalangi
-              tombol tutup di atasnya. */}
+              tombol tutup dan kontrol zoom di atasnya. */}
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-6">
-            <div className="relative h-56 w-56 max-w-[70vw] rounded-2xl border-2 border-white/80 shadow-[0_0_0_100vmax_rgba(0,0,0,0.55)]">
-              <ScanLine className="absolute inset-0 m-auto h-8 w-8 text-white/50" />
+            <div
+              ref={frameRef}
+              className="relative h-48 w-[80vw] max-w-sm rounded-2xl border-2 border-white/80 shadow-[0_0_0_100vmax_rgba(0,0,0,0.55)]"
+            >
+              <ScanLine className="absolute inset-0 m-auto h-8 w-8 text-white/40" />
             </div>
 
             <div className="max-w-xs px-6 text-center">
-              {isResolving ? (
-                <p className="flex items-center justify-center gap-2 text-sm">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Membuka produk…
-                </p>
-              ) : (
-                <p className="text-sm text-white/80">
-                  {state.status === "starting"
-                    ? "Menyalakan kamera…"
-                    : "Arahkan ke QR atau barcode pada label produk."}
-                </p>
-              )}
+              <p className="text-sm text-white/80">
+                {state.status === "starting"
+                  ? "Menyalakan kamera…"
+                  : "Posisikan kode di dalam kotak — hanya isi kotak yang dibaca."}
+              </p>
             </div>
           </div>
 
+          {/* Kontrol perbesaran. Sengaja di luar wadah ber-`pointer-events-none`
+              di atas supaya tetap bisa ditekan. */}
+          <div className="absolute inset-x-0 bottom-8 z-20 flex justify-center">
+            <div className="flex items-center gap-1 rounded-full bg-black/55 p-1 backdrop-blur-sm">
+              {ZOOM_STEPS.map((step) => (
+                <button
+                  key={step}
+                  type="button"
+                  onClick={() => setZoom(step)}
+                  aria-pressed={zoom === step}
+                  className={cn(
+                    "h-9 w-12 rounded-full text-sm font-semibold transition-colors",
+                    zoom === step
+                      ? "bg-white text-black"
+                      : "text-white/80 hover:bg-white/15 hover:text-white"
+                  )}
+                >
+                  {step}x
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Layar tunggu. Menutupi kamera supaya jelas bahwa pemindaian sudah
+              berhasil dan halaman sedang dibuka — bukan lompatan tanpa aba-aba. */}
+          {pending && (
+            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-black/85 px-8 text-center">
+              <Loader2 className="h-8 w-8 animate-spin text-white/80" />
+              <div className="space-y-1">
+                <p className="text-base font-semibold">Memuat produk…</p>
+                {pending.name && (
+                  <p className="line-clamp-2 text-sm text-white/70">{pending.name}</p>
+                )}
+              </div>
+            </div>
+          )}
+
           {message && (
-            <div className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-3 bg-black/80 px-6 pt-4 pb-8 text-center">
+            <div className="absolute inset-x-0 bottom-0 z-20 flex flex-col items-center gap-3 bg-black/85 px-6 pt-4 pb-8 text-center">
               <p className="text-sm leading-relaxed text-white">{message}</p>
               <Button variant="secondary" size="sm" onClick={handleRetry}>
                 <RotateCcw className="h-4 w-4" />

@@ -1043,3 +1043,41 @@ tujuannya. Jangan "sederhanakan" bagian itu.
 Daftar host resminya tinggal di `lib/utils/trusted-host.ts` — dipakai bersama
 oleh `site-url.ts` (server) dan parser ini (klien), supaya tidak ada dua daftar
 izin yang harus diingat untuk diperbarui bersamaan.
+
+### Kotak bidik itu batas baca, bukan hiasan (1 September 2026)
+
+Versi pertama membaca **seluruh** bingkai kamera, jadi kode apa pun yang
+kebetulan masuk layar ikut terbaca meski jelas di luar kotak — staff mengarahkan
+ke satu barang lalu mendarat di produk sebelahnya. Sekarang `computeSourceRect()`
+menerjemahkan kotak di layar menjadi koordinat di dalam bingkai kamera, dan
+kedua jalur baca (native `BarcodeDetector` maupun ZXing) membaca dari canvas
+potongan yang sama. Tidak ada jalur yang diam-diam masih membaca seluruh layar.
+
+Perhitungannya harus mengikuti `object-cover` pada elemen video — video
+diperbesar sampai menutupi elemen, lalu kelebihannya dipotong rata di kedua sisi
+— dikali `cssZoom`. Kalau kelas CSS video diubah (mis. jadi `object-contain`),
+rumus itu **wajib** ikut diubah, kalau tidak potongannya meleset tanpa gejala
+yang kelihatan: kamera tetap menyala, cuma hasil bacanya salah sasaran.
+
+### Resolusi kamera sengaja tidak dipatok
+
+`getUserMedia` dulu meminta `width/height: { ideal: 1280/720 }`, dan itulah sebab
+gambarnya terlihat "zoom banget": meminta bingkai 16:9 dari sensor yang rasionya
+lain membuat browser memotong bingkai, lalu `object-cover` memotongnya sekali
+lagi supaya menutupi layar ponsel yang jangkung. Dua pemotongan bertumpuk
+menyisakan bagian tengah saja. Dibiarkan memilih sendiri, kamera memberi bidang
+pandang penuhnya — tampilan "1x" yang diharapkan. Jangan kembalikan patokan itu.
+
+Perbesaran sekarang dikendalikan tombol 1x/2x/3x: lewat lensa (`applyConstraints`
+dengan `zoom`) kalau perangkatnya sanggup, dan sisanya ditambal digital lewat
+CSS. iPhone selalu jatuh ke jalur digital — Safari tidak mendukung constraint
+`zoom` sama sekali.
+
+### Jeda sebelum berpindah halaman
+
+Pembacaan sering selesai dalam puluhan milidetik, dan berpindah secepat itu
+terbaca sebagai layar yang melompat sendiri. `FEEDBACK_MS` menahan layar tunggu
+sebentar sambil menyebut nama produk yang dituju — karena itu
+`/api/products/resolve` ikut mengembalikan `name`. Menutup panel selama jeda itu
+membatalkan perpindahannya (`cancelledRef`); tanpa itu halaman produk tetap
+muncul beberapa ratus milidetik setelah orangnya jelas-jelas membatalkan.

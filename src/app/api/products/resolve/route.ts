@@ -40,7 +40,11 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: "Produk tidak ditemukan" }, { status: 404 })
       }
 
-      return NextResponse.json({ slug: product.slug, variationSku: null })
+      return NextResponse.json({
+        slug: product.slug,
+        name: product.name,
+        variationSku: null,
+      })
     }
 
     if (rawSku !== null) {

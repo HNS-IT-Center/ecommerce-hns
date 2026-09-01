@@ -9,6 +9,8 @@ export async function searchProducts(query: string): Promise<Product[]> {
 /** Bentuk jawaban `/api/products/resolve`. */
 export type ResolvedProductTarget = {
   slug: string
+  /** Ditampilkan di layar tunggu pemindai sebelum halamannya dibuka. */
+  name: string
   variationSku: string | null
 }
 

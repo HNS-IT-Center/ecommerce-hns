@@ -341,6 +341,11 @@ export type SkuLookup = {
   /** Slug halaman produk. Untuk SKU milik varian, ini slug INDUKNYA. */
   slug: string;
   /**
+   * Nama produk, dipakai layar tunggu pemindai untuk menyebut apa yang sedang
+   * dibuka. Untuk SKU varian, ini nama INDUKNYA — sama dengan halaman tujuan.
+   */
+  name: string;
+  /**
    * SKU varian yang cocok, atau null kalau SKU itu milik produk biasa.
    * Dipakai halaman produk untuk memilihkan variannya di muka.
    */
@@ -376,9 +381,10 @@ export async function getProductSlugBySku(sku: string): Promise<SkuLookup | null
           select: {
             sku: true,
             slug: true,
+            name: true,
             status: true,
             parentId: true,
-            parent: { select: { slug: true, status: true } },
+            parent: { select: { slug: true, name: true, status: true } },
           },
         });
 
@@ -387,11 +393,11 @@ export async function getProductSlugBySku(sku: string): Promise<SkuLookup | null
         // SKU milik varian → yang dibuka halaman induknya.
         if (row.parentId !== null) {
           if (!row.parent || row.parent.status !== ProductStatus.PUBLISHED) return null;
-          return { slug: row.parent.slug, variationSku: row.sku };
+          return { slug: row.parent.slug, name: row.parent.name, variationSku: row.sku };
         }
 
         if (row.status !== ProductStatus.PUBLISHED) return null;
-        return { slug: row.slug, variationSku: null };
+        return { slug: row.slug, name: row.name, variationSku: null };
       },
       [`product-sku-${trimmed}`],
       { revalidate: 600, tags: [`product-sku-${trimmed}`] }
