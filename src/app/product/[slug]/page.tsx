@@ -24,6 +24,17 @@ import {
 
 type ProductPageProps = {
   params: Promise<{ slug: string }>
+  /**
+   * `?sku=` memilihkan varian di muka — tujuan pemindaian barcode SKU dari
+   * kolom pencarian. Barcode di stiker barang display bisa memuat SKU varian,
+   * dan varian di sini adalah baris `Product` tersendiri, jadi yang dibuka
+   * selalu halaman induknya plus penunjuk varian ini.
+   *
+   * Membaca `searchParams` TIDAK mengorbankan pra-render apa pun di halaman
+   * ini: ia memang sudah dinamis sejak awal karena `resolveSiteUrl()` membaca
+   * `headers()`, dan tidak ada `generateStaticParams` di sini.
+   */
+  searchParams: Promise<{ sku?: string | string[] }>
 }
 
 export async function generateMetadata({ params }: ProductPageProps): Promise<Metadata> {
@@ -32,6 +43,10 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
   if (!product) return { title: "Produk tidak ditemukan — HNS IT Center" }
 
   return {
+    // Kanonik menunjuk URL bersih tanpa `?sku=`. Tanpa ini tiap varian yang
+    // pernah dipindai menghasilkan alamat berbeda untuk isi yang sama, dan
+    // mesin pencari membaginya sebagai halaman-halaman duplikat.
+    alternates: { canonical: `/product/${slug}` },
     title: `${product.name} — HNS IT Center`,
     description: product.short_description
       ? product.short_description.replace(/<[^>]*>/g, "").slice(0, 160)
@@ -42,8 +57,9 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
   }
 }
 
-export default async function ProductPage({ params }: ProductPageProps) {
+export default async function ProductPage({ params, searchParams }: ProductPageProps) {
   const { slug } = await params
+  const { sku: rawSku } = await searchParams
   const product = await getProductBySlug(slug)
 
   if (!product) notFound()
@@ -162,6 +178,51 @@ export default async function ProductPage({ params }: ProductPageProps) {
     })
   }
 
+  /**
+   * Varian yang ditunjuk `?sku=`, kalau ada.
+   *
+   * Nilai array (`?sku=a&sku=b`) sengaja diabaikan, bukan diambil yang
+   * pertama: dua SKU sekaligus tidak punya arti di sini, dan menebak salah
+   * satunya lebih membingungkan daripada tidak memilih apa-apa.
+   */
+  const requestedSku = typeof rawSku === "string" ? rawSku.trim() : ""
+
+  const preselectedVariation = requestedSku
+    ? variations.find(
+        (variation) => variation.sku?.trim().toLowerCase() === requestedSku.toLowerCase()
+      )
+    : undefined
+
+  /**
+   * Pilihan atribut awal untuk varian di atas.
+   *
+   * Hanya dipakai kalau SELURUH atribut pembeda berhasil dipetakan. Pilihan
+   * setengah jadi membuat panel harga menampilkan "mulai dari" sambil sebagian
+   * tombol terlihat aktif — keadaan yang lebih membingungkan daripada tidak
+   * memilih apa pun. Pencocokan namanya longgar (trim + huruf kecil), sama
+   * seperti yang dilakukan `ProductDetail` saat varian dipilih manual.
+   */
+  const preselectedAttributes: Record<string, string> = {}
+  if (preselectedVariation) {
+    for (const attr of variantAttributes) {
+      const match = preselectedVariation.attributes.find(
+        (a) => a.name.trim().toLowerCase() === attr.name.trim().toLowerCase()
+      )
+      if (match?.option) preselectedAttributes[attr.name] = match.option
+    }
+  }
+
+  const hasCompletePreselection =
+    preselectedVariation !== undefined &&
+    variantAttributes.length > 0 &&
+    variantAttributes.every((attr) => preselectedAttributes[attr.name])
+
+  const initialSelected = hasCompletePreselection ? preselectedAttributes : undefined
+  const initialGalleryIndex =
+    hasCompletePreselection && preselectedVariation
+      ? variantImageIndex[preselectedVariation.id]
+      : undefined
+
   const brandName = product.brands?.[0]?.name || ""
 
   // Kategori utama dicari lewat penandanya, bukan lewat posisi. Query sudah
@@ -263,6 +324,14 @@ export default async function ProductPage({ params }: ProductPageProps) {
             dengan teks di bawahnya. */}
         <div className="mx-auto max-w-7xl py-0 md:px-6 md:py-12">
           <ProductDetail
+            /* `key` mengikuti SKU yang diminta supaya pemindaian barcode varian
+               lain SAAT SUDAH BERADA di halaman ini tetap berpengaruh. Tanpa
+               ini hanya query param yang berubah, komponennya dipakai ulang,
+               dan pilihan awal yang baru tidak pernah terpasang karena
+               state-nya cuma dibaca sekali saat mount. */
+            key={preselectedVariation?.sku ?? "tanpa-varian"}
+            initialSelected={initialSelected}
+            initialGalleryIndex={initialGalleryIndex}
             images={galleryImages}
             videoUrl={product.video_url}
             variantImageIndex={variantImageIndex}

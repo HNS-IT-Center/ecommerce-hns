@@ -981,3 +981,65 @@ Satu transaksi dipakai supaya tidak pernah ada keadaan separuh lama separuh baru
 Di sisi klien urutannya ditahan `useOptimistic`, bukan state biasa — baris pindah
 seketika saat dilepas, lalu kembali mengikuti data server begitu
 `router.refresh()` selesai. Tidak ada salinan urutan yang hidup sendiri di klien.
+
+---
+
+## 15. Pemindaian QR & barcode di kolom pencarian (1 September 2026)
+
+Tombol kamera di ujung kanan kolom pencarian membuka pemindai penuh layar.
+Sasarannya stiker yang tertempel di barang display: QR produk yang dicetak dari
+`/admin/produk`, dan barcode SKU dari gudang.
+
+### `GET /api/products/resolve`
+
+Menukar identitas hasil pemindaian menjadi slug halaman produk.
+
+| Query | Sumber | Jawaban |
+|---|---|---|
+| `?id=34394` | QR produk, isinya tautan pendek `/p/<id>` | `{ slug, variationSku: null }` |
+| `?sku=ABC123` | barcode SKU | `{ slug, variationSku }` |
+
+- `?id=` memakai `getProductById()`, yang mencari lewat **`wooId`** — nomor yang
+  sama dengan yang dipakai QR dan `/p/[id]`. Bukan primary key `Product.id`.
+- `?sku=` memakai `getProductSlugBySku()`, pencocokan **persis** (kolomnya
+  `@unique`, jadi paling banyak satu hasil). Kalau SKU itu milik sebuah varian,
+  yang dikembalikan **slug induknya** plus SKU variannya — varian di sini adalah
+  baris `Product` tersendiri dengan `parentId`, dan halamannya tidak dirancang
+  berdiri sendiri.
+- `404` berarti "tidak ada", dan itu jawaban yang sah: pemindai memakainya untuk
+  jatuh ke `/search?q=<sku>`, yang memang sudah mencocokkan SKU secara longgar.
+  `resolveScannedProduct()` karena itu mengembalikan `null` untuk 404 dan hanya
+  melempar untuk kegagalan jaringan/server.
+
+### Kenapa tidak langsung `router.push('/p/<id>')`
+
+`/p/[id]` itu Route Handler yang menjawab dengan redirect 301, bukan sebuah
+page. Menuju ke sana lewat router klien berarti bergantung pada penanganan
+redirect di tengah navigasi RSC, dan pemindainya kehilangan kesempatan berkata
+"produk tidak ditemukan" — orang akan mendarat di `/shop` tanpa penjelasan.
+
+### Preselect varian lewat `?sku=`
+
+`/product/[slug]` membaca `searchParams.sku` dan menerjemahkannya jadi
+`initialSelected` untuk `ProductDetail`. Hanya dipakai kalau **seluruh** atribut
+pembeda berhasil dipetakan; pilihan setengah jadi lebih membingungkan daripada
+tidak memilih apa pun.
+
+Membaca `searchParams` di sini tidak mengorbankan pra-render apa pun: halaman
+itu memang sudah dinamis karena `resolveSiteUrl()` membaca `headers()`, dan
+tidak ada `generateStaticParams`. `alternates.canonical` menunjuk URL bersih
+tanpa `?sku=` supaya mesin pencari tidak membaginya jadi halaman duplikat.
+
+### Hasil pindaian adalah masukan yang tidak dipercaya
+
+`parseScannedCode()` (`features/search/lib/`) menolak kode dari domain asing.
+Lapis yang sebenarnya menentukan bukan daftar izinnya, melainkan bahwa yang
+diambil dari URL **hanya identitas produk** — id atau slug — lalu path-nya
+disusun ulang sebagai path relatif. Meneruskan `url.href` apa adanya akan
+mengubah kamera jadi open redirect yang tidak terlihat seperti open redirect,
+karena siapa pun yang bisa menempelkan stiker di area display ikut menentukan
+tujuannya. Jangan "sederhanakan" bagian itu.
+
+Daftar host resminya tinggal di `lib/utils/trusted-host.ts` — dipakai bersama
+oleh `site-url.ts` (server) dan parser ini (klien), supaya tidak ada dua daftar
+izin yang harus diingat untuk diperbarui bersamaan.

@@ -3,6 +3,7 @@ import "server-only"
 import { headers } from "next/headers"
 
 import { env } from "@/config/env"
+import { isTrustedHnsHostname } from "./trusted-host"
 
 /**
  * Base URL untuk tautan yang keluar dari aplikasi — QR code produk, QR
@@ -28,18 +29,9 @@ function isTrustedHost(hostname: string): boolean {
     // NEXT_PUBLIC_SITE_URL tidak valid — jatuh ke pemeriksaan berikutnya.
   }
 
-  // Pengembangan lokal.
-  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]") {
-    return true
-  }
-
-  // Domain resmi berikut subdomainnya (mis. store.hnsitcenter.id).
-  return (
-    hostname === "hnsitcenter.id" ||
-    hostname.endsWith(".hnsitcenter.id") ||
-    hostname === "hnsitcenter.com" ||
-    hostname.endsWith(".hnsitcenter.com")
-  )
+  // Daftar domain resminya tinggal di modul terpisah supaya pemindai QR di
+  // browser memakai daftar yang sama persis — lihat trusted-host.ts.
+  return isTrustedHnsHostname(hostname)
 }
 
 /** Base URL tanpa garis miring di akhir, mis. `https://store.hnsitcenter.id`. */

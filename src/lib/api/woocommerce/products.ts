@@ -334,6 +334,76 @@ export async function getProductById(id: number): Promise<Product | null> {
 }
 
 /**
+ * Hasil pencarian SKU: halaman mana yang harus dibuka, dan varian mana yang
+ * harus terpilih begitu halamannya terbuka.
+ */
+export type SkuLookup = {
+  /** Slug halaman produk. Untuk SKU milik varian, ini slug INDUKNYA. */
+  slug: string;
+  /**
+   * SKU varian yang cocok, atau null kalau SKU itu milik produk biasa.
+   * Dipakai halaman produk untuk memilihkan variannya di muka.
+   */
+  variationSku: string | null;
+};
+
+/**
+ * Mencari produk lewat SKU persis — tujuan pemindaian barcode di kolom
+ * pencarian.
+
+ * Varian di project ini BUKAN tabel tersendiri: ia baris `Product` dengan
+ * `parentId` terisi (lihat schema.prisma), dan punya SKU unik sendiri. Stiker
+ * barcode yang tertempel di barang display karena itu bisa memuat SKU varian,
+ * bukan SKU induknya. Membuka slug varian secara langsung akan mendarat di
+ * halaman yang tidak dirancang untuk berdiri sendiri, jadi yang dikembalikan
+ * selalu slug induk plus SKU variannya.
+ *
+ * Kecocokannya sengaja PERSIS, bukan `contains`: `sku` bertanda `@unique`,
+ * sehingga pencocokan persis menjamin paling banyak satu hasil dan pemindaian
+ * bisa langsung mendarat di halaman produknya. Pencocokan longgar dikerjakan
+ * oleh pencarian biasa, yang memang sudah menyertakan SKU — dan ke sanalah
+ * pemanggil jatuh saat fungsi ini mengembalikan null.
+ */
+export async function getProductSlugBySku(sku: string): Promise<SkuLookup | null> {
+  const trimmed = sku.trim();
+  if (!trimmed) return null;
+
+  try {
+    const fetcher = unstable_cache(
+      async () => {
+        const row = await getPrisma().product.findUnique({
+          where: { sku: trimmed },
+          select: {
+            sku: true,
+            slug: true,
+            status: true,
+            parentId: true,
+            parent: { select: { slug: true, status: true } },
+          },
+        });
+
+        if (!row) return null;
+
+        // SKU milik varian → yang dibuka halaman induknya.
+        if (row.parentId !== null) {
+          if (!row.parent || row.parent.status !== ProductStatus.PUBLISHED) return null;
+          return { slug: row.parent.slug, variationSku: row.sku };
+        }
+
+        if (row.status !== ProductStatus.PUBLISHED) return null;
+        return { slug: row.slug, variationSku: null };
+      },
+      [`product-sku-${trimmed}`],
+      { revalidate: 600, tags: [`product-sku-${trimmed}`] }
+    );
+
+    return await fetcher();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Versi tanpa cache dari `getProductById`, khusus form edit admin.
  *
  * Layar ini adalah satu-satunya tempat data yang dibaca langsung dipakai untuk

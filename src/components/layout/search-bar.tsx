@@ -3,11 +3,12 @@
 import { useId, useRef, useState, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { useRouter } from "next/navigation"
-import { Search, ArrowLeft } from "lucide-react"
+import { Search, ArrowLeft, ScanLine } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { useLiveSearch } from "@/features/search/hooks/use-live-search"
 import { SearchResultsDropdown } from "@/features/search/components/search-results-dropdown"
+import { ScannerOverlay } from "@/features/search/components/scanner-overlay"
 import { useIsMobile } from "@/hooks/use-mobile"
 
 const MIN_QUERY_LENGTH = 2
@@ -21,6 +22,7 @@ export function SearchBar({ className }: SearchBarProps = {}) {
   const [isFocused, setIsFocused] = useState(false)
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
+  const [isScannerOpen, setIsScannerOpen] = useState(false)
   // Lewat `useIsMobile()`, bukan salinan `useState` + listener resize sendiri:
   // breakpointnya sama persis (768px) dan hook itu memakai
   // `useSyncExternalStore`, jadi tidak melanggar `set-state-in-effect` dan
@@ -151,6 +153,23 @@ export function SearchBar({ className }: SearchBarProps = {}) {
     }
   }
 
+  /**
+   * Menutup pemindai. Saat ia menutup KARENA berpindah halaman, overlay
+   * pencarian di belakangnya ikut ditutup dengan tanda yang sama — kalau tidak,
+   * overlay itu tetap menutupi halaman produk yang baru saja dibuka, dan entri
+   * riwayatnya ditarik tepat saat `router.push` sedang berjalan (lihat catatan
+   * panjang di `closeDropdown`).
+   */
+  const handleScannerOpenChange = (
+    open: boolean,
+    options?: { isNavigating?: boolean }
+  ) => {
+    setIsScannerOpen(open)
+    if (!open && options?.isNavigating) {
+      closeDropdown({ isNavigating: true })
+    }
+  }
+
   const handleFocus = () => {
     if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current)
     setIsFocused(true)
@@ -246,11 +265,24 @@ export function SearchBar({ className }: SearchBarProps = {}) {
             onKeyDown={handleKeyDown}
             placeholder="Cari laptop, komponen PC..."
             className={cn(
-              "w-full shadow-sm appearance-none pl-9 focus-visible:ring-1 focus-visible:ring-primary transition-all duration-200",
+              "w-full shadow-sm appearance-none pl-9 pr-11 focus-visible:ring-1 focus-visible:ring-primary transition-all duration-200",
               "bg-background border border-border rounded-lg text-sm",
               isMobileSearchOpen ? "h-11 text-base" : "h-10"
             )}
           />
+          {/* Pemindai QR/barcode. `onMouseDown` dicegat supaya menekan tombol
+              ini tidak lebih dulu mem-blur input — di desktop blur itu menutup
+              dropdown dan menggeser tata letak tepat sebelum klik mendarat. */}
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setIsScannerOpen(true)}
+            aria-label="Pindai QR atau barcode produk"
+            title="Pindai QR atau barcode produk"
+            className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <ScanLine className="h-4.5 w-4.5" />
+          </button>
         </div>
       </div>
       
@@ -302,6 +334,7 @@ export function SearchBar({ className }: SearchBarProps = {}) {
 
   return (
     <>
+      <ScannerOverlay open={isScannerOpen} onOpenChange={handleScannerOpenChange} />
       {isOpen && !isMobileSearchOpen && typeof document !== 'undefined' && createPortal(
         <div 
           className="fixed top-16 inset-x-0 bottom-0 z-40 bg-black/60 backdrop-blur-sm"

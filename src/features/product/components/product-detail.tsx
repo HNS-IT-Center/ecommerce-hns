@@ -15,6 +15,17 @@ type ProductDetailProps = {
   /** Indeks galeri untuk tiap varian, dikunci id varian. */
   variantImageIndex: Record<number, number>
   /**
+   * Varian yang sudah terpilih sejak halaman dibuka — dipakai saat pembeli
+   * datang lewat `?sku=`, mis. hasil pemindaian barcode varian di label.
+   *
+   * Hanya nilai AWAL: setelahnya pilihan sepenuhnya milik pembeli. Halaman
+   * yang memasoknya sudah memastikan seluruh atribut pembeda terisi, jadi
+   * komponen ini tidak perlu memeriksa kelengkapannya lagi.
+   */
+  initialSelected?: Record<string, string>
+  /** Slide galeri yang ditampilkan lebih dulu untuk varian di atas. */
+  initialGalleryIndex?: number
+  /**
    * Semua yang dibutuhkan panel info kecuali yang dikendalikan komponen ini —
    * pilihan varian dan sorotannya lahir di sini supaya galeri, strip, dan panel
    * bergerak dari satu sumber yang sama.
@@ -40,8 +51,20 @@ type ProductDetailProps = {
  * menggulir galeri tidak bisa mengubah harga. Pembungkus tipis ini memberi
  * keduanya satu sumber kebenaran tanpa memindahkan pengambilan data ke klien.
  */
-export function ProductDetail({ images, videoUrl, variantImageIndex, info }: ProductDetailProps) {
-  const [selected, setSelected] = useState<Record<string, string>>({})
+export function ProductDetail({
+  images,
+  videoUrl,
+  variantImageIndex,
+  info,
+  initialSelected,
+  initialGalleryIndex,
+}: ProductDetailProps) {
+  // Disemai lewat inisialisasi `useState`, BUKAN lewat `useEffect`. Menyemai
+  // di efek berarti render pertama selalu menampilkan keadaan tanpa varian
+  // lebih dulu — harga "mulai dari", galeri di foto induk — lalu melompat, dan
+  // kedipnya terlihat jelas. Ia juga akan menambah satu lagi kasus
+  // set-state-in-effect yang sudah berkali-kali jadi sumber bug di sekitar sini.
+  const [selected, setSelected] = useState<Record<string, string>>(initialSelected ?? {})
 
   /**
    * Sorotan sesaat pada pemilih varian, dipicu tombol keranjang di bar
@@ -80,7 +103,7 @@ export function ProductDetail({ images, videoUrl, variantImageIndex, info }: Pro
    * foto lain tanpa tertarik balik. Sebelumnya indeksnya diikat terus ke varian
    * terpilih, dan galeri jadi tidak bisa digeser sama sekali.
    */
-  const [pendingIndex, setPendingIndex] = useState<number | null>(null)
+  const [pendingIndex, setPendingIndex] = useState<number | null>(initialGalleryIndex ?? null)
 
   /**
    * Menggulir galeri TIDAK mengubah pilihan varian.
