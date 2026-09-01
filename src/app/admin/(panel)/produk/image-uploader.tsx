@@ -6,6 +6,7 @@ import { Loader2, Star, X, Upload, GripHorizontal } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { compressImage } from "@/lib/utils/image-compression"
+import { IMAGE_ACCEPT_ATTRIBUTE } from "@/lib/validators/media-upload"
 
 export type ProductImageItem = {
   /** Stabil selama umur komponen — dipakai sebagai key React & nilai pengurut. */
@@ -170,7 +171,7 @@ export function ImageUploader({ images, onChange }: ImageUploaderProps) {
           )}
           <input
             type="file"
-            accept="image/*"
+            accept={IMAGE_ACCEPT_ATTRIBUTE}
             multiple
             className="hidden"
             onChange={handleFilesSelected}

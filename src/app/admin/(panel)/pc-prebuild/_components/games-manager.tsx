@@ -12,6 +12,7 @@ import {
   type PrebuildGame,
 } from "@/lib/pc-prebuild/games"
 import { compressImage } from "@/lib/utils/image-compression"
+import { IMAGE_ACCEPT_ATTRIBUTE } from "@/lib/validators/media-upload"
 
 import { savePcPrebuildGames } from "../actions"
 
@@ -251,7 +252,7 @@ function LogoGame({
         <ImagePlus className="h-4 w-4" />
       )}
       <span className="sr-only">Unggah logo {nama}</span>
-      <input type="file" accept="image/*" onChange={pilih} disabled={mengunggah} className="sr-only" />
+      <input type="file" accept={IMAGE_ACCEPT_ATTRIBUTE} onChange={pilih} disabled={mengunggah} className="sr-only" />
     </label>
   )
 }

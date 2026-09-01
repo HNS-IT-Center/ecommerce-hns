@@ -6,6 +6,7 @@ import { Loader2, Play, Upload, X, Link2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { VIDEO_ACCEPT_ATTRIBUTE } from "@/lib/validators/media-upload"
 
 type VideoUploaderProps = {
   value: string
@@ -90,7 +91,7 @@ export function VideoUploader({ value, onChange }: VideoUploaderProps) {
             )}
             <input
               type="file"
-              accept="video/*"
+              accept={VIDEO_ACCEPT_ATTRIBUTE}
               className="hidden"
               onChange={handleFileSelected}
               disabled={uploading}

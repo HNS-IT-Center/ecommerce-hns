@@ -17,6 +17,7 @@ import {
 import { RupiahInput } from "@/components/ui/rupiah-input"
 import { cn } from "@/lib/utils"
 import type { ProductVariationValues } from "@/lib/validators/product"
+import { IMAGE_ACCEPT_ATTRIBUTE } from "@/lib/validators/media-upload"
 import type { ProductAttributeTaxonomy } from "@/types/woocommerce"
 import { useAttributeValues } from "./use-attribute-values"
 
@@ -305,7 +306,7 @@ export function VariationEditor({
                       )}
                       <input
                         type="file"
-                        accept="image/*"
+                        accept={IMAGE_ACCEPT_ATTRIBUTE}
                         className="hidden"
                         onChange={(e) => {
                           const file = e.target.files?.[0]

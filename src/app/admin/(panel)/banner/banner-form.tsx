@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
+import { IMAGE_ACCEPT_ATTRIBUTE } from "@/lib/validators/media-upload"
 
 const FIELD_TEXT = "text-xs md:text-xs"
 const TEXTAREA_CLASS =
@@ -434,7 +435,7 @@ export function BannerForm({ banner, action, batches }: BannerFormProps) {
                   )}
                   <input
                     type="file"
-                    accept="image/*"
+                    accept={IMAGE_ACCEPT_ATTRIBUTE}
                     className="hidden"
                     onChange={handleImageSelected}
                     disabled={uploading}

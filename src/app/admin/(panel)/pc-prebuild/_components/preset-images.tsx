@@ -6,6 +6,7 @@ import { ImagePlus, Loader2, Star, TriangleAlert, X } from "lucide-react"
 
 import { MAX_PREBUILD_IMAGES } from "@/lib/pc-prebuild/limits"
 import { compressImage } from "@/lib/utils/image-compression"
+import { IMAGE_ACCEPT_ATTRIBUTE } from "@/lib/validators/media-upload"
 
 /**
  * Foto rakitan jadi untuk satu paket.
@@ -108,7 +109,7 @@ export function PresetImages({
             )}
             <input
               type="file"
-              accept="image/*"
+              accept={IMAGE_ACCEPT_ATTRIBUTE}
               multiple
               onChange={pilih}
               disabled={uploading}
@@ -158,7 +159,7 @@ export function PresetImages({
               )}
               <input
                 type="file"
-                accept="image/*"
+                accept={IMAGE_ACCEPT_ATTRIBUTE}
                 multiple
                 onChange={pilih}
                 disabled={uploading}

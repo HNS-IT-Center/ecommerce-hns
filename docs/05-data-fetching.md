@@ -1081,3 +1081,71 @@ sebentar sambil menyebut nama produk yang dituju — karena itu
 `/api/products/resolve` ikut mengembalikan `name`. Menutup panel selama jeda itu
 membatalkan perpindahannya (`cancelledRef`); tanpa itu halaman produk tetap
 muncul beberapa ratus milidetik setelah orangnya jelas-jelas membatalkan.
+
+---
+
+## 16. Unggahan berkas: `POST /api/admin/media` (1 September 2026)
+
+Satu-satunya endpoint unggah di project ini. Delapan komponen admin memakainya
+(produk, varian, banner, brand, logo game, gambar preset PC prebuild, video
+produk), dan semuanya bermuara ke `uploadMedia()` di
+`lib/api/cloudflare/r2.ts` → Cloudflare R2.
+
+### Jenis berkas ditentukan dari isi berkas, bukan dari kiriman klien
+
+Pemeriksaannya ada di `lib/validators/media-upload.ts` dan dipanggil **dari
+dalam `uploadMedia()`**, bukan dari route. Alasannya sama dengan yang membuat
+`requireOwner` menolak jadi pemeriksaan terpusat (lihat `lib/auth/index.ts`):
+penjaga yang harus diingat setiap pemanggil baru cepat atau lambat terlewat.
+Selama unggahan lewat `uploadMedia()`, tidak ada jalur yang lolos.
+
+| Diterima | Batas |
+|---|---|
+| `image/jpeg`, `image/png`, `image/webp`, `image/avif`, `image/gif` | 8 MB |
+| `video/mp4`, `video/webm` | 4 MB |
+
+Tiga hal yang perlu diingat saat menyentuh area ini:
+
+1. **`file.type` dan `file.name` kiriman klien tidak dipercaya sama sekali.**
+   Jenis berkas dibaca dari magic bytes; `ContentType` objek R2 dan ekstensi
+   nama objek dua-duanya diturunkan dari hasil pembacaan itu. Ini bukan
+   kerewelan: sebelum ada pemeriksaan ini, `ContentType` diambil mentah dari
+   klien, jadi sebuah .html yang diunggah akan benar-benar dieksekusi browser
+   saat dibuka dari `media.hnsitcenter.com` — permanen, di domain yang melayani
+   seluruh gambar produk.
+2. **SVG ditolak dan punya pesan sendiri.** Ia satu-satunya "gambar" yang lolos
+   saringan `accept="image/*"` di browser tapi boleh memuat skrip. Kalau suatu
+   saat SVG benar-benar dibutuhkan, jalurnya adalah sanitasi + penyajian sebagai
+   `Content-Disposition: attachment`, bukan melonggarkan daftar ini.
+3. **`accept` pada `<input type="file">` bukan pengaman.** Ia cuma menyaring
+   dialog pemilih berkas dan dilewati begitu saja oleh permintaan yang dibuat
+   langsung. Nilainya diambil dari `IMAGE_ACCEPT_ATTRIBUTE` /
+   `VIDEO_ACCEPT_ATTRIBUTE` di berkas validator supaya daftar yang ditawarkan ke
+   staff tidak pernah berbeda dari yang benar-benar diterima server — tapi yang
+   menahan tetap `validateUpload`.
+
+### Balasan
+
+| Status | Kapan |
+|---|---|
+| `200` | `{ id, source_url, alt }` |
+| `400` | Berkas ditolak: jenis tidak diterima, SVG, atau berkas kosong |
+| `413` | Melebihi batas ukuran jenisnya |
+| `401` | Belum login (`requireAuth`) |
+| `503` | R2 belum dikonfigurasi, atau unggahan ke R2 gagal |
+
+Pesan `503` sengaja generik. Error mentah dari AWS SDK **tidak** diteruskan ke
+browser karena isinya bisa memuat endpoint `<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`
+beserta detail penandatanganan permintaan; detail lengkapnya tetap masuk
+`console.error` di server. Jangan "membantu" debugging dengan mengembalikan
+`error.message` ke klien di endpoint ini.
+
+### Batas ukuran video menempel pada batas platform
+
+4 MB dipilih karena request body serverless Vercel dibatasi sekitar 4,5 MB —
+berkas yang lebih besar putus di tengah jalan tanpa keterangan yang bisa dibaca
+staff. Video yang lebih besar dipasang lewat tab **Link** di `video-uploader.tsx`
+(YouTube), bukan diunggah ke R2. Kalau hosting-nya suatu saat pindah dan batas
+itu hilang, `MAX_VIDEO_BYTES` boleh dinaikkan — tapi ingat `uploadMedia()`
+menahan seluruh isi berkas di memori proses, jadi angkanya tetap tidak boleh
+bebas.

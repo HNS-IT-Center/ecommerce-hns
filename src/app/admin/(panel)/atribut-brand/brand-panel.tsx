@@ -12,6 +12,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { useToastManager } from "@/components/ui/toast"
 import { compressImage } from "@/lib/utils/image-compression"
 import { slugify } from "@/lib/utils/slug"
+import { IMAGE_ACCEPT_ATTRIBUTE } from "@/lib/validators/media-upload"
 // Hanya TIPE yang diimpor dari lapisan data — `import type` dihapus saat
 // kompilasi, jadi Prisma tidak ikut masuk ke bundel browser.
 import type { BrandRow } from "@/lib/api/taxonomy"
@@ -277,7 +278,7 @@ function BrandForm({
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept={IMAGE_ACCEPT_ATTRIBUTE}
               className="hidden"
               onChange={(event) => {
                 const file = event.target.files?.[0]
