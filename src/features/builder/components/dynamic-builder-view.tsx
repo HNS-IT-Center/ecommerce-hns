@@ -20,6 +20,7 @@ import {
 } from "@/components/shared/price-change-notice"
 import { ProductCardBuilder, type SelectedVariationLine } from "./product-card-builder"
 import { VariationPickerDialog } from "./variation-picker-dialog"
+import { BuilderQuickViewDialog } from "./builder-quick-view-dialog"
 import { cheapestAvailableVariation } from "@/lib/utils/variation"
 import { SaveBuildDialog } from "./save-build-dialog"
 import { StartNewBuildDialog } from "./start-new-build-dialog"
@@ -99,6 +100,14 @@ export function DynamicBuilderView({
    */
   const [variationPicker, setVariationPicker] = useState<BuilderProduct | null>(null)
   const [isVariationPickerOpen, setIsVariationPickerOpen] = useState(false)
+  /**
+   * Quick Preview: dua state dengan alasan yang SAMA PERSIS seperti pemilih
+   * varian di atas — dialognya harus selalu ter-mount dan produknya tetap ada
+   * selama animasi tutup berjalan. Lihat catatannya di
+   * `builder-quick-view-dialog.tsx`.
+   */
+  const [quickViewProduct, setQuickViewProduct] = useState<BuilderProduct | null>(null)
+  const [isQuickViewOpen, setIsQuickViewOpen] = useState(false)
   // `null` = belum dievaluasi (sebelum hydration selesai). Dievaluasi TEPAT
   // SEKALI saat `mounted` pertama kali jadi true — lihat efek di bawah.
   // Bukan `useMemo` dari `selections`: kalau begitu, banner ini akan
@@ -544,7 +553,43 @@ export function DynamicBuilderView({
     // mengundang salah tekan. Di langkah yang boleh berisi banyak (Storage,
     // RAM), dialognya justru dibiarkan terbuka supaya dua varian bisa diambil
     // berturut-turut tanpa membukanya dua kali.
-    if (!activeStep.allowMultiple) setIsVariationPickerOpen(false)
+    //
+    // Dua layar bisa memanggil ini: `VariationPickerDialog` dan daftar opsi di
+    // dalam Quick Preview. Keduanya ditutup tanpa dipilah — yang sedang tertutup
+    // memang tidak berubah apa-apa, dan hanya SATU dari keduanya yang pernah
+    // terbuka pada saat yang sama.
+    if (!activeStep.allowMultiple) {
+      setIsVariationPickerOpen(false)
+      setIsQuickViewOpen(false)
+    }
+  }
+
+  /**
+   * Satu kartu komponen dipilih — dari tombol di kartunya maupun dari dalam
+   * Quick Preview.
+   *
+   * Produk bervarian TIDAK PERNAH masuk rakitan langsung: harga induknya sering
+   * nol dan bukan harga barang mana pun (CLAUDE.md §2.7), jadi yang terjadi
+   * adalah pemilih variannya yang dibuka. Quick Preview tidak pernah sampai ke
+   * cabang itu — di sana daftar variannya sudah tampil di dalam dialog, karena
+   * dialog di project ini tidak boleh dirantai (lihat berkas dialognya).
+   */
+  const handleSelectProduct = (product: BuilderProduct) => {
+    if (!activeStep) return
+
+    if ((product.variations?.length ?? 0) > 0) {
+      setVariationPicker(product)
+      setIsVariationPickerOpen(true)
+      return
+    }
+
+    selectProduct(activeStep.id, product)
+    toastManager.add({
+      title: "Komponen Ditambahkan",
+      description: `${activeStep.name} berhasil dipilih`,
+      timeout: 2000,
+      data: { variant: "success" },
+    })
   }
 
   /**
@@ -1242,8 +1287,6 @@ export function DynamicBuilderView({
             <div className="space-y-6 print:hidden">
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
                 {sortedProducts.map(product => {
-                  const punyaVarian = (product.variations?.length ?? 0) > 0
-
                   // Satu kartu induk bisa menyumbang BEBERAPA baris rakitan
                   // (dua NVMe berbeda kapasitas), jadi yang dikumpulkan di sini
                   // adalah seluruh barisnya, bukan satu.
@@ -1276,24 +1319,10 @@ export function DynamicBuilderView({
                       key={product.id}
                       product={product}
                       quantity={quantity}
-                      onSelect={() => {
-                        // Produk bervarian TIDAK PERNAH masuk rakitan langsung
-                        // dari kartunya: harga induknya sering nol dan bukan
-                        // harga barang mana pun (CLAUDE.md §2.7). Tombolnya
-                        // membuka pemilih varian, dan varian itulah yang masuk.
-                        if (punyaVarian) {
-                          setVariationPicker(product)
-                          setIsVariationPickerOpen(true)
-                          return
-                        }
-
-                        selectProduct(activeStep!.id, product)
-                        toastManager.add({
-                          title: "Komponen Ditambahkan",
-                          description: `${activeStep?.name} berhasil dipilih`,
-                          timeout: 2000,
-                          data: { variant: "success" },
-                        })
+                      onSelect={() => handleSelectProduct(product)}
+                      onQuickView={() => {
+                        setQuickViewProduct(product)
+                        setIsQuickViewOpen(true)
                       }}
                       onUpdateQuantity={(q) => updateQuantity(activeStep!.id, product.id, q)}
                       onUpdateVariationQuantity={(variationId, q) =>
@@ -1362,6 +1391,41 @@ export function DynamicBuilderView({
         }
         onPick={(variation) => {
           if (variationPicker) handlePickVariation(variationPicker, variation)
+        }}
+      />
+
+      {/* SELALU dirender, alasannya sama dengan pemilih varian di atas. */}
+      <BuilderQuickViewDialog
+        open={isQuickViewOpen}
+        onOpenChange={(next) => {
+          if (!next) setIsQuickViewOpen(false)
+        }}
+        product={quickViewProduct}
+        selectedQuantity={
+          quickViewProduct
+            ? activeStepSelections
+                .filter((s) => cardIdOf(s.product) === quickViewProduct.id)
+                .reduce((total, s) => total + s.quantity, 0)
+            : 0
+        }
+        selectedVariationIds={
+          quickViewProduct
+            ? activeStepSelections
+                .filter((s) => cardIdOf(s.product) === quickViewProduct.id)
+                .map((s) => s.product.id)
+            : []
+        }
+        allowMultiple={activeStep?.allowMultiple ?? false}
+        onSelect={() => {
+          if (!quickViewProduct) return
+          handleSelectProduct(quickViewProduct)
+          // Produk biasa saja yang sampai ke sini (produk bervarian memakai
+          // daftar opsi di dalam dialog), jadi pilihannya sudah selesai dan
+          // pratinjaunya tidak punya alasan untuk tetap terbuka.
+          setIsQuickViewOpen(false)
+        }}
+        onPickVariation={(variation) => {
+          if (quickViewProduct) handlePickVariation(quickViewProduct, variation)
         }}
       />
 

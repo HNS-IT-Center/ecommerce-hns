@@ -6,6 +6,7 @@ import { formatRupiah } from "@/lib/utils"
 import { BuilderProduct } from "@/store/new-builder"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import EyeIcon from "@/components/icons/eye-icon"
 
 /** Satu varian produk ini yang sudah masuk rakitan pada langkah yang sedang aktif. */
 export type SelectedVariationLine = {
@@ -29,6 +30,13 @@ interface ProductCardBuilderProps {
    * itulah satu-satunya alasan produk VARIABLE boleh tampil di grid ini.
    */
   onSelect: () => void
+  /**
+   * Buka Quick Preview kartu ini. Sengaja TIDAK ikut dimatikan saat stok habis:
+   * produk habis tetap tampil di grid (sama seperti di katalog), dan justru
+   * barang itulah yang paling sering ditanyakan spesifikasinya sambil menunggu
+   * restock. Yang dimatikan hanya tombol pilih komponennya, di dalam dialog.
+   */
+  onQuickView: () => void
   onUpdateQuantity: (quantity: number) => void
   displayAttributeIds: number[]
   /** Kosong untuk produk biasa; berisi untuk kartu bervarian yang sudah dipilih. */
@@ -42,6 +50,7 @@ export function ProductCardBuilder({
   product,
   quantity,
   onSelect,
+  onQuickView,
   onUpdateQuantity,
   displayAttributeIds,
   selectedVariations = [],
@@ -75,20 +84,27 @@ export function ProductCardBuilder({
         </div>
       )}
 
-      {/* Image Container */}
-      <button
-        type="button"
-        onClick={product.stock > 0 ? onSelect : undefined}
-        className="relative aspect-square w-full overflow-hidden bg-secondary/50 rounded-t-xl group/image block text-left cursor-pointer disabled:cursor-not-allowed"
-        disabled={product.stock === 0}
-      >
-        <Image
-          src={product.image || "/placeholder.jpg"}
-          alt={product.name}
-          fill
-          sizes="(max-width: 768px) 50vw, 25vw"
-          className="object-contain transition-transform duration-500 group-hover:scale-105"
-        />
+      {/* Image Container.
+        Wadahnya sebuah `div`, bukan `button`: tombol Quick Preview di bawah
+        harus jadi SAUDARA tombol pilih-komponen, bukan anaknya. Tombol di dalam
+        tombol bukan HTML yang sah, dan browser menormalisasinya dengan
+        memutus struktur — klik pratinjaunya ikut memilih komponen. */}
+      <div className="relative aspect-square w-full overflow-hidden bg-secondary/50 rounded-t-xl group/image">
+        <button
+          type="button"
+          onClick={product.stock > 0 ? onSelect : undefined}
+          className="absolute inset-0 block h-full w-full cursor-pointer text-left disabled:cursor-not-allowed"
+          aria-label={`Pilih ${product.name}`}
+          disabled={product.stock === 0}
+        >
+          <Image
+            src={product.image || "/placeholder.jpg"}
+            alt={product.name}
+            fill
+            sizes="(max-width: 768px) 50vw, 25vw"
+            className="object-contain transition-transform duration-500 group-hover:scale-105"
+          />
+        </button>
 
         {/* Out of Stock Overlay */}
         {product.stock === 0 && (
@@ -98,7 +114,37 @@ export function ProductCardBuilder({
             </span>
           </div>
         )}
-      </button>
+
+        {/* Quick Preview — hover (desktop). Perlakuannya disamakan dengan kartu
+          katalog (`components/ui/product-card.tsx`) supaya sales dan pelanggan
+          tidak perlu belajar dua gerakan untuk hal yang sama. */}
+        <div className="absolute inset-0 z-20 hidden md:flex items-center justify-center opacity-0 transition-opacity duration-300 group-hover/image:opacity-100 group-hover/image:bg-background/40 group-hover/image:backdrop-blur-sm pointer-events-none">
+          <button
+            type="button"
+            onClick={onQuickView}
+            className="flex flex-col items-center justify-center text-foreground hover:text-brand-green transition-colors pointer-events-auto"
+            title="Quick Preview"
+          >
+            <div className="rounded-full bg-background/80 p-3 shadow-lg mb-1">
+              <EyeIcon size={24} />
+            </div>
+            <span className="text-[10px] font-bold bg-background/80 px-2 py-0.5 rounded shadow-sm">
+              Quick Preview
+            </span>
+          </button>
+        </div>
+
+        {/* Quick Preview — tombol tetap (mobile), karena tidak ada hover di sana. */}
+        <button
+          type="button"
+          onClick={onQuickView}
+          className="absolute top-2 right-2 z-[40] flex md:hidden h-8 w-8 items-center justify-center rounded-full bg-background/80 text-foreground shadow-sm hover:bg-background cursor-pointer"
+          title="Quick Preview"
+          aria-label={`Pratinjau ${product.name}`}
+        >
+          <EyeIcon size={18} />
+        </button>
+      </div>
 
       {/* Content */}
       <div className="flex flex-1 flex-col p-3 rounded-b-xl">

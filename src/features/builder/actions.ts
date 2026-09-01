@@ -393,3 +393,39 @@ export async function fetchBuilderProductsByIds(ids: number[]): Promise<BuilderP
     }
   })
 }
+
+/**
+ * Deskripsi satu produk untuk Quick Preview di wizard.
+ *
+ * Sengaja TIDAK ikut di `fetchBuilderProducts`: `description` bertipe
+ * MediumText, dan grid memuat 20 kartu sekali jalan lalu menambah 20 lagi
+ * setiap "Load More" — menariknya di depan berarti ratusan KB HTML untuk
+ * modal yang mungkin tidak pernah dibuka satu pun. Pola yang sama dipakai
+ * Quick View katalog, yang baru memuat variannya saat modalnya terbuka.
+ *
+ * Baris VARIATION nyaris tidak pernah punya deskripsi sendiri — yang dibaca
+ * pembeli selalu deskripsi induknya. Kartu di grid memang selalu SIMPLE atau
+ * induk VARIABLE, tapi cadangan ke induk dipasang supaya fungsi ini tetap
+ * benar kalau suatu hari dipanggil dengan id varian.
+ */
+export async function fetchBuilderProductDescription(
+  id: number
+): Promise<{ description: string; shortDescription: string }> {
+  if (!Number.isFinite(id)) return { description: "", shortDescription: "" }
+
+  const product = await getPrisma().product.findUnique({
+    where: { id },
+    select: {
+      description: true,
+      shortDescription: true,
+      parent: { select: { description: true, shortDescription: true } },
+    },
+  })
+
+  if (!product) return { description: "", shortDescription: "" }
+
+  return {
+    description: product.description || product.parent?.description || "",
+    shortDescription: product.shortDescription || product.parent?.shortDescription || "",
+  }
+}
