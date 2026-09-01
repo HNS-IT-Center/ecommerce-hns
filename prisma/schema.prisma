@@ -356,6 +356,16 @@ model Product {
   images     ProductImage[]
   attributes ProductAttribute[]
 
+  /// Hash isi yang terakhir berhasil terkirim ke Woo. Worker melewati job yang
+  /// hash-nya tidak berubah — melindungi dari enqueue berulang, dan dari
+  /// enqueue-all yang kelak mengantre ribuan produk sekaligus.
+  ///
+  /// Sengaja menempel di Product, bukan tabel terpisah: kedua kolom ini tidak
+  /// sensitif, jadi tidak ada yang bocor kalau ikut ter-serialize ke HTML.
+  syncHash     String?   @map("sync_hash") @db.VarChar(64)
+  lastSyncedAt DateTime? @map("last_synced_at")
+
+  syncJobs ProductSyncJob[]
   // Jejak migrasi — dibuang setelah Woo pensiun & data terverifikasi
   importNotes String?  @map("import_notes") @db.Text
   importedAt  DateTime @default(now()) @map("imported_at")
@@ -950,4 +960,47 @@ model CustomerDeletionLog {
   @@index([createdAt])
   @@index([deletedByUserId])
   @@map("customer_deletion_logs")
+}
+
+enum SyncJobStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+  SKIPPED
+}
+
+/// Antrean push ke WooCommerce. Diisi saat produk berubah di admin, dikosongkan
+/// oleh worker cron. Tahap ini hanya mengisi — belum ada yang mengirim.
+model ProductSyncJob {
+  id        Int           @id @default(autoincrement())
+  productId Int           @map("product_id")
+  product   Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  status    SyncJobStatus @default(PENDING)
+
+  /// Kunci anti-duplikat. Diisi = productId selama PENDING, di-NULL-kan saat job
+  /// diklaim worker. MySQL/MariaDB tidak menganggap NULL sebagai duplikat di
+  /// unique index, sehingga riwayat DONE/FAILED bebas menumpuk sementara job
+  /// PENDING tetap satu per produk.
+  ///
+  /// Dipakai menggantikan @@unique([productId, status]): constraint gabungan itu
+  /// berlaku untuk SEMUA status, sehingga job kedua gagal saat hendak jadi DONE —
+  /// yaitu setelah datanya terlanjur terkirim ke Woo.
+  ///
+  /// Partial index (WHERE status=PENDING) tidak tersedia di MariaDB; ini padanannya.
+  dedupeKey Int? @unique @map("dedupe_key")
+
+  attempts      Int      @default(0)
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at")
+  lastError     String?  @map("last_error") @db.Text
+
+  claimedAt DateTime? @map("claimed_at")
+  claimedBy String?   @map("claimed_by") @db.VarChar(100)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status, nextAttemptAt])
+  @@index([productId])
+  @@map("product_sync_jobs")
 }
