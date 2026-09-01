@@ -104,6 +104,24 @@ const EnvSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+
+  // ---------------------------------------------------------------------
+  // Sakelar pengantrean sinkronisasi ke WooCommerce.
+  //
+  // Mengendalikan apakah perubahan produk di admin ikut MENGANTRE job push.
+  // Tidak mengirim apa pun — pengiriman dikerjakan worker terpisah nanti.
+  //
+  // Opsional dengan alasan yang sama seperti AUTH_SECRET dan SMTP_*: skema
+  // ini di-parse saat modul dimuat, jadi menandainya wajib akan mematikan
+  // storefront di mesin mana pun yang belum menyebutkan variabel ini.
+  //
+  // Default "false": memasang pipanya lebih dulu, kerannya dibuka belakangan
+  // setelah worker benar-benar ada. Lingkungan yang tidak menyebut variabel
+  // ini tidak diam-diam mulai mengantre job yang tak akan pernah diproses.
+  SYNC_ENQUEUE_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
 });
 
 export const env = EnvSchema.parse({
@@ -135,4 +153,5 @@ export const env = EnvSchema.parse({
   SMTP_FROM: process.env.SMTP_FROM,
   EMAIL_REPLY_TO: process.env.EMAIL_REPLY_TO,
   REGISTER_MANUAL_ENABLED: process.env.REGISTER_MANUAL_ENABLED,
+  SYNC_ENQUEUE_ENABLED: process.env.SYNC_ENQUEUE_ENABLED,
 });
