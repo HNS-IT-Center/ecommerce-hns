@@ -12,6 +12,10 @@ import { formatRupiah } from "@/lib/utils"
  * `--card-price`, `--card-badge-*`) supaya token dari tema mendarat persis
  * seperti di produksi. Bentuknya disederhanakan dan akan menyimpang seiring
  * kartu aslinya berubah — itu diterima.
+ *
+ * Kotak gambarnya `bg-white` MENTAH, bukan token — sama seperti kartu
+ * aslinya, karena foto produk PNG berlatar putih. Jadi ia memang tidak ikut
+ * berubah saat warna tema diganti, dan pratinjau ini harus menunjukkan itu.
  */
 export function CardPreview() {
   return (
@@ -28,7 +32,7 @@ export function CardPreview() {
           />
         </div>
 
-        <div className="flex aspect-square w-full items-center justify-center rounded-t-xl bg-secondary/50">
+        <div className="flex aspect-square w-full items-center justify-center rounded-t-xl bg-white">
           <ShoppingBag className="h-8 w-8 text-muted-foreground/30" />
         </div>
 
@@ -67,7 +71,7 @@ export function CardPreview() {
           />
         </div>
 
-        <div className="flex aspect-square w-full items-center justify-center rounded-t-xl bg-secondary/50">
+        <div className="flex aspect-square w-full items-center justify-center rounded-t-xl bg-white">
           <ShoppingBag className="h-8 w-8 text-muted-foreground/30" />
         </div>
 

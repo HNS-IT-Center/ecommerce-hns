@@ -70,6 +70,10 @@ export function AttributePanel({ attributes }: { attributes: AttributeRow[] }) {
     }
   }
 
+  function toggleExpanded(id: number) {
+    setExpanded((previous) => ({ ...previous, [id]: !previous[id] }))
+  }
+
   function startEdit(kind: "attribute" | "value", id: number, current: string) {
     setEditing({ kind, id })
     setDraft(current)
@@ -139,28 +143,19 @@ export function AttributePanel({ attributes }: { attributes: AttributeRow[] }) {
         </p>
       )}
 
-      <div className="space-y-3">
+      {/*
+        Dua kolom mulai `md`: header atribut lebih padat daripada kartu brand
+        (nama + dua badge + dua tombol ikon), jadi `sm` membuat isinya melipat.
+        `items-start` supaya kartu yang accordion-nya terbuka tidak ikut
+        memanjangkan kartu di sebelahnya menjadi kotak kosong.
+      */}
+      <div className="grid items-start gap-3 md:grid-cols-2">
         {attributes.map((attribute) => {
           const isOpen = Boolean(expanded[attribute.id])
 
           return (
             <div key={attribute.id} className="rounded-xl border border-border bg-card">
               <div className="flex flex-wrap items-center gap-2 p-3 sm:flex-nowrap">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setExpanded((previous) => ({ ...previous, [attribute.id]: !previous[attribute.id] }))
-                  }
-                  aria-expanded={isOpen}
-                  aria-label={isOpen ? "Tutup nilai" : "Lihat nilai"}
-                  className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  <ChevronDown
-                    className="h-4 w-4 transition-transform duration-200"
-                    style={{ transform: isOpen ? "rotate(0deg)" : "rotate(-90deg)" }}
-                  />
-                </button>
-
                 {isEditing("attribute", attribute.id) ? (
                   <div className="flex flex-1 items-center gap-2">
                     <Input
@@ -187,7 +182,25 @@ export function AttributePanel({ attributes }: { attributes: AttributeRow[] }) {
                   </div>
                 ) : (
                   <>
-                    <span className="flex-1 font-semibold">{attribute.name}</span>
+                    {/*
+                      Chevron dan nama satu tombol, bukan dua: keduanya memicu
+                      aksi yang sama, dan menggabungkannya memberi target klik
+                      selebar kolom tanpa menaruh dua perhentian tab berturut-turut
+                      untuk satu aksi.
+                    */}
+                    <button
+                      type="button"
+                      onClick={() => toggleExpanded(attribute.id)}
+                      aria-expanded={isOpen}
+                      aria-controls={`attribute-values-${attribute.id}`}
+                      className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg py-1 pr-1 text-left transition-colors hover:text-primary"
+                    >
+                      <ChevronDown
+                        className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200"
+                        style={{ transform: isOpen ? "rotate(0deg)" : "rotate(-90deg)" }}
+                      />
+                      <span className="truncate font-semibold">{attribute.name}</span>
+                    </button>
 
                     <span className="shrink-0 rounded-full border border-border px-2 py-0.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
                       {attribute.values.length} nilai
@@ -227,7 +240,7 @@ export function AttributePanel({ attributes }: { attributes: AttributeRow[] }) {
               </div>
 
               {isOpen && (
-                <div className="border-t border-border p-3">
+                <div id={`attribute-values-${attribute.id}`} className="border-t border-border p-3">
                   <div className="flex flex-wrap gap-2">
                     {attribute.values.length === 0 && (
                       <p className="text-sm text-muted-foreground">Belum ada nilai untuk atribut ini.</p>

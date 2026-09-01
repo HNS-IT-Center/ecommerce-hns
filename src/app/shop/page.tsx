@@ -6,7 +6,7 @@ import { LiveSearch } from "@/features/shop/components/live-search"
 import { ShopSort } from "@/features/shop/components/shop-sort"
 import { getCategories } from "@/lib/api/woocommerce/categories"
 import { getProductsPaginated } from "@/lib/api/woocommerce/products"
-import { getBrands } from "@/lib/api/woocommerce/brands"
+import { getAvailableBrands } from "@/lib/api/woocommerce/brands"
 import { getPrisma } from "@/lib/prisma/client"
 import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper"
 import { getStockDisplayMode } from "@/lib/api/stock-display"
@@ -63,8 +63,7 @@ export default async function ShopPage({ searchParams }: ShopPageProps) {
   const brand = resolvedParams.brand
 
   const categories = await getCategories({ hideEmpty: true, perPage: 500 })
-  const brands = await getBrands()
-  
+
   const maxPriceAgg = await getPrisma().product.aggregate({
     _max: { regularPrice: true }
   })
@@ -83,6 +82,20 @@ export default async function ShopPage({ searchParams }: ShopPageProps) {
     categoryIds = Array.from(new Set(categoryIds))
     if (categoryIds.length === 0) categoryIds = undefined
   }
+
+  /**
+   * Daftar merek sengaja dihitung SETELAH `categoryIds` terbentuk, supaya
+   * kotak "Merek" menyaring dari kategori BESERTA KETURUNANNYA — persis
+   * himpunan yang dipakai daftar produk di bawah, bukan slug mentah dari URL.
+   */
+  const brands = await getAvailableBrands({
+    category: categoryIds,
+    search,
+    minPrice,
+    maxPrice,
+    onSale,
+    brand,
+  })
 
   const { products: wooProducts, totalPages, total } = await getProductsPaginated({
     category: categoryIds,

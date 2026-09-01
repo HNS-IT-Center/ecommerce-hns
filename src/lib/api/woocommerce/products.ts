@@ -64,7 +64,13 @@ const TYPE_FROM_PARAM = {
   external: ProductType.EXTERNAL,
 } as const;
 
-function buildPrismaWhere(params: GetProductsParams): Prisma.ProductWhereInput {
+/**
+ * Diekspor supaya daftar merek di sidebar toko bisa dihitung dari kondisi yang
+ * PERSIS SAMA dengan daftar produknya (lihat `getAvailableBrands` di
+ * `brands.ts`). Kalau facet itu menyusun where-nya sendiri, keduanya akan
+ * berbeda diam-diam begitu suatu saat ada filter baru ditambahkan di sini.
+ */
+export function buildPrismaWhere(params: GetProductsParams): Prisma.ProductWhereInput {
   const where: Prisma.ProductWhereInput = {
     parentId: null, // Only fetch parent products by default for listing
   };

@@ -10,7 +10,7 @@ import { LiveSearch } from "@/features/shop/components/live-search"
 import { ProductCard } from "@/components/ui/product-card"
 import { getCategories } from "@/lib/api/woocommerce/categories"
 import { getProductsPaginated } from "@/lib/api/woocommerce/products"
-import { getBrands } from "@/lib/api/woocommerce/brands"
+import { getAvailableBrands } from "@/lib/api/woocommerce/brands"
 import { getPrisma } from "@/lib/prisma/client"
 import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper"
 import { getStockDisplayMode } from "@/lib/api/stock-display"
@@ -73,9 +73,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const order = parseOrder(resolvedParams.order)
   const brand = resolvedParams.brand
 
-  const [categories, brands, maxPriceAgg] = await Promise.all([
+  const [categories, maxPriceAgg] = await Promise.all([
     getCategories({ hideEmpty: true, perPage: 500 }),
-    getBrands(),
     getPrisma().product.aggregate({ _max: { regularPrice: true } }),
   ])
 
@@ -94,6 +93,20 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     categoryIds = Array.from(new Set(categoryIds))
     if (categoryIds.length === 0) categoryIds = undefined
   }
+
+  /**
+   * Sama seperti `/shop`: dihitung setelah `categoryIds` supaya facet merek
+   * memakai kategori beserta keturunannya, dan ikut menyaring dari kata kunci
+   * yang sedang aktif.
+   */
+  const brands = await getAvailableBrands({
+    category: categoryIds,
+    search: q || undefined,
+    minPrice,
+    maxPrice,
+    onSale,
+    brand,
+  })
 
   const { products: wooProducts, totalPages, total } = q
     ? await getProductsPaginated({

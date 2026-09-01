@@ -175,7 +175,16 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
         )}
 
         {/* Image Container */}
-        <div className="relative aspect-square w-full overflow-hidden bg-secondary/50 rounded-t-xl group/image">
+        {/*
+          `bg-white` disengaja, bukan token tema. Foto produk PNG dipotret di
+          atas latar putih, jadi latar kotaknya harus putih yang sama persis
+          supaya batas fotonya tidak terlihat. Sebelumnya `bg-secondary/50` —
+          dan `--secondary` memetakan ke palet biru (`--secondary-100`
+          `#d2e0f9`), sehingga tiap foto PNG duduk di atas kotak biru muda.
+          Konsekuensinya kotak ini tidak lagi ikut berubah saat warna tema
+          diganti di /admin/theme; itu memang yang diminta.
+        */}
+        <div className="relative aspect-square w-full overflow-hidden bg-white rounded-t-xl group/image">
           <Image
             src={product.image_url}
             alt={product.name}

@@ -31,7 +31,7 @@ lib/api/woocommerce/
 ├── client.ts          ← Base fetcher dengan auth + error handling
 ├── products.ts        ← getProducts, getProductBySlug, getProductsByCategory
 ├── categories.ts      ← getCategories, getCategoryBySlug
-├── brands.ts          ← getBrands, getProductsByBrand
+├── brands.ts          ← getBrands, getAvailableBrands
 ├── orders.ts          ← createOrder, getOrder, getUserOrders
 ├── customers.ts       ← createCustomer, updateCustomer
 └── types.ts           ← Type WooCommerce (dari types/woocommerce.ts)
@@ -161,6 +161,7 @@ export async function getProductBySlug(slug: string): Promise<Product | null> {
 | `/products?slug=X` (detail) | 600s (10 menit) | `product-<slug>` | Webhook product update |
 | `/products/categories` | 3600s (1 jam) | `categories` | Manual / webhook category update |
 | `/products/brands` (custom) | 3600s | `brands` | Manual |
+| Daftar merek sidebar (`getAvailableBrands`) | 300s | `products`, `shop-brands` | Ikut webhook produk + aksi brand di admin |
 | Blog post | 3600s | `blog`, `post-<slug>` | Webhook post update |
 | Order (create/read) | No cache | — | — |
 | Customer data | No cache | — | — |
@@ -1149,3 +1150,49 @@ staff. Video yang lebih besar dipasang lewat tab **Link** di `video-uploader.tsx
 itu hilang, `MAX_VIDEO_BYTES` boleh dinaikkan — tapi ingat `uploadMedia()`
 menahan seluruh isi berkas di memori proses, jadi angkanya tetap tidak boleh
 bebas.
+
+---
+
+## 17. Filter merek di sidebar toko hanya memuat merek yang terpakai (1 September 2026)
+
+`/shop` dan `/search` dulu memanggil `getBrands()` — seluruh isi tabel `brands`,
+tanpa syarat apa pun. Akibatnya membuka kategori Laptop tetap menampilkan 124
+opsi merek, termasuk merek printer dan kursi gaming yang tidak punya satu pun
+laptop. Sekarang keduanya memakai **`getAvailableBrands(params)`** di
+`lib/api/woocommerce/brands.ts`. Diukur pada 1 September 2026: `/shop` polos 124
+opsi, `/shop?category=laptop` 15 opsi.
+
+`getBrands()` **tetap ada dan tetap dipakai** oleh form produk di admin panel —
+di sana staff justru harus bisa memilih merek apa pun, termasuk yang belum
+dipakai produk mana pun.
+
+### Ini soal isi daftar opsi, bukan hasil pencarian
+
+Query produknya tidak disentuh sama sekali. Produk yang `brandId`-nya null tetap
+tampil di grid seperti biasa — ia hanya tidak diwakili opsi apa pun di kotak
+"Merek", karena tidak ada nama merek yang bisa dicentang. Angkanya nyata: dari
+241 produk di kategori Laptop, 174 punya merek dan **67 sisanya tidak** — dan 67
+produk itu tetap terlihat pembeli.
+
+### Dua hal yang mudah dirusak saat menyunting ulang
+
+1. **Filter merek dikeluarkan dari `where` facet-nya.** Kalau ikut dimasukkan,
+   mencentang "Asus" akan menghapus semua merek lain dari daftar dan multi-pilih
+   jadi mustahil. Diperiksa: `?category=laptop&brand=asus` tetap menampilkan 15
+   opsi.
+2. **Merek yang sedang tercentang selalu ikut ditampilkan**, walaupun kombinasi
+   filternya menghasilkan nol produk. Tanpa ini,
+   `?category=laptop&brand=asus&minPrice=1&maxPrice=2` membuat checkbox Asus
+   lenyap padahal filternya masih aktif — pembeli melihat "0 produk" tanpa ada
+   yang bisa dilepas. Diperiksa: opsinya tetap 1, bukan 0.
+
+### Kenapa `buildPrismaWhere` diekspor
+
+Facet ini memakai fungsi yang sama persis dengan daftar produknya
+(`lib/api/woocommerce/products.ts`). Kalau ia menyusun `where`-nya sendiri,
+keduanya akan berbeda diam-diam begitu ada filter baru ditambahkan di satu sisi
+saja — dan bedanya muncul sebagai opsi merek yang hasilnya kosong, persis bug
+yang diperbaiki di sini. Paginasi dan urutan sengaja TIDAK ikut masuk
+`AvailableBrandsParams`: keduanya tidak memengaruhi merek mana yang tersedia,
+dan kalau ikut jadi kunci cache, setiap pindah halaman membuat entri cache baru
+untuk daftar yang isinya sama.
