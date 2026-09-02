@@ -317,6 +317,29 @@ model Product {
   name String  @db.VarChar(500)
   slug String  @unique @db.VarChar(191)
 
+  /// Slug produk ini di WooCommerce, untuk 301 redirect setelah cutover.
+  ///
+  /// 1.016 produk slug-nya berbeda antara Woo dan store — sebagian karena slug
+  /// Woo terpotong (`...b760m-a-wi-...`), salah warna, atau cuma berisi angka
+  /// (`3250`). Slug store yang lebih benar sengaja DIPERTAHANKAN; yang lama
+  /// disimpan di sini supaya alamat yang sudah beredar tetap mendarat.
+  ///
+  /// Disimpan dalam bentuk TER-DECODE. Woo menuliskan simbol inci sebagai
+  /// persen-encoding (`%e2%80%b3` = `″`) pada 158 slug, sedangkan Next.js sudah
+  /// men-decode parameter rute sebelum sampai ke handler — menyimpan bentuk
+  /// ter-encode berarti pencocokannya tidak akan pernah kena.
+  ///
+  /// Sengaja MENEMPEL di baris produk, bukan tabel peta tersendiri: slug tujuan
+  /// dibaca dari kolom `slug` di baris yang sama saat redirect terjadi, jadi
+  /// mengganti slug produk di admin tidak pernah membuat petanya basi. Peta
+  /// yang di-generate saat build akan menunjuk alamat mati begitu ada yang
+  /// mengubah slug, dan 301 yang salah di-cache browser secara permanen.
+  ///
+  /// NULL = tidak ada alamat lama yang perlu dijembatani. TIDAK unique: kolom
+  /// ini hanya dibaca setelah pencarian `slug` gagal, dan keunikan alamat tetap
+  /// dijaga oleh `slug` sendiri.
+  wooSlug String? @map("woo_slug") @db.VarChar(191)
+
   shortDescription String? @map("short_description") @db.Text
   description      String? @db.MediumText
 

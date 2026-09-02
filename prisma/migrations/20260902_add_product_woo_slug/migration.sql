@@ -1,0 +1,33 @@
+-- Kolom `woo_slug`: slug lama produk di WooCommerce, untuk 301 redirect
+-- setelah cutover 13 September 2026.
+--
+-- ADITIF MURNI. Satu kolom nullable. Tidak ada DROP, MODIFY, atau RENAME.
+-- Tidak ada baris data yang disentuh.
+--
+-- ============================================================================
+-- EMPAT PERNYATAAN SENGAJA DIBUANG dari hasil `prisma migrate diff`
+-- ============================================================================
+-- Perintah diff menghasilkan lima pernyataan; empat di antaranya destruktif
+-- dan TIDAK diminta oleh perubahan ini:
+--
+--   ALTER TABLE promo_banners DROP FOREIGN KEY promo_banners_batch_id_fkey;
+--   DROP INDEX promo_banners_batch_id_idx ON promo_banners;
+--   ALTER TABLE promo_banners DROP COLUMN batch_id;
+--   DROP TABLE banner_batches;
+--
+-- Keempatnya muncul karena `banner_batches` HIDUP DI PRODUKSI tapi modelnya
+-- ada di branch `development` (fitur MrPrasetyo, commit 87fe725), bukan di
+-- branch ini. Dari sudut pandang schema branch `team`, tabel itu terlihat
+-- seperti sisa yang perlu dibuang — padahal isinya kampanye "Promo September
+-- 2026" yang masih aktif sampai 30 September.
+--
+-- Ini BUKAN drift mati. Menjalankannya akan menghapus data produksi lewat
+-- migration yang judulnya tentang hal lain.
+--
+-- Selama dua branch berbagi satu database produksi, setiap `migrate diff` di
+-- branch ini akan mengusulkan keempatnya lagi. Baca hasil diff setiap kali;
+-- jangan pernah apply mentah-mentah.
+-- ============================================================================
+
+-- AlterTable
+ALTER TABLE `products` ADD COLUMN `woo_slug` VARCHAR(191) NULL;
