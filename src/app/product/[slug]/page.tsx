@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { notFound } from "next/navigation"
+import { notFound, permanentRedirect, redirect } from "next/navigation"
 import { Header } from "@/components/layout/header"
 import { TransparentHeaderProvider } from "@/components/layout/transparent-header-provider"
 import { ShareTargetProvider } from "@/components/layout/share-target-provider"
@@ -7,6 +7,7 @@ import { Footer } from "@/components/layout/footer"
 import { Breadcrumb } from "@/components/seo/breadcrumb"
 import { JsonLd } from "@/components/seo/json-ld"
 import { getProductBySlug, getProductVariations } from "@/lib/api/woocommerce/products"
+import { findProductByLegacySlug } from "@/lib/api/woocommerce/legacy-slug"
 import type { GalleryImage } from "@/features/product/components/product-gallery"
 import { ProductDetail } from "@/features/product/components/product-detail"
 import { ProductTabs } from "@/features/product/components/product-tabs"
@@ -62,7 +63,46 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
   const { sku: rawSku } = await searchParams
   const product = await getProductBySlug(slug)
 
-  if (!product) notFound()
+  /**
+   * URUTANNYA WAJIB BEGINI: cari `slug` dulu, `woo_slug` hanya kalau gagal.
+   * JANGAN dibalik, dan jangan digabung jadi satu query `OR`.
+   *
+   * Dua alasan, keduanya nyata di data:
+   *
+   * 1. BENAR. Ada 10 alamat lama yang sama persis dengan `slug` produk lain
+   *    yang hidup — semuanya induk VARIABLE di Woo yang slug-nya di store
+   *    menjadi milik salah satu variannya (mis.
+   *    `coolingpad-rexus-breeze-b140-black`). Dengan urutan ini alamat tersebut
+   *    membuka halaman yang benar-benar ada dan tidak pernah menyentuh lookup
+   *    redirect. Membaliknya mengubah 10 halaman hidup menjadi 301 ke tempat
+   *    lain — dan 301 di-cache browser secara permanen, kerusakan yang tidak
+   *    bisa ditarik balik lewat deploy.
+   *
+   * 2. MURAH. Kunjungan produk normal berhenti di `getProductBySlug` di atas
+   *    dan tidak pernah membayar query kedua. Lookup redirect hanya berjalan
+   *    pada alamat yang toh sudah pasti 404.
+   */
+  if (!product) {
+    const legacy = await findProductByLegacySlug(slug)
+
+    // 301, BUKAN 302. Google memindahkan peringkat halaman lama ke alamat baru
+    // hanya untuk redirect permanen; 302 menandakan "sementara" dan membiarkan
+    // peringkatnya menggantung di alamat yang sudah mati.
+    if (legacy.kind === "product") {
+      permanentRedirect(`/product/${legacy.slug}`)
+    }
+
+    // Produk ada tapi tidak terbit (DRAFT/PRIVATE) — halaman tujuannya akan
+    // 404, jadi pengunjung dilempar ke katalog. Sengaja `redirect` (307), bukan
+    // permanen: statusnya bisa diterbitkan kapan saja lewat admin, dan 301 di
+    // sini akan membekukan pengalihan ini di browser pengunjung bahkan setelah
+    // produknya terbit.
+    if (legacy.kind === "shop") {
+      redirect("/shop")
+    }
+
+    notFound()
+  }
 
   // Sakelar global di /admin/produk. Yang berubah hanya yang DITAMPILKAN —
   // `product.stock_status` dari katalog tidak ikut ditulis ulang.
