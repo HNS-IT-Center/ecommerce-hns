@@ -75,8 +75,8 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
    *    `coolingpad-rexus-breeze-b140-black`). Dengan urutan ini alamat tersebut
    *    membuka halaman yang benar-benar ada dan tidak pernah menyentuh lookup
    *    redirect. Membaliknya mengubah 10 halaman hidup menjadi 301 ke tempat
-   *    lain — dan 301 di-cache browser secara permanen, kerusakan yang tidak
-   *    bisa ditarik balik lewat deploy.
+   *    lain — dan redirect permanen di-cache browser secara permanen,
+   *    kerusakan yang tidak bisa ditarik balik lewat deploy.
    *
    * 2. MURAH. Kunjungan produk normal berhenti di `getProductBySlug` di atas
    *    dan tidak pernah membayar query kedua. Lookup redirect hanya berjalan
@@ -85,18 +85,19 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
   if (!product) {
     const legacy = await findProductByLegacySlug(slug)
 
-    // 301, BUKAN 302. Google memindahkan peringkat halaman lama ke alamat baru
-    // hanya untuk redirect permanen; 302 menandakan "sementara" dan membiarkan
-    // peringkatnya menggantung di alamat yang sudah mati.
+    // Permanen, BUKAN 302. `permanentRedirect()` Next.js mengeluarkan HTTP 308
+    // (bukan 301) — keduanya permanen dan Google memperlakukannya setara untuk
+    // meneruskan peringkat. Yang penting: JANGAN 302. Redirect "sementara"
+    // membiarkan peringkat halaman lama menggantung di alamat yang sudah mati.
     if (legacy.kind === "product") {
       permanentRedirect(`/product/${legacy.slug}`)
     }
 
     // Produk ada tapi tidak terbit (DRAFT/PRIVATE) — halaman tujuannya akan
     // 404, jadi pengunjung dilempar ke katalog. Sengaja `redirect` (307), bukan
-    // permanen: statusnya bisa diterbitkan kapan saja lewat admin, dan 301 di
-    // sini akan membekukan pengalihan ini di browser pengunjung bahkan setelah
-    // produknya terbit.
+    // permanen: statusnya bisa diterbitkan kapan saja lewat admin, dan redirect
+    // permanen (301/308) di sini akan membekukan pengalihan ini di browser
+    // pengunjung bahkan setelah produknya terbit.
     if (legacy.kind === "shop") {
       redirect("/shop")
     }

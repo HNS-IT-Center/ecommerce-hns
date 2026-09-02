@@ -3,7 +3,8 @@ import { unstable_cache } from "next/cache"
 import { getPrisma } from "@/lib/prisma/client"
 
 /**
- * Pencarian alamat produk LAMA (slug WooCommerce) untuk 301 redirect.
+ * Pencarian alamat produk LAMA (slug WooCommerce) untuk redirect permanen
+ * (`permanentRedirect` → HTTP 308, yang Google perlakukan setara 301).
  *
  * Latar: sampai 13 September 2026 katalog dilayani WordPress di
  * `hnsitcenter.id`. 1.015 produk punya slug berbeda antara Woo dan store —
@@ -17,8 +18,8 @@ import { getPrisma } from "@/lib/prisma/client"
  * saat build: slug tujuan dibaca dari kolom `slug` di baris yang sama pada saat
  * redirect terjadi, jadi staff yang mengganti slug lewat admin tidak pernah
  * membuat petanya basi. Peta yang dibekukan saat build akan menunjuk alamat
- * mati begitu ada yang mengubah slug — dan 301 yang salah di-cache browser
- * secara permanen.
+ * mati begitu ada yang mengubah slug — dan redirect permanen yang salah
+ * di-cache browser secara permanen.
  */
 export type LegacySlugTarget =
   /** Produk ditemukan dan layak dibuka — arahkan ke slug barunya. */
