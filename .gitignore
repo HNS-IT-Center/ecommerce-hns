@@ -170,3 +170,4 @@ scripts/backup-*.json
 # docs/10 §4 memang meminta dump disimpan DI LUAR folder repo. Baris ini jaring
 # pengaman kalau ada yang terlanjur mengunduhnya ke sini.
 /*.sql
+backup/
