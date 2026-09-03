@@ -516,6 +516,29 @@ model Category {
 
   // Path lengkap: "KOMPONEN PC / NB > MOTHERBOARD > MOTHERBOARD INTEL"
   path  String @unique @db.VarChar(500)
+
+  /// Slug kategori LAMA di WooCommerce, untuk 301 redirect setelah cutover.
+  ///
+  /// BERISI SEGMEN TERAKHIR, BUKAN PATH PENUH. Untuk alamat lama
+  /// `/product-category/komponen-pc-nb/motherboard-pc/motherboard-intel/`
+  /// kolom ini berisi `motherboard-intel` saja.
+  ///
+  /// Kedua bentuk alamat hidup di WooCommerce: bentuk datar menjawab 200
+  /// untuk seluruh 154 kategori, sementara `og:url` mengiklankan bentuk
+  /// bertingkat sebagai kanonik untuk 124 di antaranya. Menyimpan segmen
+  /// terakhir membuat satu baris melayani KEDUA bentuk. Path penuh juga akan
+  /// ikut basi kalau slug induk di Woo berubah — dan segmen induknya slug
+  /// Woo (`motherboard-pc`), bukan slug store (`komponen-pc-nb-motherboard`).
+  ///
+  /// Route `/product-category/[...slug]` mengambil elemen TERAKHIR dan
+  /// mencocokkannya ke sini. Mengisi kolom ini dengan path penuh membuat
+  /// lookup gagal diam-diam — hanya terlihat sebagai 404 biasa.
+  ///
+  /// Unique aman: yang masuk sini hanya 101 kategori, dan tidak ada dua yang
+  /// segmen terakhirnya sama (diverifikasi 2 Sep 2026). 17 slug Woo yang
+  /// sebenarnya MEREK diarahkan ke /shop?brand= lewat peta terpisah di route,
+  /// bukan lewat kolom ini — beberapa di antaranya menunjuk merek yang sama.
+  wooSlug String? @unique @map("woo_slug") @db.VarChar(191)
   depth Int    @default(1)
 
   parentId Int?       @map("parent_id")

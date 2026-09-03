@@ -1,0 +1,65 @@
+-- Kolom `woo_slug` di categories: slug kategori lama di WooCommerce, untuk 301
+-- redirect setelah cutover 13 September 2026.
+--
+-- ADITIF MURNI. Satu kolom nullable + satu indeks unik. Tidak ada DROP,
+-- MODIFY, atau RENAME. Tidak ada tabel selain `categories` yang disentuh.
+-- Tidak ada baris data yang diubah.
+--
+-- ============================================================================
+-- ISINYA SEGMEN TERAKHIR, BUKAN PATH PENUH
+-- ============================================================================
+-- Untuk /product-category/komponen-pc-nb/motherboard-pc/motherboard-intel/
+-- kolom ini berisi `motherboard-intel` saja — BUKAN path penuhnya.
+--
+-- Alasannya diukur, bukan selera:
+--
+-- 1. Kedua bentuk alamat hidup di WooCommerce. Bentuk datar
+--    (/product-category/motherboard-intel/) menjawab 200 untuk SELURUH 154
+--    kategori, sementara `og:url` mengiklankan bentuk bertingkat sebagai
+--    kanonik untuk 124 di antaranya. Menyimpan segmen terakhir membuat satu
+--    baris data melayani KEDUA bentuk; menyimpan path penuh membuat 154
+--    alamat datar yang beredar gagal cocok.
+--
+-- 2. Segmen induk di alamat lama adalah slug WOO, bukan slug store —
+--    `motherboard-pc` di Woo, `komponen-pc-nb-motherboard` di store. Path
+--    penuh berarti menyimpan struktur sistem yang sedang dimatikan, dan ikut
+--    basi begitu ada induk yang slug-nya berubah sebelum cutover.
+--
+-- 3. Terverifikasi 2 September 2026: dari 101 kategori yang dipetakan, TIDAK
+--    ADA dua yang segmen terakhirnya sama. Pencocokan tetap deterministik.
+--
+-- Route `/product-category/[...slug]` mengambil elemen TERAKHIR dari array
+-- dan mencocokkannya ke kolom ini. Jangan mengisi kolom ini dengan path
+-- penuh — lookup-nya akan gagal diam-diam dan hanya terlihat sebagai 404.
+-- ============================================================================
+--
+-- UNIQUE, dan itu aman. Yang masuk kolom ini hanya 101 kategori (90 NAMA
+-- COCOK + 11 IDENTIK). 17 slug Woo yang sebenarnya MEREK (`amd`,
+-- `amd-ati-radeon`, dua baris `colorful`, …) TIDAK masuk sini — mereka
+-- diarahkan ke /shop?brand= lewat peta terpisah di route, justru karena
+-- beberapa di antaranya menunjuk merek yang sama dan akan bertabrakan.
+--
+-- ============================================================================
+-- PERINGATAN: `prisma migrate diff` akan mengusulkan penghapusan destruktif
+-- ============================================================================
+-- Sama seperti migration woo_slug produk (20260902_add_product_woo_slug):
+-- perintah diff di branch ini akan ikut mengusulkan
+--
+--   ALTER TABLE promo_banners DROP FOREIGN KEY promo_banners_batch_id_fkey;
+--   DROP INDEX promo_banners_batch_id_idx ON promo_banners;
+--   ALTER TABLE promo_banners DROP COLUMN batch_id;
+--   DROP TABLE banner_batches;
+--
+-- Keempatnya muncul karena `banner_batches` HIDUP DI PRODUKSI (fitur
+-- MrPrasetyo) tapi modelnya tidak ada di schema branch ini. Ini BUKAN drift
+-- mati — isinya kampanye yang masih aktif. Baca hasil diff setiap kali;
+-- jangan pernah apply mentah-mentah.
+-- ============================================================================
+--
+-- Baseline sebelum eksekusi (direkam 2026-09-02T09:53:03Z):
+--   categories = 108 · products = 5.415 · product_categories = 7.723
+--   brands = 135 · kolom woo_slug = belum ada
+-- Kalau angka-angka itu berbeda saat apply, BERHENTI.
+
+ALTER TABLE `categories` ADD COLUMN `woo_slug` VARCHAR(191) NULL;
+CREATE UNIQUE INDEX `categories_woo_slug_key` ON `categories`(`woo_slug`);
