@@ -29,6 +29,19 @@ const EnvSchema = z.object({
   // admin belum dikonfigurasi.
   DATABASE_URL: z.string().min(1).optional(),
 
+  // Google Sheet (CSV publish) berisi data barang Accurate — kode, nama,
+  // kategori, brand, status, STOK (TIDAK ada harga; harga diisi manual oleh
+  // role harga di admin). Tombol "Import Data" di /admin/harga-accurate
+  // menyedot Sheet ini dan meng-upsert `accurate_products` di ecommerce_hns.
+  // URL `/pub?...output=csv` bersifat publik. Opsional: tanpa ini, tombol
+  // import menampilkan pesan "URL Sheet belum diatur".
+  GOOGLE_SHEET_CSV_URL: z.string().url().optional(),
+
+  // Peninggalan jalur lama (database `updatewoo` remote). Tidak dipakai lagi
+  // sejak data Accurate diimpor ke ecommerce_hns sebagai tabel accurate_*.
+  // Dibiarkan opsional supaya .env lama tidak gagal validasi.
+  STOCK_UPDATEWOO_DATABASE_URL: z.string().min(1).optional(),
+
   // Admin panel — kunci penanda tangan cookie sesi. Opsional di skema ini
   // supaya storefront tetap jalan tanpanya; `lib/auth/session.ts` menjaganya
   // sendiri dan melempar dengan pesan jelas saat sesi benar-benar dibutuhkan.
@@ -136,6 +149,8 @@ export const env = EnvSchema.parse({
   WORDPRESS_APP_USER: process.env.WP_USERNAME || process.env.WORDPRESS_APP_USER,
   WORDPRESS_APP_PASSWORD: process.env.WP_APP_PASSWORD || process.env.WORDPRESS_APP_PASSWORD,
   DATABASE_URL: process.env.DATABASE_URL,
+  GOOGLE_SHEET_CSV_URL: process.env.GOOGLE_SHEET_CSV_URL,
+  STOCK_UPDATEWOO_DATABASE_URL: process.env.STOCK_UPDATEWOO_DATABASE_URL,
   AUTH_SECRET: process.env.AUTH_SECRET,
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,

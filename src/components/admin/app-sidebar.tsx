@@ -18,6 +18,7 @@ import {
   Tags,
   Users,
   RefreshCw,
+  Coins,
   X,
 } from "lucide-react"
 
@@ -67,6 +68,7 @@ const adminNavItems: NavItem[] = [
       { title: "Kategori",        url: "/admin/kategori",      icon: FolderTree },
       { title: "Atribut & Brand", url: "/admin/atribut-brand", icon: Tags },
       { title: "Sinkronisasi",   url: "/admin/sinkronisasi",  icon: RefreshCw },
+      { title: "Update Harga",    url: "/admin/harga-accurate", icon: Coins },
     ],
   },
   { title: "PC Builder",   url: "/admin/pc-builder", icon: Cpu },
