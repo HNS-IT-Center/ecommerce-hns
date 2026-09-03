@@ -47,7 +47,7 @@ export default async function AdminLogsPage({ searchParams }: Props) {
   const { q, page, sort, order, tab, from, to, action } = await searchParams
 
   const currentTab =
-    tab === "kategori" ? "kategori" : tab === "pc-build" ? "pc-build" : "produk"
+    tab === "update-harga" ? "update-harga" : tab === "pc-build" ? "pc-build" : "produk"
   // `page` datang dari URL yang bisa diedit bebas. Tanpa penjagaan ini,
   // `?page=abc` menghasilkan NaN dan `?page=0` menghasilkan `skip` negatif —
   // keduanya membuat Prisma melempar error dan seluruh halaman gagal render.
@@ -176,14 +176,14 @@ export default async function AdminLogsPage({ searchParams }: Props) {
           Produk Logs
         </Link>
         <Link
-          href={`/admin/logs?tab=kategori`}
+          href={`/admin/logs?tab=update-harga`}
           className={`px-4 py-2 border-b-2 font-medium text-sm transition-colors ${
-            currentTab === "kategori"
+            currentTab === "update-harga"
               ? "border-primary text-primary"
               : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
           }`}
         >
-          Kategori Logs
+          Update Harga Log
         </Link>
         <Link
           href={`/admin/logs?tab=pc-build`}
@@ -203,13 +203,16 @@ export default async function AdminLogsPage({ searchParams }: Props) {
           totalPages={totalPages}
           currentPage={currentPage}
         />
-      ) : currentTab === "kategori" ? (
+      ) : currentTab === "update-harga" ? (
         <div className="rounded-xl border border-border bg-background p-12 text-center text-muted-foreground shadow-sm flex flex-col items-center justify-center">
           <div className="h-16 w-16 bg-muted rounded-full flex items-center justify-center mb-4">
             <span className="text-2xl">🚧</span>
           </div>
-          <h2 className="text-lg font-bold text-foreground mb-2">Coming Soon</h2>
-          <p>Fitur log aktivitas untuk Kategori sedang dalam pengembangan.</p>
+          <h2 className="text-lg font-bold text-foreground mb-2">Segera Hadir</h2>
+          <p>
+            Riwayat aktivitas harga — sinkronisasi Accurate, impor Sheet, dan penerapan harga
+            per produk — sedang disiapkan.
+          </p>
         </div>
       ) : (
         <LogsTable
