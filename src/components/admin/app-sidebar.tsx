@@ -17,6 +17,7 @@ import {
   Palette,
   Tags,
   Users,
+  ShieldCheck,
   RefreshCw,
   Coins,
   X,
@@ -76,6 +77,7 @@ const adminNavItems: NavItem[] = [
   { title: "Banner Promo", url: "/admin/banner",   icon: Megaphone },
   { title: "Toko & Lokasi", url: "/admin/toko",    icon: Store },
   { title: "Pelanggan",    url: "/admin/pelanggan", icon: Users },
+  { title: "Manajemen User", url: "/admin/manajemen-user", icon: ShieldCheck },
   { title: "Tema",         url: "/admin/theme",    icon: Palette },
   { title: "Logs",         url: "/admin/logs",     icon: ClipboardList },
 ]
