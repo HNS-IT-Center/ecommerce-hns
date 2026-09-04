@@ -1,5 +1,6 @@
 "use server"
 
+import { requirePermission } from "@/lib/auth"
 import { updateProductPriceAction } from "../produk/actions"
 import { buildAccuratePricePreview } from "@/lib/services/accurate-price"
 import { importDariSheet, type ImportResult } from "@/lib/api/accurate/import-sheet"
@@ -26,6 +27,7 @@ export async function importSheetAction(): Promise<{
   error: string | null
 }> {
   try {
+    await requirePermission("harga-accurate", "edit")
     const hasil = await importDariSheet()
     return { hasil, error: null }
   } catch (error) {
@@ -39,6 +41,7 @@ export async function importSheetAction(): Promise<{
 /** Muat ulang pratinjau (dipakai tombol "Segarkan"). READ-ONLY. */
 export async function refreshPreviewAction() {
   try {
+    await requirePermission("harga-accurate", "view")
     const preview = await buildAccuratePricePreview()
     return { preview, error: null as string | null }
   } catch (error) {
@@ -67,6 +70,17 @@ export async function terapkanHargaAction(
   items: TerapkanItem[],
 ): Promise<TerapkanHasil> {
   const hasil: TerapkanHasil = { berhasil: 0, gagal: [] }
+
+  // Penjaga izin: role tanpa "edit" di halaman ini tak boleh menerapkan harga
+  // (§2.7). Kalau ditolak, seluruh item gagal dengan alasan izin — bukan
+  // sebagian tembus. `updateProductPriceAction` juga punya requireAuth-nya
+  // sendiri, tapi penjaga di sini menutup celah "boleh login tapi tak boleh edit".
+  try {
+    await requirePermission("harga-accurate", "edit")
+  } catch {
+    for (const item of items) hasil.gagal.push({ wooId: item.wooId, alasan: "tidak punya izin edit harga" })
+    return hasil
+  }
 
   for (const item of items) {
     // Validasi ulang di server — klien tidak dipercaya (§2.7).

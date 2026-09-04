@@ -2,7 +2,7 @@
 
 import { revalidatePath, revalidateTag } from "next/cache"
 
-import { requireAuth } from "@/lib/auth"
+import { requirePermission } from "@/lib/auth"
 import { getPrisma } from "@/lib/prisma/client"
 import { findPresetTheme, DEFAULT_THEME_ID } from "@/lib/theme/presets"
 import { THEME_CACHE_TAG, THEME_SETTING_KEY, getThemeSettings } from "@/lib/theme/settings"
@@ -17,7 +17,7 @@ export type ThemeScope = "chrome" | "card"
  * apa pun ketika `getActiveThemeCss` gagal menemukannya.
  */
 export async function applyTheme(scope: ThemeScope, themeId: string) {
-  await requireAuth()
+  await requirePermission("theme", "edit")
 
   const theme = findPresetTheme(themeId)
   if (!theme) {

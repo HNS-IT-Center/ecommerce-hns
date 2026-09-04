@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireAuth } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import {
   StoreOperationError,
   createStore as createStoreRow,
@@ -77,7 +77,7 @@ function revalidateStorePages() {
  */
 async function run(fn: () => Promise<void>): Promise<StoreActionState | never> {
   try {
-    await requireAuth();
+    await requirePermission("toko", "edit");
     await fn();
   } catch (error) {
     if (
@@ -110,12 +110,12 @@ export async function updateStore(
 /**
  * Menandai toko terhapus, bukan melenyapkan barisnya.
  *
- * Identitas penghapus diambil dari `requireAuth()`, BUKAN dari formulir. Nilai
+ * Identitas penghapus diambil dari `requirePermission()`, BUKAN dari formulir. Nilai
  * apa pun yang datang dari formulir bisa diganti pengirimnya, dan jejak audit
  * yang bisa dipalsukan oleh pelakunya sendiri tidak ada gunanya sebagai jejak.
  */
 export async function deleteStore(formData: FormData) {
-  const user = await requireAuth();
+  const user = await requirePermission("toko", "edit");
   const id = String(formData.get("id") ?? "");
   if (!id) return;
 

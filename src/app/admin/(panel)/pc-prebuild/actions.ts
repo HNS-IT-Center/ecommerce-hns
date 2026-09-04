@@ -1,6 +1,7 @@
 "use server"
 
 import { revalidateTag } from "next/cache"
+import { requirePermission } from "@/lib/auth"
 
 import { getPrisma } from "@/lib/prisma/client"
 import {
@@ -63,6 +64,7 @@ async function simpanConfig(config: unknown) {
 }
 
 export async function savePcPrebuildConfig(config: unknown) {
+  await requirePermission("pc-prebuild", "edit")
   const bersih = await simpanConfig(config)
   return { success: true as const, presets: bersih.presets.length }
 }
@@ -80,6 +82,7 @@ export async function savePcPrebuildConfig(config: unknown) {
  * kebetulan masih tersimpan di `unstable_cache`.
  */
 export async function savePcPrebuildPreset(preset: unknown) {
+  await requirePermission("pc-prebuild", "edit")
   if (typeof preset !== "object" || preset === null) {
     return { success: false as const, error: "Bentuk paket tidak dikenali." }
   }
@@ -113,6 +116,7 @@ export async function savePcPrebuildPreset(preset: unknown) {
 }
 
 export async function deletePcPrebuildPreset(id: string) {
+  await requirePermission("pc-prebuild", "edit")
   if (!id) return { success: false as const, error: "Id kosong." }
 
   const config = await bacaConfigSegar()
@@ -128,6 +132,7 @@ export async function deletePcPrebuildPreset(id: string) {
  * yang ditutup. Pola yang sama dipakai `REGISTER_MANUAL_ENABLED`.
  */
 export async function setPcPrebuildEnabled(enabled: boolean) {
+  await requirePermission("pc-prebuild", "edit")
   const config = await bacaConfigSegar()
   await simpanConfig({ ...config, enabled: enabled === true })
   return { success: true as const, enabled: enabled === true }
@@ -164,6 +169,7 @@ export async function searchPrebuildProductsAction(input: {
  * penghapusan terasa tidak berfungsi.
  */
 export async function savePcPrebuildGames(games: unknown) {
+  await requirePermission("pc-prebuild", "edit")
   const bersih = parsePrebuildGames(games) ?? []
 
   await getPrisma().setting.upsert({

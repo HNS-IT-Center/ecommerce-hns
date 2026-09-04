@@ -1,7 +1,7 @@
 "use server"
 
 import { revalidatePath, revalidateTag } from "next/cache"
-import { UnauthorizedError, requireAuth } from "@/lib/auth"
+import { UnauthorizedError, requirePermission } from "@/lib/auth"
 import {
   CategoryOperationError,
   createCategory,
@@ -46,7 +46,7 @@ async function run(
   ok: string
 ): Promise<CategoryActionState> {
   try {
-    await requireAuth()
+    await requirePermission("kategori", "edit")
     await fn()
     refresh()
     return { error: null, ok }
@@ -120,7 +120,7 @@ export async function previewMergeCategoryAction(
   try {
     // Preview pun dijaga: ia membaca jumlah produk per kategori, dan itu
     // gambaran isi katalog yang tidak perlu terbuka bagi siapa saja.
-    await requireAuth()
+    await requirePermission("kategori", "edit")
     return { error: null, preview: await previewMergeCategory(sourceId, targetId) }
   } catch (error) {
     if (error instanceof UnauthorizedError || error instanceof CategoryOperationError) {

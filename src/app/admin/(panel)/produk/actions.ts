@@ -1,7 +1,7 @@
 "use server"
 
 import { revalidatePath, updateTag } from "next/cache"
-import { UnauthorizedError, requireAuth } from "@/lib/auth"
+import { UnauthorizedError, requirePermission } from "@/lib/auth"
 import { CategoryOperationError } from "@/lib/api/woocommerce/categories"
 import {
   bulkAssignCategory,
@@ -82,7 +82,7 @@ export async function previewBulkCategoryAction(
   if (!mode) return { error: "Jenis perubahan tidak valid.", preview: null }
 
   try {
-    await requireAuth()
+    await requirePermission("produk", "edit")
     return { error: null, preview: await previewBulkAssignCategory(ids, categoryId, mode) }
   } catch (error) {
     if (error instanceof UnauthorizedError || error instanceof CategoryOperationError) {
@@ -107,7 +107,7 @@ export async function applyBulkCategoryAction(
   }
 
   try {
-    await requireAuth()
+    await requirePermission("produk", "edit")
     await bulkAssignCategory(ids, categoryId, mode, acknowledged)
     refresh(ids)
     return {
@@ -127,7 +127,7 @@ export async function applyBulkCategoryAction(
 
 export async function deleteProductAction(id: number) {
   try {
-    const authUser = await requireAuth()
+    const authUser = await requirePermission("produk", "edit")
     const userName = (authUser && typeof authUser === 'object' && 'name' in authUser) ? String(authUser.name) : "Admin"
     
     const prisma = getPrisma()
@@ -164,7 +164,7 @@ export async function deleteProductAction(id: number) {
 
 export async function updateProductPriceAction(id: number, regularPrice: number, salePrice?: number | null) {
   try {
-    const authUser = await requireAuth()
+    const authUser = await requirePermission("produk", "edit")
     const userName = (authUser && typeof authUser === 'object' && 'name' in authUser) ? String(authUser.name) : "Admin"
 
     const prisma = getPrisma()
@@ -220,7 +220,7 @@ export async function updateProductPriceAction(id: number, regularPrice: number,
 
 export async function bulkUpdateProductStatusAction(ids: number[], actionType: string) {
   try {
-    const authUser = await requireAuth()
+    const authUser = await requirePermission("produk", "edit")
     const userName = (authUser && typeof authUser === 'object' && 'name' in authUser) ? String(authUser.name) : "Admin"
     
     if (ids.length === 0) return { error: "Belum ada produk yang dipilih." }
@@ -311,7 +311,7 @@ export async function bulkUpdateProductStatusAction(ids: number[], actionType: s
  */
 export async function updateStockDisplayModeAction(mode: StockDisplayMode) {
   try {
-    await requireAuth()
+    await requirePermission("produk", "edit")
 
     if (!isStockDisplayMode(mode)) {
       return { error: "Mode tampilan stok tidak dikenali." }

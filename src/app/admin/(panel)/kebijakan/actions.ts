@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 import { getPrisma } from "@/lib/prisma/client"
-import { requireAuth } from "@/lib/auth"
+import { requirePermission } from "@/lib/auth"
 import { softDeleteFaqItem } from "@/lib/api/policy"
 
 function revalidatePolicyPages() {
@@ -16,7 +16,7 @@ function revalidatePolicyPages() {
 }
 
 export async function updatePolicyPage(formData: FormData) {
-  await requireAuth()
+  await requirePermission("kebijakan", "edit")
   const slug = String(formData.get("slug") ?? "")
   const title = String(formData.get("title") ?? "").trim()
   const content = String(formData.get("content") ?? "").trim()
@@ -41,7 +41,7 @@ function readFaqInput(formData: FormData) {
 }
 
 export async function createFaqItem(formData: FormData) {
-  await requireAuth()
+  await requirePermission("kebijakan", "edit")
   const input = readFaqInput(formData)
   const prisma = getPrisma()
   await prisma.faqItem.create({ data: input })
@@ -50,7 +50,7 @@ export async function createFaqItem(formData: FormData) {
 }
 
 export async function updateFaqItem(formData: FormData) {
-  await requireAuth()
+  await requirePermission("kebijakan", "edit")
   const id = String(formData.get("id") ?? "")
   const input = readFaqInput(formData)
   const prisma = getPrisma()
@@ -61,11 +61,11 @@ export async function updateFaqItem(formData: FormData) {
 
 /**
  * Menandai FAQ terhapus, bukan melenyapkan barisnya. Identitas penghapus
- * diambil dari `requireAuth()`, bukan dari formulir — lihat catatan yang sama
+ * diambil dari `requirePermission()`, bukan dari formulir — lihat catatan yang sama
  * pada `deleteStore`.
  */
 export async function deleteFaqItem(formData: FormData) {
-  const user = await requireAuth()
+  const user = await requirePermission("kebijakan", "edit")
   const id = String(formData.get("id") ?? "")
   if (!id) return
 

@@ -3,7 +3,7 @@
 import { revalidatePath, revalidateTag } from "next/cache"
 import { redirect } from "next/navigation"
 import { z } from "zod"
-import { requireAuth } from "@/lib/auth"
+import { requirePermission } from "@/lib/auth"
 import {
   BANNERS_CACHE_TAG,
   createBanner as createBannerRow,
@@ -72,14 +72,14 @@ function revalidateBannerPages() {
 }
 
 export async function createBanner(formData: FormData) {
-  await requireAuth()
+  await requirePermission("banner", "edit")
   await createBannerRow(readBannerInput(formData))
   revalidateBannerPages()
   redirect("/admin/banner")
 }
 
 export async function updateBanner(formData: FormData) {
-  await requireAuth()
+  await requirePermission("banner", "edit")
   const id = String(formData.get("id") ?? "")
   if (!id) return
   await updateBannerRow(id, readBannerInput(formData))
@@ -88,7 +88,7 @@ export async function updateBanner(formData: FormData) {
 }
 
 export async function deleteBanner(formData: FormData) {
-  await requireAuth()
+  await requirePermission("banner", "edit")
   const id = String(formData.get("id") ?? "")
   if (!id) return
   await deleteBannerRow(id)
@@ -146,7 +146,7 @@ function readBatchInput(values: BatchValues):
 }
 
 export async function createBannerBatch(values: BatchValues): Promise<BatchActionResult> {
-  await requireAuth()
+  await requirePermission("banner", "edit")
 
   const input = readBatchInput(values)
   if (!input.ok) return { success: false, error: input.error }
@@ -160,7 +160,7 @@ export async function updateBannerBatch(
   id: string,
   values: BatchValues
 ): Promise<BatchActionResult> {
-  await requireAuth()
+  await requirePermission("banner", "edit")
   if (!id) return { success: false, error: "Kampanye tidak ditemukan." }
 
   const input = readBatchInput(values)
@@ -172,7 +172,7 @@ export async function updateBannerBatch(
 }
 
 export async function deleteBannerBatch(id: string): Promise<ActionResult> {
-  await requireAuth()
+  await requirePermission("banner", "edit")
   if (!id) return { success: false, error: "Kampanye tidak ditemukan." }
 
   await softDeleteBatchRow(id)
@@ -188,7 +188,7 @@ export async function deleteBannerBatch(id: string): Promise<ActionResult> {
  * lapisan data).
  */
 export async function reorderBanners(ids: string[]): Promise<ActionResult> {
-  await requireAuth()
+  await requirePermission("banner", "edit")
 
   if (!Array.isArray(ids) || ids.length === 0) {
     return { success: false, error: "Urutan kosong." }

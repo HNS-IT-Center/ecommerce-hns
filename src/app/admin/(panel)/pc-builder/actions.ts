@@ -2,6 +2,7 @@
 
 import { revalidateTag } from "next/cache"
 import { getPrisma } from "@/lib/prisma/client"
+import { requirePermission } from "@/lib/auth"
 import {
   PC_BUILDER_CACHE_TAG,
   PC_BUILDER_DISPLAY_KEY,
@@ -44,6 +45,7 @@ function revalidatePcBuilder() {
 }
 
 export async function savePcBuilderConfig(steps: PcBuilderStepConfig[]) {
+  await requirePermission("pc-builder", "edit")
   const prisma = getPrisma()
 
   // Ensure we are saving a pure JSON object, removing any unexpected types
@@ -60,6 +62,7 @@ export async function savePcBuilderConfig(steps: PcBuilderStepConfig[]) {
 }
 
 export async function savePcBuilderDisplayConfig(config: PcBuilderDisplayConfig) {
+  await requirePermission("pc-builder", "edit")
   const prisma = getPrisma()
   const value = { showItemPrices: Boolean(config.showItemPrices) }
 

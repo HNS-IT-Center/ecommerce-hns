@@ -3,7 +3,7 @@
 import { revalidatePath, revalidateTag } from "next/cache"
 import { z } from "zod"
 
-import { requireAuth } from "@/lib/auth"
+import { requirePermission } from "@/lib/auth"
 import { getPrisma } from "@/lib/prisma/client"
 import { TAXONOMY_CACHE_TAG } from "@/lib/api/taxonomy"
 import { slugify } from "@/lib/utils/slug"
@@ -37,7 +37,7 @@ const NameSchema = z.string().trim().min(1, "Nama wajib diisi").max(191, "Nama t
 // --------------------------------------------------------------------------- attribute
 
 export async function createAttribute(name: string): Promise<ActionResult> {
-  await requireAuth()
+  await requirePermission("atribut-brand", "edit")
 
   const parsed = NameSchema.safeParse(name)
   if (!parsed.success) return { success: false, error: parsed.error.issues[0].message }
@@ -56,7 +56,7 @@ export async function createAttribute(name: string): Promise<ActionResult> {
 }
 
 export async function renameAttribute(id: number, name: string): Promise<ActionResult> {
-  await requireAuth()
+  await requirePermission("atribut-brand", "edit")
 
   const parsed = NameSchema.safeParse(name)
   if (!parsed.success) return { success: false, error: parsed.error.issues[0].message }
@@ -84,7 +84,7 @@ export async function renameAttribute(id: number, name: string): Promise<ActionR
  * angkanya terlihat sebelum tombol ditekan.
  */
 export async function deleteAttribute(id: number): Promise<ActionResult> {
-  await requireAuth()
+  await requirePermission("atribut-brand", "edit")
 
   await getPrisma().attribute.delete({ where: { id } })
 
@@ -98,7 +98,7 @@ export async function createAttributeValue(
   attributeId: number,
   value: string
 ): Promise<ActionResult> {
-  await requireAuth()
+  await requirePermission("atribut-brand", "edit")
 
   const parsed = NameSchema.safeParse(value)
   if (!parsed.success) return { success: false, error: parsed.error.issues[0].message }
@@ -119,7 +119,7 @@ export async function createAttributeValue(
 }
 
 export async function renameAttributeValue(id: number, value: string): Promise<ActionResult> {
-  await requireAuth()
+  await requirePermission("atribut-brand", "edit")
 
   const parsed = NameSchema.safeParse(value)
   if (!parsed.success) return { success: false, error: parsed.error.issues[0].message }
@@ -144,7 +144,7 @@ export async function renameAttributeValue(id: number, value: string): Promise<A
  * memakainya. Disepakati: "cascade so it will be clean".
  */
 export async function deleteAttributeValue(id: number): Promise<ActionResult> {
-  await requireAuth()
+  await requirePermission("atribut-brand", "edit")
 
   await getPrisma().attributeValue.delete({ where: { id } })
 
@@ -168,7 +168,7 @@ const BrandSchema = z.object({
 export type BrandInput = z.infer<typeof BrandSchema>
 
 export async function createBrand(input: BrandInput): Promise<ActionResult> {
-  await requireAuth()
+  await requirePermission("atribut-brand", "edit")
 
   const parsed = BrandSchema.safeParse(input)
   if (!parsed.success) return { success: false, error: parsed.error.issues[0].message }
@@ -196,7 +196,7 @@ export async function createBrand(input: BrandInput): Promise<ActionResult> {
 }
 
 export async function updateBrand(id: number, input: BrandInput): Promise<ActionResult> {
-  await requireAuth()
+  await requirePermission("atribut-brand", "edit")
 
   const parsed = BrandSchema.safeParse(input)
   if (!parsed.success) return { success: false, error: parsed.error.issues[0].message }
@@ -232,7 +232,7 @@ export async function updateBrand(id: number, input: BrandInput): Promise<Action
  * produk yang akan menjadi tanpa-brand.
  */
 export async function deleteBrand(id: number): Promise<ActionResult> {
-  await requireAuth()
+  await requirePermission("atribut-brand", "edit")
 
   await getPrisma().brand.delete({ where: { id } })
 
