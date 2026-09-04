@@ -28,6 +28,9 @@ export type AdminUser = {
   name: string
   image: string | null
   role: AdminRole
+  /** Peran RBAC dinamis. Null = pakai `role` lama (owner/staff) — lihat
+   *  `muatIzinUser` di permissions.ts. */
+  roleId: string | null
 }
 
 /** Dilempar saat aksi dipanggil tanpa sesi yang sah. */
@@ -77,7 +80,7 @@ export async function getCurrentUser(): Promise<AdminUser | null> {
 
   const user = await getPrisma().user.findUnique({
     where: { id: session.sub },
-    select: { id: true, email: true, name: true, image: true, passwordChangedAt: true, role: true },
+    select: { id: true, email: true, name: true, image: true, passwordChangedAt: true, role: true, roleId: true },
   })
   if (!user) return null
 
@@ -113,6 +116,7 @@ export async function getCurrentUser(): Promise<AdminUser | null> {
     // jadi staff baru berlaku setelah cookienya kedaluwarsa — sampai tujuh hari
     // kemudian. Dengan dibaca ulang tiap kali, pencabutan izin langsung berlaku.
     role: parseAdminRole(user.role),
+    roleId: user.roleId,
   }
 }
 
@@ -162,8 +166,9 @@ export async function requirePermission(
   minimal: import("./permissions").AccessLevel = "view",
 ): Promise<AdminUser> {
   const user = await requireAuth()
-  const { bisaAkses } = await import("./permissions")
-  if (!bisaAkses(user, page, minimal)) throw new ForbiddenError()
+  const { muatIzinUser, bisaAkses } = await import("./permissions")
+  const izin = await muatIzinUser(user)
+  if (!bisaAkses(izin, page, minimal)) throw new ForbiddenError()
   return user
 }
 

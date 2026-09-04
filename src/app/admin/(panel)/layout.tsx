@@ -3,7 +3,7 @@ import { redirect } from "next/navigation"
 import { cookies } from "next/headers"
 
 import { getCurrentUser } from "@/lib/auth"
-import { halamanTerlihat } from "@/lib/auth/permissions"
+import { halamanTerlihat, muatIzinUser } from "@/lib/auth/permissions"
 
 import { AppSidebar } from "@/components/admin/app-sidebar"
 import { AdminMobileBar } from "@/components/admin/admin-mobile-bar"
@@ -27,7 +27,8 @@ export default async function AdminLayout({
   // Halaman yang boleh user ini LIHAT — dipakai menyaring menu sidebar. Ini
   // kosmetik (menu yang tak boleh disembunyikan); penjaga sebenarnya ada di
   // server action & proxy lewat requirePermission/bisaAkses.
-  const pagesTerlihat = [...halamanTerlihat(user)]
+  const izin = await muatIzinUser(user)
+  const pagesTerlihat = [...halamanTerlihat(izin)]
 
   const cookieStore = await cookies()
   const defaultOpen = cookieStore.get("sidebar_state")?.value !== "false"

@@ -66,49 +66,95 @@ export function isMaster(user: Pick<AdminUser, "email">): boolean {
 }
 
 /**
- * Level akses user untuk satu halaman.
+ * Kumpulan izin satu user, sudah dihitung — peta halaman → level.
  *
- * Fase 1 (tanpa tabel Role): dihitung dari master + role lama.
- * - master            → edit semua
- * - owner             → edit semua (perilaku lama dipertahankan)
- * - staff             → edit semua KECUALI halaman khusus-owner (pelanggan),
- *                       yang jadi view — mencerminkan aturan lama "staff tak
- *                       boleh kelola akun". Tidak lebih ketat dari sebelumnya.
- *
- * Saat tabel RolePermission ada, fungsi ini yang diubah untuk membacanya;
- * pemanggilnya (`bisaAkses`) tidak perlu berubah.
+ * Sengaja dimuat SEKALI (satu query) lalu dicek berkali-kali secara sinkron,
+ * bukan satu query per halaman. Dibuat lewat `muatIzinUser()` (async, baca DB),
+ * lalu `bisaAkses`/`halamanTerlihat` bekerja di atasnya tanpa await.
  */
-export function levelAksesHalaman(
-  user: Pick<AdminUser, "email" | "role">,
-  page: AdminPage,
-): AccessLevel {
-  if (PAGES_SELALU_BOLEH.has(page)) return "edit"
-  if (isMaster(user)) return "edit"
-  if (user.role === "owner") return "edit"
-  // staff: sama seperti sebelumnya — bisa semua, kecuali kelola user hanya lihat.
-  if (page === "pelanggan") return "view"
-  return "edit"
+export type PermissionSet = {
+  isMaster: boolean
+  /** Level per halaman. Halaman yang tak tercantum → "none". */
+  levels: Partial<Record<AdminPage, AccessLevel>>
 }
 
 /**
- * Apakah user boleh mengakses `page` pada `minimal` level tertentu.
- * `bisaAkses(user, "harga-accurate", "edit")` → boleh menerapkan harga?
+ * Muat izin user dari sumber yang berlaku:
+ *
+ * 1. Master (email) → edit semua. Dicek pertama, tak menyentuh DB.
+ * 2. Punya `roleId` → baca `role_permissions`. Halaman tanpa baris = "none"
+ *    (aman-tertutup): peran hanya bisa apa yang diberikan eksplisit.
+ * 3. Tanpa `roleId` (baris lama) → fallback role owner/staff, PERSIS perilaku
+ *    sebelum RBAC ada. Owner=edit semua; staff=edit semua kecuali "pelanggan"
+ *    yang view. Ini yang menjaga akun lama tak terkunci.
+ *
+ * `import` Prisma dinamis: berkas ini juga dipakai di konteks yang tak boleh
+ * menyeret klien DB kalau tak perlu (mis. saat cuma cek master).
+ */
+export async function muatIzinUser(
+  user: Pick<AdminUser, "id" | "email" | "role"> & { roleId?: string | null },
+): Promise<PermissionSet> {
+  // 1. Master — jalan pintas, tanpa query.
+  if (isMaster(user)) {
+    const semua: Partial<Record<AdminPage, AccessLevel>> = {}
+    for (const p of Object.keys(ADMIN_PAGES) as AdminPage[]) semua[p] = "edit"
+    return { isMaster: true, levels: semua }
+  }
+
+  const levels: Partial<Record<AdminPage, AccessLevel>> = {}
+  // Halaman yang selalu boleh (mis. "akun") — edit untuk siapa pun yang masuk.
+  for (const p of PAGES_SELALU_BOLEH) levels[p as AdminPage] = "edit"
+
+  // 2. Peran dinamis dari tabel.
+  if (user.roleId) {
+    const { getPrisma } = await import("@/lib/prisma/client")
+    const rows = await getPrisma().rolePermission.findMany({
+      where: { roleId: user.roleId },
+      select: { page: true, access: true },
+    })
+    for (const r of rows) {
+      if (r.page in ADMIN_PAGES && isAccessLevel(r.access)) {
+        levels[r.page as AdminPage] = r.access
+      }
+    }
+    return { isMaster: false, levels }
+  }
+
+  // 3. Fallback role lama — perilaku sebelum RBAC.
+  for (const p of Object.keys(ADMIN_PAGES) as AdminPage[]) {
+    if (levels[p] !== undefined) continue // sudah diset (halaman selalu-boleh)
+    if (user.role === "owner") levels[p] = "edit"
+    else levels[p] = p === "pelanggan" ? "view" : "edit" // staff
+  }
+  return { isMaster: false, levels }
+}
+
+function isAccessLevel(v: string): v is AccessLevel {
+  return v === "none" || v === "view" || v === "edit"
+}
+
+/** Level user atas satu halaman, dari izin yang sudah dimuat. */
+export function levelAksesHalaman(izin: PermissionSet, page: AdminPage): AccessLevel {
+  return izin.levels[page] ?? "none"
+}
+
+/**
+ * Apakah izin yang dimuat mencukupi untuk `page` pada `minimal` level.
+ * `bisaAkses(izin, "harga-accurate", "edit")` → boleh menerapkan harga?
  */
 export function bisaAkses(
-  user: Pick<AdminUser, "email" | "role">,
+  izin: PermissionSet,
   page: AdminPage,
   minimal: AccessLevel = "view",
 ): boolean {
-  return ACCESS_ORDER[levelAksesHalaman(user, page)] >= ACCESS_ORDER[minimal]
+  return ACCESS_ORDER[levelAksesHalaman(izin, page)] >= ACCESS_ORDER[minimal]
 }
 
 /** Semua halaman yang boleh user LIHAT — dipakai menyaring menu sidebar. */
-export function halamanTerlihat(
-  user: Pick<AdminUser, "email" | "role">,
-): Set<AdminPage> {
+export function halamanTerlihat(izin: PermissionSet): Set<AdminPage> {
   const out = new Set<AdminPage>()
   for (const page of Object.keys(ADMIN_PAGES) as AdminPage[]) {
-    if (bisaAkses(user, page, "view")) out.add(page)
+    if (bisaAkses(izin, page, "view")) out.add(page)
   }
   return out
 }
