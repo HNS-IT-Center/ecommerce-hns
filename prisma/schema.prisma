@@ -96,10 +96,63 @@ model User {
   /// sama persis.
   role String @default("owner") @db.VarChar(16)
 
+  /// Peran RBAC dinamis (tabel `Role`). NULLABLE dan sengaja begitu: kolom ini
+  /// lahir di database yang sudah berisi admin aktif yang belum punya peran
+  /// dinamis. Saat `roleId` null, izin dihitung dari `role` lama (owner/staff)
+  /// lewat `levelAksesHalaman()` — jadi baris lama tidak pernah terkunci hanya
+  /// karena kolom ini ditambahkan. `onDelete: SetNull`: menghapus sebuah peran
+  /// mengembalikan penggunanya ke perilaku lama, BUKAN mengunci mereka.
+  roleId String? @map("role_id")
+  roleRef Role?  @relation(fields: [roleId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("users")
+}
+
+/// Peran RBAC yang bisa dibuat/disunting lewat panel Manajemen User.
+///
+/// MASTER TIDAK ada di sini — master dipatok ke email di `MASTER_ADMIN_EMAIL`
+/// dan dicek sebelum peran apa pun (lib/auth/permissions.ts). Menaruh master
+/// sebagai baris data berarti ia bisa dihapus/diturunkan lewat UI; justru itu
+/// yang dihindari.
+model Role {
+  id   String @id @default(uuid())
+  /// Nama tampil, mis. "Kasir", "Editor Harga". Unik supaya tidak ada dua peran
+  /// bernama sama yang membingungkan saat memilih di UI.
+  name String @unique @db.VarChar(64)
+  description String? @db.VarChar(255)
+
+  permissions RolePermission[]
+  users       User[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("roles")
+}
+
+/// Izin satu peran atas satu halaman admin. Satu baris per (peran, halaman).
+///
+/// `page` = segmen path setelah `/admin/` (mis. "harga-accurate"), daftar sahnya
+/// dipegang `ADMIN_PAGES` di lib/auth/permissions.ts — bukan enum DB, mengikuti
+/// pola string-union project (docs/06 §1.4). `access` = "none" | "view" |
+/// "edit". Halaman yang TIDAK punya baris untuk sebuah peran diperlakukan
+/// "none" oleh `levelAksesHalaman()` (aman-tertutup): peran hanya bisa apa yang
+/// diberikan secara eksplisit.
+model RolePermission {
+  id     String @id @default(uuid())
+  roleId String @map("role_id")
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  page   String @db.VarChar(48)
+  access String @db.VarChar(8)
+
+  /// Satu peran tidak boleh punya dua baris untuk halaman yang sama — kalau
+  /// tidak, level mana yang berlaku jadi ambigu.
+  @@unique([roleId, page])
+  @@map("role_permissions")
 }
 
 model Store {
