@@ -6,7 +6,7 @@ import { CheckCircle2, Info, ShieldCheck, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ADMIN_ROLE_DESCRIPTIONS, ADMIN_ROLE_LABELS, type AdminRole } from "@/lib/auth/roles"
 
-import { updateAdminRole } from "./role-actions"
+import { updateAdminRole, updateAdminRoleId } from "./role-actions"
 import { EMPTY_ROLE_STATE } from "./role-state"
 
 type AdminItem = {
@@ -15,11 +15,18 @@ type AdminItem = {
   username: string
   email: string
   role: AdminRole
+  /** Peran RBAC dinamis yang tertaut (null = pakai role lama). */
+  roleId: string | null
 }
+
+/** Peran dinamis yang bisa dipilih (dibuat di Manajemen User). */
+type RoleOption = { id: string; name: string }
 
 type Props = {
   admins: AdminItem[]
   currentUserId: string
+  /** Peran dinamis yang tersedia untuk ditautkan. */
+  roleOptions: RoleOption[]
   /**
    * Hanya owner yang boleh mengubah role. Staff tetap MELIHAT kolomnya —
    * menyembunyikan seluruh bagian ini akan membuat staff mengira fiturnya tidak
@@ -44,8 +51,9 @@ function RoleBadge({ role }: { role: AdminRole }) {
   )
 }
 
-export function AdminRoleList({ admins, currentUserId, canManage }: Props) {
+export function AdminRoleList({ admins, currentUserId, roleOptions, canManage }: Props) {
   const [state, formAction, pending] = useActionState(updateAdminRole, EMPTY_ROLE_STATE)
+  const [roleIdState, roleIdAction, roleIdPending] = useActionState(updateAdminRoleId, EMPTY_ROLE_STATE)
 
   /**
    * Keterangan hasil, disesuaikan saat render alih-alih lewat `useEffect` —
@@ -57,7 +65,10 @@ export function AdminRoleList({ admins, currentUserId, canManage }: Props) {
    * keterangan baru karena penandanya masih menyala dari yang sebelumnya.
    */
   const [dismissed, setDismissed] = useState<string | null>(null)
-  const notice = state.success && state.success !== dismissed ? state.success : null
+  const sukses = roleIdState.success ?? state.success
+  const notice = sukses && sukses !== dismissed ? sukses : null
+  const errorPesan = state.error ?? roleIdState.error
+  const sedangProses = pending || roleIdPending
 
   const ownerCount = admins.filter((a) => a.role === "owner").length
 
@@ -78,9 +89,9 @@ export function AdminRoleList({ admins, currentUserId, canManage }: Props) {
         </div>
       )}
 
-      {state.error && (
+      {errorPesan && (
         <p className="mb-4 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-          {state.error}
+          {errorPesan}
         </p>
       )}
 
@@ -121,24 +132,48 @@ export function AdminRoleList({ admins, currentUserId, canManage }: Props) {
               </div>
 
               {canManage && (
-                <form action={formAction} className="shrink-0">
-                  <input type="hidden" name="userId" value={admin.id} />
-                  <input
-                    type="hidden"
-                    name="role"
-                    value={admin.role === "owner" ? "staff" : "owner"}
-                  />
-                  <Button
-                    type="submit"
-                    variant="outline"
-                    size="sm"
-                    disabled={pending || lockedReason !== null}
-                    title={lockedReason ?? undefined}
-                    className="w-full sm:w-auto"
-                  >
-                    {admin.role === "owner" ? "Turunkan ke Staff" : "Angkat jadi Owner"}
-                  </Button>
-                </form>
+                <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+                  <form action={formAction}>
+                    <input type="hidden" name="userId" value={admin.id} />
+                    <input
+                      type="hidden"
+                      name="role"
+                      value={admin.role === "owner" ? "staff" : "owner"}
+                    />
+                    <Button
+                      type="submit"
+                      variant="outline"
+                      size="sm"
+                      disabled={sedangProses || lockedReason !== null}
+                      title={lockedReason ?? undefined}
+                      className="w-full sm:w-auto"
+                    >
+                      {admin.role === "owner" ? "Turunkan ke Staff" : "Angkat jadi Owner"}
+                    </Button>
+                  </form>
+
+                  {/* Peran RBAC dinamis — izin per halaman. Terpisah dari
+                      owner/staff: yang ini menentukan halaman apa yang boleh
+                      diakses, submit langsung saat pilihan berubah. */}
+                  <form action={roleIdAction} className="flex items-center gap-1.5">
+                    <input type="hidden" name="userId" value={admin.id} />
+                    <label className="text-xs text-muted-foreground">Peran:</label>
+                    <select
+                      name="roleId"
+                      defaultValue={admin.roleId ?? ""}
+                      disabled={sedangProses}
+                      onChange={(e) => e.currentTarget.form?.requestSubmit()}
+                      className="rounded-md border border-input bg-background px-2 py-1 text-xs"
+                    >
+                      <option value="">— (owner/staff)</option>
+                      {roleOptions.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
+                        </option>
+                      ))}
+                    </select>
+                  </form>
+                </div>
               )}
             </li>
           )

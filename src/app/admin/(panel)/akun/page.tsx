@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { requireAuth } from "@/lib/auth"
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth/password"
 import { listAdminUsers } from "@/lib/api/admin-users"
+import { listRoles } from "@/lib/api/roles"
 import { ADMIN_ROLE_LABELS } from "@/lib/auth/roles"
 import { ChangePasswordForm } from "./change-password-form"
 import { AdminRoleList } from "./admin-role-list"
@@ -16,7 +17,7 @@ export default async function AdminAkunPage() {
   // menampilkan email akun — jadi ia butuh datanya sendiri, bukan sekadar
   // kepastian bahwa seseorang sudah masuk.
   const user = await requireAuth()
-  const admins = await listAdminUsers()
+  const [admins, roles] = await Promise.all([listAdminUsers(), listRoles()])
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -50,8 +51,10 @@ export default async function AdminAkunPage() {
             username: a.username,
             email: a.email,
             role: a.role,
+            roleId: a.roleId,
           }))}
           currentUserId={user.id}
+          roleOptions={roles.map((r) => ({ id: r.id, name: r.name }))}
           canManage={user.role === "owner"}
         />
       </div>

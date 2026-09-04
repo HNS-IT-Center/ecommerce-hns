@@ -15,6 +15,8 @@ export type AdminUserRow = {
   name: string
   username: string
   role: AdminRole
+  /** Peran RBAC dinamis yang tertaut (null = pakai `role` lama). */
+  roleId: string | null
   createdAt: Date
 }
 
@@ -30,7 +32,7 @@ export class LastOwnerError extends Error {
 
 export async function listAdminUsers(): Promise<AdminUserRow[]> {
   const rows = await getPrisma().user.findMany({
-    select: { id: true, email: true, name: true, username: true, role: true, createdAt: true },
+    select: { id: true, email: true, name: true, username: true, role: true, roleId: true, createdAt: true },
     orderBy: [{ role: "asc" }, { createdAt: "asc" }],
   })
   return rows.map((r) => ({ ...r, role: parseAdminRole(r.role) }))
@@ -79,6 +81,23 @@ export async function setAdminUserRole(id: string, role: AdminRole): Promise<voi
     data: { role: "staff" },
   })
   if (count === 0) throw new LastOwnerError()
+}
+
+/**
+ * Tautkan (atau lepaskan) peran RBAC dinamis ke satu admin.
+ *
+ * `roleId` null = lepas peran → admin kembali ke perilaku `role` lama
+ * (owner/staff). Tidak menyentuh kolom `role` lama sama sekali: keduanya hidup
+ * berdampingan — `role` menentukan hak owner-only (hapus pelanggan), `roleId`
+ * menentukan izin per-halaman. Validasi bahwa `roleId` benar-benar ada
+ * dilakukan di sini supaya foreign key tidak gagal dengan pesan kasar.
+ */
+export async function setAdminUserRoleId(id: string, roleId: string | null): Promise<void> {
+  if (roleId !== null) {
+    const ada = await getPrisma().role.findUnique({ where: { id: roleId }, select: { id: true } })
+    if (!ada) throw new Error("Peran tidak ditemukan.")
+  }
+  await getPrisma().user.update({ where: { id }, data: { roleId } })
 }
 
 /**
