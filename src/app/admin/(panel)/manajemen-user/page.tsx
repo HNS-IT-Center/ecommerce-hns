@@ -129,7 +129,12 @@ async function TabPelanggan({
   }
   const query = q?.trim() ?? ""
   const halaman = Number(page ?? 1) || 1
-  const { rows, total } = await listCustomers({ query, page: halaman })
+  const { rows, total, pageCount } = await listCustomers({ query, page: halaman })
+
+  const linkHal = (h: number) => {
+    const sp = new URLSearchParams({ tab: "pelanggan", ...(query && { q: query }), page: String(h) })
+    return `/admin/manajemen-user?${sp.toString()}`
+  }
 
   return (
     <>
@@ -159,6 +164,32 @@ async function TabPelanggan({
         }))}
         canDelete={canDelete}
       />
+
+      {pageCount > 1 && (
+        <div className="mt-6 flex items-center justify-between gap-4">
+          <p className="text-sm text-muted-foreground">
+            Halaman {halaman} dari {pageCount}
+          </p>
+          <div className="flex gap-2">
+            {halaman > 1 && (
+              <Link
+                href={linkHal(halaman - 1)}
+                className="rounded-md border border-input px-3 py-1.5 text-sm font-medium hover:bg-muted"
+              >
+                ← Sebelumnya
+              </Link>
+            )}
+            {halaman < pageCount && (
+              <Link
+                href={linkHal(halaman + 1)}
+                className="rounded-md border border-input px-3 py-1.5 text-sm font-medium hover:bg-muted"
+              >
+                Berikutnya →
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
     </>
   )
 }
