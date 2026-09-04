@@ -116,9 +116,46 @@ function activeChildUrl(pathname: string, item: NavItem): string | null {
  */
 type AdminIdentity = { name: string; email: string }
 
-export function AppSidebar({ user }: { user: AdminIdentity }) {
+/** Segmen halaman dari url `/admin/<page>` — untuk mencocokkan izin. */
+function pageSegment(url: string): string | null {
+  const m = url.match(/^\/admin\/([^/?#]+)/)
+  return m ? m[1] : null
+}
+
+export function AppSidebar({
+  user,
+  allowedPages,
+}: {
+  user: AdminIdentity
+  /** Segmen halaman yang boleh dilihat user (dari izin RBAC, dihitung di server).
+   *  Kalau tidak diberikan, semua tampil — mundur-kompatibel. */
+  allowedPages?: string[]
+}) {
   const pathname = usePathname()
   const { open, toggleSidebar, isMobile, setOpenMobile } = useSidebar()
+
+  // Saring menu ke halaman yang boleh dilihat. Item "Overview" (url `/admin`)
+  // tanpa segmen halaman selalu tampil. Grup disaring per-anak; grup yang semua
+  // anaknya tersembunyi ikut hilang.
+  const allowed = allowedPages ? new Set(allowedPages) : null
+  const bolehLihat = (url: string): boolean => {
+    if (!allowed) return true
+    const seg = pageSegment(url)
+    if (seg === null) return true // /admin (Overview) — tak berhalaman, selalu tampil
+    return allowed.has(seg)
+  }
+  const navItems = React.useMemo(() => {
+    if (!allowed) return adminNavItems
+    return adminNavItems
+      .map((item) => {
+        if (!item.children) return bolehLihat(item.url) ? item : null
+        const kids = item.children.filter((c) => bolehLihat(c.url))
+        if (kids.length === 0) return null
+        return { ...item, children: kids }
+      })
+      .filter((x): x is NavItem => x !== null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowedPages])
 
   /**
    * Di ponsel sidebar adalah lapisan yang menutupi halaman, jadi ia harus
@@ -242,7 +279,7 @@ export function AppSidebar({ user }: { user: AdminIdentity }) {
           <SidebarGroup className="p-0">
             <SidebarGroupContent>
               <SidebarMenu className="gap-1">
-                {adminNavItems.map((item) => {
+                {navItems.map((item) => {
                   const matchedChild = activeChildUrl(pathname, item)
 
                   // Terbuka kalau pengguna memang membukanya; kalau belum

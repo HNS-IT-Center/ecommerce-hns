@@ -147,6 +147,26 @@ export async function requireOwner(): Promise<AdminUser> {
   return user
 }
 
+/**
+ * Sama seperti `requireOwner`, tapi menuntut izin RBAC atas satu halaman —
+ * `requirePermission("harga-accurate", "edit")`.
+ *
+ * WAJIB dipanggil DI DALAM server action yang mengubah data halaman itu, dengan
+ * alasan yang sama persis seperti `requireOwner`: menyembunyikan menu di sidebar
+ * bukan pengamanan; yang menahan permintaan hanyalah pemeriksaan yang berjalan
+ * di server. `import` dinamis untuk menghindari lingkar impor dengan
+ * `permissions.ts` (yang mengambil tipe dari berkas ini).
+ */
+export async function requirePermission(
+  page: import("./permissions").AdminPage,
+  minimal: import("./permissions").AccessLevel = "view",
+): Promise<AdminUser> {
+  const user = await requireAuth()
+  const { bisaAkses } = await import("./permissions")
+  if (!bisaAkses(user, page, minimal)) throw new ForbiddenError()
+  return user
+}
+
 /** Pasang cookie sesi. Dipanggil setelah kredensial terbukti benar. */
 export async function createSession(user: { id: string; email: string }): Promise<void> {
   const token = await signSession({ sub: user.id, email: user.email })

@@ -47,6 +47,11 @@ const EnvSchema = z.object({
   // sendiri dan melempar dengan pesan jelas saat sesi benar-benar dibutuhkan.
   AUTH_SECRET: z.string().min(32).optional(),
 
+  // RBAC — email developer yang jadi MASTER (akses penuh, di atas owner, tak
+  // bisa dihapus/diturunkan lewat UI). Dicek dari email, bukan role di DB —
+  // lihat lib/auth/permissions.ts. Kosong = tidak ada master (aman-tertutup).
+  MASTER_ADMIN_EMAIL: z.string().email().optional(),
+
   // Akun pelanggan — login Google (docs/09-google-oauth-setup.md). Opsional
   // dengan alasan yang sama seperti AUTH_SECRET: skema ini di-parse saat
   // modul dimuat, jadi menandainya wajib mematikan storefront di mesin mana
@@ -152,6 +157,7 @@ export const env = EnvSchema.parse({
   GOOGLE_SHEET_CSV_URL: process.env.GOOGLE_SHEET_CSV_URL,
   STOCK_UPDATEWOO_DATABASE_URL: process.env.STOCK_UPDATEWOO_DATABASE_URL,
   AUTH_SECRET: process.env.AUTH_SECRET,
+  MASTER_ADMIN_EMAIL: process.env.MASTER_ADMIN_EMAIL,
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,

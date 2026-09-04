@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { cookies } from "next/headers"
 
 import { getCurrentUser } from "@/lib/auth"
+import { halamanTerlihat } from "@/lib/auth/permissions"
 
 import { AppSidebar } from "@/components/admin/app-sidebar"
 import { AdminMobileBar } from "@/components/admin/admin-mobile-bar"
@@ -22,14 +23,19 @@ export default async function AdminLayout({
   const user = await getCurrentUser()
 
   if (!user) redirect("/admin/login")
-  
+
+  // Halaman yang boleh user ini LIHAT — dipakai menyaring menu sidebar. Ini
+  // kosmetik (menu yang tak boleh disembunyikan); penjaga sebenarnya ada di
+  // server action & proxy lewat requirePermission/bisaAkses.
+  const pagesTerlihat = [...halamanTerlihat(user)]
+
   const cookieStore = await cookies()
   const defaultOpen = cookieStore.get("sidebar_state")?.value !== "false"
 
   return (
     <div className="bg-muted/40 text-foreground min-h-screen w-full flex font-sans">
       <SidebarProvider defaultOpen={defaultOpen} style={{ "--sidebar-width-icon": "4.5rem" } as React.CSSProperties}>
-        <AppSidebar user={{ name: user.name, email: user.email }} />
+        <AppSidebar user={{ name: user.name, email: user.email }} allowedPages={pagesTerlihat} />
         <div className="flex flex-col flex-1 w-full relative z-10 min-w-0">
           {/* Mobile top bar — shown only on mobile, replaces client bottom nav */}
           <AdminMobileBar />
