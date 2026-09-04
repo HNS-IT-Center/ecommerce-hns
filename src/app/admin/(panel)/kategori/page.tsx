@@ -1,8 +1,10 @@
 import { isDatabaseConfigured } from "@/lib/prisma/client"
 import { getCategoriesForAdmin } from "@/lib/api/woocommerce/categories"
+import { requirePageView } from "@/lib/auth"
 import { CategoryManager } from "./category-manager"
 
 export default async function AdminKategoriPage() {
+  await requirePageView("kategori")
   if (!isDatabaseConfigured()) {
     return (
       <div className="mx-auto max-w-2xl rounded-xl border border-warning/30 bg-warning/10 p-6 text-sm text-warning">

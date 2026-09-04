@@ -1,8 +1,10 @@
 import { getAllBanners } from "@/lib/api/banners"
 import { getAllBatches } from "@/lib/api/banner-batches"
+import { requirePageView } from "@/lib/auth"
 import { BannerManager } from "./banner-manager"
 
 export default async function AdminBannerPage() {
+  await requirePageView("banner")
   const [banners, batches] = await Promise.all([getAllBanners(), getAllBatches()])
 
   return (

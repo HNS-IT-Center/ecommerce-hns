@@ -1,6 +1,7 @@
 import { getPcBuilderConfig } from "@/lib/pc-builder/config"
 import { getPcPrebuildConfig, getPcPrebuildGames } from "@/lib/pc-prebuild/config"
 import { resolvePrebuildPresets } from "@/lib/pc-prebuild/resolve"
+import { requirePageView } from "@/lib/auth"
 
 import { PrebuildDeck } from "./_components/prebuild-deck"
 
@@ -21,6 +22,7 @@ export const metadata = {
  * dan tetap tidak pernah tersimpan ke preset (CLAUDE.md §2.7).
  */
 export default async function PcPrebuildAdminPage() {
+  await requirePageView("pc-prebuild")
   const [config, steps, games] = await Promise.all([
     getPcPrebuildConfig(),
     // Langkahnya menumpang konfigurasi PC Builder, bukan daftar kedua yang

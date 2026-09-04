@@ -3,11 +3,13 @@ import { Pencil, Plus } from "lucide-react"
 import { getPrisma, isDatabaseConfigured } from "@/lib/prisma/client"
 import { POLICY_PAGES } from "@/lib/constants/policy-content"
 import { getAdminFaqItems } from "@/lib/api/policy"
+import { requirePageView } from "@/lib/auth"
 import { FaqList } from "./faq-list"
 
 import type { PolicyPage } from "@prisma/client"
 
 export default async function AdminKebijakanPage() {
+  await requirePageView("kebijakan")
   if (!isDatabaseConfigured()) {
     return (
       <div className="mx-auto max-w-2xl rounded-xl border border-warning/30 bg-warning/10 p-6 text-sm text-warning">

@@ -1,4 +1,5 @@
 import { buildAccuratePricePreview } from "@/lib/services/accurate-price"
+import { requirePageView } from "@/lib/auth"
 import { HargaAccurateView } from "./view"
 
 /**
@@ -20,6 +21,7 @@ export const metadata = {
 export const dynamic = "force-dynamic"
 
 export default async function HargaAccuratePage() {
+  await requirePageView("harga-accurate")
   const preview = await buildAccuratePricePreview()
 
   return (

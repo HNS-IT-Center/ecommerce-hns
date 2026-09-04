@@ -1,8 +1,6 @@
 import type { Metadata } from "next"
-import { redirect } from "next/navigation"
-
-import { getCurrentUser } from "@/lib/auth"
-import { muatIzinUser, bisaAkses, ADMIN_PAGES } from "@/lib/auth/permissions"
+import { requirePageView } from "@/lib/auth"
+import { bisaAkses, ADMIN_PAGES } from "@/lib/auth/permissions"
 import { listRoles } from "@/lib/api/roles"
 import { ManajemenUserView } from "./view"
 
@@ -14,15 +12,9 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic"
 
 export default async function ManajemenUserPage() {
-  const user = await getCurrentUser()
-  if (!user) redirect("/admin/login")
-
-  // Penjaga halaman: hanya yang boleh mengelola manajemen-user yang masuk.
-  // Penjaga sebenarnya tetap di server action; ini mencegah membuka halaman
-  // yang tak akan bisa dipakai.
-  const izin = await muatIzinUser(user)
-  if (!bisaAkses(izin, "manajemen-user", "view")) redirect("/admin")
-
+  // Penjaga halaman (redirect kalau tak boleh lihat). Penjaga sebenarnya tetap
+  // di server action; ini mencegah membuka halaman yang tak akan bisa dipakai.
+  const { izin } = await requirePageView("manajemen-user")
   const bolehEdit = bisaAkses(izin, "manajemen-user", "edit")
   const roles = await listRoles()
 

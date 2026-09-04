@@ -3,9 +3,11 @@ import {
   getPcBuilderConfig,
   getPcBuilderDisplayConfig,
 } from "@/lib/pc-builder/config"
+import { requirePageView } from "@/lib/auth"
 import { PcBuilderForm } from "./_components/pc-builder-form"
 
 export default async function PcBuilderPage() {
+  await requirePageView("pc-builder")
   const [config, options, display] = await Promise.all([
     getPcBuilderConfig(),
     getPcBuilderOptions(),

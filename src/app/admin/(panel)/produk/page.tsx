@@ -3,6 +3,7 @@ import { Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lu
 import { getProductsPaginated, getProductAttributes } from "@/lib/api/woocommerce/products"
 import { getCategoriesForAdmin } from "@/lib/api/woocommerce/categories"
 import { getStockDisplayMode } from "@/lib/api/stock-display"
+import { requirePageView } from "@/lib/auth"
 import { ProductDataTable } from "./product-data-table"
 import { StockDisplayToggle } from "./stock-display-toggle"
 
@@ -18,6 +19,7 @@ type Props = {
 }
 
 export default async function AdminProdukPage({ searchParams }: Props) {
+  await requirePageView("produk")
   const { q, page, sort, order, status_filter, type_filter } = await searchParams
   const currentPage = Number(page ?? 1)
   const currentSort = (sort === "title" || sort === "sku" || sort === "price" || sort === "date") ? sort : "date"

@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 
-import { requireAuth } from "@/lib/auth"
+import { requirePageView } from "@/lib/auth"
 import { getThemeSettings } from "@/lib/theme/settings"
 import { ThemeEditor } from "./theme-editor"
 
@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 }
 
 export default async function AdminThemePage() {
-  await requireAuth()
+  await requirePageView("theme")
 
   const settings = await getThemeSettings()
 

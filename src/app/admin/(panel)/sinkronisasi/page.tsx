@@ -1,3 +1,4 @@
+import { requirePageView } from "@/lib/auth"
 import { SyncView } from "./sync-view"
 
 /**
@@ -16,7 +17,8 @@ export const metadata = {
   title: "Sinkronisasi WooCommerce",
 }
 
-export default function AdminSyncPage() {
+export default async function AdminSyncPage() {
+  await requirePageView("sinkronisasi")
   return (
     <div className="mx-auto max-w-5xl">
       <div>

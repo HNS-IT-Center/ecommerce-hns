@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { Search } from "lucide-react"
 
-import { requireAuth } from "@/lib/auth"
+import { requirePageView } from "@/lib/auth"
 import { isDatabaseConfigured } from "@/lib/prisma/client"
 import { listCustomers } from "@/lib/api/customers"
 import { Input } from "@/components/ui/input"
@@ -23,7 +23,8 @@ export default async function AdminPelangganPage({
   // Halaman ini butuh tahu ROLE-nya, bukan sekadar bahwa seseorang sudah masuk:
   // tombol hapus cuma pantas tampil untuk owner. Penegakan sesungguhnya tetap
   // di server action (`requireOwner`), yang ini soal apa yang ditampilkan.
-  const user = await requireAuth()
+  // `requirePageView` juga menolak yang tak boleh melihat halaman pelanggan.
+  const { user } = await requirePageView("pelanggan")
 
   if (!isDatabaseConfigured()) {
     return (

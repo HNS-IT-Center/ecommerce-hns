@@ -2,9 +2,11 @@ import Link from "next/link";
 import { Plus, TriangleAlert } from "lucide-react";
 import { isDatabaseConfigured } from "@/lib/prisma/client";
 import { getActiveStores } from "@/lib/api/stores";
+import { requirePageView } from "@/lib/auth";
 import { StoreList } from "./store-list";
 
 export default async function AdminTokoPage() {
+  await requirePageView("toko");
   if (!isDatabaseConfigured()) {
     return (
       <div className="mx-auto max-w-2xl rounded-xl border border-warning/30 bg-warning/10 p-6 text-sm text-warning">

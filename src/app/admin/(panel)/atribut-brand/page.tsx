@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 
 import { getAttributes, getBrandsWithCount } from "@/lib/api/taxonomy"
+import { requirePageView } from "@/lib/auth"
 import { TaxonomyManager } from "./taxonomy-manager"
 
 export const metadata: Metadata = {
@@ -9,6 +10,7 @@ export const metadata: Metadata = {
 }
 
 export default async function AtributBrandPage() {
+  await requirePageView("atribut-brand")
   const [attributes, brands] = await Promise.all([getAttributes(), getBrandsWithCount()])
 
   return (

@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { getPrisma } from "@/lib/prisma/client"
+import { requirePageView } from "@/lib/auth"
 import { LogsTable } from "./logs-table"
 import { PcBuildLogsTable, type PcBuildQuoteRow } from "./pc-build-logs-table"
 import type { Prisma, ProductLog } from "@prisma/client"
@@ -44,6 +45,7 @@ function parseDateBoundary(value: string | undefined, edge: "start" | "end"): Da
 }
 
 export default async function AdminLogsPage({ searchParams }: Props) {
+  await requirePageView("logs")
   const { q, page, sort, order, tab, from, to, action } = await searchParams
 
   const currentTab =

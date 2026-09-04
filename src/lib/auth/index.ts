@@ -8,6 +8,7 @@
  * "lewat apa dia masuk".
  */
 import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
 import { getPrisma } from "@/lib/prisma/client"
 import {
   SESSION_COOKIE,
@@ -170,6 +171,27 @@ export async function requirePermission(
   const izin = await muatIzinUser(user)
   if (!bisaAkses(izin, page, minimal)) throw new ForbiddenError()
   return user
+}
+
+/**
+ * Penjaga untuk `page.tsx` sebuah halaman admin: pastikan user boleh MELIHAT
+ * halaman ini, kalau tidak lempar ke /admin (bukan error page — halaman yang
+ * tak boleh dibuka lebih baik mengalihkan diam-diam).
+ *
+ * Mengembalikan user + izin yang sudah dimuat, supaya halaman bisa memakainya
+ * lagi (mis. menentukan apakah menampilkan tombol edit) tanpa query kedua.
+ * Tidak menggantikan penjaga di server action — ia melindungi HALAMAN; action
+ * tetap butuh `requirePermission`-nya sendiri.
+ */
+export async function requirePageView(
+  page: import("./permissions").AdminPage,
+): Promise<{ user: AdminUser; izin: import("./permissions").PermissionSet }> {
+  const user = await getCurrentUser()
+  if (!user) redirect("/admin/login")
+  const { muatIzinUser, bisaAkses } = await import("./permissions")
+  const izin = await muatIzinUser(user)
+  if (!bisaAkses(izin, page, "view")) redirect("/admin")
+  return { user, izin }
 }
 
 /** Pasang cookie sesi. Dipanggil setelah kredensial terbukti benar. */
