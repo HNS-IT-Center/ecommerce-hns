@@ -47,17 +47,34 @@ model User {
   email String @unique @db.VarChar(191)
   name  String @db.VarChar(191)
 
-  /// Cara masuk kedua, di samping email — WAJIB, bukan pilihan. Setiap akun
-  /// admin punya dua identitas dan keduanya bisa dipakai masuk; kalau kolomnya
-  /// nullable, janji itu hanya berlaku untuk akun yang kebetulan mengisinya.
+  /// Cara masuk kedua, di samping email. NULLABLE sejak Satu Login (5 Sep 2026):
+  /// tabel ini kini juga menampung pelanggan, dan pelanggan yang mendaftar lewat
+  /// Google tidak punya username. Untuk akun ADMIN, username tetap wajib diisi —
+  /// aturan itu dijaga di jalur pembuatan admin, bukan di kolom.
   ///
   /// Disimpan huruf kecil, tidak boleh mengandung '@'. Larangan itu yang membuat
-  /// pemilahan "ini email atau username" tidak pernah ambigu, dan mencegah
-  /// seseorang mendaftarkan username berbentuk email milik orang lain.
-  username     String  @unique @db.VarChar(191)
-  // scrypt: "salt:hash" heksadesimal, dihitung dengan crypto bawaan Node.
-  passwordHash String  @map("password_hash") @db.VarChar(255)
+  /// pemilahan "ini email atau username" tidak pernah ambigu.
+  username     String? @unique @db.VarChar(191)
+  /// scrypt: "salt:hash" heksadesimal. NULLABLE sejak Satu Login: pelanggan
+  /// Google tidak punya password. Akun tanpa password_hash hanya bisa masuk
+  /// lewat `googleSub`.
+  passwordHash String? @map("password_hash") @db.VarChar(255)
   image        String? @db.VarChar(1000)
+
+  /// Identitas Google (sub claim), untuk akun yang masuk lewat Google. Dibawa
+  /// dari `customers` saat Satu Login. NULL untuk akun email+password.
+  googleSub String? @unique @map("google_sub") @db.VarChar(191)
+
+  /// Nomor telepon (pelanggan). NULL untuk admin.
+  phoneNumber String? @map("phone_number") @db.VarChar(20)
+
+  /// Kapan email diverifikasi (pelanggan email+password). NULL = belum / tak
+  /// relevan (admin, atau akun Google yang emailnya sudah pasti terverifikasi).
+  emailVerifiedAt DateTime? @map("email_verified_at")
+
+  /// Penanda pencabutan sesi khusus jalur pelanggan (setara passwordChangedAt).
+  /// Dibawa dari `customers` saat Satu Login.
+  sessionsRevokedAt DateTime? @map("sessions_revoked_at")
 
   /// Penanda pencabutan sesi. Token sesi bersifat stateless — tidak ada tabel
   /// sesi yang bisa dihapus barisnya — jadi pencabutan dilakukan lewat
@@ -104,6 +121,11 @@ model User {
   /// mengembalikan penggunanya ke perilaku lama, BUKAN mengunci mereka.
   roleId String? @map("role_id")
   roleRef Role?  @relation(fields: [roleId], references: [id], onDelete: SetNull)
+
+  /// Relasi milik pelanggan, dibawa ke sini saat Satu Login (FK fisik sudah
+  /// diarahkan ke `users`). Kosong untuk akun admin.
+  savedBuilds        SavedPcBuild[]
+  verificationTokens CustomerVerificationToken[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -972,8 +994,10 @@ model Customer {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  savedBuilds        SavedPcBuild[]
-  verificationTokens CustomerVerificationToken[]
+  /// Relasi savedBuilds & verificationTokens DIPINDAH ke model `User` saat Satu
+  /// Login (5 Sep 2026): FK fisiknya kini menunjuk `users`, bukan `customers`.
+  /// Model ini tetap ada sementara — dibaca `getCurrentCustomer` sampai
+  /// konsolidasi sesi (Fase B) merampungkan penyatuan.
 
   @@map("customers")
 }
@@ -987,8 +1011,10 @@ model Customer {
 model CustomerVerificationToken {
   id String @id @default(uuid())
 
-  customerId String   @map("customer_id")
-  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  /// FK diarahkan ke `users` sejak Satu Login (pelanggan kini baris di users).
+  /// Nama kolom `customer_id` dipertahankan supaya tidak perlu migrasi rename.
+  customerId String @map("customer_id")
+  customer   User   @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   /// SHA-256 dari token mentah, BUKAN token itu sendiri — pola sama seperti
   /// cookie sesi (lib/auth/customer-session.ts): kalau tabel ini pernah
@@ -1029,9 +1055,11 @@ model CustomerVerificationToken {
  */
 model SavedPcBuild {
   id         String @id @default(uuid())
+  /// FK diarahkan ke `users` sejak Satu Login. Nama kolom `customer_id`
+  /// dipertahankan supaya tidak perlu migrasi rename.
   customerId String @map("customer_id")
 
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customer User @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   name String @db.VarChar(120)
 

@@ -31,11 +31,16 @@ export class LastOwnerError extends Error {
 }
 
 export async function listAdminUsers(): Promise<AdminUserRow[]> {
+  // Sejak Satu Login, tabel `users` juga memuat PELANGGAN. Daftar admin hanya
+  // yang berperan admin (bukan "pelanggan"), jadi panel akun tak menampilkan
+  // ribuan pelanggan. Admin selalu punya username (dijaga saat pembuatan akun),
+  // jadi `?? ""` di sini hanya menutup tipe nullable — praktis tak pernah kena.
   const rows = await getPrisma().user.findMany({
+    where: { role: { not: "pelanggan" } },
     select: { id: true, email: true, name: true, username: true, role: true, roleId: true, createdAt: true },
     orderBy: [{ role: "asc" }, { createdAt: "asc" }],
   })
-  return rows.map((r) => ({ ...r, role: parseAdminRole(r.role) }))
+  return rows.map((r) => ({ ...r, username: r.username ?? "", role: parseAdminRole(r.role) }))
 }
 
 export async function countOwners(): Promise<number> {

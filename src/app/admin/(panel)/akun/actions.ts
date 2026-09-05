@@ -52,7 +52,10 @@ export async function changePasswordAction(
   // saja dihapus. Diperlakukan sama seperti tidak punya sesi.
   if (!user) return { error: "Akun tidak ditemukan.", ok: null }
 
-  if (!(await verifyPassword(lama, user.passwordHash))) {
+  // passwordHash nullable sejak Satu Login (pelanggan Google tak punya), tapi
+  // yang sampai ke sini adalah admin yang sedang login lewat password — jadi
+  // null di sini berarti keadaan tak wajar; tolak dengan aman.
+  if (!user.passwordHash || !(await verifyPassword(lama, user.passwordHash))) {
     return { error: "Password saat ini salah.", ok: null }
   }
 

@@ -78,8 +78,6 @@ export async function listCustomers(options: {
         phoneNumber: true,
         emailVerifiedAt: true,
         createdAt: true,
-        // Hanya JUMLAHNYA, bukan isinya — lihat catatan di `CustomerRow`.
-        _count: { select: { savedBuilds: true } },
       },
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * CUSTOMER_PAGE_SIZE,
@@ -87,8 +85,22 @@ export async function listCustomers(options: {
     }),
   ])
 
+  // Jumlah rakitan tersimpan dihitung terpisah: sejak Satu Login relasi
+  // `savedBuilds` pindah ke model `User`, jadi tak bisa lagi lewat `_count` di
+  // `customer`. `saved_pc_builds.customer_id` tetap menyimpan id yang sama
+  // (id pelanggan = id user), jadi groupBy by customerId tetap benar.
+  const ids = rows.map((r) => r.id)
+  const counts = ids.length
+    ? await prisma.savedPcBuild.groupBy({
+        by: ["customerId"],
+        where: { customerId: { in: ids } },
+        _count: { _all: true },
+      })
+    : []
+  const countById = new Map(counts.map((c) => [c.customerId, c._count._all]))
+
   return {
-    rows: rows.map(({ _count, ...r }) => ({ ...r, savedBuildCount: _count.savedBuilds })),
+    rows: rows.map((r) => ({ ...r, savedBuildCount: countById.get(r.id) ?? 0 })),
     total,
     page,
     pageCount: Math.max(1, Math.ceil(total / CUSTOMER_PAGE_SIZE)),
@@ -96,7 +108,8 @@ export async function listCustomers(options: {
 }
 
 export async function getCustomerForDeletion(id: string): Promise<CustomerRow | null> {
-  const row = await getPrisma().customer.findUnique({
+  const prisma = getPrisma()
+  const row = await prisma.customer.findUnique({
     where: { id },
     select: {
       id: true,
@@ -106,12 +119,12 @@ export async function getCustomerForDeletion(id: string): Promise<CustomerRow | 
       phoneNumber: true,
       emailVerifiedAt: true,
       createdAt: true,
-      _count: { select: { savedBuilds: true } },
     },
   })
   if (!row) return null
-  const { _count, ...rest } = row
-  return { ...rest, savedBuildCount: _count.savedBuilds }
+  // savedBuilds pindah ke User sejak Satu Login — hitung dari tabelnya.
+  const savedBuildCount = await prisma.savedPcBuild.count({ where: { customerId: id } })
+  return { ...row, savedBuildCount }
 }
 
 export class CustomerNotFoundError extends Error {
@@ -154,11 +167,14 @@ export async function deleteCustomerPermanently(params: {
   return prisma.$transaction(async (tx) => {
     const target = await tx.customer.findUnique({
       where: { id: params.customerId },
-      select: { id: true, _count: { select: { savedBuilds: true } } },
+      select: { id: true },
     })
     if (!target) throw new CustomerNotFoundError()
 
-    const savedBuildCount = target._count.savedBuilds
+    // savedBuilds pindah ke User sejak Satu Login; dihitung dari tabelnya.
+    const savedBuildCount = await tx.savedPcBuild.count({
+      where: { customerId: params.customerId },
+    })
 
     await tx.customer.update({
       where: { id: params.customerId },
@@ -176,6 +192,10 @@ export async function deleteCustomerPermanently(params: {
 
     await tx.customer.delete({ where: { id: params.customerId } })
 
+    // TODO Satu Login (Fase B): pelanggan kini juga baris di `users`. Menghapus
+    // dari `customers` saja menyisakan baris `users` yatim + rakitannya. Saat
+    // konsolidasi sesi selesai, penghapusan pelanggan harus menghapus baris
+    // `users` (cascade ke saved_pc_builds) — bukan tabel `customers`.
     return { savedBuildCount }
   })
 }

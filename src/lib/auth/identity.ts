@@ -93,7 +93,10 @@ export function validatePhoneNumber(phoneNumber: string): string | null {
 export type IdentityLookup = {
   id: string
   email: string
-  passwordHash: string
+  /// Nullable sejak Satu Login: tabel `users` kini juga memuat pelanggan Google
+  /// yang tak punya password. Pemanggil (admin/login) sudah menangani null
+  /// dengan hash boneka lalu menolak — akun tanpa password tak bisa masuk.
+  passwordHash: string | null
 }
 
 /**
