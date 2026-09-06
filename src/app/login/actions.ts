@@ -4,12 +4,13 @@ import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import {
   findCustomerByEmail,
-  findCustomerByEmailOrUsername,
-  verifyPassword,
   hashPassword,
   MIN_PASSWORD_LENGTH,
 } from "@/lib/auth/customer-password"
 import { createCustomerSession } from "@/lib/auth/customer"
+import { createSession } from "@/lib/auth"
+import { findUserByIdentifier } from "@/lib/auth/identity"
+import { verifyPassword as verifyPasswordUser } from "@/lib/auth/password"
 import { createVerificationToken, consumeVerificationToken } from "@/lib/auth/verification-token"
 import { sendEmail } from "@/lib/email/send"
 import { resolvePublicUrl } from "@/lib/utils/public-link"
@@ -28,6 +29,18 @@ import type { LoginState, ForgotPasswordState, ResetPasswordState } from "./stat
 const GAGAL = "Email/username atau password salah."
 const BELUM_VERIFIKASI = "Akun belum diverifikasi. Cek email Anda, atau kirim ulang tautan verifikasi."
 
+/**
+ * Login TERPADU (Satu Login Fase A) — satu pintu untuk semua.
+ *
+ * Sejak semua akun (admin & pelanggan) hidup di tabel `users`, form ini mencari
+ * di sana, lalu SISTEM yang menentukan tujuan berdasarkan PERAN:
+ *   - peran "pelanggan" → sesi pelanggan → storefront (nextPath)
+ *   - peran admin (owner/staff/role dinamis) → sesi admin → /admin
+ *
+ * Dua sistem sesi (cookie pelanggan & admin, HMAC terpisah) sengaja
+ * DIPERTAHANKAN di belakang layar — konsolidasi jadi satu sesi adalah pekerjaan
+ * terpisah (Fase B). Yang disatukan di sini cukup PINTU login-nya.
+ */
 export async function loginAction(_prev: LoginState, formData: FormData): Promise<LoginState> {
   const identifier = String(formData.get("identifier") ?? "")
   const password = String(formData.get("password") ?? "")
@@ -37,21 +50,26 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
     return { error: "Email/username dan password wajib diisi." }
   }
 
-  const customer = await findCustomerByEmailOrUsername(identifier)
+  const user = await findUserByIdentifier(identifier)
 
-  // Tetap jalankan verifikasi walau akun tidak ada ATAU tidak punya
-  // password (Google-only) — pola sama seperti admin: kalau langsung
-  // dikembalikan, permintaan untuk kasus itu selesai jauh lebih cepat
-  // daripada yang benar-benar diverifikasi, dan selisih waktunya sendiri
-  // sudah membocorkan mana yang mana.
-  const hash = customer?.passwordHash ?? "0".repeat(32) + ":" + "0".repeat(128)
-  const cocok = await verifyPassword(password, hash)
+  // Tetap verifikasi walau akun tak ada / tanpa password (Google-only), dengan
+  // hash boneka — supaya selisih waktu tak membocorkan akun mana yang ada.
+  const hash = user?.passwordHash ?? "0".repeat(32) + ":" + "0".repeat(128)
+  const cocok = await verifyPasswordUser(password, hash)
 
-  if (!customer || !customer.passwordHash || !cocok) return { error: GAGAL }
-  if (!customer.emailVerifiedAt) return { error: BELUM_VERIFIKASI }
+  if (!user || !user.passwordHash || !cocok) return { error: GAGAL }
 
-  await createCustomerSession({ id: customer.id, email: customer.email })
-  redirect(nextPath)
+  // Tujuan ditentukan PERAN, bukan pilihan pengguna.
+  if (user.role === "pelanggan") {
+    // Pelanggan email+password wajib terverifikasi (admin tak punya nilai ini).
+    if (!user.emailVerifiedAt) return { error: BELUM_VERIFIKASI }
+    await createCustomerSession({ id: user.id, email: user.email })
+    redirect(nextPath)
+  }
+
+  // Selain "pelanggan" = akun admin (owner/staff/role dinamis) → panel.
+  await createSession({ id: user.id, email: user.email })
+  redirect("/admin")
 }
 
 function resetPasswordEmailText(link: string): string {

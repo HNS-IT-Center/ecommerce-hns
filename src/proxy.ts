@@ -96,15 +96,17 @@ export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl
 
   if (pathname.startsWith("/admin")) {
-    // Halaman masuk harus tetap terbuka, kalau tidak tidak ada yang bisa masuk.
+    // `/admin/login` dibiarkan lewat: sejak Satu Login (Fase A) ia hanya
+    // mengalihkan ke `/login`, dan harus bisa dijangkau untuk melakukannya.
     if (pathname === "/admin/login") return NextResponse.next()
 
     const session = await verifySession(request.cookies.get(SESSION_COOKIE)?.value)
     if (session) return NextResponse.next()
 
-    // Bawa tujuan semula supaya setelah masuk, PIC kembali ke halaman yang tadi
-    // dituju — bukan dilempar ke dashboard dan harus mencari jalannya lagi.
-    return redirectToLogin(request, "/admin/login", "callbackUrl", `${pathname}${search}`)
+    // Satu pintu: admin yang belum masuk diarahkan ke `/login`, bukan lagi
+    // halaman login admin terpisah. Login terpadu membaca peran akun dan
+    // mengantar admin ke panel setelah masuk.
+    return redirectToLogin(request, "/login", "next", `${pathname}${search}`)
   }
 
   // /profile/:path*

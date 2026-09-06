@@ -97,6 +97,12 @@ export type IdentityLookup = {
   /// yang tak punya password. Pemanggil (admin/login) sudah menangani null
   /// dengan hash boneka lalu menolak — akun tanpa password tak bisa masuk.
   passwordHash: string | null
+  /// Peran akun — dipakai login terpadu (/login) untuk menentukan tujuan:
+  /// "pelanggan" → storefront, selainnya → panel admin. Lihat lib/auth/roles.ts.
+  role: string
+  /// Verifikasi email (pelanggan email+password). Login terpadu menolak
+  /// pelanggan yang belum verifikasi; admin tak punya nilai ini (null = lolos).
+  emailVerifiedAt: Date | null
 }
 
 /**
@@ -113,6 +119,6 @@ export async function findUserByIdentifier(raw: string): Promise<IdentityLookup 
 
   return getPrisma().user.findFirst({
     where: isEmail(identifier) ? { email: identifier } : { username: identifier },
-    select: { id: true, email: true, passwordHash: true },
+    select: { id: true, email: true, passwordHash: true, role: true, emailVerifiedAt: true },
   })
 }
