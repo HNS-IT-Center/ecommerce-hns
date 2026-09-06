@@ -52,5 +52,7 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
 
 export async function logoutAction(): Promise<void> {
   await destroySession()
-  redirect("/admin/login")
+  // Satu Login: keluar mengantar ke pintu tunggal `/login`, bukan lagi halaman
+  // login admin terpisah (yang kini cuma meneruskan ke sana).
+  redirect("/login")
 }

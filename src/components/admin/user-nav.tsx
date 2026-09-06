@@ -6,7 +6,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -47,12 +46,17 @@ export function UserNav({ name, email }: UserNavProps) {
         </Avatar>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-56" align="end">
-        <DropdownMenuLabel className="font-normal">
+        {/* Div biasa, bukan `DropdownMenuLabel`: label itu memakai
+            `MenuPrimitive.GroupLabel` yang WAJIB berada di dalam
+            `MenuPrimitive.Group`. Dipakai lepas di sini, ia melempar
+            "MenuGroupContext is missing" dan menu (termasuk tombol Keluar)
+            tidak pernah muncul. Nama+email cuma teks — tak butuh semantik itu. */}
+        <div className="px-2 py-1.5">
           <div className="flex flex-col space-y-1">
             <p className="text-sm font-medium leading-none">{name}</p>
             <p className="text-xs leading-none text-muted-foreground break-all">{email}</p>
           </div>
-        </DropdownMenuLabel>
+        </div>
         <DropdownMenuSeparator />
         {/*
           Dulu ada tiga butir hiasan di sini — "Profile", "Settings", dan
