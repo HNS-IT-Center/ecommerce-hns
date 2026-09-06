@@ -131,6 +131,21 @@ async function TabPelanggan({
   const halaman = Number(page ?? 1) || 1
   const { rows, total, pageCount } = await listCustomers({ query, page: halaman })
 
+  // Peran tiap pelanggan (dari `users`, id sama) + daftar peran yang bisa
+  // diberikan. Sejak Satu Login pelanggan adalah baris di `users`.
+  const { getPrisma } = await import("@/lib/prisma/client")
+  const ids = rows.map((r) => r.id)
+  const [roleRows, roleOptions] = await Promise.all([
+    ids.length
+      ? getPrisma().user.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, roleId: true, roleRef: { select: { name: true } } },
+        })
+      : Promise.resolve([]),
+    listRoles(),
+  ])
+  const roleById = new Map(roleRows.map((r) => [r.id, { roleId: r.roleId, roleName: r.roleRef?.name ?? null }]))
+
   const linkHal = (h: number) => {
     const sp = new URLSearchParams({ tab: "pelanggan", ...(query && { q: query }), page: String(h) })
     return `/admin/manajemen-user?${sp.toString()}`
@@ -161,8 +176,12 @@ async function TabPelanggan({
           // Date tidak bisa menyeberang ke Client Component apa adanya.
           emailVerifiedAt: c.emailVerifiedAt?.toISOString() ?? null,
           createdAt: c.createdAt.toISOString(),
+          roleId: roleById.get(c.id)?.roleId ?? null,
+          roleName: roleById.get(c.id)?.roleName ?? null,
         }))}
         canDelete={canDelete}
+        roleOptions={roleOptions.map((r) => ({ id: r.id, name: r.name }))}
+        canManageRole={canDelete}
       />
 
       {pageCount > 1 && (

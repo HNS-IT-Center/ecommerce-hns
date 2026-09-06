@@ -106,6 +106,29 @@ export async function setAdminUserRoleId(id: string, roleId: string | null): Pro
 }
 
 /**
+ * Beri peran ke seorang PELANGGAN — menaikkannya jadi bagian tim, atau
+ * mengembalikannya jadi pelanggan biasa. Sejak Satu Login pelanggan adalah baris
+ * di `users`, jadi ini update `role` + `roleId` sekaligus.
+ *
+ * - `roleId` = sebuah peran dinamis → `role` = "staff" (jadi admin non-owner)
+ *   dengan izin sesuai peran itu.
+ * - `roleId` = null → `role` = "pelanggan", kembali jadi pelanggan biasa.
+ *
+ * TIDAK pernah menetapkan `role` = "owner" lewat jalur ini: menaikkan seseorang
+ * jadi owner (kuasa penuh) tidak pantas dilakukan dari daftar pelanggan.
+ */
+export async function setCustomerRole(userId: string, roleId: string | null): Promise<void> {
+  if (roleId !== null) {
+    const ada = await getPrisma().role.findUnique({ where: { id: roleId }, select: { id: true } })
+    if (!ada) throw new Error("Peran tidak ditemukan.")
+  }
+  await getPrisma().user.update({
+    where: { id: userId },
+    data: { role: roleId === null ? "pelanggan" : "staff", roleId },
+  })
+}
+
+/**
  * Pastikan `id` bukan owner terakhir sebelum akunnya dihapus.
  *
  * Dipisah dari `setAdminUserRole` karena penghapusan akun admin belum ada di

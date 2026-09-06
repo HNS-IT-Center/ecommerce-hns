@@ -7,7 +7,33 @@ import {
   deleteCustomerPermanently,
   getCustomerForDeletion,
 } from "@/lib/api/customers"
+import { setCustomerRole } from "@/lib/api/admin-users"
 import { MAX_REASON_LENGTH, MIN_REASON_WORDS, type CustomerActionState } from "./state"
+
+/**
+ * Beri/ubah peran seorang pelanggan (naikkan jadi tim, atau kembalikan jadi
+ * pelanggan biasa). OWNER-ONLY — menaikkan seseorang jadi punya akses panel
+ * adalah kuasa sensitif, sama seperti menghapus akun pelanggan (§2.8), jadi
+ * tidak setiap admin boleh. `roleId` kosong = kembalikan jadi pelanggan.
+ */
+export async function setCustomerRoleAction(input: {
+  userId: string
+  roleId: string
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await requireOwner()
+    if (!input.userId) return { ok: false, error: "Akun tidak dikenali." }
+    await setCustomerRole(input.userId, input.roleId === "" ? null : input.roleId)
+    revalidatePath("/admin/manajemen-user")
+    return { ok: true }
+  } catch (error) {
+    if (error instanceof UnauthorizedError || error instanceof ForbiddenError) {
+      return { ok: false, error: "Hanya owner yang bisa mengubah peran pelanggan." }
+    }
+    if (error instanceof Error) return { ok: false, error: error.message }
+    return { ok: false, error: "Terjadi kesalahan." }
+  }
+}
 
 /**
  * Hapus akun pelanggan secara permanen.

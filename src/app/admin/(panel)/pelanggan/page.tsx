@@ -74,14 +74,21 @@ export default async function AdminPelangganPage({
       </form>
 
       <div className="mt-6">
+        {/* Halaman /admin/pelanggan lama (tanpa menu sidebar sejak pindah ke
+            tab Manajemen User). Pemberian peran lewat klik-kanan hidup di tab
+            itu, bukan di sini — jadi roleOptions kosong & canManageRole false. */}
         <CustomerList
           canDelete={user.role === "owner"}
+          roleOptions={[]}
+          canManageRole={false}
           customers={rows.map((c) => ({
             ...c,
             // Date tidak bisa menyeberang ke Client Component apa adanya —
             // diubah ke ISO di sini, diformat ulang ke bahasa Indonesia di sana.
             emailVerifiedAt: c.emailVerifiedAt?.toISOString() ?? null,
             createdAt: c.createdAt.toISOString(),
+            roleId: null,
+            roleName: null,
           }))}
         />
       </div>

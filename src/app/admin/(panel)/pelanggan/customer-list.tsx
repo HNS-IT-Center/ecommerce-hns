@@ -1,11 +1,12 @@
 "use client"
 
-import { useState } from "react"
-import { CheckCircle2, Cpu, Mail, Phone, ShieldAlert, Trash2, X } from "lucide-react"
+import { useEffect, useState, useTransition } from "react"
+import { CheckCircle2, Cpu, Mail, Phone, ShieldAlert, Trash2, X, Check } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 
 import { DeleteCustomerDialog } from "./delete-customer-dialog"
+import { setCustomerRoleAction } from "./actions"
 
 type CustomerItem = {
   id: string
@@ -16,7 +17,14 @@ type CustomerItem = {
   emailVerifiedAt: string | null
   createdAt: string
   savedBuildCount: number
+  /** Peran dinamis yang tertaut (null = pelanggan biasa). */
+  roleId: string | null
+  /** Nama peran untuk ditampilkan (null = pelanggan biasa). */
+  roleName: string | null
 }
+
+/** Peran dinamis yang bisa diberikan (dibuat di tab Peran). */
+type RoleOption = { id: string; name: string }
 
 type Props = {
   customers: CustomerItem[]
@@ -27,7 +35,14 @@ type Props = {
    * apa yang pantas ditampilkan.
    */
   canDelete: boolean
+  /** Peran yang bisa diberikan lewat klik-kanan. */
+  roleOptions: RoleOption[]
+  /** Boleh mengubah peran pelanggan (owner-only). Klik-kanan hanya aktif bila true. */
+  canManageRole: boolean
 }
+
+/** Menu klik-kanan: posisi + sasaran pelanggan. */
+type CtxMenu = { x: number; y: number; userId: string; currentRoleId: string | null } | null
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("id-ID", {
@@ -37,9 +52,41 @@ function formatDate(iso: string): string {
   })
 }
 
-export function CustomerList({ customers, canDelete }: Props) {
+export function CustomerList({ customers, canDelete, roleOptions, canManageRole }: Props) {
   const [target, setTarget] = useState<CustomerItem | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+
+  // Menu klik-kanan untuk memberi peran (owner-only).
+  const [ctx, setCtx] = useState<CtxMenu>(null)
+  const [pending, startTransition] = useTransition()
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!ctx) return
+    const tutup = () => setCtx(null)
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setCtx(null)
+    window.addEventListener("click", tutup)
+    window.addEventListener("scroll", tutup, true)
+    window.addEventListener("keydown", esc)
+    return () => {
+      window.removeEventListener("click", tutup)
+      window.removeEventListener("scroll", tutup, true)
+      window.removeEventListener("keydown", esc)
+    }
+  }, [ctx])
+
+  function pilihPeran(userId: string, roleId: string) {
+    setCtx(null)
+    setError(null)
+    startTransition(async () => {
+      const res = await setCustomerRoleAction({ userId, roleId })
+      if (!res.ok) {
+        setError(res.error)
+        return
+      }
+      window.location.reload()
+    })
+  }
 
   if (customers.length === 0) {
     return (
@@ -156,11 +203,27 @@ export function CustomerList({ customers, canDelete }: Props) {
           </thead>
           <tbody>
             {customers.map((c) => (
-              <tr key={c.id} className="border-b border-border last:border-0">
+              <tr
+                key={c.id}
+                onContextMenu={
+                  canManageRole
+                    ? (e) => {
+                        e.preventDefault()
+                        setCtx({ x: e.clientX, y: e.clientY, userId: c.id, currentRoleId: c.roleId })
+                      }
+                    : undefined
+                }
+                className="border-b border-border last:border-0"
+              >
                 <td className="px-4 py-3">
                   <span className="font-medium">{c.name}</span>
                   {c.username && (
                     <span className="block text-xs text-muted-foreground">@{c.username}</span>
+                  )}
+                  {c.roleName && (
+                    <span className="mt-0.5 inline-block rounded bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
+                      {c.roleName}
+                    </span>
                   )}
                 </td>
                 <td className="px-4 py-3">
@@ -205,6 +268,53 @@ export function CustomerList({ customers, canDelete }: Props) {
           onOpenChange={(open) => !open && setTarget(null)}
           onDeleted={(message) => setNotice(message)}
         />
+      )}
+
+      {error && (
+        <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive shadow-lg">
+          {error}
+        </div>
+      )}
+
+      {/* Menu klik-kanan: beri/ubah peran pelanggan (owner-only). Klik peran =
+          langsung terapkan. Peran aktif ber-centang. */}
+      {ctx && (
+        <div
+          role="menu"
+          onClick={(e) => e.stopPropagation()}
+          style={{ top: ctx.y, left: ctx.x }}
+          className="fixed z-50 min-w-56 overflow-hidden rounded-lg border border-border bg-background py-1 shadow-lg"
+        >
+          <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground">Beri peran</div>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={pending}
+            onClick={() => pilihPeran(ctx.userId, "")}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-muted disabled:opacity-50"
+          >
+            <span className="w-4">{ctx.currentRoleId === null && <Check className="h-4 w-4 text-primary" />}</span>
+            Pelanggan (biasa)
+          </button>
+          {roleOptions.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              role="menuitem"
+              disabled={pending}
+              onClick={() => pilihPeran(ctx.userId, r.id)}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-muted disabled:opacity-50"
+            >
+              <span className="w-4">{ctx.currentRoleId === r.id && <Check className="h-4 w-4 text-primary" />}</span>
+              {r.name}
+            </button>
+          ))}
+          {roleOptions.length === 0 && (
+            <div className="px-3 py-1.5 text-xs text-muted-foreground">
+              Belum ada peran. Buat di tab Peran dulu.
+            </div>
+          )}
+        </div>
       )}
     </>
   )
