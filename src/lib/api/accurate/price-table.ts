@@ -95,11 +95,36 @@ function bangunWhere(filter: FilterTabelHarga): { sql: string; params: unknown[]
   const syarat: string[] = []
   const params: unknown[] = []
 
-  const q = filter.q?.trim()
-  if (q) {
-    // Dicari di kode DAN nama: staff gudang hafal kode, staff toko hafal nama.
-    syarat.push("(`Kode Accurate` LIKE ? OR `NAMA BARANG` LIKE ?)")
-    params.push(`%${q}%`, `%${q}%`)
+  /**
+   * Pencocokan per KATA, meniru pencarian storefront
+   * (`lib/api/woocommerce/products.ts`) supaya keduanya terasa sama.
+   *
+   * Mencocokkan seluruh kalimat sebagai satu potongan gagal pada cara orang
+   * benar-benar mengetik: "16 GB 512GB RTX5060" tidak pernah cocok dengan
+   * barang bernama "...16GB 512GB RTX5060..." karena spasi di "16 GB". Dipecah
+   * per kata, "16" cocok di dalam "16GB" dan barangnya ketemu.
+   *
+   * Antar kata AND, di dalam satu kata OR ke empat kolom — jadi menambah kata
+   * selalu MEMPERSEMPIT hasil. Kalau seluruhnya OR, mengetik lebih spesifik
+   * justru memunculkan lebih banyak barang.
+   *
+   * Empat kolom itu padanan dari yang dicari storefront: nama ≈ NAMA BARANG,
+   * SKU ≈ Kode Accurate, lalu brand dan kategori. Staff gudang hafal kode,
+   * staff toko hafal nama, dan sebagian mengetik "laptop asus" — kata "laptop"
+   * hampir tak pernah ada di nama barang, ia ada di kategorinya.
+   *
+   * Jumlah kata sengaja TIDAK dibatasi: menempelkan nama barang utuh dari
+   * Accurate (yang panjangnya belasan kata) justru cara tercepat menemukan satu
+   * baris, dan pemotongan diam-diam akan membuat sebagian kata terabaikan tanpa
+   * ada yang tahu.
+   */
+  const kata = filter.q?.trim().split(/\s+/).filter(Boolean) ?? []
+  for (const k of kata) {
+    syarat.push(
+      "(`Kode Accurate` LIKE ? OR `NAMA BARANG` LIKE ? OR `NAMA BRAND` LIKE ? OR `KATEGORI` LIKE ?)",
+    )
+    const pola = `%${k}%`
+    params.push(pola, pola, pola, pola)
   }
   if (filter.kategori) {
     syarat.push("`KATEGORI` = ?")
