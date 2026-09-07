@@ -122,6 +122,41 @@ export async function setCustomerRole(userId: string, roleId: string | null): Pr
     const ada = await getPrisma().role.findUnique({ where: { id: roleId }, select: { id: true } })
     if (!ada) throw new Error("Peran tidak ditemukan.")
   }
+
+  const target = await getPrisma().user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  })
+  if (!target) throw new Error("Akun tidak ditemukan.")
+
+  /**
+   * Owner ikut kena penjaga yang sama seperti `setAdminUserRole`.
+   *
+   * Fungsi ini menulis `role` menjadi "pelanggan" atau "staff", jadi
+   * menjalankannya pada satu-satunya owner akan menyisakan database tanpa owner
+   * — persis keadaan yang dijaga berkas ini, lewat jalur yang melewatinya.
+   * Catatan di kepala berkas sudah menyebut bahayanya: penjaganya hanya berguna
+   * kalau SETIAP jalur perubahan role lewat sini.
+   *
+   * Selama ini tidak terjadi hanya karena kebetulan — pemanggilnya adalah
+   * daftar pelanggan, dan akun owner tidak punya baris `customers` sehingga tak
+   * pernah muncul di sana. Itu bukan penjaga, itu keberuntungan yang bergantung
+   * pada bentuk data yang bisa berubah kapan saja.
+   *
+   * `updateMany` bersyarat `role: "owner"` dengan alasan yang sama seperti di
+   * `setAdminUserRole`: dua penurunan bersamaan tidak boleh lolos berdua.
+   */
+  if (parseAdminRole(target.role) === "owner") {
+    if ((await countOwners()) <= 1) throw new LastOwnerError()
+
+    const { count } = await getPrisma().user.updateMany({
+      where: { id: userId, role: "owner" },
+      data: { role: roleId === null ? "pelanggan" : "staff", roleId },
+    })
+    if (count === 0) throw new LastOwnerError()
+    return
+  }
+
   await getPrisma().user.update({
     where: { id: userId },
     data: { role: roleId === null ? "pelanggan" : "staff", roleId },
