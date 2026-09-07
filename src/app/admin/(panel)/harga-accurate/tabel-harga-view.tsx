@@ -37,6 +37,31 @@ function bacaAngka(teks: string): number | null {
 
 type Suntingan = { modal: number | null; dealer: number | null }
 
+/**
+ * Ambang & jeda yang sama persis dengan pencarian di storefront
+ * (`features/search/hooks/use-live-search.ts`) — diminta supaya rasanya sama di
+ * kedua sisi. Satu huruf mencocokkan hampir seluruh katalog, dan mengirim
+ * permintaan pada tiap ketukan tombol berarti belasan query untuk satu kata
+ * yang belum selesai diketik.
+ */
+const MIN_QUERY_LENGTH = 2
+const DEBOUNCE_MS = 300
+
+/**
+ * `STATUS` di Accurate menjawab "sudah dihentikan?", jadi YA berarti barangnya
+ * TIDAK aktif — kebalikan dari bacaan pertama orang atas kata "ya".
+ *
+ * Dipastikan dari data sebelum dilabeli: seluruh 1.148 baris ber-STATUS YA
+ * berstok nol dan hanya 31 yang punya harga, sedangkan barang yang jelas hidup
+ * (Mouse Logitech, stok 127) justru ber-STATUS TIDAK. Menampilkan "YA" apa
+ * adanya membuat staff menyaring terbalik tanpa sadar.
+ */
+function labelStatus(nilai: string): string {
+  if (nilai === "YA") return "Tidak Aktif"
+  if (nilai === "TIDAK") return "Aktif"
+  return nilai
+}
+
 export function TabelHargaView({
   rows,
   opsi,
@@ -55,12 +80,49 @@ export function TabelHargaView({
   const [pesan, setPesan] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
 
+  // Isi kotak cari dipegang di klien supaya huruf yang diketik muncul seketika;
+  // pencariannya sendiri menyusul setelah jeda (lihat effect di bawah).
+  const [teksCari, setTeksCari] = React.useState(filter.q)
+  // Tanpa ini, effect di bawah ikut berjalan saat halaman pertama dimuat dan
+  // langsung melakukan navigasi untuk kata yang sudah ada di alamat.
+  const sudahMengetik = React.useRef(false)
+
   const adaPerubahan = suntingan.size > 0
 
   /**
+   * Pencarian langsung — ambang & jeda menyamai storefront.
+   *
+   * Di bawah ambang diperlakukan sebagai KOSONG, bukan diabaikan: orang yang
+   * menghapus kata pencariannya sampai tersisa satu huruf jelas sedang menuju
+   * "tampilkan semua", dan membiarkan hasil lama tertahan di layar membuatnya
+   * seperti macet.
+   */
+  React.useEffect(() => {
+    if (!sudahMengetik.current) return
+    const bersih = teksCari.trim()
+    const sasaran = bersih.length >= MIN_QUERY_LENGTH ? bersih : ""
+    if (sasaran === filter.q) return
+
+    const timer = setTimeout(() => {
+      navigasi(bangunUrl({ q: sasaran, page: 1 }))
+    }, DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+    // `navigasi` & `bangunUrl` sengaja tidak masuk daftar: keduanya dibuat ulang
+    // tiap render, dan memasukkannya membuat effect ini berjalan terus-menerus.
+    // Yang benar-benar memicu pencarian hanya dua nilai di bawah.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teksCari, filter.q])
+
+  /**
    * Peringatan bawaan peramban saat menutup/menyegarkan tab dengan suntingan
-   * yang belum disimpan. Perpindahan di dalam aplikasi (filter, halaman)
-   * dijaga terpisah lewat `navigasi()` — `beforeunload` tidak menangkapnya.
+   * yang belum disimpan.
+   *
+   * Hanya untuk MENINGGALKAN halaman. Mencari, menyaring, dan berpindah halaman
+   * TIDAK memicu apa pun: suntingan disimpan di peta berkunci kode barang dan
+   * komponen ini tidak dilepas saat alamat berubah, jadi angka yang sudah
+   * diketik tetap utuh walau barisnya sedang tidak terlihat. Menanyai staff
+   * "buang perubahan?" tiap kali mereka mengetik di kotak cari akan membuat
+   * pencarian langsung terasa seperti jebakan.
    */
   React.useEffect(() => {
     if (!adaPerubahan) return
@@ -83,16 +145,15 @@ export function TabelHargaView({
     })
   }
 
-  /** Pindah halaman/filter — menahan langkah kalau ada yang belum disimpan. */
+  /**
+   * Pindah pencarian/penyaring/halaman.
+   *
+   * `replace`, bukan `push`: mengetik "logitech" menghasilkan beberapa
+   * perpindahan berdebounce, dan dengan `push` tombol Kembali harus ditekan
+   * sekali untuk tiap potongan kata yang pernah singgah di alamat.
+   */
   function navigasi(url: string) {
-    if (adaPerubahan) {
-      const lanjut = window.confirm(
-        `Ada ${suntingan.size} harga yang belum disimpan. Tinggalkan halaman ini dan buang perubahannya?`,
-      )
-      if (!lanjut) return
-    }
-    setSuntingan(new Map())
-    router.push(url)
+    router.replace(url)
   }
 
   function bangunUrl(ubahan: Partial<typeof filter & { page: number }>) {
@@ -140,20 +201,16 @@ export function TabelHargaView({
     <div>
       {/* Pencarian & penyaring. Form GET biasa: hasilnya jadi alamat yang bisa
           disalin & dibagikan ke rekan ("cek yang kategori LAPTOP ini"). */}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault()
-          const data = new FormData(e.currentTarget)
-          navigasi(bangunUrl({ q: String(data.get("q") ?? ""), page: 1 }))
-        }}
-        className="space-y-3"
-      >
+      <div className="space-y-3">
         <div className="relative">
           <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="search"
-            name="q"
-            defaultValue={filter.q}
+            value={teksCari}
+            onChange={(e) => {
+              sudahMengetik.current = true
+              setTeksCari(e.target.value)
+            }}
             placeholder="Cari kode, nama produk..."
             aria-label="Cari kode atau nama produk"
             className="w-full rounded-lg border border-input bg-background py-2 pr-3 pl-9 text-sm"
@@ -177,13 +234,11 @@ export function TabelHargaView({
             label="Semua Status"
             nilai={filter.status}
             opsi={opsi.status}
+            beriLabel={labelStatus}
             onPilih={(v) => navigasi(bangunUrl({ status: v, page: 1 }))}
           />
-          <button type="submit" className="sr-only">
-            Cari
-          </button>
         </div>
-      </form>
+      </div>
 
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
@@ -454,17 +509,25 @@ function MedanHarga({
   )
 }
 
-/** Satu penyaring. Nilai kosong = "semua". */
+/**
+ * Satu penyaring. Nilai kosong = "semua".
+ *
+ * `beriLabel` mengubah tampilan pilihannya saja — yang dikirim ke server tetap
+ * nilai asli dari Accurate. Dipakai kolom STATUS, yang menyimpan "YA"/"TIDAK"
+ * tapi harus dibaca sebagai Tidak Aktif/Aktif.
+ */
 function Pilihan({
   label,
   nilai,
   opsi,
   onPilih,
+  beriLabel,
 }: {
   label: string
   nilai: string
   opsi: string[]
   onPilih: (v: string) => void
+  beriLabel?: (v: string) => string
 }) {
   return (
     <select
@@ -476,7 +539,7 @@ function Pilihan({
       <option value="">{label}</option>
       {opsi.map((o) => (
         <option key={o} value={o}>
-          {o}
+          {beriLabel ? beriLabel(o) : o}
         </option>
       ))}
     </select>
