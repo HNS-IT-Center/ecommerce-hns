@@ -61,14 +61,59 @@ export async function GET(request: NextRequest) {
     return errorPage("network")
   }
 
-  const customer = await getPrisma().customer.upsert({
+  // Dulu ini `customer.upsert({ where: { googleSub } })`. Itu CRASH 500 mentah
+  // (P2002) saat `googleSub` tak ketemu TAPI email-nya sudah dipakai baris lain
+  // — sebab upsert lalu mencoba CREATE dan menabrak `email @unique`. Kasus itu
+  // nyata: akun daftar-manual (password) memakai email yang sama dengan yang
+  // dipakai orang menekan "Masuk dengan Google". Aturan project (schema.prisma
+  // pada Customer.googleSub): satu email = SATU jalur identitas, Google ATAU
+  // password, TIDAK digabung otomatis. Jadi tiga cabang eksplisit di bawah,
+  // bukan satu upsert yang menyembunyikan bentrokan.
+  const prisma = getPrisma()
+  const byGoogle = await prisma.customer.findUnique({
     where: { googleSub: identity.googleSub },
-    create: { googleSub: identity.googleSub, email: identity.email, name: identity.name },
-    // Email/nama Google bisa berubah antar login — selalu disegarkan supaya
-    // tidak menyimpan data yang sudah usang.
-    update: { email: identity.email, name: identity.name },
-    select: { id: true, email: true, username: true, phoneNumber: true },
+    select: { id: true },
   })
+
+  let customer: { id: string; email: string; username: string | null; phoneNumber: string | null }
+
+  if (byGoogle) {
+    // Pelanggan Google yang sudah pernah masuk — segarkan email/nama (bisa
+    // berubah di sisi Google) lalu pakai barisnya.
+    customer = await prisma.customer.update({
+      where: { id: byGoogle.id },
+      data: { email: identity.email, name: identity.name },
+      select: { id: true, email: true, username: true, phoneNumber: true },
+    })
+  } else {
+    const byEmail = await prisma.customer.findUnique({
+      where: { email: identity.email },
+      select: { id: true, passwordHash: true, googleSub: true },
+    })
+
+    if (byEmail?.passwordHash) {
+      // Email ini milik akun PASSWORD. Jangan gabungkan diam-diam (bisa jadi
+      // jalur pembajakan: siapa pun yang menguasai email Google berjudul sama
+      // akan menempel ke akun password orang). Tolak dengan rapi — bukan 500.
+      return errorPage("email_terpakai_password")
+    }
+
+    if (byEmail) {
+      // Baris email ada tapi TANPA password (akun Google yang `googleSub`-nya
+      // belum terisi) — tautkan sub-nya, aman karena tak ada kredensial lain.
+      customer = await prisma.customer.update({
+        where: { id: byEmail.id },
+        data: { googleSub: identity.googleSub, email: identity.email, name: identity.name },
+        select: { id: true, email: true, username: true, phoneNumber: true },
+      })
+    } else {
+      // Pelanggan Google betul-betul baru.
+      customer = await prisma.customer.create({
+        data: { googleSub: identity.googleSub, email: identity.email, name: identity.name },
+        select: { id: true, email: true, username: true, phoneNumber: true },
+      })
+    }
+  }
 
   await createCustomerSession(customer)
 

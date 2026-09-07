@@ -26,6 +26,8 @@ const MESSAGES: Record<string, string> = {
   state_invalid: "Sesi masuk kedaluwarsa. Coba lagi.",
   network: "Gagal menghubungi Google. Coba beberapa saat lagi.",
   rate_limit: "Terlalu banyak percobaan. Coba beberapa menit lagi.",
+  email_terpakai_password:
+    "Email ini sudah terdaftar dengan password. Silakan masuk memakai email dan password Anda, bukan lewat Google.",
 };
 
 const DEFAULT_MESSAGE = "Gagal masuk dengan Google. Coba beberapa saat lagi.";
