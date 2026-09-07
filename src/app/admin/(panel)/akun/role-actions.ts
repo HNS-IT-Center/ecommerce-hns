@@ -2,7 +2,12 @@
 
 import { revalidatePath } from "next/cache"
 import { ForbiddenError, UnauthorizedError, requireOwner } from "@/lib/auth"
-import { LastOwnerError, setAdminUserRole, setAdminUserRoleId } from "@/lib/api/admin-users"
+import {
+  LastOwnerError,
+  setAdminUserRole,
+  setAdminUserRoleId,
+  setCustomerRole,
+} from "@/lib/api/admin-users"
 import { isAdminRole } from "@/lib/auth/roles"
 import type { RoleActionState } from "./role-state"
 
@@ -87,6 +92,58 @@ export async function updateAdminRoleId(
     }
   } catch (error) {
     if (error instanceof UnauthorizedError || error instanceof ForbiddenError) {
+      return { error: error.message, success: null }
+    }
+    if (error instanceof Error) return { error: error.message, success: null }
+    throw error
+  }
+}
+
+/**
+ * Turunkan satu akun admin kembali menjadi pelanggan biasa — akses panel hilang.
+ *
+ * Melengkapi menu di tab Admin, yang sebelumnya hanya bisa MELEPAS peran dinamis
+ * ("— owner/staff"). Melepas peran tidak mencabut akses: orangnya tetap admin,
+ * hanya tanpa izin per-halaman. Satu-satunya jalan turun ada di tab Pelanggan,
+ * dan tidak ada yang menduga harus mencarinya di sana untuk orang yang sedang
+ * dilihat di daftar admin.
+ *
+ * Penurunan sendiri ditolak lebih awal di sini demi pesan yang jelas; penjaga
+ * "owner terakhir" yang sesungguhnya ada di `setCustomerRole` — sama seperti
+ * pembagian dua lapis pada `updateAdminRole` di atas.
+ *
+ * `/admin/manajemen-user` ikut di-revalidate: orang yang diturunkan berpindah
+ * daftar, hilang dari tab Admin dan muncul dengan peran kosong di tab Pelanggan.
+ */
+export async function demoteAdminToCustomer(
+  _prev: RoleActionState,
+  formData: FormData,
+): Promise<RoleActionState> {
+  try {
+    const actor = await requireOwner()
+
+    const userId = String(formData.get("userId") ?? "").trim()
+    if (!userId) return { error: "Akun tidak dikenali.", success: null }
+
+    if (userId === actor.id) {
+      return {
+        error:
+          "Anda tidak bisa menurunkan akun Anda sendiri. Minta owner lain yang melakukannya.",
+        success: null,
+      }
+    }
+
+    await setCustomerRole(userId, null)
+    revalidatePath("/admin/akun")
+    revalidatePath("/admin/manajemen-user")
+
+    return { error: null, success: "Akun diturunkan menjadi pelanggan — akses panel dicabut." }
+  } catch (error) {
+    if (
+      error instanceof UnauthorizedError ||
+      error instanceof ForbiddenError ||
+      error instanceof LastOwnerError
+    ) {
       return { error: error.message, success: null }
     }
     if (error instanceof Error) return { error: error.message, success: null }

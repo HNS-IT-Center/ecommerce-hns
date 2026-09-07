@@ -1,12 +1,13 @@
 "use client"
 
 import { useActionState, useEffect, useState } from "react"
-import { CheckCircle2, Info, ShieldCheck, X, Check } from "lucide-react"
+import { CheckCircle2, Info, ShieldCheck, X, Check, UserMinus } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { ADMIN_ROLE_DESCRIPTIONS, ADMIN_ROLE_LABELS, type AdminRole } from "@/lib/auth/roles"
 
-import { updateAdminRole, updateAdminRoleId } from "./role-actions"
+import { updateAdminRole, updateAdminRoleId, demoteAdminToCustomer } from "./role-actions"
 import { EMPTY_ROLE_STATE } from "./role-state"
 
 /** Posisi & sasaran menu klik-kanan. */
@@ -57,6 +58,12 @@ function RoleBadge({ role }: { role: AdminRole }) {
 export function AdminRoleList({ admins, currentUserId, roleOptions, canManage }: Props) {
   const [state, formAction, pending] = useActionState(updateAdminRole, EMPTY_ROLE_STATE)
   const [roleIdState, roleIdAction, roleIdPending] = useActionState(updateAdminRoleId, EMPTY_ROLE_STATE)
+  const [turunState, turunAction, turunPending] = useActionState(
+    demoteAdminToCustomer,
+    EMPTY_ROLE_STATE,
+  )
+  /** Akun yang sedang ditanyakan penurunannya (null = dialog tertutup). */
+  const [akanDiturunkan, setAkanDiturunkan] = useState<AdminItem | null>(null)
 
   /**
    * Keterangan hasil, disesuaikan saat render alih-alih lewat `useEffect` —
@@ -68,10 +75,10 @@ export function AdminRoleList({ admins, currentUserId, roleOptions, canManage }:
    * keterangan baru karena penandanya masih menyala dari yang sebelumnya.
    */
   const [dismissed, setDismissed] = useState<string | null>(null)
-  const sukses = roleIdState.success ?? state.success
+  const sukses = turunState.success ?? roleIdState.success ?? state.success
   const notice = sukses && sukses !== dismissed ? sukses : null
-  const errorPesan = state.error ?? roleIdState.error
-  const sedangProses = pending || roleIdPending
+  const errorPesan = state.error ?? roleIdState.error ?? turunState.error
+  const sedangProses = pending || roleIdPending || turunPending
 
   const ownerCount = admins.filter((a) => a.role === "owner").length
 
@@ -99,6 +106,37 @@ export function AdminRoleList({ admins, currentUserId, roleOptions, canManage }:
     fd.set("roleId", roleId) // "" = lepas → kembali ke owner/staff
     roleIdAction(fd)
     setCtx(null)
+  }
+
+  /**
+   * Akun yang sedang diklik-kanan, beserta alasan kalau ia tidak boleh
+   * diturunkan. Penjaga sebenarnya ada di server (owner terakhir di
+   * `setCustomerRole`, penurunan diri sendiri di `demoteAdminToCustomer`) —
+   * yang di sini supaya menunya tidak menawarkan sesuatu yang pasti ditolak,
+   * dan bisa menyebut alasannya di tempat.
+   */
+  const sasaranCtx = ctx ? (admins.find((a) => a.id === ctx.adminId) ?? null) : null
+  const alasanTakBisaTurun =
+    ctx && sasaranCtx
+      ? ctx.adminId === currentUserId
+        ? "Tidak bisa menurunkan akun sendiri"
+        : sasaranCtx.role === "owner" && ownerCount <= 1
+          ? "Ini satu-satunya owner"
+          : null
+      : null
+
+  function mintaTurunkan(adminId: string) {
+    const admin = admins.find((a) => a.id === adminId)
+    if (admin) setAkanDiturunkan(admin)
+    setCtx(null)
+  }
+
+  function jalankanPenurunan() {
+    if (!akanDiturunkan) return
+    const fd = new FormData()
+    fd.set("userId", akanDiturunkan.id)
+    turunAction(fd)
+    setAkanDiturunkan(null)
   }
 
   return (
@@ -271,8 +309,50 @@ export function AdminRoleList({ admins, currentUserId, roleOptions, canManage }:
               Belum ada peran. Buat di tab Peran dulu.
             </div>
           )}
+
+          {/*
+            Mencabut akses panel, bukan sekadar mengganti peran — karena itu
+            dipisah garis dan berwarna destruktif, supaya tidak terpilih saat
+            seseorang bermaksud mengganti peran biasa. Melepas peran di atas
+            ("— owner/staff") TIDAK mencabut akses apa pun.
+          */}
+          <div className="my-1 border-t border-border" />
+          {alasanTakBisaTurun ? (
+            <div className="px-3 py-1.5 text-xs text-muted-foreground">
+              {alasanTakBisaTurun} — tidak bisa diturunkan
+            </div>
+          ) : (
+            <button
+              type="button"
+              role="menuitem"
+              disabled={sedangProses}
+              onClick={() => mintaTurunkan(ctx.adminId)}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-destructive hover:bg-destructive/10 disabled:opacity-50"
+            >
+              <UserMinus className="h-4 w-4 shrink-0" />
+              Turunkan jadi pelanggan
+            </button>
+          )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={akanDiturunkan !== null}
+        onOpenChange={(open) => {
+          if (!open) setAkanDiturunkan(null)
+        }}
+        destructive
+        confirmLabel="Turunkan"
+        title={`Turunkan ${akanDiturunkan?.name ?? "akun ini"} jadi pelanggan?`}
+        description={
+          <>
+            Akses ke panel admin dicabut — akun ini kembali menjadi pelanggan biasa dan hanya bisa
+            membuka halaman toko. Akunnya sendiri tidak dihapus, dan bisa dinaikkan lagi kapan saja
+            lewat klik-kanan di tab Pelanggan.
+          </>
+        }
+        onConfirm={jalankanPenurunan}
+      />
     </div>
   )
 }
