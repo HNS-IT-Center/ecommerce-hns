@@ -28,6 +28,21 @@ type Props = {
 const SORTABLE_FIELDS = ["createdAt", "userName", "action", "productName", "fieldAffected"]
 
 /**
+ * Aksi yang membentuk riwayat harga sebuah produk.
+ *
+ * `SYNC_IMPORT` ikut walau ia sendiri bukan perubahan harga: ia menandai saat
+ * produknya masuk ke katalog, dan tanpa itu baris harga pertama sebuah produk
+ * muncul tanpa awal cerita. Penyaring aksi di tabel tetap bisa menyempitkannya
+ * ke perubahan harga saja.
+ *
+ * Daftar ini sengaja tetap di kode, tidak dibangun dari isi tabel seperti
+ * penyaring aksi: yang menentukan sebuah aksi "soal harga" adalah artinya bagi
+ * orang, bukan kebetulan namanya mengandung kata PRICE. Aksi harga baru harus
+ * ditambahkan ke sini dengan sadar.
+ */
+const PRICE_ACTIONS = ["UPDATE_PRICE", "SYNC_PRICE", "SYNC_IMPORT"]
+
+/**
  * Menerjemahkan `YYYY-MM-DD` dari URL menjadi batas rentang waktu.
  *
  * Tanggal dari penyaring tidak membawa jam, sementara `createdAt` membawanya.
@@ -105,7 +120,15 @@ export default async function AdminLogsPage({ searchParams }: Props) {
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     }))
-  } else if (currentTab === "produk") {
+  } else if (currentTab === "produk" || currentTab === "update-harga") {
+    /**
+     * Dua tab, satu jalur query. Bedanya cuma satu: tab harga membatasi diri
+     * pada `PRICE_ACTIONS`. Menyalin seluruh logikanya untuk perbedaan sekecil
+     * itu berarti penyaring tanggal, urutan, dan penjepitan halaman harus
+     * diperbaiki dua kali setiap kali salah satunya berubah.
+     */
+    const hanyaHarga = currentTab === "update-harga"
+
     const fromDate = parseDateBoundary(from, "start")
     const toDate = parseDateBoundary(to, "end")
 
@@ -122,7 +145,16 @@ export default async function AdminLogsPage({ searchParams }: Props) {
     // Penyaring aksi memakai kecocokan persis, bukan `contains`: "UPDATE_PRICE"
     // dan "BULK_STATUS" tidak boleh saling menjaring, dan nilainya memang
     // selalu dipilih dari daftar yang dibangun dari isi tabel itu sendiri.
-    if (action) whereCondition.action = action
+    //
+    // Di tab harga, aksi yang dipilih tetap harus berada di dalam PRICE_ACTIONS.
+    // Tanpa penyaringan itu, `?action=DELETE` yang diketik di alamat akan
+    // menembus batas tab dan menampilkan penghapusan produk di riwayat harga.
+    if (hanyaHarga) {
+      whereCondition.action =
+        action && PRICE_ACTIONS.includes(action) ? action : { in: PRICE_ACTIONS }
+    } else if (action) {
+      whereCondition.action = action
+    }
 
     if (fromDate || toDate) {
       whereCondition.createdAt = {
@@ -135,8 +167,13 @@ export default async function AdminLogsPage({ searchParams }: Props) {
     // Aksi baru yang ditambahkan nanti akan muncul sendiri di penyaring tanpa
     // ada yang perlu ingat memperbaruinya di sini. Sengaja tidak ikut
     // tersaring supaya pilihan lain tetap terlihat setelah satu aksi dipilih.
+    //
+    // Di tab harga, pilihannya dibatasi ke aksi harga yang BENAR-BENAR ada
+    // isinya — menawarkan aksi yang nol barisnya hanya mengundang klik yang
+    // berakhir di tabel kosong.
     const actionGroups = await prisma.productLog.groupBy({
       by: ["action"],
+      ...(hanyaHarga ? { where: { action: { in: PRICE_ACTIONS } } } : {}),
       orderBy: { action: "asc" },
     })
     availableActions = actionGroups.map((group) => group.action)
@@ -205,30 +242,35 @@ export default async function AdminLogsPage({ searchParams }: Props) {
           totalPages={totalPages}
           currentPage={currentPage}
         />
-      ) : currentTab === "update-harga" ? (
-        <div className="rounded-xl border border-border bg-background p-12 text-center text-muted-foreground shadow-sm flex flex-col items-center justify-center">
-          <div className="h-16 w-16 bg-muted rounded-full flex items-center justify-center mb-4">
-            <span className="text-2xl">🚧</span>
-          </div>
-          <h2 className="text-lg font-bold text-foreground mb-2">Segera Hadir</h2>
-          <p>
-            Riwayat aktivitas harga — sinkronisasi Accurate, impor Sheet, dan penerapan harga
-            per produk — sedang disiapkan.
-          </p>
-        </div>
       ) : (
-        <LogsTable
-          logs={logs}
-          totalPages={totalPages}
-          currentPage={currentPage}
-          q={q || ""}
-          sort={activeSort}
-          order={activeOrder}
-          from={from || ""}
-          to={to || ""}
-          action={action || ""}
-          availableActions={availableActions}
-        />
+        <>
+          {currentTab === "update-harga" && (
+            <p className="mb-4 text-sm text-muted-foreground">
+              Riwayat perubahan harga katalog — penerapan dari Accurate, penyuntingan manual, dan
+              masuknya produk baru. Harga modal &amp; dealer tidak muncul di sini: keduanya angka
+              internal yang disunting di tabel kerja, bukan harga yang dilihat pelanggan.
+            </p>
+          )}
+          {/*
+            Tabel yang sama dengan tab Produk Logs, bukan salinannya. Ia sudah
+            memformat UPDATE_PRICE & SYNC_PRICE sebagai rupiah — termasuk kasus
+            `multiple` yang menyimpan harga normal & obral sebagai JSON — dan
+            sudah punya pencarian, urutan, penyaring tanggal, serta lencana
+            berwarna per aksi. Yang membedakan kedua tab ada di query-nya.
+          */}
+          <LogsTable
+            logs={logs}
+            totalPages={totalPages}
+            currentPage={currentPage}
+            q={q || ""}
+            sort={activeSort}
+            order={activeOrder}
+            from={from || ""}
+            to={to || ""}
+            action={action || ""}
+            availableActions={availableActions}
+          />
+        </>
       )}
     </div>
   )
