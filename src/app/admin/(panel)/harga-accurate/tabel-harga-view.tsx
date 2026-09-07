@@ -2,9 +2,10 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { Search, AlertTriangle, Save } from "lucide-react"
+import { Search, AlertTriangle, Pencil } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { formatRupiah } from "@/lib/utils"
 import type { BarisTabelHarga, OpsiFilter } from "@/lib/api/accurate/price-table"
 import { simpanHargaInternalAction } from "./actions"
@@ -20,22 +21,6 @@ type Props = {
   /** Dari server (peran akun). Server action memeriksa ulang sendiri. */
   bolehEdit: boolean
 }
-
-/** Angka jadi "46.450.000" untuk ditampilkan di dalam input. */
-function formatAngka(n: number | null): string {
-  if (n === null) return ""
-  return n.toLocaleString("id-ID")
-}
-
-/** Ambil angka dari apa pun yang diketik. "" berarti dikosongkan. */
-function bacaAngka(teks: string): number | null {
-  const digit = teks.replace(/[^\d]/g, "")
-  if (digit === "") return null
-  const n = Number(digit)
-  return Number.isFinite(n) ? n : null
-}
-
-type Suntingan = { modal: number | null; dealer: number | null }
 
 /**
  * Ambang & jeda yang sama persis dengan pencarian di storefront
@@ -62,6 +47,35 @@ function labelStatus(nilai: string): string {
   return nilai
 }
 
+/**
+ * Angka jadi "46.450.000" sambil diketik — pola yang sama persis dengan kolom
+ * harga di Semua Produk (`produk/product-data-table.tsx`), termasuk membuang
+ * awalan "Rp" karena labelnya sudah ada di sebelah kolom.
+ */
+function formatKetikan(teks: string): string {
+  const angka = teks.replace(/[^0-9]/g, "")
+  if (angka === "") return ""
+  return formatRupiah(parseInt(angka, 10)).replace("Rp", "").trim()
+}
+
+/** Ambil angka dari apa pun yang diketik. null berarti dikosongkan. */
+function bacaAngka(teks: string): number | null {
+  const digit = teks.replace(/[^\d]/g, "")
+  if (digit === "") return null
+  const n = Number(digit)
+  return Number.isFinite(n) ? n : null
+}
+
+/** Perubahan yang sedang menunggu jawaban dialog konfirmasi. */
+type Konfirmasi = {
+  kodeAccurate: string
+  nama: string
+  modalLama: number | null
+  dealerLama: number | null
+  modalBaru: number | null
+  dealerBaru: number | null
+}
+
 export function TabelHargaView({
   rows,
   opsi,
@@ -73,9 +87,18 @@ export function TabelHargaView({
   bolehEdit,
 }: Props) {
   const router = useRouter()
-  // Hanya baris yang BENAR-BENAR diubah yang masuk peta ini — dasar tombol
-  // Simpan, dan dasar peringatan saat orang beranjak dari halaman.
-  const [suntingan, setSuntingan] = React.useState<Map<string, Suntingan>>(new Map())
+
+  /**
+   * Satu baris yang sedang disunting, bukan seluruh tabel sekaligus — pola yang
+   * sama dengan kolom harga di Semua Produk. Harga disimpan begitu dikonfirmasi,
+   * jadi tidak pernah ada suntingan yang menggantung: berpindah halaman atau
+   * menutup tab tidak bisa membuang pekerjaan yang belum tersimpan.
+   */
+  const [menyunting, setMenyunting] = React.useState<string | null>(null)
+  const [draftModal, setDraftModal] = React.useState("")
+  const [draftDealer, setDraftDealer] = React.useState("")
+  const [konfirmasi, setKonfirmasi] = React.useState<Konfirmasi | null>(null)
+
   const [pending, startTransition] = React.useTransition()
   const [pesan, setPesan] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
@@ -86,8 +109,6 @@ export function TabelHargaView({
   // Tanpa ini, effect di bawah ikut berjalan saat halaman pertama dimuat dan
   // langsung melakukan navigasi untuk kata yang sudah ada di alamat.
   const sudahMengetik = React.useRef(false)
-
-  const adaPerubahan = suntingan.size > 0
 
   /**
    * Pencarian langsung — ambang & jeda menyamai storefront.
@@ -114,38 +135,6 @@ export function TabelHargaView({
   }, [teksCari, filter.q])
 
   /**
-   * Peringatan bawaan peramban saat menutup/menyegarkan tab dengan suntingan
-   * yang belum disimpan.
-   *
-   * Hanya untuk MENINGGALKAN halaman. Mencari, menyaring, dan berpindah halaman
-   * TIDAK memicu apa pun: suntingan disimpan di peta berkunci kode barang dan
-   * komponen ini tidak dilepas saat alamat berubah, jadi angka yang sudah
-   * diketik tetap utuh walau barisnya sedang tidak terlihat. Menanyai staff
-   * "buang perubahan?" tiap kali mereka mengetik di kotak cari akan membuat
-   * pencarian langsung terasa seperti jebakan.
-   */
-  React.useEffect(() => {
-    if (!adaPerubahan) return
-    const jaga = (e: BeforeUnloadEvent) => e.preventDefault()
-    window.addEventListener("beforeunload", jaga)
-    return () => window.removeEventListener("beforeunload", jaga)
-  }, [adaPerubahan])
-
-  function ubah(kode: string, medan: keyof Suntingan, teks: string, asli: Suntingan) {
-    setSuntingan((prev) => {
-      const next = new Map(prev)
-      const sekarang = next.get(kode) ?? { ...asli }
-      const diubah = { ...sekarang, [medan]: bacaAngka(teks) }
-      // Kembali ke nilai asli = bukan lagi perubahan. Tanpa ini, mengetik lalu
-      // membatalkan sendiri tetap menyalakan tombol Simpan dan peringatan
-      // "belum disimpan" untuk sesuatu yang sebenarnya tidak berubah.
-      if (diubah.modal === asli.modal && diubah.dealer === asli.dealer) next.delete(kode)
-      else next.set(kode, diubah)
-      return next
-    })
-  }
-
-  /**
    * Pindah pencarian/penyaring/halaman.
    *
    * `replace`, bukan `push`: mengetik "logitech" menghasilkan beberapa
@@ -165,31 +154,57 @@ export function TabelHargaView({
     if (gabung.status) sp.set("status", gabung.status)
     if (gabung.page && gabung.page > 1) sp.set("page", String(gabung.page))
     const qs = sp.toString()
-    return `/admin/harga-accurate${qs ? `?${qs}` : ""}`
+    return `/admin/harga-accurate?tab=daftar${qs ? `&${qs}` : ""}`
   }
 
-  function simpan() {
+  function mulaiSunting(baris: BarisTabelHarga) {
+    setDraftModal(baris.modal.nilai === null ? "" : formatKetikan(String(baris.modal.nilai)))
+    setDraftDealer(baris.dealer.nilai === null ? "" : formatKetikan(String(baris.dealer.nilai)))
+    setMenyunting(baris.kodeAccurate)
+  }
+
+  /**
+   * Tutup penyuntingan. Kalau ada yang benar-benar berubah, tanyakan dulu —
+   * kalau angkanya sama saja, tidak perlu mengganggu siapa pun dengan dialog
+   * untuk perubahan yang tidak terjadi.
+   */
+  function selesaiSunting(baris: BarisTabelHarga) {
+    const modalBaru = bacaAngka(draftModal)
+    const dealerBaru = bacaAngka(draftDealer)
+    setMenyunting(null)
+
+    if (modalBaru === baris.modal.nilai && dealerBaru === baris.dealer.nilai) return
+
+    setKonfirmasi({
+      kodeAccurate: baris.kodeAccurate,
+      nama: baris.namaBarang ?? baris.kodeAccurate,
+      modalLama: baris.modal.nilai,
+      dealerLama: baris.dealer.nilai,
+      modalBaru,
+      dealerBaru,
+    })
+  }
+
+  function simpanTerkonfirmasi() {
+    if (!konfirmasi) return
+    const { kodeAccurate, modalBaru, dealerBaru } = konfirmasi
+    setKonfirmasi(null)
     setError(null)
     setPesan(null)
-    const perubahan = [...suntingan.entries()].map(([kodeAccurate, v]) => ({
-      kodeAccurate,
-      modal: v.modal,
-      dealer: v.dealer,
-    }))
 
     startTransition(async () => {
-      const res = await simpanHargaInternalAction(perubahan)
+      const res = await simpanHargaInternalAction([
+        { kodeAccurate, modal: modalBaru, dealer: dealerBaru },
+      ])
       if (res.error || !res.hasil) {
         setError(res.error ?? "Gagal menyimpan harga.")
         return
       }
-      const { tersimpan, gagal } = res.hasil
-      setSuntingan(new Map())
-      setPesan(
-        gagal.length === 0
-          ? `${tersimpan} harga tersimpan.`
-          : `${tersimpan} tersimpan, ${gagal.length} gagal: ${gagal.map((g) => `${g.kodeAccurate} (${g.alasan})`).join(", ")}`,
-      )
+      if (res.hasil.gagal.length > 0) {
+        setError(res.hasil.gagal.map((g) => `${g.kodeAccurate}: ${g.alasan}`).join(", "))
+        return
+      }
+      setPesan("Harga tersimpan.")
       router.refresh()
     })
   }
@@ -199,8 +214,6 @@ export function TabelHargaView({
 
   return (
     <div>
-      {/* Pencarian & penyaring. Form GET biasa: hasilnya jadi alamat yang bisa
-          disalin & dibagikan ke rekan ("cek yang kategori LAPTOP ini"). */}
       <div className="space-y-3">
         <div className="relative">
           <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -240,22 +253,10 @@ export function TabelHargaView({
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
-          {total.toLocaleString("id-ID")} produk
-          {adaPerubahan && (
-            <span className="ml-2 font-medium text-warning">
-              · {suntingan.size} belum disimpan
-            </span>
-          )}
-        </p>
-        {bolehEdit && (
-          <Button size="sm" onClick={simpan} disabled={!adaPerubahan || pending}>
-            <Save className="mr-2 h-4 w-4" />
-            {pending ? "Menyimpan…" : "Simpan"}
-          </Button>
-        )}
-      </div>
+      <p className="mt-4 text-sm text-muted-foreground">
+        {total.toLocaleString("id-ID")} produk
+        {pending && <span className="ml-2">· menyimpan…</span>}
+      </p>
 
       {pesan && (
         <p className="mt-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm">{pesan}</p>
@@ -286,22 +287,23 @@ export function TabelHargaView({
                       {r.srp.nilai === null ? "—" : formatRupiah(r.srp.nilai)}
                     </dd>
                   </div>
-                  <MedanHarga
-                    label="Harga Modal (CP)"
-                    baris={r}
-                    medan="modal"
-                    suntingan={suntingan}
-                    bolehEdit={bolehEdit}
-                    onUbah={ubah}
-                  />
-                  <MedanHarga
-                    label="Harga Dealer"
-                    baris={r}
-                    medan="dealer"
-                    suntingan={suntingan}
-                    bolehEdit={bolehEdit}
-                    onUbah={ubah}
-                  />
+                  <div className="flex items-start justify-between gap-3">
+                    <dt className="mt-1 shrink-0 text-xs text-muted-foreground">Modal &amp; Dealer</dt>
+                    <dd className="w-44">
+                      <SelHarga
+                        baris={r}
+                        bolehEdit={bolehEdit}
+                        sedangDisunting={menyunting === r.kodeAccurate}
+                        draftModal={draftModal}
+                        draftDealer={draftDealer}
+                        setDraftModal={setDraftModal}
+                        setDraftDealer={setDraftDealer}
+                        onMulai={() => mulaiSunting(r)}
+                        onSelesai={() => selesaiSunting(r)}
+                        onBatal={() => setMenyunting(null)}
+                      />
+                    </dd>
+                  </div>
                   <div className="flex items-center justify-between gap-3">
                     <dt className="text-xs text-muted-foreground">Stok</dt>
                     <dd className="text-sm tabular-nums">{r.stok ?? "—"}</dd>
@@ -317,8 +319,7 @@ export function TabelHargaView({
                 <tr>
                   <th className="px-4 py-3 font-semibold">Produk</th>
                   <th className="px-4 py-3 text-right font-semibold">Harga SRP</th>
-                  <th className="px-4 py-3 text-right font-semibold">Harga Modal (CP)</th>
-                  <th className="px-4 py-3 text-right font-semibold">Harga Dealer</th>
+                  <th className="px-4 py-3 text-right font-semibold">Modal (CP) &amp; Dealer</th>
                   <th className="px-4 py-3 text-right font-semibold">Stok</th>
                 </tr>
               </thead>
@@ -328,32 +329,28 @@ export function TabelHargaView({
                     <td className="px-4 py-3">
                       <Produk baris={r} />
                     </td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                    <td className="px-4 py-3 text-right whitespace-nowrap align-top">
                       {r.srp.nilai === null ? (
                         <span className="text-muted-foreground">—</span>
                       ) : (
                         formatRupiah(r.srp.nilai)
                       )}
                     </td>
-                    <td className="px-4 py-3">
-                      <InputHarga
+                    <td className="w-[190px] px-4 py-3 align-top">
+                      <SelHarga
                         baris={r}
-                        medan="modal"
-                        suntingan={suntingan}
                         bolehEdit={bolehEdit}
-                        onUbah={ubah}
+                        sedangDisunting={menyunting === r.kodeAccurate}
+                        draftModal={draftModal}
+                        draftDealer={draftDealer}
+                        setDraftModal={setDraftModal}
+                        setDraftDealer={setDraftDealer}
+                        onMulai={() => mulaiSunting(r)}
+                        onSelesai={() => selesaiSunting(r)}
+                        onBatal={() => setMenyunting(null)}
                       />
                     </td>
-                    <td className="px-4 py-3">
-                      <InputHarga
-                        baris={r}
-                        medan="dealer"
-                        suntingan={suntingan}
-                        bolehEdit={bolehEdit}
-                        onUbah={ubah}
-                      />
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums">{r.stok ?? "—"}</td>
+                    <td className="px-4 py-3 text-right align-top tabular-nums">{r.stok ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -389,6 +386,38 @@ export function TabelHargaView({
           </Button>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={konfirmasi !== null}
+        onOpenChange={(open) => {
+          if (!open) setKonfirmasi(null)
+        }}
+        confirmLabel="Simpan"
+        title="Simpan perubahan harga?"
+        description={
+          konfirmasi ? (
+            <span className="block space-y-1 text-left">
+              <span className="block font-medium text-foreground">{konfirmasi.nama}</span>
+              <span className="block">
+                Modal: {konfirmasi.modalLama === null ? "—" : formatRupiah(konfirmasi.modalLama)} →{" "}
+                <strong>
+                  {konfirmasi.modalBaru === null ? "—" : formatRupiah(konfirmasi.modalBaru)}
+                </strong>
+              </span>
+              <span className="block">
+                Dealer: {konfirmasi.dealerLama === null ? "—" : formatRupiah(konfirmasi.dealerLama)} →{" "}
+                <strong>
+                  {konfirmasi.dealerBaru === null ? "—" : formatRupiah(konfirmasi.dealerBaru)}
+                </strong>
+              </span>
+              <span className="block pt-1 text-xs">
+                Keduanya angka internal — harga yang dilihat pelanggan tidak berubah.
+              </span>
+            </span>
+          ) : null
+        }
+        onConfirm={simpanTerkonfirmasi}
+      />
     </div>
   )
 }
@@ -413,98 +442,122 @@ function Produk({ baris }: { baris: BarisTabelHarga }) {
   )
 }
 
-type UbahFn = (
-  kode: string,
-  medan: keyof Suntingan,
-  teks: string,
-  asli: Suntingan,
-) => void
-
 /**
- * Input satu harga internal.
+ * Sel harga modal & dealer — klik untuk menyunting, pola yang sama dengan kolom
+ * harga di Semua Produk: garis putus-putus sebagai tanda "ini bisa diklik",
+ * pensil muncul saat disorot, lalu dua input berlabel dengan OK/Batal.
  *
- * Catatan dari `parseHargaAccurate` (mis. "mungkin ribuan terpotong") tampil
- * sebagai peringatan di bawah kolomnya — TIDAK menghalangi pengetikan. Data
- * Accurate memang memuat baris seperti itu, dan staff yang sedang membetulkannya
- * justru orang yang paling butuh bisa mengubah angkanya.
+ * Catatan dari `parseHargaAccurate` (mis. "mungkin ribuan terpotong") tampil di
+ * bawah angkanya dan TIDAK menghalangi penyuntingan — data Accurate memang
+ * memuat baris seperti 145 untuk barang ratusan ribu, dan staff yang sedang
+ * membetulkannya justru yang paling butuh bisa mengubahnya.
  */
-function InputHarga({
+function SelHarga({
   baris,
-  medan,
-  suntingan,
   bolehEdit,
-  onUbah,
+  sedangDisunting,
+  draftModal,
+  draftDealer,
+  setDraftModal,
+  setDraftDealer,
+  onMulai,
+  onSelesai,
+  onBatal,
 }: {
   baris: BarisTabelHarga
-  medan: keyof Suntingan
-  suntingan: Map<string, Suntingan>
   bolehEdit: boolean
-  onUbah: UbahFn
+  sedangDisunting: boolean
+  draftModal: string
+  draftDealer: string
+  setDraftModal: (v: string) => void
+  setDraftDealer: (v: string) => void
+  onMulai: () => void
+  onSelesai: () => void
+  onBatal: () => void
 }) {
-  const asli: Suntingan = { modal: baris.modal.nilai, dealer: baris.dealer.nilai }
-  const disunting = suntingan.get(baris.kodeAccurate)
-  const nilai = disunting ? disunting[medan] : asli[medan]
-  const berubah = disunting !== undefined && disunting[medan] !== asli[medan]
-  const catatan = medan === "modal" ? baris.modal.catatan : baris.dealer.catatan
+  const catatan = baris.modal.catatan ?? baris.dealer.catatan
 
-  if (!bolehEdit) {
+  if (sedangDisunting) {
     return (
-      <div className="text-right">
-        {nilai === null ? <span className="text-muted-foreground">—</span> : formatRupiah(nilai)}
+      <div className="flex w-full flex-col gap-1.5">
+        <div className="flex flex-col gap-0.5">
+          <label className="text-[9px] text-muted-foreground uppercase">Modal (CP)</label>
+          <input
+            type="text"
+            autoFocus
+            inputMode="numeric"
+            value={draftModal}
+            onChange={(e) => setDraftModal(formatKetikan(e.target.value))}
+            className="w-full rounded border border-input bg-background px-2 py-1 text-right text-xs tabular-nums"
+          />
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <label className="text-[9px] text-muted-foreground uppercase">Dealer</label>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={draftDealer}
+            onChange={(e) => setDraftDealer(formatKetikan(e.target.value))}
+            className="w-full rounded border border-input bg-background px-2 py-1 text-right text-xs tabular-nums"
+          />
+        </div>
+        <div className="mt-1 flex gap-1">
+          <button
+            type="button"
+            onClick={onSelesai}
+            className="flex-1 rounded bg-primary py-1 text-[10px] text-primary-foreground hover:bg-primary/90"
+          >
+            OK
+          </button>
+          <button
+            type="button"
+            onClick={onBatal}
+            className="flex-1 rounded bg-muted py-1 text-[10px] text-muted-foreground hover:bg-muted/80"
+          >
+            Batal
+          </button>
+        </div>
       </div>
     )
   }
 
+  const isi = (
+    <div className="flex flex-col text-right">
+      <span className="text-[10px] text-muted-foreground">
+        Modal: {baris.modal.nilai === null ? "—" : formatRupiah(baris.modal.nilai)}
+      </span>
+      <span className="font-semibold">
+        {baris.dealer.nilai === null ? "—" : formatRupiah(baris.dealer.nilai)}
+      </span>
+    </div>
+  )
+
+  if (!bolehEdit) return <div className="w-full">{isi}</div>
+
   return (
     <div>
-      <input
-        inputMode="numeric"
-        value={formatAngka(nilai)}
-        onChange={(e) => onUbah(baris.kodeAccurate, medan, e.target.value, asli)}
-        placeholder="—"
-        aria-label={`${medan === "modal" ? "Harga modal" : "Harga dealer"} untuk ${baris.namaBarang ?? baris.kodeAccurate}`}
-        className={`w-full rounded-md border px-2 py-1.5 text-right text-sm tabular-nums ${
-          berubah ? "border-warning bg-warning/10" : "border-input bg-background"
-        }`}
-      />
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onMulai}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            onMulai()
+          }
+        }}
+        title="Klik untuk ubah harga modal & dealer"
+        className="group -m-1 flex cursor-pointer items-center justify-between gap-1 rounded border-b border-dashed border-muted-foreground/50 p-1 transition-colors hover:bg-muted/50"
+      >
+        {isi}
+        <Pencil className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+      </div>
       {catatan && (
-        <p className="mt-1 flex items-start gap-1 text-xs text-warning">
+        <p className="mt-1 flex items-start gap-1 text-[10px] text-warning">
           <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
           {catatan}
         </p>
       )}
-    </div>
-  )
-}
-
-/** Versi baris kartu (mobile) — label di kiri, input di kanan. */
-function MedanHarga({
-  label,
-  baris,
-  medan,
-  suntingan,
-  bolehEdit,
-  onUbah,
-}: {
-  label: string
-  baris: BarisTabelHarga
-  medan: keyof Suntingan
-  suntingan: Map<string, Suntingan>
-  bolehEdit: boolean
-  onUbah: UbahFn
-}) {
-  return (
-    <div className="flex items-start justify-between gap-3">
-      <dt className="mt-2 shrink-0 text-xs text-muted-foreground">{label}</dt>
-      <dd className="w-40">
-        <InputHarga
-          baris={baris}
-          medan={medan}
-          suntingan={suntingan}
-          bolehEdit={bolehEdit}
-          onUbah={onUbah}
-        />
-      </dd>
     </div>
   )
 }
