@@ -1,0 +1,155 @@
+# Build di runner GitHub, kirim hasilnya ke Hostinger.
+#
+# KENAPA ADA: paket Hostinger yang dipakai punya RAM 1 GB (tersedia ~180 MB saat
+# idle). `next build` untuk ~50 route butuh 1.5-2 GB, jadi build di server SELALU
+# ditembak kernel di tengah jalan — matinya tanpa pesan, log deploy hPanel kosong
+# ("Garis: 0"), yang terbaca seperti kegagalan misterius padahal cuma kehabisan
+# memori. Runner GitHub punya ~7 GB, jadi build dipindah ke sini.
+#
+# MIGRASI TIDAK DIJALANKAN DI SINI — sengaja. `package.json` punya
+# `build: prisma migrate deploy && next build`, tapi workflow ini memanggil
+# `next build` langsung. docs/08 mewajibkan SQL migrasi dibaca manusia sebelum
+# diterapkan, dan project ini sudah dua kali tersandung migrasi (P3009 lalu
+# P3005, 5-6 Sep 2026). Menerapkan migrasi otomatis tiap push persis melawan
+# aturan itu. Jalankan migrasi sengaja lewat prosedur docs/08, terpisah dari
+# deploy.
+name: Deploy ke Hostinger
+
+on:
+  push:
+    branches: [development]
+  # Supaya bisa dijalankan manual dari tab Actions tanpa harus push.
+  workflow_dispatch:
+
+# Deploy yang saling menyusul akan menimpa satu sama lain di tengah transfer.
+concurrency:
+  group: deploy-hostinger
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Disamakan dengan Node di server Hostinger (22.x) — bukan versi
+          # terbaru. Membangun di Node 24 lalu menjalankan di 22 mengundang
+          # selisih yang cuma muncul saat runtime.
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        # Schema ikut berubah antar rilis; client yang dipakai saat build harus
+        # cocok dengan schema di commit ini.
+        run: npx prisma generate
+
+      - name: Build
+        # `next build` langsung, BUKAN `npm run build` — lihat catatan migrasi
+        # di kepala berkas ini.
+        run: npx next build
+        env:
+          # NEXT_PUBLIC_* dibakar ke bundle browser SAAT BUILD, jadi nilainya
+          # harus nilai PRODUKSI, bukan nilai lokal siapa pun.
+          NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
+          NEXT_PUBLIC_SITE_NAME: ${{ secrets.NEXT_PUBLIC_SITE_NAME }}
+          NEXT_PUBLIC_IMAGE_DOMAIN: ${{ secrets.NEXT_PUBLIC_IMAGE_DOMAIN }}
+          NEXT_PUBLIC_WHATSAPP_CS_NUMBER: ${{ secrets.NEXT_PUBLIC_WHATSAPP_CS_NUMBER }}
+          NEXT_PUBLIC_R2_PUBLIC_URL: ${{ secrets.NEXT_PUBLIC_R2_PUBLIC_URL }}
+          # Wajib ada walau tak dipakai browser: `src/config/env.ts` memvalidasi
+          # semuanya dengan Zod saat build, dan yang kosong menggagalkan build.
+          WOOCOMMERCE_URL: ${{ secrets.WOOCOMMERCE_URL }}
+          WOOCOMMERCE_CONSUMER_KEY: ${{ secrets.WOOCOMMERCE_CONSUMER_KEY }}
+          WOOCOMMERCE_CONSUMER_SECRET: ${{ secrets.WOOCOMMERCE_CONSUMER_SECRET }}
+          REVALIDATE_SECRET: ${{ secrets.REVALIDATE_SECRET }}
+
+      - name: Bungkus hasil build
+        # Dikirim sebagai satu tar, bukan ribuan berkas satu per satu: transfer
+        # per-berkas ke shared hosting lambat dan gampang putus di tengah.
+        # `.next/cache` dibuang — cache build, tidak dipakai saat menjalankan.
+        #
+        # `node_modules/.prisma` IKUT DIKIRIM (11 MB). Prisma Client lahir dari
+        # schema dan tinggal di node_modules, jadi ia tidak pernah ikut di dalam
+        # `.next` — server yang memakai client lama melempar galat menyesatkan
+        # seperti "Unknown field emailVerifiedAt" (docs/08 §5).
+        #
+        # Dikirim jadi, bukan di-`prisma generate` di server: client ini memakai
+        # WASM (`query_compiler_fast_bg.wasm`), bukan biner native, jadi hasil
+        # runner Linux sah dipakai di sana. Menghasilkannya di sini juga
+        # menghapus tiga syarat yang belum tentu ada di server — CLI Prisma,
+        # `prisma/schema.prisma`, dan versi CLI yang cocok.
+        # `.next/dev` dikecualikan juga: di runner ia tak pernah ada, tapi kalau
+        # perintah ini dipakai ulang di mesin yang dev server-nya pernah hidup,
+        # foldernya menyeret ratusan MB sisa pengembangan ke dalam paket.
+        run: tar -czf next-build.tar.gz --exclude='.next/cache' --exclude='.next/dev' .next node_modules/.prisma
+
+      - name: Kirim ke server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          source: next-build.tar.gz
+          target: ${{ secrets.APP_PATH }}
+
+      - name: Pasang & restart
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT }}
+          username: ${{ secrets.SSH_USER }}
+          password: ${{ secrets.SSH_PASSWORD }}
+          script: |
+            set -e
+            cd "${{ secrets.APP_PATH }}"
+
+            # Build & client lama disingkirkan (bukan langsung dihapus) supaya
+            # masih ada yang bisa dikembalikan kalau paket baru ternyata rusak.
+            rm -rf .next.previous node_modules/.prisma.previous
+            if [ -d .next ]; then mv .next .next.previous; fi
+            if [ -d node_modules/.prisma ]; then mv node_modules/.prisma node_modules/.prisma.previous; fi
+
+            # Memuat .next DAN node_modules/.prisma, dua-duanya berjalur relatif.
+            tar -xzf next-build.tar.gz
+            rm -f next-build.tar.gz
+
+            # Gagal memuat salah satunya = kembalikan yang lama, jangan tinggalkan
+            # aplikasi setengah terpasang.
+            if [ ! -d .next ] || [ ! -d node_modules/.prisma ]; then
+              echo "GAGAL: paket tidak lengkap, mengembalikan versi sebelumnya"
+              rm -rf .next node_modules/.prisma
+              if [ -d .next.previous ]; then mv .next.previous .next; fi
+              if [ -d node_modules/.prisma.previous ]; then mv node_modules/.prisma.previous node_modules/.prisma; fi
+              exit 1
+            fi
+
+            # SENGAJA TIDAK ADA `npm ci` DI SINI.
+            #
+            # `node_modules` di server cuma 11 entri / 60 MB, dan itu memang
+            # cukup: Next 16 membundel hampir seluruh dependensi ke dalam
+            # `.next/server`, menyisakan yang wajib eksternal saja (next sendiri,
+            # @prisma/client dengan engine native-nya). Memasang ulang pohon
+            # dependensi penuh akan menambah ratusan MB yang sudah terbundel di
+            # paket yang baru saja dikirim — mahal untuk disk yang pernah
+            # menyentuh 98% dan tidak membuat apa pun lebih benar.
+            #
+            # `package.json` di server juga dikelola hPanel dan isinya berbeda
+            # dari repo (`build: next build`, tanpa migrate). `npm ci` akan
+            # membaca berkas itu, bukan milik kita — satu alasan lagi menjauh.
+            #
+            # KALAU SUATU SAAT DEPENDENSI BERUBAH (package.json repo berubah),
+            # langkah ini perlu ditinjau ulang: paket eksternal baru tidak akan
+            # ada di server dan aplikasi gagal saat dijalankan, bukan saat build.
+
+            # Prisma Client tidak di-generate di sini — sudah dikirim jadi
+            # bersama paket (lihat alasannya di langkah "Bungkus hasil build").
+
+            # Yang lama dibuang hanya setelah semuanya lolos.
+            rm -rf .next.previous node_modules/.prisma.previous
+            echo "Terpasang. Restart aplikasi dari hPanel bila tidak otomatis."
