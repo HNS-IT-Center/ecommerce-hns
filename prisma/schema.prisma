@@ -932,13 +932,25 @@ model Customer {
   /// berubah untuk satu akun Google, tidak seperti email.
   ///
   /// NULLABLE sejak login email+password ditambahkan (2026-08-12) — akun
-  /// yang daftar manual tidak pernah punya ini. Satu akun cuma pernah punya
-  /// SATU jalur identitas (Google ATAU email+password), tidak pernah
-  /// digabung: kalau email yang sama sudah terdaftar lewat Google, daftar
-  /// manual dengan email itu ditolak dan diarahkan pakai Google — bukan
-  /// menambahkan password ke akun Google yang sudah ada. Ini sengaja
-  /// menghindari alur "hubungkan akun" yang jauh lebih rumit dan rawan
-  /// salah untuk tim tanpa peninjau keamanan khusus.
+  /// yang daftar manual tidak pernah punya ini.
+  ///
+  /// SEJAK 7 Sep 2026 satu akun BOLEH punya dua jalur identitas. Orang yang
+  /// akunnya lahir lewat password lalu menekan "Masuk dengan Google" kini
+  /// ditautkan ke akun yang sama (`api/auth/google/callback`), tidak lagi
+  /// ditolak. Aturan lama ("satu email = satu jalur, tidak pernah digabung")
+  /// dipilih demi menghindari alur hubungkan-akun yang rumit, tapi harganya
+  /// dibayar pemakai: orang yang sama, dengan email yang sama, tertahan di
+  /// depan pintu tanpa alasan yang bisa ia mengerti.
+  ///
+  /// Penautan otomatis aman KARENA `exchangeCodeForIdentity` menolak id_token
+  /// yang `email_verified != true` — Google membuktikan kepemilikan email itu
+  /// lebih dulu. Ia juga tidak membuka jalan baru: siapa pun yang menguasai
+  /// email tersebut sudah bisa mengambil alih akunnya lewat "Lupa password".
+  /// Kalau syarat `email_verified` itu suatu hari dilonggarkan, penautan ini
+  /// HARUS ikut ditinjau — di situlah letak jaminannya.
+  ///
+  /// Arah sebaliknya BELUM berubah: daftar manual dengan email yang sudah
+  /// terpakai akun Google masih ditolak (`register/actions.ts`).
   googleSub String? @unique @map("google_sub") @db.VarChar(191)
 
   /// `scrypt`: "salt:hash" heksadesimal — pola SAMA PERSIS dengan

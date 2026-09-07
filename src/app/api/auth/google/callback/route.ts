@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server"
 import { getPrisma } from "@/lib/prisma/client"
 import { exchangeCodeForIdentity } from "@/lib/auth/google"
 import { createCustomerSession } from "@/lib/auth/customer"
+import { createSession } from "@/lib/auth"
+import { findUserByGoogleIdentity } from "@/lib/auth/identity"
 import { GOOGLE_STATE_COOKIE, parseState } from "@/lib/auth/google-state"
 import { sanitizeNextPath } from "@/lib/auth/safe-redirect"
 import { checkGoogleCallbackRateLimit, clientIpFrom } from "@/lib/auth/google-callback-rate-limit"
@@ -61,68 +63,129 @@ export async function GET(request: NextRequest) {
     return errorPage("network")
   }
 
-  // Dulu ini `customer.upsert({ where: { googleSub } })`. Itu CRASH 500 mentah
-  // (P2002) saat `googleSub` tak ketemu TAPI email-nya sudah dipakai baris lain
-  // — sebab upsert lalu mencoba CREATE dan menabrak `email @unique`. Kasus itu
-  // nyata: akun daftar-manual (password) memakai email yang sama dengan yang
-  // dipakai orang menekan "Masuk dengan Google". Aturan project (schema.prisma
-  // pada Customer.googleSub): satu email = SATU jalur identitas, Google ATAU
-  // password, TIDAK digabung otomatis. Jadi tiga cabang eksplisit di bawah,
-  // bukan satu upsert yang menyembunyikan bentrokan.
   const prisma = getPrisma()
-  const byGoogle = await prisma.customer.findUnique({
-    where: { googleSub: identity.googleSub },
-    select: { id: true },
-  })
+  const email = identity.email.trim().toLowerCase()
 
-  let customer: { id: string; email: string; username: string | null; phoneNumber: string | null }
+  /**
+   * Akun dicari di `users`, bukan `customers`.
+   *
+   * Sejak Satu Login semua akun hidup di sana, dan hanya di sana ada `role` —
+   * yang menentukan orang ini berakhir di storefront atau di panel admin. Dulu
+   * callback ini menulis langsung ke `customers` dan selalu membuat sesi
+   * pelanggan, sehingga akun admin yang masuk lewat Google akan dibuatkan baris
+   * pelanggan baru alih-alih dikenali sebagai dirinya sendiri.
+   */
+  const account = await findUserByGoogleIdentity(identity.googleSub, email)
 
-  if (byGoogle) {
-    // Pelanggan Google yang sudah pernah masuk — segarkan email/nama (bisa
-    // berubah di sisi Google) lalu pakai barisnya.
-    customer = await prisma.customer.update({
-      where: { id: byGoogle.id },
-      data: { email: identity.email, name: identity.name },
-      select: { id: true, email: true, username: true, phoneNumber: true },
+  let userId: string
+  let role: string
+  let username: string | null
+  let phoneNumber: string | null
+
+  if (!account) {
+    /**
+     * Pendaftar Google baru. Barisnya ditulis ke `users` DAN `customers`
+     * dengan id yang sama.
+     *
+     * Dua tabel karena Satu Login baru merampungkan separuh: `users` sudah jadi
+     * sumber kebenaran identitas, tapi sesi pelanggan masih dibaca dari
+     * `customers` (`getCurrentCustomer`). Selama itu belum disatukan (Fase B),
+     * pendaftar yang cuma masuk ke salah satunya akan pincang — ada di satu
+     * tabel, hilang di tabel lain.
+     *
+     * `emailVerifiedAt` langsung diisi: Google sudah membuktikan kepemilikan
+     * email itu, tidak ada verifikasi kedua yang masuk akal.
+     */
+    const now = new Date()
+    const created = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          googleSub: identity.googleSub,
+          email,
+          name: identity.name,
+          role: "pelanggan",
+          emailVerifiedAt: now,
+        },
+        select: { id: true, role: true, username: true, phoneNumber: true },
+      })
+      await tx.customer.create({
+        data: {
+          id: user.id,
+          googleSub: identity.googleSub,
+          email,
+          name: identity.name,
+          emailVerifiedAt: now,
+        },
+      })
+      return user
     })
+    userId = created.id
+    role = created.role
+    username = created.username
+    phoneNumber = created.phoneNumber
   } else {
-    const byEmail = await prisma.customer.findUnique({
-      where: { email: identity.email },
-      select: { id: true, passwordHash: true, googleSub: true },
-    })
-
-    if (byEmail?.passwordHash) {
-      // Email ini milik akun PASSWORD. Jangan gabungkan diam-diam (bisa jadi
-      // jalur pembajakan: siapa pun yang menguasai email Google berjudul sama
-      // akan menempel ke akun password orang). Tolak dengan rapi — bukan 500.
-      return errorPage("email_terpakai_password")
-    }
-
-    if (byEmail) {
-      // Baris email ada tapi TANPA password (akun Google yang `googleSub`-nya
-      // belum terisi) — tautkan sub-nya, aman karena tak ada kredensial lain.
-      customer = await prisma.customer.update({
-        where: { id: byEmail.id },
-        data: { googleSub: identity.googleSub, email: identity.email, name: identity.name },
-        select: { id: true, email: true, username: true, phoneNumber: true },
+    /**
+     * Akun sudah ada. Kalau `googleSub`-nya belum terisi, ini orang yang
+     * akunnya lahir lewat password lalu kini menekan "Masuk dengan Google" —
+     * sub-nya ditautkan supaya kedua jalur menuju akun yang sama.
+     *
+     * Sebelumnya kasus ini DITOLAK, mengikuti aturan lama di schema.prisma
+     * ("satu email = satu jalur identitas, tidak digabung"). Aturan itu diubah
+     * atas permintaan pemilik project 7 Sep 2026: orang yang sama dengan email
+     * yang sama tertahan di depan pintu tanpa alasan yang bisa ia mengerti.
+     *
+     * Penautan ini AMAN karena `exchangeCodeForIdentity` menolak id_token yang
+     * `email_verified != true`: Google sudah membuktikan orang ini memegang
+     * email tersebut. Ia juga tidak membuka jalan baru — siapa pun yang
+     * menguasai email itu sudah bisa mengambil alih akunnya lewat "Lupa
+     * password", yang mengirim tautan ke alamat yang sama.
+     *
+     * Nama sengaja TIDAK ikut disegarkan di sini. Untuk akun yang sudah ada,
+     * namanya bisa saja sudah dirapikan staff atau pemiliknya sendiri, dan
+     * menimpanya tiap kali orang masuk lewat Google membuat suntingan itu
+     * hilang tanpa ada yang merasa mengubahnya.
+     */
+    if (!account.googleSub) {
+      await prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: account.id },
+          data: { googleSub: identity.googleSub },
+        })
+        // Baris `customers` tidak selalu ada — akun admin murni hanya hidup di
+        // `users` (mis. akun owner yang dibuat lewat skrip, bukan lewat
+        // pendaftaran). `updateMany` tidak melempar saat tak ada yang cocok.
+        await tx.customer.updateMany({
+          where: { id: account.id },
+          data: { googleSub: identity.googleSub },
+        })
       })
-    } else {
-      // Pelanggan Google betul-betul baru.
-      customer = await prisma.customer.create({
-        data: { googleSub: identity.googleSub, email: identity.email, name: identity.name },
-        select: { id: true, email: true, username: true, phoneNumber: true },
-      })
     }
+    userId = account.id
+    role = account.role
+    username = account.username
+    phoneNumber = account.phoneNumber
   }
 
-  await createCustomerSession(customer)
+  /**
+   * Tujuan ditentukan PERAN, bukan cara masuknya — pola yang sama persis dengan
+   * `loginAction` di /login. Inti Satu Login: satu pintu, sistem yang membaca
+   * siapa yang masuk.
+   */
+  if (role !== "pelanggan") {
+    await createSession({ id: userId, email })
+    const adminResponse = NextResponse.redirect(new URL("/admin", origin))
+    adminResponse.cookies.set(GOOGLE_STATE_COOKIE, "", { path: "/", maxAge: 0 })
+    return adminResponse
+  }
+
+  await createCustomerSession({ id: userId, email })
 
   // Google tidak pernah memberi username atau nomor HP — akun yang belum
   // melengkapi keduanya WAJIB mampir ke /profile/lengkapi-profil dulu sebelum
   // ke tujuan aslinya (lihat catatan di schema.prisma pada Customer.username).
   // `next` dibawa serta supaya redirect asli tidak hilang setelah dilengkapi.
   const redirectTarget =
-    !customer.username || !customer.phoneNumber
+    !username || !phoneNumber
       ? `/profile/lengkapi-profil?next=${encodeURIComponent(nextPath)}`
       : nextPath
 

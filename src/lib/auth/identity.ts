@@ -122,3 +122,50 @@ export async function findUserByIdentifier(raw: string): Promise<IdentityLookup 
     select: { id: true, email: true, passwordHash: true, role: true, emailVerifiedAt: true },
   })
 }
+
+export type GoogleAccountLookup = {
+  id: string
+  email: string
+  role: string
+  /** Sudah tertaut ke akun Google ini? null = belum, perlu ditautkan. */
+  googleSub: string | null
+  username: string | null
+  phoneNumber: string | null
+}
+
+/**
+ * Cari akun untuk identitas Google — lewat `googleSub` dulu, lalu email.
+ *
+ * Dua jalur karena keduanya menjawab pertanyaan berbeda. `googleSub` tidak
+ * pernah berubah untuk satu akun Google, jadi ia kunci utama bagi yang sudah
+ * pernah masuk. Email dipakai untuk yang BELUM pernah — orang yang akunnya
+ * dibuat lewat password lalu suatu hari menekan "Masuk dengan Google".
+ *
+ * Mencari di `users`, bukan `customers`: sejak Satu Login semua akun (admin
+ * maupun pelanggan) hidup di sana, dan hanya di sana ada `role` yang menentukan
+ * tujuan setelah masuk.
+ *
+ * Mencocokkan lewat email hanya AMAN karena pemanggilnya sudah memastikan
+ * Google memverifikasi email itu (`exchangeCodeForIdentity` menolak id_token
+ * dengan `email_verified != true`). Tanpa jaminan itu, fungsi ini akan menjadi
+ * jalan mengambil alih akun orang lain hanya dengan mengaku memakai emailnya.
+ */
+export async function findUserByGoogleIdentity(
+  googleSub: string,
+  email: string
+): Promise<GoogleAccountLookup | null> {
+  const prisma = getPrisma()
+  const select = {
+    id: true,
+    email: true,
+    role: true,
+    googleSub: true,
+    username: true,
+    phoneNumber: true,
+  } as const
+
+  const bySub = await prisma.user.findUnique({ where: { googleSub }, select })
+  if (bySub) return bySub
+
+  return prisma.user.findUnique({ where: { email: normalizeIdentifier(email) }, select })
+}
