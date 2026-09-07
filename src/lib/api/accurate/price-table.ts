@@ -253,6 +253,7 @@ export type HasilSimpan = {
  */
 export async function simpanHargaInternal(
   perubahan: PerubahanHarga[],
+  opsi: { bolehUbahModal: boolean },
 ): Promise<HasilSimpan> {
   const prisma = getPrisma()
   const gagal: HasilSimpan["gagal"] = []
@@ -264,12 +265,29 @@ export async function simpanHargaInternal(
       gagal.push({ kodeAccurate: p.kodeAccurate, alasan: salah })
       continue
     }
-    const terpengaruh = await prisma.$executeRawUnsafe(
-      "UPDATE accurate_products SET `CP` = ?, `PRICE` = ? WHERE `Kode Accurate` = ?",
-      p.modal === null ? "" : String(p.modal),
-      p.dealer === null ? "" : String(p.dealer),
-      p.kodeAccurate,
-    )
+
+    /**
+     * Tanpa izin harga modal, kolom `CP` TIDAK ikut dalam perintah UPDATE —
+     * bukan sekadar tidak ditampilkan.
+     *
+     * Kolomnya memang disembunyikan di layar, tapi menyembunyikan sesuatu hanya
+     * menyembunyikannya: server action adalah alamat HTTP tersendiri dan bisa
+     * dipanggil dengan muatan yang disusun sendiri. Yang benar-benar menahan
+     * adalah perintah SQL yang tidak pernah menyebut kolom itu.
+     */
+    const terpengaruh = opsi.bolehUbahModal
+      ? await prisma.$executeRawUnsafe(
+          "UPDATE accurate_products SET `CP` = ?, `PRICE` = ? WHERE `Kode Accurate` = ?",
+          p.modal === null ? "" : String(p.modal),
+          p.dealer === null ? "" : String(p.dealer),
+          p.kodeAccurate,
+        )
+      : await prisma.$executeRawUnsafe(
+          "UPDATE accurate_products SET `PRICE` = ? WHERE `Kode Accurate` = ?",
+          p.dealer === null ? "" : String(p.dealer),
+          p.kodeAccurate,
+        )
+
     if (terpengaruh === 0) {
       gagal.push({ kodeAccurate: p.kodeAccurate, alasan: "kode tidak ditemukan" })
       continue

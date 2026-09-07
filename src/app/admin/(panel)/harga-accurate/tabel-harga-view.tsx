@@ -10,6 +10,11 @@ import { formatRupiah } from "@/lib/utils"
 import type { BarisTabelHarga, OpsiFilter } from "@/lib/api/accurate/price-table"
 import { simpanHargaInternalAction } from "./actions"
 
+/** Kolom harga internal yang bisa disunting di halaman ini. */
+type Medan = "modal" | "dealer"
+
+const LABEL: Record<Medan, string> = { modal: "Harga Modal (CP)", dealer: "Harga Dealer" }
+
 type Props = {
   rows: BarisTabelHarga[]
   opsi: OpsiFilter
@@ -18,8 +23,12 @@ type Props = {
   pageCount: number
   total: number
   perPage: number
-  /** Dari server (peran akun). Server action memeriksa ulang sendiri. */
+  /** Izin mengubah harga di halaman ini. Server action memeriksa ulang sendiri. */
   bolehEdit: boolean
+  /** Izin MELIHAT harga modal — kolomnya hilang sama sekali kalau false. */
+  bolehLihatModal: boolean
+  /** Izin MENGUBAH harga modal. */
+  bolehEditModal: boolean
 }
 
 /**
@@ -38,8 +47,7 @@ const DEBOUNCE_MS = 300
  *
  * Dipastikan dari data sebelum dilabeli: seluruh 1.148 baris ber-STATUS YA
  * berstok nol dan hanya 31 yang punya harga, sedangkan barang yang jelas hidup
- * (Mouse Logitech, stok 127) justru ber-STATUS TIDAK. Menampilkan "YA" apa
- * adanya membuat staff menyaring terbalik tanpa sadar.
+ * (Mouse Logitech, stok 127) justru ber-STATUS TIDAK.
  */
 function labelStatus(nilai: string): string {
   if (nilai === "YA") return "Tidak Aktif"
@@ -50,7 +58,7 @@ function labelStatus(nilai: string): string {
 /**
  * Angka jadi "46.450.000" sambil diketik — pola yang sama persis dengan kolom
  * harga di Semua Produk (`produk/product-data-table.tsx`), termasuk membuang
- * awalan "Rp" karena labelnya sudah ada di sebelah kolom.
+ * awalan "Rp" karena nama kolomnya sudah ada di kepala tabel.
  */
 function formatKetikan(teks: string): string {
   const angka = teks.replace(/[^0-9]/g, "")
@@ -66,14 +74,16 @@ function bacaAngka(teks: string): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-/** Perubahan yang sedang menunggu jawaban dialog konfirmasi. */
+/** Sel yang sedang terbuka untuk disunting. */
+type Sunting = { kode: string; medan: Medan }
+
+/** Perubahan yang menunggu jawaban dialog konfirmasi. */
 type Konfirmasi = {
-  kodeAccurate: string
+  kode: string
   nama: string
-  modalLama: number | null
-  dealerLama: number | null
-  modalBaru: number | null
-  dealerBaru: number | null
+  medan: Medan
+  lama: number | null
+  baru: number | null
 }
 
 export function TabelHargaView({
@@ -85,39 +95,27 @@ export function TabelHargaView({
   total,
   perPage,
   bolehEdit,
+  bolehLihatModal,
+  bolehEditModal,
 }: Props) {
   const router = useRouter()
 
   /**
-   * Satu baris yang sedang disunting, bukan seluruh tabel sekaligus — pola yang
-   * sama dengan kolom harga di Semua Produk. Harga disimpan begitu dikonfirmasi,
-   * jadi tidak pernah ada suntingan yang menggantung: berpindah halaman atau
-   * menutup tab tidak bisa membuang pekerjaan yang belum tersimpan.
+   * Satu SEL yang terbuka, bukan seluruh baris — kolom modal dan dealer berdiri
+   * sendiri, dan orang yang membetulkan harga dealer tidak perlu kotak modal
+   * ikut terbuka di depannya.
    */
-  const [menyunting, setMenyunting] = React.useState<string | null>(null)
-  const [draftModal, setDraftModal] = React.useState("")
-  const [draftDealer, setDraftDealer] = React.useState("")
+  const [menyunting, setMenyunting] = React.useState<Sunting | null>(null)
+  const [draft, setDraft] = React.useState("")
   const [konfirmasi, setKonfirmasi] = React.useState<Konfirmasi | null>(null)
 
   const [pending, startTransition] = React.useTransition()
   const [pesan, setPesan] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
 
-  // Isi kotak cari dipegang di klien supaya huruf yang diketik muncul seketika;
-  // pencariannya sendiri menyusul setelah jeda (lihat effect di bawah).
   const [teksCari, setTeksCari] = React.useState(filter.q)
-  // Tanpa ini, effect di bawah ikut berjalan saat halaman pertama dimuat dan
-  // langsung melakukan navigasi untuk kata yang sudah ada di alamat.
   const sudahMengetik = React.useRef(false)
 
-  /**
-   * Pencarian langsung — ambang & jeda menyamai storefront.
-   *
-   * Di bawah ambang diperlakukan sebagai KOSONG, bukan diabaikan: orang yang
-   * menghapus kata pencariannya sampai tersisa satu huruf jelas sedang menuju
-   * "tampilkan semua", dan membiarkan hasil lama tertahan di layar membuatnya
-   * seperti macet.
-   */
   React.useEffect(() => {
     if (!sudahMengetik.current) return
     const bersih = teksCari.trim()
@@ -130,17 +128,12 @@ export function TabelHargaView({
     return () => clearTimeout(timer)
     // `navigasi` & `bangunUrl` sengaja tidak masuk daftar: keduanya dibuat ulang
     // tiap render, dan memasukkannya membuat effect ini berjalan terus-menerus.
-    // Yang benar-benar memicu pencarian hanya dua nilai di bawah.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teksCari, filter.q])
 
-  /**
-   * Pindah pencarian/penyaring/halaman.
-   *
-   * `replace`, bukan `push`: mengetik "logitech" menghasilkan beberapa
-   * perpindahan berdebounce, dan dengan `push` tombol Kembali harus ditekan
-   * sekali untuk tiap potongan kata yang pernah singgah di alamat.
-   */
+  /** `replace`, bukan `push`: satu kata yang diketik menghasilkan beberapa
+   *  perpindahan berdebounce, dan tombol Kembali tidak seharusnya menelusuri
+   *  tiap potongan kata yang sempat singgah di alamat. */
   function navigasi(url: string) {
     router.replace(url)
   }
@@ -157,44 +150,55 @@ export function TabelHargaView({
     return `/admin/harga-accurate?tab=daftar${qs ? `&${qs}` : ""}`
   }
 
-  function mulaiSunting(baris: BarisTabelHarga) {
-    setDraftModal(baris.modal.nilai === null ? "" : formatKetikan(String(baris.modal.nilai)))
-    setDraftDealer(baris.dealer.nilai === null ? "" : formatKetikan(String(baris.dealer.nilai)))
-    setMenyunting(baris.kodeAccurate)
+  function nilaiAsli(baris: BarisTabelHarga, medan: Medan): number | null {
+    return medan === "modal" ? baris.modal.nilai : baris.dealer.nilai
   }
 
-  /**
-   * Tutup penyuntingan. Kalau ada yang benar-benar berubah, tanyakan dulu —
-   * kalau angkanya sama saja, tidak perlu mengganggu siapa pun dengan dialog
-   * untuk perubahan yang tidak terjadi.
-   */
-  function selesaiSunting(baris: BarisTabelHarga) {
-    const modalBaru = bacaAngka(draftModal)
-    const dealerBaru = bacaAngka(draftDealer)
-    setMenyunting(null)
+  function mulaiSunting(baris: BarisTabelHarga, medan: Medan) {
+    const asli = nilaiAsli(baris, medan)
+    setDraft(asli === null ? "" : formatKetikan(String(asli)))
+    setMenyunting({ kode: baris.kodeAccurate, medan })
+  }
 
-    if (modalBaru === baris.modal.nilai && dealerBaru === baris.dealer.nilai) return
+  /** Tutup sel. Dialog hanya muncul kalau angkanya benar-benar berubah. */
+  function selesaiSunting(baris: BarisTabelHarga, medan: Medan) {
+    const baru = bacaAngka(draft)
+    const lama = nilaiAsli(baris, medan)
+    setMenyunting(null)
+    if (baru === lama) return
 
     setKonfirmasi({
-      kodeAccurate: baris.kodeAccurate,
+      kode: baris.kodeAccurate,
       nama: baris.namaBarang ?? baris.kodeAccurate,
-      modalLama: baris.modal.nilai,
-      dealerLama: baris.dealer.nilai,
-      modalBaru,
-      dealerBaru,
+      medan,
+      lama,
+      baru,
     })
   }
 
   function simpanTerkonfirmasi() {
     if (!konfirmasi) return
-    const { kodeAccurate, modalBaru, dealerBaru } = konfirmasi
+    const { kode, medan, baru } = konfirmasi
+    const baris = rows.find((r) => r.kodeAccurate === kode)
     setKonfirmasi(null)
     setError(null)
     setPesan(null)
+    if (!baris) return
 
+    /**
+     * Kolom yang TIDAK disunting dikirim apa adanya, bukan null.
+     *
+     * `simpanHargaInternal` menulis kedua kolom sekaligus, jadi mengirim null
+     * untuk yang tidak disentuh akan mengosongkannya — harga dealer lenyap
+     * hanya karena seseorang membetulkan harga modal.
+     */
     startTransition(async () => {
       const res = await simpanHargaInternalAction([
-        { kodeAccurate, modal: modalBaru, dealer: dealerBaru },
+        {
+          kodeAccurate: kode,
+          modal: medan === "modal" ? baru : baris.modal.nilai,
+          dealer: medan === "dealer" ? baru : baris.dealer.nilai,
+        },
       ])
       if (res.error || !res.hasil) {
         setError(res.error ?? "Gagal menyimpan harga.")
@@ -204,13 +208,28 @@ export function TabelHargaView({
         setError(res.hasil.gagal.map((g) => `${g.kodeAccurate}: ${g.alasan}`).join(", "))
         return
       }
-      setPesan("Harga tersimpan.")
+      setPesan(`${LABEL[medan]} tersimpan.`)
       router.refresh()
     })
   }
 
   const awal = total === 0 ? 0 : (page - 1) * perPage + 1
   const akhir = Math.min(page * perPage, total)
+
+  /** Sel harga siap pakai, dipakai tabel maupun kartu. */
+  const sel = (baris: BarisTabelHarga, medan: Medan, bolehUbah: boolean) => (
+    <SelHarga
+      baris={baris}
+      medan={medan}
+      bolehEdit={bolehEdit && bolehUbah}
+      sedangDisunting={menyunting?.kode === baris.kodeAccurate && menyunting.medan === medan}
+      draft={draft}
+      setDraft={setDraft}
+      onMulai={() => mulaiSunting(baris, medan)}
+      onSelesai={() => selesaiSunting(baris, medan)}
+      onBatal={() => setMenyunting(null)}
+    />
+  )
 
   return (
     <div>
@@ -256,6 +275,9 @@ export function TabelHargaView({
       <p className="mt-4 text-sm text-muted-foreground">
         {total.toLocaleString("id-ID")} produk
         {pending && <span className="ml-2">· menyimpan…</span>}
+        {!bolehLihatModal && (
+          <span className="ml-2">· harga modal disembunyikan untuk peran Anda</span>
+        )}
       </p>
 
       {pesan && (
@@ -273,9 +295,9 @@ export function TabelHargaView({
         </p>
       ) : (
         <>
-          {/* Kartu sampai <lg, tabel di >=lg — alasan sama seperti daftar
-              pelanggan: baris ini punya tiga harga, dan menggulir ke samping
-              sambil membandingkan angka justru paling rawan salah baca. */}
+          {/* Kartu sampai <lg, tabel di >=lg — baris ini punya tiga harga, dan
+              menggulir ke samping sambil membandingkan angka justru paling rawan
+              salah baca. */}
           <ul className="mt-4 space-y-3 lg:hidden">
             {rows.map((r) => (
               <li key={r.kodeAccurate} className="rounded-2xl border border-border bg-background p-4">
@@ -287,22 +309,15 @@ export function TabelHargaView({
                       {r.srp.nilai === null ? "—" : formatRupiah(r.srp.nilai)}
                     </dd>
                   </div>
+                  {bolehLihatModal && (
+                    <div className="flex items-start justify-between gap-3">
+                      <dt className="mt-1 shrink-0 text-xs text-muted-foreground">Harga Modal (CP)</dt>
+                      <dd className="w-36">{sel(r, "modal", bolehEditModal)}</dd>
+                    </div>
+                  )}
                   <div className="flex items-start justify-between gap-3">
-                    <dt className="mt-1 shrink-0 text-xs text-muted-foreground">Modal &amp; Dealer</dt>
-                    <dd className="w-44">
-                      <SelHarga
-                        baris={r}
-                        bolehEdit={bolehEdit}
-                        sedangDisunting={menyunting === r.kodeAccurate}
-                        draftModal={draftModal}
-                        draftDealer={draftDealer}
-                        setDraftModal={setDraftModal}
-                        setDraftDealer={setDraftDealer}
-                        onMulai={() => mulaiSunting(r)}
-                        onSelesai={() => selesaiSunting(r)}
-                        onBatal={() => setMenyunting(null)}
-                      />
-                    </dd>
+                    <dt className="mt-1 shrink-0 text-xs text-muted-foreground">Harga Dealer</dt>
+                    <dd className="w-36">{sel(r, "dealer", true)}</dd>
                   </div>
                   <div className="flex items-center justify-between gap-3">
                     <dt className="text-xs text-muted-foreground">Stok</dt>
@@ -319,7 +334,10 @@ export function TabelHargaView({
                 <tr>
                   <th className="px-4 py-3 font-semibold">Produk</th>
                   <th className="px-4 py-3 text-right font-semibold">Harga SRP</th>
-                  <th className="px-4 py-3 text-right font-semibold">Modal (CP) &amp; Dealer</th>
+                  {bolehLihatModal && (
+                    <th className="px-4 py-3 text-right font-semibold">Harga Modal (CP)</th>
+                  )}
+                  <th className="px-4 py-3 text-right font-semibold">Harga Dealer</th>
                   <th className="px-4 py-3 text-right font-semibold">Stok</th>
                 </tr>
               </thead>
@@ -329,27 +347,19 @@ export function TabelHargaView({
                     <td className="px-4 py-3">
                       <Produk baris={r} />
                     </td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap align-top">
+                    <td className="px-4 py-3 text-right align-top whitespace-nowrap">
                       {r.srp.nilai === null ? (
                         <span className="text-muted-foreground">—</span>
                       ) : (
                         formatRupiah(r.srp.nilai)
                       )}
                     </td>
-                    <td className="w-[190px] px-4 py-3 align-top">
-                      <SelHarga
-                        baris={r}
-                        bolehEdit={bolehEdit}
-                        sedangDisunting={menyunting === r.kodeAccurate}
-                        draftModal={draftModal}
-                        draftDealer={draftDealer}
-                        setDraftModal={setDraftModal}
-                        setDraftDealer={setDraftDealer}
-                        onMulai={() => mulaiSunting(r)}
-                        onSelesai={() => selesaiSunting(r)}
-                        onBatal={() => setMenyunting(null)}
-                      />
-                    </td>
+                    {bolehLihatModal && (
+                      <td className="w-[150px] px-4 py-3 align-top">
+                        {sel(r, "modal", bolehEditModal)}
+                      </td>
+                    )}
+                    <td className="w-[150px] px-4 py-3 align-top">{sel(r, "dealer", true)}</td>
                     <td className="px-4 py-3 text-right align-top tabular-nums">{r.stok ?? "—"}</td>
                   </tr>
                 ))}
@@ -393,25 +403,17 @@ export function TabelHargaView({
           if (!open) setKonfirmasi(null)
         }}
         confirmLabel="Simpan"
-        title="Simpan perubahan harga?"
+        title={konfirmasi ? `Ubah ${LABEL[konfirmasi.medan]}?` : "Ubah harga?"}
         description={
           konfirmasi ? (
             <span className="block space-y-1 text-left">
               <span className="block font-medium text-foreground">{konfirmasi.nama}</span>
               <span className="block">
-                Modal: {konfirmasi.modalLama === null ? "—" : formatRupiah(konfirmasi.modalLama)} →{" "}
-                <strong>
-                  {konfirmasi.modalBaru === null ? "—" : formatRupiah(konfirmasi.modalBaru)}
-                </strong>
-              </span>
-              <span className="block">
-                Dealer: {konfirmasi.dealerLama === null ? "—" : formatRupiah(konfirmasi.dealerLama)} →{" "}
-                <strong>
-                  {konfirmasi.dealerBaru === null ? "—" : formatRupiah(konfirmasi.dealerBaru)}
-                </strong>
+                {konfirmasi.lama === null ? "—" : formatRupiah(konfirmasi.lama)} →{" "}
+                <strong>{konfirmasi.baru === null ? "—" : formatRupiah(konfirmasi.baru)}</strong>
               </span>
               <span className="block pt-1 text-xs">
-                Keduanya angka internal — harga yang dilihat pelanggan tidak berubah.
+                Angka internal — harga yang dilihat pelanggan tidak ikut berubah.
               </span>
             </span>
           ) : null
@@ -443,9 +445,9 @@ function Produk({ baris }: { baris: BarisTabelHarga }) {
 }
 
 /**
- * Sel harga modal & dealer — klik untuk menyunting, pola yang sama dengan kolom
- * harga di Semua Produk: garis putus-putus sebagai tanda "ini bisa diklik",
- * pensil muncul saat disorot, lalu dua input berlabel dengan OK/Batal.
+ * Satu sel harga — klik untuk menyunting, pola yang sama dengan kolom harga di
+ * Semua Produk: garis putus-putus sebagai tanda bisa diklik, pensil muncul saat
+ * disorot, lalu satu input dengan OK/Batal.
  *
  * Catatan dari `parseHargaAccurate` (mis. "mungkin ribuan terpotong") tampil di
  * bawah angkanya dan TIDAK menghalangi penyuntingan — data Accurate memang
@@ -454,54 +456,44 @@ function Produk({ baris }: { baris: BarisTabelHarga }) {
  */
 function SelHarga({
   baris,
+  medan,
   bolehEdit,
   sedangDisunting,
-  draftModal,
-  draftDealer,
-  setDraftModal,
-  setDraftDealer,
+  draft,
+  setDraft,
   onMulai,
   onSelesai,
   onBatal,
 }: {
   baris: BarisTabelHarga
+  medan: Medan
   bolehEdit: boolean
   sedangDisunting: boolean
-  draftModal: string
-  draftDealer: string
-  setDraftModal: (v: string) => void
-  setDraftDealer: (v: string) => void
+  draft: string
+  setDraft: (v: string) => void
   onMulai: () => void
   onSelesai: () => void
   onBatal: () => void
 }) {
-  const catatan = baris.modal.catatan ?? baris.dealer.catatan
+  const harga = medan === "modal" ? baris.modal : baris.dealer
 
   if (sedangDisunting) {
     return (
-      <div className="flex w-full flex-col gap-1.5">
-        <div className="flex flex-col gap-0.5">
-          <label className="text-[9px] text-muted-foreground uppercase">Modal (CP)</label>
-          <input
-            type="text"
-            autoFocus
-            inputMode="numeric"
-            value={draftModal}
-            onChange={(e) => setDraftModal(formatKetikan(e.target.value))}
-            className="w-full rounded border border-input bg-background px-2 py-1 text-right text-xs tabular-nums"
-          />
-        </div>
-        <div className="flex flex-col gap-0.5">
-          <label className="text-[9px] text-muted-foreground uppercase">Dealer</label>
-          <input
-            type="text"
-            inputMode="numeric"
-            value={draftDealer}
-            onChange={(e) => setDraftDealer(formatKetikan(e.target.value))}
-            className="w-full rounded border border-input bg-background px-2 py-1 text-right text-xs tabular-nums"
-          />
-        </div>
-        <div className="mt-1 flex gap-1">
+      <div className="flex w-full flex-col gap-1">
+        <input
+          type="text"
+          autoFocus
+          inputMode="numeric"
+          aria-label={`${LABEL[medan]} untuk ${baris.namaBarang ?? baris.kodeAccurate}`}
+          value={draft}
+          onChange={(e) => setDraft(formatKetikan(e.target.value))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") onSelesai()
+            if (e.key === "Escape") onBatal()
+          }}
+          className="w-full rounded border border-input bg-background px-2 py-1 text-right text-xs tabular-nums"
+        />
+        <div className="flex gap-1">
           <button
             type="button"
             onClick={onSelesai}
@@ -521,18 +513,21 @@ function SelHarga({
     )
   }
 
-  const isi = (
-    <div className="flex flex-col text-right">
-      <span className="text-[10px] text-muted-foreground">
-        Modal: {baris.modal.nilai === null ? "—" : formatRupiah(baris.modal.nilai)}
-      </span>
-      <span className="font-semibold">
-        {baris.dealer.nilai === null ? "—" : formatRupiah(baris.dealer.nilai)}
-      </span>
-    </div>
-  )
+  const angka =
+    harga.nilai === null ? (
+      <span className="text-muted-foreground">—</span>
+    ) : (
+      <span className="font-medium tabular-nums">{formatRupiah(harga.nilai)}</span>
+    )
 
-  if (!bolehEdit) return <div className="w-full">{isi}</div>
+  if (!bolehEdit) {
+    return (
+      <div className="text-right">
+        {angka}
+        {harga.catatan && <Catatan teks={harga.catatan} />}
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -546,19 +541,23 @@ function SelHarga({
             onMulai()
           }
         }}
-        title="Klik untuk ubah harga modal & dealer"
-        className="group -m-1 flex cursor-pointer items-center justify-between gap-1 rounded border-b border-dashed border-muted-foreground/50 p-1 transition-colors hover:bg-muted/50"
+        title={`Klik untuk ubah ${LABEL[medan]}`}
+        className="group -m-1 flex cursor-pointer items-center justify-end gap-1 rounded border-b border-dashed border-muted-foreground/50 p-1 transition-colors hover:bg-muted/50"
       >
-        {isi}
+        {angka}
         <Pencil className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
       </div>
-      {catatan && (
-        <p className="mt-1 flex items-start gap-1 text-[10px] text-warning">
-          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
-          {catatan}
-        </p>
-      )}
+      {harga.catatan && <Catatan teks={harga.catatan} />}
     </div>
+  )
+}
+
+function Catatan({ teks }: { teks: string }) {
+  return (
+    <p className="mt-1 flex items-start gap-1 text-left text-[10px] text-warning">
+      <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+      {teks}
+    </p>
   )
 }
 

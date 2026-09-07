@@ -34,6 +34,21 @@ export const ADMIN_PAGES = {
   "atribut-brand": "Atribut & Brand",
   sinkronisasi: "Sinkronisasi",
   "harga-accurate": "Update Harga",
+  /**
+   * BUKAN halaman — saklar izin untuk satu KOLOM: harga modal (CP) di tabel
+   * Update Harga.
+   *
+   * Modal adalah angka yang kita bayar ke pemasok. Kasir dan staff toko perlu
+   * membuka halaman Update Harga untuk mengisi harga dealer, tapi tidak
+   * seharusnya ikut melihat margin setiap barang — dan izin per-halaman yang
+   * ada tidak bisa membedakan keduanya karena keduanya satu halaman.
+   *
+   * Ditumpangkan ke daftar ini supaya bisa diatur di tempat yang sudah dikenal
+   * (Manajemen User → Peran) tanpa membangun konsep izin kedua. Aman karena
+   * daftar ini hanya dibaca editor peran; sidebar punya daftar menunya sendiri
+   * dan menyaringnya, jadi kunci tanpa menu tidak memunculkan apa-apa.
+   */
+  "harga-modal": "Harga Modal (CP)",
   "pc-builder": "PC Builder",
   "pc-prebuild": "PC Prebuild",
   banner: "Banner Promo",
@@ -125,7 +140,12 @@ export async function muatIzinUser(
   for (const p of Object.keys(ADMIN_PAGES) as AdminPage[]) {
     if (levels[p] !== undefined) continue // sudah diset (halaman selalu-boleh)
     if (user.role === "owner") levels[p] = "edit"
-    else levels[p] = p === "pelanggan" ? "view" : "edit" // staff
+    // Harga modal TIDAK ikut kemurahan hati fallback ini. Cabang di bawah
+    // memberi staff "edit" atas segalanya, jadi tanpa pengecualian ini setiap
+    // kasir yang belum diberi peran dinamis langsung bisa melihat margin tiap
+    // barang — persis yang dihindari dengan memisahkannya. Untuk melihat modal,
+    // seseorang harus DIBERI peran yang menyebutkannya.
+    else levels[p] = p === "pelanggan" ? "view" : p === "harga-modal" ? "none" : "edit" // staff
   }
   return { isMaster: false, levels }
 }

@@ -47,6 +47,11 @@ type Props = {
 export default async function HargaAccuratePage({ searchParams }: Props) {
   const { izin } = await requirePageView("harga-accurate")
   const bolehEdit = bisaAkses(izin, "harga-accurate", "edit")
+  // Harga modal punya izinnya sendiri — lihat catatan pada "harga-modal" di
+  // lib/auth/permissions.ts. Kasir boleh mengisi harga dealer tanpa ikut
+  // melihat margin tiap barang.
+  const bolehLihatModal = bisaAkses(izin, "harga-modal", "view")
+  const bolehEditModal = bisaAkses(izin, "harga-modal", "edit")
 
   const sp = await searchParams
   const tab = TABS.some((t) => t.key === sp.tab) ? (sp.tab as (typeof TABS)[number]["key"]) : "daftar"
@@ -85,7 +90,12 @@ export default async function HargaAccuratePage({ searchParams }: Props) {
 
       <div className="mt-6">
         {tab === "daftar" ? (
-          <TabDaftar searchParams={sp} bolehEdit={bolehEdit} />
+          <TabDaftar
+            searchParams={sp}
+            bolehEdit={bolehEdit}
+            bolehLihatModal={bolehLihatModal}
+            bolehEditModal={bolehEditModal}
+          />
         ) : (
           <TabSinkronisasi />
         )}
@@ -97,9 +107,13 @@ export default async function HargaAccuratePage({ searchParams }: Props) {
 async function TabDaftar({
   searchParams,
   bolehEdit,
+  bolehLihatModal,
+  bolehEditModal,
 }: {
   searchParams: Awaited<Props["searchParams"]>
   bolehEdit: boolean
+  bolehLihatModal: boolean
+  bolehEditModal: boolean
 }) {
   const filter = {
     q: searchParams.q?.trim() ?? "",
@@ -114,9 +128,29 @@ async function TabDaftar({
     ambilOpsiFilter(),
   ])
 
+  /**
+   * Harga modal yang tidak boleh dilihat TIDAK ikut dikirim ke browser.
+   *
+   * Menyembunyikan kolomnya di komponen saja tidak cukup: angkanya tetap ada di
+   * muatan yang diterima peramban dan bisa dibaca siapa pun yang membuka
+   * devtools. Yang tidak dikirim tidak bisa dibaca.
+   *
+   * Menghapusnya di sini aman TANPA risiko menimpa data, dan itu bergantung
+   * pada satu invarian: "edit" selalu mencakup "view". Saat menyimpan, klien
+   * mengirim balik kolom yang tidak disunting apa adanya — jadi yang tidak
+   * boleh melihat modal akan mengirim null untuknya. Yang menahan null itu
+   * adalah izin yang sama: tanpa hak edit modal, `simpanHargaInternal` tidak
+   * menyebut kolom `CP` sama sekali dalam perintah UPDATE-nya. Kalau suatu
+   * saat "edit" bisa ada tanpa "view", kombinasi itu akan mengosongkan CP dan
+   * bagian ini harus ditinjau ulang.
+   */
+  const rows = bolehLihatModal
+    ? hasil.rows
+    : hasil.rows.map((r) => ({ ...r, modal: { nilai: null, catatan: null } }))
+
   return (
     <TabelHargaView
-      rows={hasil.rows}
+      rows={rows}
       opsi={opsi}
       filter={filter}
       page={hasil.page}
@@ -124,6 +158,8 @@ async function TabDaftar({
       total={hasil.total}
       perPage={hasil.perPage}
       bolehEdit={bolehEdit}
+      bolehLihatModal={bolehLihatModal}
+      bolehEditModal={bolehEditModal}
     />
   )
 }

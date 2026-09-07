@@ -129,12 +129,29 @@ export async function simpanHargaInternalAction(
     return { hasil: null, error: "Anda tidak punya izin mengubah harga di halaman ini." }
   }
 
+  /**
+   * Izin harga modal diperiksa TERPISAH — ia kolom yang berbeda haknya, bukan
+   * bagian dari izin halaman. Yang tak punya izin tetap boleh menyimpan harga
+   * dealer; kolom `CP` yang tidak ikut ditulis (lihat `simpanHargaInternal`).
+   *
+   * Diperiksa di sini, bukan dipercayakan pada kolom yang disembunyikan di
+   * layar: server action bisa dipanggil langsung tanpa pernah memuat halaman
+   * yang menyembunyikannya.
+   */
+  let bolehUbahModal = false
+  try {
+    await requirePermission("harga-modal", "edit")
+    bolehUbahModal = true
+  } catch {
+    bolehUbahModal = false
+  }
+
   if (perubahan.length === 0) {
     return { hasil: { tersimpan: 0, gagal: [] }, error: null }
   }
 
   try {
-    const hasil = await simpanHargaInternal(perubahan)
+    const hasil = await simpanHargaInternal(perubahan, { bolehUbahModal })
     // Halaman ini `force-dynamic`, tapi revalidate tetap dipanggil supaya
     // pembaca lain (tab yang sedang terbuka di komputer lain) tidak menyajikan
     // angka yang sudah berubah dari cache router.
