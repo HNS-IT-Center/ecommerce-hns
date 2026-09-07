@@ -1,9 +1,16 @@
 "use server"
 
+import { revalidatePath } from "next/cache"
+
 import { requirePermission } from "@/lib/auth"
 import { updateProductPriceAction } from "../produk/actions"
 import { buildAccuratePricePreview } from "@/lib/services/accurate-price"
 import { importDariSheet, type ImportResult } from "@/lib/api/accurate/import-sheet"
+import {
+  simpanHargaInternal,
+  type PerubahanHarga,
+  type HasilSimpan,
+} from "@/lib/api/accurate/price-table"
 
 /**
  * Server actions untuk halaman /harga-accurate.
@@ -98,4 +105,45 @@ export async function terapkanHargaAction(
   }
 
   return hasil
+}
+
+/**
+ * Simpan harga modal (CP) & dealer di tabel kerja Accurate.
+ *
+ * BUKAN jalur harga katalog. Keduanya angka INTERNAL — modal adalah yang kita
+ * bayar ke pemasok, dealer adalah harga untuk pembeli B2B — dan tidak satu pun
+ * pernah tampil ke pembeli di web. Karena itu ia tidak lewat
+ * `updateProductPriceAction` seperti penerapan SRP di atas: tidak ada harga
+ * pelanggan yang berubah, jadi tidak ada yang perlu masuk `product_logs`
+ * maupun memicu revalidate halaman produk.
+ *
+ * Harga jual (`SP`/SRP) TIDAK bisa disentuh dari sini — §2.7 menaruhnya di
+ * jalur katalog ber-audit-log.
+ */
+export async function simpanHargaInternalAction(
+  perubahan: PerubahanHarga[],
+): Promise<{ hasil: HasilSimpan | null; error: string | null }> {
+  try {
+    await requirePermission("harga-accurate", "edit")
+  } catch {
+    return { hasil: null, error: "Anda tidak punya izin mengubah harga di halaman ini." }
+  }
+
+  if (perubahan.length === 0) {
+    return { hasil: { tersimpan: 0, gagal: [] }, error: null }
+  }
+
+  try {
+    const hasil = await simpanHargaInternal(perubahan)
+    // Halaman ini `force-dynamic`, tapi revalidate tetap dipanggil supaya
+    // pembaca lain (tab yang sedang terbuka di komputer lain) tidak menyajikan
+    // angka yang sudah berubah dari cache router.
+    revalidatePath("/admin/harga-accurate")
+    return { hasil, error: null }
+  } catch (error) {
+    return {
+      hasil: null,
+      error: error instanceof Error ? error.message : "Gagal menyimpan harga.",
+    }
+  }
 }
