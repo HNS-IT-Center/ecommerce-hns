@@ -3,7 +3,7 @@ import { Footer } from "@/components/layout/footer"
 import { CheckoutView } from "@/features/checkout/components/checkout-view"
 
 export const metadata = {
-  title: "Checkout — HNS IT Center",
+  title: "Checkout",
   description: "Checkout belanja Anda di HNS IT Center",
 }
 

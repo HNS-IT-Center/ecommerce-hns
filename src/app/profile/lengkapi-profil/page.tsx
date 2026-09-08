@@ -7,7 +7,7 @@ import { sanitizeNextPath } from "@/lib/auth/safe-redirect";
 import { CompleteProfileForm } from "./complete-profile-form";
 
 export const metadata = {
-  title: "Lengkapi Profil — HNS IT Center",
+  title: "Lengkapi Profil",
   robots: { index: false, follow: false },
 };
 

@@ -8,7 +8,7 @@ import { StorePanel } from "@/features/stores/components/store-panel";
 import { env } from "@/config/env";
 
 export const metadata = {
-  title: "Lokasi Toko — HNS IT Center",
+  title: "Lokasi Toko",
   description: "Temukan lokasi toko cabang HNS IT Center di Batam.",
 };
 

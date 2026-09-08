@@ -10,7 +10,7 @@ import { resolvePrebuildPresets } from "@/lib/pc-prebuild/resolve"
 import { getStockDisplayMode } from "@/lib/api/stock-display"
 
 export const metadata = {
-  title: "PC Prebuild — HNS IT Center",
+  title: "PC Prebuild",
   description:
     "Paket PC rakitan yang sudah dipilihkan teknisi HNS. Bisa langsung dipesan, bisa juga diubah dulu sesuai kebutuhan.",
 }

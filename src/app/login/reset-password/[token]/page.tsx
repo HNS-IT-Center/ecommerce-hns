@@ -3,7 +3,7 @@ import { Footer } from "@/components/layout/footer";
 import { ResetPasswordForm } from "./reset-password-form";
 
 export const metadata = {
-  title: "Reset Password — HNS IT Center",
+  title: "Reset Password",
   robots: { index: false, follow: false },
 };
 

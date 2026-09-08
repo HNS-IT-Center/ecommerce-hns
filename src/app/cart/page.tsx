@@ -3,7 +3,7 @@ import { Footer } from "@/components/layout/footer"
 import { CartView } from "@/features/cart/components/cart-view"
 
 export const metadata = {
-  title: "Keranjang Belanja — HNS IT Center",
+  title: "Keranjang Belanja",
   description: "Keranjang belanja Anda di HNS IT Center",
 }
 

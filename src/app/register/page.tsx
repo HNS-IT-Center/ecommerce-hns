@@ -8,7 +8,7 @@ import { env } from "@/config/env";
 import { RegisterForm } from "./register-form";
 
 export const metadata = {
-  title: "Daftar — HNS IT Center",
+  title: "Daftar",
   robots: { index: false, follow: false },
 };
 

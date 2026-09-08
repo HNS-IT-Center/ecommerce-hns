@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { CustomerList } from "./customer-list"
 
 export const metadata: Metadata = {
-  title: "Akun Pelanggan — Admin HNS IT Center",
+  title: "Akun Pelanggan — Admin",
   robots: { index: false, follow: false },
 }
 

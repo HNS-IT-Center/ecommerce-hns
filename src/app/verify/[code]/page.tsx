@@ -10,7 +10,7 @@ import { Footer } from "@/components/layout/footer"
 export const dynamic = "force-dynamic"
 
 export const metadata = {
-  title: "Verifikasi Quotation — HNS IT Center",
+  title: "Verifikasi Quotation",
   // Halaman ini berisi data transaksi pelanggan; jangan sampai terindeks.
   robots: { index: false, follow: false },
 }

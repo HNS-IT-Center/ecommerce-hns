@@ -4,7 +4,7 @@ import { FileText } from "lucide-react"
 import { PolicyPageLayout } from "@/components/layout/policy-page-layout"
 
 export const metadata = {
-  title: "Kebijakan — HNS IT Center",
+  title: "Kebijakan",
   description:
     "Kebijakan pengembalian barang, pengembalian dana, pembatalan pesanan, dan pengiriman di HNS IT Center.",
 }

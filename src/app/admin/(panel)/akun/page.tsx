@@ -8,7 +8,7 @@ import { ChangePasswordForm } from "./change-password-form"
 import { AdminRoleList } from "./admin-role-list"
 
 export const metadata: Metadata = {
-  title: "Akun Saya — Admin HNS IT Center",
+  title: "Akun Saya — Admin",
   robots: { index: false, follow: false },
 }
 

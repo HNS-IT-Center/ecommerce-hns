@@ -41,7 +41,7 @@ const INK_GRAY = "#6b7280"
 const INK_HAIRLINE = "#d4d4d4"
 
 export const metadata = {
-  title: "Quotation Rakitan PC - HNS IT Center",
+  title: "Quotation Rakitan PC",
 }
 
 /** Batas wajar kuantitas per item — URL bisa diedit bebas oleh siapa saja. */

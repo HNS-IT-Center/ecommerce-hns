@@ -7,7 +7,7 @@ import { buildWhatsAppUrl } from "@/lib/api/whatsapp";
 import { env } from "@/config/env";
 
 export const metadata = {
-  title: "Gagal masuk — HNS IT Center",
+  title: "Gagal masuk",
   robots: { index: false, follow: false },
 };
 

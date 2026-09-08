@@ -7,7 +7,7 @@ import { getCurrentCustomer } from "@/lib/auth/customer";
 import { ForgotPasswordForm } from "./forgot-password-form";
 
 export const metadata = {
-  title: "Lupa Password — HNS IT Center",
+  title: "Lupa Password",
   robots: { index: false, follow: false },
 };
 

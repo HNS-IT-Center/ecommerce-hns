@@ -17,11 +17,11 @@ export async function generateMetadata({ params }: Props) {
   const preset = config.enabled ? config.presets.find((p) => p.id === id) : undefined
 
   if (!preset) {
-    return { title: "PC Prebuild — HNS IT Center" }
+    return { title: "PC Prebuild" }
   }
 
   return {
-    title: `${preset.name} — PC Prebuild HNS IT Center`,
+    title: `${preset.name} — PC Prebuild`,
     description:
       preset.summary ||
       "Spesifikasi lengkap paket PC rakitan dari HNS IT Center Batam, termasuk perkiraan performanya.",

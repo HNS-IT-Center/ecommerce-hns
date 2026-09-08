@@ -8,7 +8,7 @@ import { getCurrentCustomer } from "@/lib/auth/customer"
 import type { BuilderSelection } from "@/store/new-builder"
 
 export const metadata = {
-  title: "PC Builder Custom — HNS IT Center",
+  title: "PC Builder Custom",
   description: "Rakit PC idaman Anda dengan mudah. Pilih komponen, cek estimasi harga, dan cetak hasilnya.",
 }
 

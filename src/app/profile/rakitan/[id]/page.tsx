@@ -11,7 +11,7 @@ import { getSavedBuild } from "@/lib/api/saved-pc-builds";
 import { SavedBuildActions } from "@/features/account/components/saved-build-actions";
 
 export const metadata = {
-  title: "Detail Rakitan — HNS IT Center",
+  title: "Detail Rakitan",
   robots: { index: false, follow: false },
 };
 

@@ -6,7 +6,7 @@ import { Footer } from "@/components/layout/footer";
 import { ResendVerificationForm } from "./resend-verification-form";
 
 export const metadata = {
-  title: "Cek Email Anda — HNS IT Center",
+  title: "Cek Email Anda",
   robots: { index: false, follow: false },
 };
 

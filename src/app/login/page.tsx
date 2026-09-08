@@ -9,7 +9,7 @@ import { sanitizeNextPath } from "@/lib/auth/safe-redirect";
 import { LoginForm } from "./login-form";
 
 export const metadata = {
-  title: "Masuk — HNS IT Center",
+  title: "Masuk",
   robots: { index: false, follow: false },
 };
 

@@ -3,7 +3,7 @@ import { redirect } from "next/navigation"
 import { getCurrentUser } from "@/lib/auth"
 
 export const metadata: Metadata = {
-  title: "Masuk Admin — HNS IT Center",
+  title: "Masuk Admin",
   robots: { index: false, follow: false },
 }
 

@@ -12,7 +12,7 @@ import { env } from "@/config/env";
 import { customerLogoutAction } from "./actions";
 
 export const metadata = {
-  title: "Profil Saya — HNS IT Center",
+  title: "Profil Saya",
   robots: { index: false, follow: false },
 };
 

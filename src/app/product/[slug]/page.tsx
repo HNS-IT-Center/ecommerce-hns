@@ -41,14 +41,14 @@ type ProductPageProps = {
 export async function generateMetadata({ params }: ProductPageProps): Promise<Metadata> {
   const { slug } = await params
   const product = await getProductBySlug(slug)
-  if (!product) return { title: "Produk tidak ditemukan — HNS IT Center" }
+  if (!product) return { title: "Produk tidak ditemukan" }
 
   return {
     // Kanonik menunjuk URL bersih tanpa `?sku=`. Tanpa ini tiap varian yang
     // pernah dipindai menghasilkan alamat berbeda untuk isi yang sama, dan
     // mesin pencari membaginya sebagai halaman-halaman duplikat.
     alternates: { canonical: `/product/${slug}` },
-    title: `${product.name} — HNS IT Center`,
+    title: product.name,
     description: product.short_description
       ? product.short_description.replace(/<[^>]*>/g, "").slice(0, 160)
       : `Beli ${product.name} di HNS IT Center Batam. Harga terbaik, garansi resmi.`,

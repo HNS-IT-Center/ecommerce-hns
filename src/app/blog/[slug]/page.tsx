@@ -15,11 +15,11 @@ type BlogPostPageProps = {
 export async function generateMetadata({ params }: BlogPostPageProps): Promise<Metadata> {
   const { slug } = await params
   const post = await getPostBySlug(slug)
-  if (!post) return { title: "Artikel tidak ditemukan — HNS IT Center" }
+  if (!post) return { title: "Artikel tidak ditemukan" }
 
   const ui = mapWpPostToUI(post)
   return {
-    title: `${ui.title} — HNS IT Center`,
+    title: ui.title,
     description: ui.excerpt.slice(0, 160),
     openGraph: { images: [ui.imageUrl] },
   }

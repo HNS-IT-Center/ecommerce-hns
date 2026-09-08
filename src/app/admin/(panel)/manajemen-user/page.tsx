@@ -13,7 +13,7 @@ import { AdminRoleList } from "../akun/admin-role-list"
 import { CustomerList } from "../pelanggan/customer-list"
 
 export const metadata: Metadata = {
-  title: "Manajemen User — Admin HNS IT Center",
+  title: "Manajemen User — Admin",
   robots: { index: false, follow: false },
 }
 

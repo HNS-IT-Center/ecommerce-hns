@@ -8,7 +8,7 @@ import { CS_EMAIL } from "@/lib/constants/contact"
 import { env } from "@/config/env"
 
 export const metadata = {
-  title: "Kontak Kami — HNS IT Center",
+  title: "Kontak Kami",
   description: "Hubungi HNS IT Center via WhatsApp, email, atau kunjungi toko kami di Batam.",
 }
 

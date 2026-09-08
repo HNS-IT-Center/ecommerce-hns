@@ -6,7 +6,7 @@ import { Footer } from "@/components/layout/footer";
 import { verifyEmailAction } from "@/app/register/actions";
 
 export const metadata = {
-  title: "Verifikasi Email — HNS IT Center",
+  title: "Verifikasi Email",
   robots: { index: false, follow: false },
 };
 

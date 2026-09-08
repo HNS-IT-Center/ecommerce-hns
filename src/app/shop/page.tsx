@@ -29,7 +29,7 @@ import { VisuallyHidden } from "@radix-ui/react-visually-hidden"
 const PER_PAGE = 30
 
 export const metadata = {
-  title: "Katalog Produk — HNS IT Center",
+  title: "Katalog Produk",
   description: "Cari dan temukan laptop, PC, dan komponen terbaik.",
 }
 

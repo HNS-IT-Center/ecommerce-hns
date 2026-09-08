@@ -5,7 +5,7 @@ import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import { env } from "@/config/env"
 
 export const metadata = {
-  title: "Pusat Bantuan & Klaim Garansi — HNS IT Center",
+  title: "Pusat Bantuan & Klaim Garansi",
   description:
     "Klaim garansi, servis, dan status pengerjaan di HNS IT Center — hubungi tim kami lewat WhatsApp.",
 }

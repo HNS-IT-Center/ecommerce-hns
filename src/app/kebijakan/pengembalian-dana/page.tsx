@@ -3,7 +3,7 @@ import { PolicyPageLayout } from "@/components/layout/policy-page-layout"
 import { getPolicyPage } from "@/lib/api/policy"
 
 export const metadata = {
-  title: "Kebijakan Pengembalian Dana — HNS IT Center",
+  title: "Kebijakan Pengembalian Dana",
   description: "Syarat, metode, dan waktu proses pengembalian dana (refund) di HNS IT Center.",
 }
 

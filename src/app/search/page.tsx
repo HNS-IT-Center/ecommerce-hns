@@ -51,7 +51,7 @@ export async function generateMetadata({ searchParams }: SearchPageProps): Promi
   const q = typeof resolved[SEARCH_PARAM] === "string" ? resolved[SEARCH_PARAM] : ""
 
   return {
-    title: q ? `Hasil Pencarian: "${q}" — HNS IT Center` : "Pencarian — HNS IT Center",
+    title: q ? `Hasil Pencarian: "${q}"` : "Pencarian",
     // Halaman hasil pencarian tidak perlu di-index Google (thin/duplicate content).
     robots: { index: false, follow: true },
   }

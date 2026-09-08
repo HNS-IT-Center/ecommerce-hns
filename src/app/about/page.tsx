@@ -6,7 +6,7 @@ import { getActiveStores } from "@/lib/api/stores";
 import { formatOpeningHours } from "@/lib/utils/opening-hours";
 
 export const metadata = {
-  title: "Tentang Kami — HNS IT Center",
+  title: "Tentang Kami",
   description:
     "Kenali HNS IT Center, pusat IT terbesar dan terpercaya di Batam.",
 };
