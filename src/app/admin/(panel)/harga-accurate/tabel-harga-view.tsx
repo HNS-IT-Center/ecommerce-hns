@@ -2,12 +2,17 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { Search, AlertTriangle, Pencil } from "lucide-react"
+import { Search, AlertTriangle, Pencil, ArrowUp, ArrowDown, ChevronsUpDown } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { formatRupiah } from "@/lib/utils"
-import type { BarisTabelHarga, OpsiFilter } from "@/lib/api/accurate/price-table"
+import type {
+  BarisTabelHarga,
+  OpsiFilter,
+  KolomUrut,
+  ArahUrut,
+} from "@/lib/api/accurate/price-table"
 import { simpanHargaInternalAction } from "./actions"
 
 /** Kolom harga internal yang bisa disunting di halaman ini. */
@@ -29,6 +34,10 @@ type Props = {
   bolehLihatModal: boolean
   /** Izin MENGUBAH harga modal. */
   bolehEditModal: boolean
+  /** Kolom yang sedang dipakai mengurutkan (undefined = urutan bawaan). */
+  urut?: KolomUrut
+  /** Arah urut yang sedang aktif. */
+  arah?: ArahUrut
 }
 
 /**
@@ -97,6 +106,8 @@ export function TabelHargaView({
   bolehEdit,
   bolehLihatModal,
   bolehEditModal,
+  urut,
+  arah,
 }: Props) {
   const router = useRouter()
 
@@ -138,16 +149,40 @@ export function TabelHargaView({
     router.replace(url)
   }
 
-  function bangunUrl(ubahan: Partial<typeof filter & { page: number }>) {
+  function bangunUrl(
+    ubahan: Partial<
+      typeof filter & { page: number; urut: KolomUrut | undefined; arah: ArahUrut | undefined }
+    >,
+  ) {
     const sp = new URLSearchParams()
-    const gabung = { ...filter, page, ...ubahan }
+    const gabung = { ...filter, page, urut, arah, ...ubahan }
     if (gabung.q) sp.set("q", gabung.q)
     if (gabung.kategori) sp.set("kategori", gabung.kategori)
     if (gabung.brand) sp.set("brand", gabung.brand)
     if (gabung.status) sp.set("status", gabung.status)
     if (gabung.page && gabung.page > 1) sp.set("page", String(gabung.page))
+    // Urutan ikut terbawa ke tautan halaman & penyaring — tanpa itu, berpindah
+    // halaman diam-diam mengembalikan tabel ke urutan bawaan.
+    if (gabung.urut) sp.set("urut", gabung.urut)
+    if (gabung.urut && gabung.arah) sp.set("arah", gabung.arah)
     const qs = sp.toString()
     return `/admin/harga-accurate?tab=daftar${qs ? `&${qs}` : ""}`
+  }
+
+  /**
+   * Klik kepala kolom: naik → turun → kembali ke urutan bawaan.
+   *
+   * Tiga langkah, bukan dua. Dengan dua langkah tidak ada jalan pulang — sekali
+   * mengurutkan menurut harga, tabel tidak pernah bisa kembali ke urutan
+   * abjadnya tanpa memuat ulang halaman dari menu.
+   *
+   * Selalu balik ke halaman 1: baris di halaman 7 urutan lama tidak ada
+   * hubungannya dengan baris di halaman 7 urutan baru.
+   */
+  function urutkan(kolom: KolomUrut) {
+    if (urut !== kolom) return navigasi(bangunUrl({ urut: kolom, arah: "asc", page: 1 }))
+    if (arah === "asc") return navigasi(bangunUrl({ urut: kolom, arah: "desc", page: 1 }))
+    navigasi(bangunUrl({ urut: undefined, arah: undefined, page: 1 }))
   }
 
   function nilaiAsli(baris: BarisTabelHarga, medan: Medan): number | null {
@@ -332,13 +367,23 @@ export function TabelHargaView({
             <table className="w-full text-sm">
               <thead className="border-b border-border bg-muted/50 text-left">
                 <tr>
-                  <th className="px-4 py-3 font-semibold">Produk</th>
-                  <th className="px-4 py-3 text-right font-semibold">Harga SRP</th>
+                  <KepalaUrut kolom="nama" urut={urut} arah={arah} onUrut={urutkan}>
+                    Produk
+                  </KepalaUrut>
+                  <KepalaUrut kolom="srp" urut={urut} arah={arah} onUrut={urutkan} kanan>
+                    Harga SRP
+                  </KepalaUrut>
                   {bolehLihatModal && (
-                    <th className="px-4 py-3 text-right font-semibold">Harga Modal (CP)</th>
+                    <KepalaUrut kolom="modal" urut={urut} arah={arah} onUrut={urutkan} kanan>
+                      Harga Modal (CP)
+                    </KepalaUrut>
                   )}
-                  <th className="px-4 py-3 text-right font-semibold">Harga Dealer</th>
-                  <th className="px-4 py-3 text-right font-semibold">Stok</th>
+                  <KepalaUrut kolom="dealer" urut={urut} arah={arah} onUrut={urutkan} kanan>
+                    Harga Dealer
+                  </KepalaUrut>
+                  <KepalaUrut kolom="stok" urut={urut} arah={arah} onUrut={urutkan} kanan>
+                    Stok
+                  </KepalaUrut>
                 </tr>
               </thead>
               <tbody>
@@ -421,6 +466,70 @@ export function TabelHargaView({
         onConfirm={simpanTerkonfirmasi}
       />
     </div>
+  )
+}
+
+/**
+ * Kepala kolom yang bisa diklik untuk mengurutkan.
+ *
+ * Ikonnya menyatakan keadaan, bukan sekadar menghias: panah naik/turun untuk
+ * kolom yang sedang dipakai, dan panah ganda pudar untuk yang bisa diklik tapi
+ * belum aktif — supaya terlihat mana yang bisa diurutkan tanpa harus mencoba
+ * satu per satu.
+ *
+ * `aria-sort` memberi tahu pembaca layar hal yang sama, dan judul tetap
+ * `<th scope="col">` — tombolnya di dalam sel, bukan menggantikannya.
+ */
+function KepalaUrut({
+  kolom,
+  urut,
+  arah,
+  onUrut,
+  kanan = false,
+  children,
+}: {
+  kolom: KolomUrut
+  urut?: KolomUrut
+  arah?: ArahUrut
+  onUrut: (k: KolomUrut) => void
+  kanan?: boolean
+  children: React.ReactNode
+}) {
+  const aktif = urut === kolom
+  const naik = aktif && arah !== "desc"
+
+  return (
+    <th
+      scope="col"
+      aria-sort={aktif ? (naik ? "ascending" : "descending") : "none"}
+      className={`px-4 py-3 font-semibold ${kanan ? "text-right" : "text-left"}`}
+    >
+      <button
+        type="button"
+        onClick={() => onUrut(kolom)}
+        title={
+          !aktif
+            ? "Urutkan menaik"
+            : naik
+              ? "Urutkan menurun"
+              : "Kembalikan ke urutan bawaan"
+        }
+        className={`group inline-flex items-center gap-1.5 rounded transition-colors hover:text-primary ${
+          kanan ? "flex-row-reverse" : ""
+        } ${aktif ? "text-primary" : ""}`}
+      >
+        {children}
+        {aktif ? (
+          naik ? (
+            <ArrowUp className="h-3.5 w-3.5 shrink-0" />
+          ) : (
+            <ArrowDown className="h-3.5 w-3.5 shrink-0" />
+          )
+        ) : (
+          <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 opacity-30 transition-opacity group-hover:opacity-70" />
+        )}
+      </button>
+    </th>
   )
 }
 

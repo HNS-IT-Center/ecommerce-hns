@@ -46,12 +46,59 @@ export type BarisTabelHarga = {
   stok: number | null
 }
 
+/**
+ * Kolom yang boleh dipakai mengurutkan, beserta ungkapan SQL-nya.
+ *
+ * DAFTAR TERTUTUP, dan itu bukan kehati-hatian berlebihan: nilainya masuk
+ * langsung ke `ORDER BY` yang tidak bisa diparameterkan seperti nilai biasa.
+ * Apa pun di luar daftar ini ditolak dan jatuh ke urutan bawaan.
+ *
+ * Harga di-CAST ke DECIMAL, tidak diurutkan sebagai teks. Kolomnya VARCHAR —
+ * warisan ekspor Accurate — dan sebagai teks "900" berada di atas "1000",
+ * yang membuat seluruh kolom harga tampak acak justru saat diurutkan.
+ */
+const KOLOM_URUT = {
+  nama: "`NAMA BARANG`",
+  kode: "`Kode Accurate`",
+  srp: "CAST(`SP` AS DECIMAL(18,0))",
+  modal: "CAST(`CP` AS DECIMAL(18,0))",
+  dealer: "CAST(`PRICE` AS DECIMAL(18,0))",
+  stok: "`Stok Sistem`",
+} as const
+
+export type KolomUrut = keyof typeof KOLOM_URUT
+export type ArahUrut = "asc" | "desc"
+
+/**
+ * Baris yang di layar tampil sebagai "—" harus selalu di BAWAH, arah apa pun.
+ *
+ * Syaratnya sengaja lebih longgar dari sekadar NULL/kosong: ia ikut menangkap
+ * nol dan teks yang tak terbaca sebagai angka (yang di-CAST juga jadi nol).
+ * Alasannya kesetaraan dengan tampilan — `parseHargaAccurate` menolak nilai
+ * `<= 0` sebagai harga, jadi baris ber-`SP = "0"` sudah tampil "—" beserta
+ * catatan "nilai tidak wajar". Kalau pengurutan tidak ikut menganggapnya
+ * kosong, mengurutkan menaik menyodorkan sederet "—" di halaman pertama —
+ * persis pemandangan yang membuat pengurutan terasa rusak.
+ */
+const SUMBER_KOSONG: Partial<Record<KolomUrut, string>> = {
+  srp: "(`SP` IS NULL OR `SP` = '' OR CAST(`SP` AS DECIMAL(18,0)) <= 0)",
+  modal: "(`CP` IS NULL OR `CP` = '' OR CAST(`CP` AS DECIMAL(18,0)) <= 0)",
+  dealer: "(`PRICE` IS NULL OR `PRICE` = '' OR CAST(`PRICE` AS DECIMAL(18,0)) <= 0)",
+  nama: "(`NAMA BARANG` IS NULL OR `NAMA BARANG` = '')",
+}
+
+export function isKolomUrut(v: string): v is KolomUrut {
+  return v in KOLOM_URUT
+}
+
 export type FilterTabelHarga = {
   q?: string
   kategori?: string
   brand?: string
   status?: string
   page?: number
+  urut?: KolomUrut
+  arah?: ArahUrut
 }
 
 export type HasilTabelHarga = {
@@ -142,6 +189,32 @@ function bangunWhere(filter: FilterTabelHarga): { sql: string; params: unknown[]
   return { sql: syarat.length ? `WHERE ${syarat.join(" AND ")}` : "", params }
 }
 
+/**
+ * Susun `ORDER BY`.
+ *
+ * Tiga kunci, berurutan:
+ *
+ * 1. **Yang kosong selalu di bawah**, arah apa pun. Mengurutkan menurut harga
+ *    lalu mendapati 4.700 baris tanpa harga menumpuk di halaman pertama membuat
+ *    pengurutannya sia-sia — dan membalik arah tidak menolong, ia cuma
+ *    memindahkan tumpukan itu ke ujung yang lain.
+ * 2. Kolom yang diminta.
+ * 3. `Kode Accurate` sebagai pemecah seri. Tanpa kunci kedua yang pasti unik,
+ *    baris berharga sama bisa berpindah urutan tiap kali halaman dimuat, dan
+ *    barang yang sama muncul dua kali di dua halaman berbeda.
+ */
+function bangunOrderBy(filter: FilterTabelHarga): string {
+  const kolom = filter.urut && isKolomUrut(filter.urut) ? filter.urut : "nama"
+  const arah = filter.arah === "desc" ? "DESC" : "ASC"
+  const kosong = SUMBER_KOSONG[kolom]
+  const bagian = [
+    ...(kosong ? [`${kosong} ASC`] : []),
+    `${KOLOM_URUT[kolom]} ${arah}`,
+    "`Kode Accurate` ASC",
+  ]
+  return bagian.join(", ")
+}
+
 /** Ambil satu halaman tabel harga sesuai filter. */
 export async function listHargaAccurate(filter: FilterTabelHarga): Promise<HasilTabelHarga> {
   const prisma = getPrisma()
@@ -171,7 +244,7 @@ export async function listHargaAccurate(filter: FilterTabelHarga): Promise<Hasil
        \`Stok Sistem\`   AS stok
      FROM accurate_products
      ${where}
-     ORDER BY \`NAMA BARANG\` IS NULL, \`NAMA BARANG\` ASC
+     ORDER BY ${bangunOrderBy(filter)}
      LIMIT ? OFFSET ?`,
     ...params,
     PER_PAGE,

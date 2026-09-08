@@ -3,7 +3,12 @@ import Link from "next/link"
 import { buildAccuratePricePreview } from "@/lib/services/accurate-price"
 import { requirePageView } from "@/lib/auth"
 import { bisaAkses } from "@/lib/auth/permissions"
-import { listHargaAccurate, ambilOpsiFilter } from "@/lib/api/accurate/price-table"
+import {
+  listHargaAccurate,
+  ambilOpsiFilter,
+  isKolomUrut,
+  type ArahUrut,
+} from "@/lib/api/accurate/price-table"
 import { HargaAccurateView } from "./view"
 import { TabelHargaView } from "./tabel-harga-view"
 
@@ -41,6 +46,8 @@ type Props = {
     brand?: string
     status?: string
     page?: string
+    urut?: string
+    arah?: string
   }>
 }
 
@@ -123,8 +130,15 @@ async function TabDaftar({
   }
   const page = Number(searchParams.page ?? 1) || 1
 
+  // Nilai urut dari alamat divalidasi di sini, bukan diteruskan mentah: ia
+  // berakhir di `ORDER BY`, satu-satunya bagian query yang tidak bisa
+  // diparameterkan. `?urut=apa-saja` jatuh ke urutan bawaan, bukan melempar.
+  const urut = searchParams.urut && isKolomUrut(searchParams.urut) ? searchParams.urut : undefined
+  const arah: ArahUrut | undefined =
+    searchParams.arah === "desc" ? "desc" : searchParams.arah === "asc" ? "asc" : undefined
+
   const [hasil, opsi] = await Promise.all([
-    listHargaAccurate({ ...filter, page }),
+    listHargaAccurate({ ...filter, page, urut, arah }),
     ambilOpsiFilter(),
   ])
 
@@ -160,6 +174,8 @@ async function TabDaftar({
       bolehEdit={bolehEdit}
       bolehLihatModal={bolehLihatModal}
       bolehEditModal={bolehEditModal}
+      urut={urut}
+      arah={arah}
     />
   )
 }
