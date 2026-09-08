@@ -4,6 +4,7 @@ import { exchangeCodeForIdentity } from "@/lib/auth/google"
 import { createCustomerSession } from "@/lib/auth/customer"
 import { createSession } from "@/lib/auth"
 import { findUserByGoogleIdentity } from "@/lib/auth/identity"
+import { isMaster } from "@/lib/auth/permissions"
 import { GOOGLE_STATE_COOKIE, parseState } from "@/lib/auth/google-state"
 import { sanitizeNextPath } from "@/lib/auth/safe-redirect"
 import { checkGoogleCallbackRateLimit, clientIpFrom } from "@/lib/auth/google-callback-rate-limit"
@@ -170,8 +171,14 @@ export async function GET(request: NextRequest) {
    * Tujuan ditentukan PERAN, bukan cara masuknya — pola yang sama persis dengan
    * `loginAction` di /login. Inti Satu Login: satu pintu, sistem yang membaca
    * siapa yang masuk.
+   *
+   * MASTER dikecualikan dengan alasan yang sama seperti di sana: `isMaster`
+   * hanya dibaca setelah sesi admin ada, jadi alamat master yang berperan
+   * "pelanggan" tidak akan pernah sampai ke panel yang dijaganya. Justru jalur
+   * Google-lah yang paling mungkin dipakai master, karena alamat developer
+   * biasanya akun Google tanpa password.
    */
-  if (role !== "pelanggan") {
+  if (role !== "pelanggan" || isMaster({ email })) {
     await createSession({ id: userId, email })
     const adminResponse = NextResponse.redirect(new URL("/admin", origin))
     adminResponse.cookies.set(GOOGLE_STATE_COOKIE, "", { path: "/", maxAge: 0 })

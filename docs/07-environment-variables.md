@@ -292,6 +292,22 @@ Catatan:
 
 ---
 
+### 2.8b OPSIONAL (tapi penting) — Akun MASTER
+
+| Variable | Deskripsi |
+|---|---|
+| `MASTER_ADMIN_EMAIL` | Satu alamat email yang selalu punya akses penuh ke seluruh halaman admin, mengatasi role & izin per-halaman di database |
+
+Catatan:
+
+- **Dicek dari email, BUKAN dari role**, dan diperiksa **sebelum** role apa pun (`isMaster()` di `lib/auth/permissions.ts`). Itulah gunanya: master tidak bisa dihapus atau diturunkan lewat panel karena ia bukan baris data yang bisa disunting, melainkan string di konfigurasi. Ini pagar terakhir kalau owner tak sengaja mencabut izinnya sendiri.
+- **Kosong = tidak ada master**, dan itu bawaannya. Sengaja aman-tertutup: nilai yang salah ketik lebih baik berujung "tidak ada master" daripada memberi akses penuh ke alamat yang tidak dimaksud.
+- Perbandingannya **tidak peka huruf besar-kecil**, dan spasi tepi dibuang.
+- Alamatnya **tidak harus** punya baris di tabel `users` untuk dianggap master oleh `isMaster()` — tapi untuk benar-benar bisa masuk, akunnya tetap harus ada dan bisa login (lewat password atau Google).
+- **Konsekuensi yang harus disadari:** siapa pun yang menguasai kotak surat ini menguasai panel. Kalau alamatnya akun Google, itu berarti akun Google-nya — dan sejak 7 September 2026 masuk lewat tombol Google memang bisa mendarat di panel bila peran akunnya bukan `pelanggan`. Pakai alamat yang 2FA-nya menyala.
+
+---
+
 ### 2.9 OPSIONAL — Akun Pelanggan (Google OAuth)
 
 | Variable | Deskripsi | Cara Dapatnya |

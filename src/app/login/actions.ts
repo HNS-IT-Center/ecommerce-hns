@@ -10,6 +10,7 @@ import {
 import { createCustomerSession } from "@/lib/auth/customer"
 import { createSession } from "@/lib/auth"
 import { findUserByIdentifier } from "@/lib/auth/identity"
+import { isMaster } from "@/lib/auth/permissions"
 import { verifyPassword as verifyPasswordUser } from "@/lib/auth/password"
 import { createVerificationToken, consumeVerificationToken } from "@/lib/auth/verification-token"
 import { sendEmail } from "@/lib/email/send"
@@ -59,8 +60,18 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
 
   if (!user || !user.passwordHash || !cocok) return { error: GAGAL }
 
-  // Tujuan ditentukan PERAN, bukan pilihan pengguna.
-  if (user.role === "pelanggan") {
+  /**
+   * Tujuan ditentukan PERAN — kecuali untuk MASTER, yang selalu ke panel.
+   *
+   * `MASTER_ADMIN_EMAIL` digambarkan sebagai pagar terakhir kalau owner tak
+   * sengaja mencabut izinnya sendiri (lihat `isMaster` di lib/auth/permissions).
+   * Tapi pagar itu dulu tidak berguna: `isMaster` hanya dibaca `muatIzinUser`,
+   * yang baru berjalan SESUDAH seseorang punya sesi admin. Alamat master yang
+   * kebetulan berperan "pelanggan" — dan alamat developer biasanya memang
+   * begitu, karena ia ikut memakai situs sebagai pembeli — diarahkan ke
+   * storefront dan tidak pernah sampai ke pintu yang dijaganya.
+   */
+  if (user.role === "pelanggan" && !isMaster(user)) {
     // Pelanggan email+password wajib terverifikasi (admin tak punya nilai ini).
     if (!user.emailVerifiedAt) return { error: BELUM_VERIFIKASI }
     await createCustomerSession({ id: user.id, email: user.email })
