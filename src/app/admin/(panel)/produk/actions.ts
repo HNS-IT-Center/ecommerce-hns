@@ -162,7 +162,24 @@ export async function deleteProductAction(id: number) {
   }
 }
 
-export async function updateProductPriceAction(id: number, regularPrice: number, salePrice?: number | null) {
+/**
+ * `priceAction` menentukan aksi apa yang tercatat di `product_logs` untuk
+ * perubahan harganya — bawaannya `UPDATE_PRICE` (seseorang mengubah lewat
+ * panel).
+ *
+ * Sinkronisasi Accurate mengirim `"SYNC_PRICE"`, dan itu BUKAN kosmetik: aturan
+ * "suntingan di web menang" (docs/13 §6) membedakan keduanya justru dari sini.
+ * Kalau harga hasil sinkronisasi ikut tercatat sebagai `UPDATE_PRICE`, ia
+ * menyamar sebagai suntingan manusia — dan sesudah sinkronisasi pertama, SETIAP
+ * produk akan tampak "milik manusia" sehingga sinkronisasi berikutnya melewati
+ * semuanya.
+ */
+export async function updateProductPriceAction(
+  id: number,
+  regularPrice: number,
+  salePrice?: number | null,
+  opsi?: { priceAction?: string },
+) {
   try {
     const authUser = await requirePermission("produk", "edit")
     const userName = (authUser && typeof authUser === 'object' && 'name' in authUser) ? String(authUser.name) : "Admin"
@@ -189,10 +206,10 @@ export async function updateProductPriceAction(id: number, regularPrice: number,
     //
     // `name` ikut dikirim ke Woo karena wajib, tapi nilainya diambil dari
     // produk yang sama sehingga tidak pernah terhitung sebagai perubahan.
-    const entries = buildProductLogEntries(diffProductChanges(
-      { ...product, categories: [], images: [] },
-      updatePayload
-    ))
+    const entries = buildProductLogEntries(
+      diffProductChanges({ ...product, categories: [], images: [] }, updatePayload),
+      opsi?.priceAction ? { priceAction: opsi.priceAction } : {},
+    )
 
     if (entries.length > 0) {
       await prisma.productLog.createMany({

@@ -26,6 +26,11 @@ import type { ImportResult } from "@/lib/api/accurate/import-sheet"
  * ribuan terpotong, atau selisih ekstrem) TIDAK ikut tercentang otomatis dan
  * checkbox-nya dinonaktifkan bila harganya memang tak ada. Peringatannya
  * ditampilkan sebagai catatan — staff yang memutuskan, sesuai permintaan.
+ *
+ * Hal yang sama berlaku untuk baris ber-`disuntingManusia`: harganya terakhir
+ * diubah orang lewat panel, sesudah sinkronisasi terakhirnya (docs/13 §6). Ia
+ * tetap tampil, tetap bisa dicentang manual, tapi tidak pernah ikut "pilih
+ * semua yang aman" — menimpa keputusan orang harus disengaja.
  */
 export function HargaAccurateView({ initial }: { initial: AccuratePricePreview }) {
   const [preview, setPreview] = React.useState(initial)
@@ -60,8 +65,19 @@ export function HargaAccurateView({ initial }: { initial: AccuratePricePreview }
   }
 
   function pilihSemuaAman() {
-    // "Aman" = dapat diterapkan DAN tanpa peringatan.
-    const aman = dapatDiterapkan.filter((r) => r.peringatan === null).map((r) => r.kodeAccurate)
+    /**
+     * "Aman" = dapat diterapkan, tanpa peringatan, DAN harganya belum disunting
+     * manusia.
+     *
+     * Yang terakhir itu aturan §6: harga yang sudah diubah orang di panel tidak
+     * ditimpa sinkronisasi. Barisnya tetap ada di layar dan tetap bisa dicentang
+     * sendiri — yang dihindari adalah ia ikut terbawa saat seseorang menekan
+     * "pilih semua", karena pada saat itulah pekerjaan orang lain hilang tanpa
+     * ada yang merasa membatalkannya.
+     */
+    const aman = dapatDiterapkan
+      .filter((r) => r.peringatan === null && !r.disuntingManusia)
+      .map((r) => r.kodeAccurate)
     setDipilih(new Set(aman))
   }
 
@@ -135,10 +151,11 @@ export function HargaAccurateView({ initial }: { initial: AccuratePricePreview }
   return (
     <div className="space-y-4">
       {/* Ringkasan */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Kartu label="Termapping" nilai={ringkasan.totalTerpetakan} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <Kartu label="Tertaut" nilai={ringkasan.totalTerpetakan} />
         <Kartu label="Cocok di web" nilai={ringkasan.cocokDiWeb} />
         <Kartu label="Harga beda" nilai={ringkasan.hargaBeda} />
+        <Kartu label="Disunting staff" nilai={ringkasan.disuntingManusia} />
         <Kartu label="Ada peringatan" nilai={ringkasan.adaPeringatan} warna />
       </div>
 
@@ -249,11 +266,25 @@ export function HargaAccurateView({ initial }: { initial: AccuratePricePreview }
                     {r.selisihPersen === null ? "—" : `${r.selisihPersen > 0 ? "+" : ""}${r.selisihPersen.toFixed(0)}%`}
                   </td>
                   <td className="p-2">
-                    {r.peringatan ? (
-                      <span className="text-xs text-amber-600 dark:text-amber-400">⚠️ {r.peringatan}</span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
+                    {/*
+                      Dua catatan yang bisa muncul bersamaan, jadi ditumpuk —
+                      bukan salah satu menggantikan yang lain. Baris yang
+                      harganya aneh DAN sudah disunting staff perlu memperlihatkan
+                      keduanya; staff yang memutuskan.
+                    */}
+                    <div className="space-y-1">
+                      {r.peringatan && (
+                        <div className="text-xs text-amber-600 dark:text-amber-400">⚠️ {r.peringatan}</div>
+                      )}
+                      {r.disuntingManusia && (
+                        <div className="text-xs text-sky-600 dark:text-sky-400">
+                          ✎ Harga disunting staff — tidak ikut terpilih otomatis
+                        </div>
+                      )}
+                      {!r.peringatan && !r.disuntingManusia && (
+                        <div className="text-xs text-muted-foreground">—</div>
+                      )}
+                    </div>
                   </td>
                 </tr>
               )

@@ -100,7 +100,19 @@ export async function terapkanHargaAction(
       continue
     }
 
-    const res = await updateProductPriceAction(item.wooId, item.regularPrice)
+    /**
+     * Dicatat sebagai `SYNC_PRICE`, bukan `UPDATE_PRICE`.
+     *
+     * Inilah yang membuat aturan "suntingan di web menang" (docs/13 §6) bisa
+     * bekerja sama sekali: pratinjau membedakan harga milik manusia dari harga
+     * hasil sinkronisasi dengan membandingkan dua aksi itu di `product_logs`.
+     * Kalau penerapan ikut menulis `UPDATE_PRICE`, sesudah sinkronisasi pertama
+     * SETIAP produk akan tampak disunting manusia — dan sinkronisasi berikutnya
+     * melewati semuanya tanpa ada yang mengerti kenapa.
+     */
+    const res = await updateProductPriceAction(item.wooId, item.regularPrice, undefined, {
+      priceAction: "SYNC_PRICE",
+    })
     if (res.error) {
       hasil.gagal.push({ wooId: item.wooId, alasan: res.error })
     } else {
