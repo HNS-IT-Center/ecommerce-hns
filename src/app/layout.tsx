@@ -23,6 +23,41 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+/**
+ * Seluruh halaman dirender saat diminta, bukan saat build.
+ *
+ * ALASANNYA BUKAN SELERA, MELAINKAN TEMPAT BUILD BERJALAN. Sejak build pindah
+ * ke runner GitHub (lihat `.github/workflows/deploy.yml`), proses build tidak
+ * lagi punya akses ke database: MySQL Hostinger membatasi koneksi per host, dan
+ * IP runner GitHub berubah-ubah, jadi satu-satunya cara memberinya akses adalah
+ * membuka Remote MySQL ke `%` — database produksi terbuka ke seluruh internet.
+ * Itu harga yang tidak sepadan.
+ *
+ * Tanpa database, prerender tidak mungkin: layout ini membaca tema
+ * (`getThemeSettings`) dan `Header` membaca kategori (`getCategories`), dan
+ * keduanya ada di SETIAP halaman. Gejalanya dulu menyesatkan — build mati di
+ * `/admin/login` dan `/_not-found`, halaman yang sama sekali tidak terlihat
+ * berhubungan dengan tema maupun kategori.
+ *
+ * Jalan yang TIDAK diambil: membuat pembacaan itu "fail-soft" supaya build
+ * lolos. Itu memang menghijaukan build, tapi HTML yang terkirim ke produksi
+ * akan memuat menu kategori kosong — dan itulah yang dilihat pengunjung sampai
+ * revalidasi berjalan. Build hijau yang menyajikan halaman salah lebih buruk
+ * daripada build merah.
+ *
+ * Yang dikorbankan: 20 rute yang tadinya statis, termasuk beranda. Rute
+ * berlalu-lintas tinggi lainnya — `/shop`, `/product/[slug]`,
+ * `/category/[slug]` — memang sudah dinamis sejak awal, jadi tidak berubah.
+ * Bacaan datanya sendiri tetap lewat `unstable_cache`, jadi dinamis di sini
+ * berarti render ulang React tiap permintaan, BUKAN query database tiap
+ * permintaan.
+ *
+ * Kalau suatu hari build punya database yang aman dijangkau (mis. replika
+ * read-only atau runner ber-IP tetap), baris ini boleh dicabut dan prerender
+ * kembali.
+ */
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   metadataBase: new URL(env.NEXT_PUBLIC_SITE_URL),
   title: {
