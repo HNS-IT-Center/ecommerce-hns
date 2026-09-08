@@ -248,12 +248,73 @@ bukan selera, melainkan syarat:
 
 ---
 
-## 6. Yang masih terbuka
+## 6. Suntingan di web menang atas sinkronisasi
 
-- **Siapa yang berwenang atas SRP kalau Accurate dan web berbeda?** Sejauh ini
-  SRP ditetapkan PIC di Accurate lalu mengalir ke web. Perlu ditegaskan apa yang
-  terjadi kalau seseorang mengubah harga di panel web setelah sinkronisasi —
-  apakah sinkronisasi berikutnya menimpanya kembali?
+**Kalau harga sudah diubah orang di panel web, sinkronisasi berikutnya TIDAK
+boleh menimpanya.** Keputusan pemilik project.
+
+Alasannya berdiri sendiri: orang yang mengubah harga di panel melakukannya
+dengan sengaja dan tahu konteksnya — promo, harga khusus proyek, koreksi atas
+angka Accurate yang salah. Sinkronisasi yang menimpanya diam-diam membuat
+pekerjaan itu hilang tanpa ada yang merasa membatalkannya, dan yang paling buruk
+ia terjadi tanpa suara: tidak ada galat, harga cuma kembali ke angka lama.
+
+### 6.1 Cara membedakannya
+
+**Datanya sudah ada, tidak perlu kolom baru.** `product_logs` mencatat tiap
+perubahan harga beserta pelakunya, dan aksinya sudah terpisah:
+
+| Aksi | Artinya |
+|---|---|
+| `UPDATE_PRICE` | seseorang mengubah harga lewat panel |
+| `SYNC_PRICE` | harga datang dari penerapan Accurate |
+
+Jadi aturannya bisa dibaca dari riwayat: **kalau `UPDATE_PRICE` terakhir untuk
+sebuah produk lebih baru daripada `SYNC_PRICE` terakhirnya, harga itu milik
+manusia** — sinkronisasi melewatinya.
+
+Alternatifnya kolom penanda di `products` (mis. waktu sinkronisasi terakhir),
+yang lebih murah dibaca massal tapi menambah keadaan yang harus dijaga tetap
+benar. Pilih saat implementasi; yang penting aturannya, bukan mekanismenya.
+
+### 6.2 Tetap ditampilkan, bukan disembunyikan
+
+Baris yang dilewati **tetap muncul di pratinjau**, ditandai bahwa harganya
+disunting manusia dan karena itu tidak ikut terpilih. Menyembunyikannya akan
+menimbulkan pertanyaan yang lebih buruk — *kenapa barang ini tidak muncul?* —
+dan staff yang memang ingin mengembalikannya ke harga Accurate harus tetap
+bisa, dengan mencentangnya sendiri secara sadar.
+
+---
+
+## 7. Cara mengerjakannya: uji di database terpisah dulu
+
+**Semua percobaan dilakukan di database uji, bukan produksi.** Baru setelah
+caranya terbukti, ia dipakai di database sebenarnya. Keputusan pemilik project.
+
+Databasenya **sudah ada dan siap pakai** — tidak perlu membuat yang baru:
+
+| | |
+|---|---|
+| Nama | `u859138789_restore_uji` |
+| Env | `RESTORE_UJI_DATABASE_URL` di `.env.local` (**lokal saja**, jangan masuk env produksi) |
+| Isi | `products` 5.415 · `accurate_products` 7.041 — **sama persis dengan produksi** |
+| Tabel | `products`, `accurate_products`, `accurate_woo_mapping`, `product_logs` |
+
+Dibuat saat migrasi Satu Login (5 Sep 2026) dan ternyata masih segar. Kalau
+suatu saat terasa basi, segarkan dengan ekspor ulang dari produksi — prosedurnya
+sama seperti waktu itu.
+
+**Yang wajib diuji di sana sebelum menyentuh produksi:**
+- Pengisian awal kolom penambat, termasuk saringan `woo_product_id > 0` (§2.1)
+- Aturan awalan `2` menang atas `1` (§3.2)
+- Bahwa harga yang disunting manusia benar-benar dilewati (§6)
+- Bahwa barang tanpa harga jual tidak ikut (§3.3)
+
+---
+
+## 8. Yang masih terbuka
+
 - **Barang Accurate yang tidak punya produk web sama sekali** — dibiarkan, atau
   suatu saat dibuatkan produk draft? Pemilik project belum memutuskan; untuk
   sekarang di luar ruang lingkup.
@@ -262,7 +323,7 @@ bukan selera, melainkan syarat:
 
 ---
 
-## 7. Rujukan
+## 9. Rujukan
 
 - `docs/08-database-migrations.md` — prosedur wajib untuk Fase 1
 - `docs/12-kendala-terbuka.md` — kendala sinkronisasi WooCommerce yang masih ada
