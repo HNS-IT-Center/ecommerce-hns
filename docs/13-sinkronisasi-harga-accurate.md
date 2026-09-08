@@ -115,7 +115,60 @@ berawalan `1` dan masih hidup, ia tidak boleh ikut terbuang.
   **tidak dibuang** — ia tetap boleh ditautkan kalau memang tidak ada padanan
   berawalan `2`.
 
-### 3.3 Penautan: KOLOM KODE ACCURATE DI PRODUK
+### 3.3 Yang tidak punya harga jual, tidak ikut
+
+**Saringannya satu: barang wajib punya `SP`.** Tidak ada daftar kategori yang
+dikecualikan, dan itu disengaja.
+
+Pemilik project menyebut lima kelompok yang tidak perlu disinkronkan — jasa,
+PC rakitan pesanan, tas/backpack, sparepart, dan baterai. Diperiksa ke data,
+kelimanya ternyata punya satu benang merah:
+
+| Kelompok | Jumlah | Punya `SP` |
+|---|---|---|
+| JASA | 3 | **0** |
+| RAKITAN / SET PC | 42 | **3** |
+| Kategori BACKPACK/TAS | 30 | **1** |
+| Kategori SPAREPART | 71 | **1** |
+| Kategori BATERAI | 56 | **1** |
+
+Dari 202 barang, hanya **6** yang punya harga jual. Itu masuk akal: harga jasa
+menyatu dengan servis dan tidak dipisahkan di Accurate; PC rakitan dibuat per
+pesanan — namanya bahkan nama pelanggan (`PC RAKITAN BP NANDA`,
+`PC RAKITAN HARAPAN BUNDA`, `PC RAKITAN PT WONDER MOBILITAS BATAM`); sparepart
+dan baterai dipakai memperbaiki, bukan dijual di web.
+
+Karena yang disinkronkan adalah harga jual, **barang tanpa harga jual tidak
+punya apa pun untuk dikirim.** Ia tersaring dengan sendirinya.
+
+**Kenapa bukan daftar kategori:** daftar harus dirawat. Kategori baru yang lupa
+didaftarkan akan diam-diam ikut tersinkron, dan tidak ada yang tahu sampai
+harganya sudah tampil di web. Saringan "punya harga jual" tidak pernah basi.
+
+Konsekuensi yang diterima: 6 barang dari kelompok di atas yang kebetulan
+berharga akan tetap ikut. Kalau suatu saat itu mengganggu, penanda per-barang
+lebih tepat daripada memblokir sekategori.
+
+### 3.4 Berapa yang benar-benar bisa disinkronkan hari ini
+
+Saringan di atas ditumpuk berurutan:
+
+| Tahap | Jumlah |
+|---|---|
+| Semua barang Accurate | 7.041 |
+| Punya harga jual (`SP`) | 2.312 |
+| + harganya angka wajar (≥ 1.000) | 2.067 |
+| **+ tertaut ke produk web yang sungguh ada** | **479** |
+
+**479.** Itu angka yang jujur untuk hari ini, dan ia menunjukkan di mana
+hambatannya: bukan di harga — 2.067 barang sudah siap dari sisi harga — melainkan
+di **penautan**. Fase 2 yang menentukan, bukan Fase 3.
+
+Selisih 2.312 → 2.067 (245 barang) adalah harga yang angkanya tidak wajar,
+seperti `145` untuk barang ratusan ribu. Barang itu **tidak dibuang dan tidak
+ditebak** — ia ditandai untuk dilihat manusia, sesuai §5.
+
+### 3.5 Penautan: KOLOM KODE ACCURATE DI PRODUK
 
 Tabel `products` mendapat kolom baru berisi kode Accurate barang itu. Sekali
 ditautkan, tautannya tepat selamanya — tidak ada pencocokan ulang berdasarkan
