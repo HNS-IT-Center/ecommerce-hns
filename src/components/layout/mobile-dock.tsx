@@ -2,9 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Monitor, ShoppingBag, ShoppingCart, User } from "lucide-react"
-import { useCartStore } from "@/store/cart"
-import { useIsHydrated } from "@/hooks/use-is-hydrated"
+import { Home, Monitor, PcCase, ShoppingBag, User } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ChristmasDockDecor } from "@/components/theme/christmas-decor"
 
@@ -20,9 +18,7 @@ import { ChristmasDockDecor } from "@/components/theme/christmas-decor"
  */
 export function MobileDock({ isChristmas = false }: { isChristmas?: boolean }) {
   const pathname = usePathname()
-  const mounted = useIsHydrated()
-  const totalItems = useCartStore((state) => state.getTotalItems())
-  
+
   // Hide dock if on desktop or admin routes
   const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768
   const isAdmin = pathname.startsWith('/admin')
@@ -58,19 +54,24 @@ export function MobileDock({ isChristmas = false }: { isChristmas?: boolean }) {
       isActive: pathname.startsWith("/shop") || pathname.startsWith("/product") || pathname.startsWith("/search"),
     },
     {
-      label: "Cart",
-      icon: (
-        <div id="cart-icon-mobile" className="relative flex items-center justify-center">
-          <ShoppingCart className="h-6 w-6" />
-          {mounted && totalItems > 0 && (
-            <span className="absolute -right-2 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-sale-red text-[10px] font-bold text-white">
-              {totalItems > 99 ? "99+" : totalItems}
-            </span>
-          )}
-        </div>
-      ),
-      href: "/cart",
-      isActive: pathname === "/cart",
+      /**
+       * Menggantikan tombol Keranjang yang dulu di slot ini.
+       *
+       * Keranjang tidak kehilangan tempat: `CartBadge` di header `fixed`
+       * membawanya di pojok kanan atas pada tiap halaman, lengkap dengan
+       * penghitung isinya — jadi slot ini rangkap, sementara PC Prebuild sama
+       * sekali tidak punya pintu di mobile meski ada di menu header desktop.
+       *
+       * Badge jumlah item tidak dibawa ke sini: satu-satunya yang perlu
+       * menampilkannya adalah keranjang, dan ia sudah punya badge sendiri di
+       * header. Dengan begitu dock tidak lagi berlangganan `useCartStore`, dan
+       * ia tidak perlu menunggu hydration hanya untuk memutuskan menampilkan
+       * angka.
+       */
+      label: "PC Prebuild",
+      icon: <PcCase className="h-6 w-6" />,
+      href: "/pc-prebuild",
+      isActive: pathname.startsWith("/pc-prebuild"),
     },
     {
       label: "Profil",
