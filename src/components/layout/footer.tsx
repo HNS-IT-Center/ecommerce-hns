@@ -1,7 +1,9 @@
 import Link from "next/link"
 import Image from "next/image"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
-import { CS_EMAIL } from "@/lib/constants/contact"
+import { CS_EMAIL, SOCIAL_LINKS } from "@/lib/constants/contact"
+import { InstagramIcon, TiktokIcon } from "@/components/icons/social-icons"
+import WhatsappIcon from "@/components/icons/whatsapp-icon"
 import { env } from "@/config/env"
 import { getThemeSettings } from "@/lib/theme/settings"
 import { ChristmasFooterDecor, ChristmasFooterPattern } from "@/components/theme/christmas-decor"
@@ -71,16 +73,50 @@ export async function Footer() {
             <p className="text-sm text-white/70 leading-relaxed">
               Pusat IT & Gaming terpercaya di Batam. Harga terbaik, garansi resmi, teknisi berpengalaman.
             </p>
-            <div className="flex gap-4">
-              <Link href="#" className="text-white/70 hover:text-white text-sm font-medium">
-                Instagram
-              </Link>
-              <Link href="#" className="text-white/70 hover:text-white text-sm font-medium">
-                Facebook
-              </Link>
-              <Link href="#" className="text-white/70 hover:text-white text-sm font-medium">
-                Twitter
-              </Link>
+            {/*
+              Dulu tiga tautan teks — Instagram, Facebook, Twitter — dan
+              ketiganya `href="#"`. Yang diklik tidak menuju ke mana pun, dan dua
+              di antaranya menyebut kanal yang memang tidak dipakai HNS.
+
+              Sekarang kanal yang benar-benar ada: Instagram, TikTok, WhatsApp.
+              `aria-label` mengisi nama kanalnya karena isinya kini lambang, dan
+              `title` menampilkannya saat disorot — tanpa keduanya tombol ini
+              tak punya nama bagi pembaca layar maupun bagi yang ragu ikonnya apa.
+
+              `target="_blank"` selalu berpasangan dengan `rel="noreferrer"`
+              (`noopener` sudah tersirat di peramban modern, ditulis untuk yang
+              lama): tanpa itu halaman tujuan bisa menyentuh `window.opener`.
+            */}
+            <div className="flex gap-3">
+              {[
+                { nama: "Instagram", href: SOCIAL_LINKS.instagram, Ikon: InstagramIcon },
+                { nama: "TikTok", href: SOCIAL_LINKS.tiktok, Ikon: TiktokIcon },
+              ].map(({ nama, href, Ikon }) => (
+                <a
+                  key={nama}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={nama}
+                  title={nama}
+                  className="flex h-9 w-9 items-center justify-center rounded-full border border-white/20 text-white/70 transition-colors hover:border-white/40 hover:text-white"
+                >
+                  <Ikon size={18} />
+                </a>
+              ))}
+              <a
+                href={waUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="WhatsApp"
+                title="WhatsApp"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/20 text-white/70 transition-colors hover:border-white/40 hover:text-white"
+              >
+                {/* Nomornya dari env lewat `waUrl` yang sudah dirakit di atas —
+                    tidak disalin ulang, supaya pergantian nomor cukup di satu
+                    tempat. */}
+                <WhatsappIcon size={18} strokeWidth={2} />
+              </a>
             </div>
           </div>
 

@@ -4,6 +4,8 @@ import { Footer } from "@/components/layout/footer";
 import { Star, MapPin } from "lucide-react";
 import { getActiveStores } from "@/lib/api/stores";
 import { formatOpeningHours } from "@/lib/utils/opening-hours";
+import { SOCIAL_LINKS } from "@/lib/constants/contact";
+import { InstagramIcon, TiktokIcon } from "@/components/icons/social-icons";
 
 export const metadata = {
   title: "Tentang Kami",
@@ -79,20 +81,32 @@ export default async function AboutPage() {
                 </p>
               </div>
 
-              {/* Social Icons Placeholder */}
-              <div className="flex gap-4 pt-2">
-                <a
-                  href="#"
-                  className="flex h-10 w-10 items-center justify-center rounded-md bg-black text-white hover:bg-black/80 transition-colors"
-                >
-                  <span className="font-bold">TikTok</span>
-                </a>
-                <a
-                  href="#"
-                  className="flex h-10 w-10 items-center justify-center rounded-md bg-black text-white hover:bg-black/80 transition-colors"
-                >
-                  <span className="font-bold">IG</span>
-                </a>
+              {/*
+                Dulu dua kotak `href="#"` berisi tulisan "TikTok" dan "IG" —
+                tautan yang tidak menuju ke mana pun, dan kata "TikTok" meluber
+                keluar dari kotak 40×40 yang memuatnya.
+
+                Alamatnya dibaca dari `SOCIAL_LINKS`, satu tempat yang sama
+                dengan footer: dua salinan berarti dua kesempatan memperbaiki
+                sebagian lalu lupa sisanya.
+              */}
+              <div className="flex gap-3 pt-2">
+                {[
+                  { nama: "TikTok", href: SOCIAL_LINKS.tiktok, Ikon: TiktokIcon },
+                  { nama: "Instagram", href: SOCIAL_LINKS.instagram, Ikon: InstagramIcon },
+                ].map(({ nama, href, Ikon }) => (
+                  <a
+                    key={nama}
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={nama}
+                    title={nama}
+                    className="flex h-10 w-10 items-center justify-center rounded-md bg-black text-white transition-colors hover:bg-black/80"
+                  >
+                    <Ikon size={20} />
+                  </a>
+                ))}
               </div>
             </div>
 
@@ -257,15 +271,20 @@ export default async function AboutPage() {
                       <Star key={idx} className="h-4 w-4 fill-current" />
                     ))}
                   </div>
+                  {/*
+                    "Baca selengkapnya" yang dulu ada di sini sudah dibuang: ia
+                    `href="#"`, jadi mengkliknya hanya melompat ke puncak
+                    halaman. Lebih dari itu ia tak pernah punya guna — ulasan
+                    terpanjang 119 karakter sedangkan `line-clamp-4` memuat
+                    sekitar 200, jadi tidak satu pun pernah terpotong. Salah
+                    satunya berbunyi "Bagus" dan tetap menawarkan selengkapnya.
+
+                    `line-clamp-4` dipertahankan sebagai pagar kalau suatu saat
+                    ada ulasan panjang; yang dihapus cuma tautannya.
+                  */}
                   <p className="mt-3 text-sm text-muted-foreground line-clamp-4">
                     {t.review}
                   </p>
-                  <a
-                    href="#"
-                    className="mt-2 inline-block text-xs text-blue-600 hover:underline"
-                  >
-                    Baca selengkapnya
-                  </a>
                 </div>
               ))}
             </div>

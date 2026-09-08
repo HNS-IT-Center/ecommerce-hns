@@ -26,3 +26,22 @@
  * memang dibuka setiap hari adalah cara termurah menutup risiko itu.
  */
 export const CS_EMAIL = "support@hnsitcenter.id"
+
+/**
+ * Akun media sosial resmi HNS.
+ *
+ * Ditaruh di sini dengan alasan yang sama seperti `CS_EMAIL`: sebelumnya
+ * tautannya `href="#"` di DUA tempat — footer dan halaman Tentang Kami — dan
+ * dua salinan berarti dua kesempatan memperbaiki sebagian lalu lupa sisanya.
+ * Yang di footer bahkan menyebut Facebook & Twitter, dua kanal yang tidak
+ * dipakai HNS sama sekali.
+ *
+ * WhatsApp TIDAK ikut di sini: nomornya sudah hidup sebagai
+ * `NEXT_PUBLIC_WHATSAPP_CS_NUMBER` di env dan dirakit `buildWhatsAppUrl()`.
+ * Menyalinnya ke sini akan membuat nomor yang sama punya dua sumber, dan yang
+ * satu pasti tertinggal saat nomornya berganti.
+ */
+export const SOCIAL_LINKS = {
+  instagram: "https://www.instagram.com/hns.itcenter/",
+  tiktok: "https://www.tiktok.com/@hns.itcenter",
+} as const
