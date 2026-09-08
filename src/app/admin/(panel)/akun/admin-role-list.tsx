@@ -1,6 +1,6 @@
 "use client"
 
-import { useActionState, useEffect, useState } from "react"
+import { useActionState, useEffect, useState, useTransition } from "react"
 import { CheckCircle2, Info, ShieldCheck, X, Check, UserMinus } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -99,12 +99,25 @@ export function AdminRoleList({ admins, currentUserId, roleOptions, canManage }:
     }
   }, [ctx])
 
+  /**
+   * Menu klik-kanan memanggil action-nya sendiri, tidak lewat `<form action>`
+   * seperti formulir lain di panel — dan fungsi dari `useActionState` HARUS
+   * dijalankan di dalam transition.
+   *
+   * Tanpa itu React memperingatkan di konsol dan `isPending` tidak pernah
+   * menyala, jadi tombolnya tidak terkunci selama permintaan berjalan: klik
+   * kedua di detik yang sama mengirim perubahan peran dua kali. Formulir lain
+   * tidak kena karena mengoper action ke atribut `action`, yang sudah
+   * dibungkus transition oleh React sendiri.
+   */
+  const [, startTransition] = useTransition()
+
   /** Ubah peran dinamis (roleId) lewat menu — submit programatik ke action. */
   function pilihPeran(adminId: string, roleId: string) {
     const fd = new FormData()
     fd.set("userId", adminId)
     fd.set("roleId", roleId) // "" = lepas → kembali ke owner/staff
-    roleIdAction(fd)
+    startTransition(() => roleIdAction(fd))
     setCtx(null)
   }
 
@@ -135,7 +148,8 @@ export function AdminRoleList({ admins, currentUserId, roleOptions, canManage }:
     if (!akanDiturunkan) return
     const fd = new FormData()
     fd.set("userId", akanDiturunkan.id)
-    turunAction(fd)
+    // Di dalam transition dengan alasan yang sama seperti `pilihPeran` di atas.
+    startTransition(() => turunAction(fd))
     setAkanDiturunkan(null)
   }
 
