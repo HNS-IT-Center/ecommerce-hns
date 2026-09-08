@@ -44,6 +44,14 @@ export type BarisTabelHarga = {
   /** Harga dealer/B2B (kolom `PRICE`). Internal. */
   dealer: HargaAccurate
   stok: number | null
+  /**
+   * Produk web yang tertaut lewat `products.accurate_code`, atau null.
+   *
+   * Permintaan pemilik project (docs/13 §8.2): barang tanpa produk web TIDAK
+   * dibuatkan draft — yang dibutuhkan cuma keterangan ada atau belum. Daftar
+   * yang belum tertaut sekaligus menjadi antrean kerja penautan.
+   */
+  produkWeb: { wooId: number; nama: string } | null
 }
 
 /**
@@ -58,12 +66,12 @@ export type BarisTabelHarga = {
  * yang membuat seluruh kolom harga tampak acak justru saat diurutkan.
  */
 const KOLOM_URUT = {
-  nama: "`NAMA BARANG`",
-  kode: "`Kode Accurate`",
-  srp: "CAST(`SP` AS DECIMAL(18,0))",
-  modal: "CAST(`CP` AS DECIMAL(18,0))",
-  dealer: "CAST(`PRICE` AS DECIMAL(18,0))",
-  stok: "`Stok Sistem`",
+  nama: "a.`NAMA BARANG`",
+  kode: "a.`Kode Accurate`",
+  srp: "CAST(a.`SP` AS DECIMAL(18,0))",
+  modal: "CAST(a.`CP` AS DECIMAL(18,0))",
+  dealer: "CAST(a.`PRICE` AS DECIMAL(18,0))",
+  stok: "a.`Stok Sistem`",
 } as const
 
 export type KolomUrut = keyof typeof KOLOM_URUT
@@ -81,15 +89,18 @@ export type ArahUrut = "asc" | "desc"
  * persis pemandangan yang membuat pengurutan terasa rusak.
  */
 const SUMBER_KOSONG: Partial<Record<KolomUrut, string>> = {
-  srp: "(`SP` IS NULL OR `SP` = '' OR CAST(`SP` AS DECIMAL(18,0)) <= 0)",
-  modal: "(`CP` IS NULL OR `CP` = '' OR CAST(`CP` AS DECIMAL(18,0)) <= 0)",
-  dealer: "(`PRICE` IS NULL OR `PRICE` = '' OR CAST(`PRICE` AS DECIMAL(18,0)) <= 0)",
-  nama: "(`NAMA BARANG` IS NULL OR `NAMA BARANG` = '')",
+  srp: "(a.`SP` IS NULL OR a.`SP` = '' OR CAST(a.`SP` AS DECIMAL(18,0)) <= 0)",
+  modal: "(a.`CP` IS NULL OR a.`CP` = '' OR CAST(a.`CP` AS DECIMAL(18,0)) <= 0)",
+  dealer: "(a.`PRICE` IS NULL OR a.`PRICE` = '' OR CAST(a.`PRICE` AS DECIMAL(18,0)) <= 0)",
+  nama: "(a.`NAMA BARANG` IS NULL OR a.`NAMA BARANG` = '')",
 }
 
 export function isKolomUrut(v: string): v is KolomUrut {
   return v in KOLOM_URUT
 }
+
+/** Penyaring keterkaitan dengan katalog web. Kosong = semua. */
+export type FilterTautan = "tertaut" | "belum"
 
 export type FilterTabelHarga = {
   q?: string
@@ -99,6 +110,7 @@ export type FilterTabelHarga = {
   page?: number
   urut?: KolomUrut
   arah?: ArahUrut
+  tautan?: FilterTautan
 }
 
 export type HasilTabelHarga = {
@@ -127,6 +139,8 @@ type RawRow = {
   cp: string | null
   price: string | null
   stok: string | number | null
+  wooId: number | bigint | null
+  namaProdukWeb: string | null
 }
 
 /**
@@ -168,23 +182,30 @@ function bangunWhere(filter: FilterTabelHarga): { sql: string; params: unknown[]
   const kata = filter.q?.trim().split(/\s+/).filter(Boolean) ?? []
   for (const k of kata) {
     syarat.push(
-      "(`Kode Accurate` LIKE ? OR `NAMA BARANG` LIKE ? OR `NAMA BRAND` LIKE ? OR `KATEGORI` LIKE ?)",
+      "(a.`Kode Accurate` LIKE ? OR a.`NAMA BARANG` LIKE ? OR a.`NAMA BRAND` LIKE ? OR a.`KATEGORI` LIKE ?)",
     )
     const pola = `%${k}%`
     params.push(pola, pola, pola, pola)
   }
   if (filter.kategori) {
-    syarat.push("`KATEGORI` = ?")
+    syarat.push("a.`KATEGORI` = ?")
     params.push(filter.kategori)
   }
   if (filter.brand) {
-    syarat.push("`NAMA BRAND` = ?")
+    syarat.push("a.`NAMA BRAND` = ?")
     params.push(filter.brand)
   }
   if (filter.status) {
-    syarat.push("`STATUS` = ?")
+    syarat.push("a.`STATUS` = ?")
     params.push(filter.status)
   }
+
+  /**
+   * Penyaring "sudah/belum ada di web". Kolomnya milik `products`, bukan
+   * `accurate_products` — sah karena kedua query memakai LEFT JOIN yang sama.
+   */
+  if (filter.tautan === "tertaut") syarat.push("p.accurate_code IS NOT NULL")
+  if (filter.tautan === "belum") syarat.push("p.accurate_code IS NULL")
 
   return { sql: syarat.length ? `WHERE ${syarat.join(" AND ")}` : "", params }
 }
@@ -220,8 +241,19 @@ export async function listHargaAccurate(filter: FilterTabelHarga): Promise<Hasil
   const prisma = getPrisma()
   const { sql: where, params } = bangunWhere(filter)
 
+  /**
+   * Query hitung memakai alias & join yang SAMA PERSIS dengan query isi.
+   *
+   * Join-nya ikut walau tidak ada kolom `products` yang dihitung, karena
+   * penyaring "sudah/belum ada di web" menyentuhnya — dan kalau hanya salah
+   * satu query yang punya join, jumlah halaman berhenti cocok dengan isinya.
+   * LEFT JOIN pada kolom unik tidak menggandakan baris.
+   */
   const totalRows = await prisma.$queryRawUnsafe<{ n: bigint | number }[]>(
-    `SELECT COUNT(*) AS n FROM accurate_products ${where}`,
+    `SELECT COUNT(*) AS n
+     FROM accurate_products a
+     LEFT JOIN products p ON p.accurate_code = a.\`Kode Accurate\`
+     ${where}`,
     ...params,
   )
   const total = Number(totalRows[0]?.n ?? 0)
@@ -233,16 +265,19 @@ export async function listHargaAccurate(filter: FilterTabelHarga): Promise<Hasil
 
   const rows = await prisma.$queryRawUnsafe<RawRow[]>(
     `SELECT
-       \`Kode Accurate\` AS kodeAccurate,
-       \`NAMA BARANG\`   AS namaBarang,
-       \`KATEGORI\`      AS kategori,
-       \`NAMA BRAND\`    AS brand,
-       \`STATUS\`        AS status,
-       \`SP\`            AS sp,
-       \`CP\`            AS cp,
-       \`PRICE\`         AS price,
-       \`Stok Sistem\`   AS stok
-     FROM accurate_products
+       a.\`Kode Accurate\` AS kodeAccurate,
+       a.\`NAMA BARANG\`   AS namaBarang,
+       a.\`KATEGORI\`      AS kategori,
+       a.\`NAMA BRAND\`    AS brand,
+       a.\`STATUS\`        AS status,
+       a.\`SP\`            AS sp,
+       a.\`CP\`            AS cp,
+       a.\`PRICE\`         AS price,
+       a.\`Stok Sistem\`   AS stok,
+       p.woo_id            AS wooId,
+       p.name              AS namaProdukWeb
+     FROM accurate_products a
+     LEFT JOIN products p ON p.accurate_code = a.\`Kode Accurate\`
      ${where}
      ORDER BY ${bangunOrderBy(filter)}
      LIMIT ? OFFSET ?`,
@@ -262,12 +297,112 @@ export async function listHargaAccurate(filter: FilterTabelHarga): Promise<Hasil
       modal: parseHargaAccurate(r.cp),
       dealer: parseHargaAccurate(r.price),
       stok: r.stok === null ? null : Number(r.stok),
+      produkWeb:
+        r.wooId === null
+          ? null
+          : { wooId: Number(r.wooId), nama: r.namaProdukWeb ?? "(tanpa nama)" },
     })),
     total,
     page,
     pageCount,
     perPage: PER_PAGE,
   }
+}
+
+/** Satu calon produk web di pemilih penautan. */
+export type CalonProdukWeb = {
+  wooId: number
+  nama: string
+  sku: string | null
+  /** Kode Accurate yang SUDAH menambatnya, kalau ada. */
+  sudahTertaut: string | null
+}
+
+/**
+ * Cari produk web untuk ditautkan.
+ *
+ * Produk yang SUDAH tertaut tetap ikut muncul, tidak disembunyikan — beserta
+ * kode yang menambatnya. Menyembunyikannya membuat orang mencari-cari produk
+ * yang jelas ada di katalog lalu menyimpulkan pencariannya rusak; menampilkannya
+ * beserta keterangan membuat sebabnya langsung terbaca, dan tombol tautnya
+ * yang dimatikan.
+ *
+ * Pencocokannya per kata seperti tabel harga, dengan alasan yang sama.
+ */
+export async function cariProdukWeb(q: string, batas = 20): Promise<CalonProdukWeb[]> {
+  const kata = q.trim().split(/\s+/).filter(Boolean)
+  if (kata.length === 0) return []
+
+  const syarat: string[] = []
+  const params: unknown[] = []
+  for (const k of kata) {
+    syarat.push("(name LIKE ? OR sku LIKE ?)")
+    params.push(`%${k}%`, `%${k}%`)
+  }
+
+  const rows = await getPrisma().$queryRawUnsafe<
+    { wooId: number | bigint; nama: string; sku: string | null; kode: string | null }[]
+  >(
+    `SELECT woo_id AS wooId, name AS nama, sku, accurate_code AS kode
+     FROM products
+     WHERE ${syarat.join(" AND ")}
+     ORDER BY (accurate_code IS NOT NULL) ASC, name ASC
+     LIMIT ?`,
+    ...params,
+    batas,
+  )
+
+  return rows.map((r) => ({
+    wooId: Number(r.wooId),
+    nama: r.nama,
+    sku: r.sku,
+    sudahTertaut: r.kode,
+  }))
+}
+
+export type HasilTaut =
+  | { ok: true }
+  | { ok: false; alasan: string }
+
+/**
+ * Tautkan satu kode Accurate ke satu produk web — atau lepaskan (`kode: null`).
+ *
+ * Menolak, bukan menimpa, kalau kodenya sudah menambat produk lain. Kolomnya
+ * unik, jadi menimpa berarti memutus tautan produk lain diam-diam — dan orang
+ * yang menautkan tidak akan tahu ia baru saja melepas sesuatu.
+ */
+export async function tautkanKode(wooId: number, kode: string | null): Promise<HasilTaut> {
+  const prisma = getPrisma()
+
+  if (kode !== null) {
+    const ada = await prisma.$queryRawUnsafe<{ n: bigint }[]>(
+      "SELECT COUNT(*) AS n FROM accurate_products WHERE `Kode Accurate` = ?",
+      kode,
+    )
+    if (Number(ada[0]?.n ?? 0) === 0) {
+      return { ok: false, alasan: "Kode Accurate tidak ditemukan." }
+    }
+
+    const dipakai = await prisma.$queryRawUnsafe<{ nama: string; wooId: number | bigint }[]>(
+      "SELECT name AS nama, woo_id AS wooId FROM products WHERE accurate_code = ? AND woo_id <> ?",
+      kode,
+      wooId,
+    )
+    if (dipakai.length > 0) {
+      return {
+        ok: false,
+        alasan: `Kode ini sudah menambat produk lain: ${dipakai[0]!.nama}. Lepaskan dari sana dulu.`,
+      }
+    }
+  }
+
+  const terpengaruh = await prisma.$executeRawUnsafe(
+    "UPDATE products SET accurate_code = ? WHERE woo_id = ?",
+    kode,
+    wooId,
+  )
+  if (terpengaruh === 0) return { ok: false, alasan: "Produk web tidak ditemukan." }
+  return { ok: true }
 }
 
 export type OpsiFilter = {

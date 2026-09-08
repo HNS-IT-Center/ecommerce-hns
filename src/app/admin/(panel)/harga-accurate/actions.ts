@@ -8,8 +8,12 @@ import { buildAccuratePricePreview } from "@/lib/services/accurate-price"
 import { importDariSheet, type ImportResult } from "@/lib/api/accurate/import-sheet"
 import {
   simpanHargaInternal,
+  cariProdukWeb,
+  tautkanKode,
   type PerubahanHarga,
   type HasilSimpan,
+  type CalonProdukWeb,
+  type HasilTaut,
 } from "@/lib/api/accurate/price-table"
 
 /**
@@ -161,6 +165,63 @@ export async function simpanHargaInternalAction(
     return {
       hasil: null,
       error: error instanceof Error ? error.message : "Gagal menyimpan harga.",
+    }
+  }
+}
+
+/**
+ * Cari produk web untuk ditautkan ke satu kode Accurate.
+ *
+ * READ-ONLY, jadi cukup izin "view" halaman ini — staff yang boleh melihat
+ * tabel harga boleh mencari padanannya, walau belum tentu boleh menautkan.
+ */
+export async function cariProdukWebAction(
+  q: string,
+): Promise<{ hasil: CalonProdukWeb[]; error: string | null }> {
+  try {
+    await requirePermission("harga-accurate", "view")
+    return { hasil: await cariProdukWeb(q), error: null }
+  } catch (error) {
+    return {
+      hasil: [],
+      error: error instanceof Error ? error.message : "Gagal mencari produk.",
+    }
+  }
+}
+
+/**
+ * Tautkan (atau lepas) kode Accurate pada satu produk web.
+ *
+ * Menulis ke `products.accurate_code` — kolom penambat, BUKAN harga. Karena itu
+ * ia tidak lewat `updateProductPriceAction`: tidak ada harga pelanggan yang
+ * berubah, jadi tidak ada yang perlu masuk `product_logs` maupun memicu
+ * revalidate halaman produk.
+ *
+ * Yang berubah justru bisa membuat harga MENDARAT DI PRODUK YANG SALAH kalau
+ * dipasang keliru, jadi izinnya "edit", bukan "view".
+ */
+export async function tautkanKodeAction(input: {
+  wooId: number
+  kode: string | null
+}): Promise<HasilTaut> {
+  try {
+    await requirePermission("harga-accurate", "edit")
+  } catch {
+    return { ok: false, alasan: "Anda tidak punya izin menautkan produk." }
+  }
+
+  if (!Number.isInteger(input.wooId) || input.wooId <= 0) {
+    return { ok: false, alasan: "Produk web tidak dikenali." }
+  }
+
+  try {
+    const hasil = await tautkanKode(input.wooId, input.kode)
+    if (hasil.ok) revalidatePath("/admin/harga-accurate")
+    return hasil
+  } catch (error) {
+    return {
+      ok: false,
+      alasan: error instanceof Error ? error.message : "Gagal menautkan.",
     }
   }
 }

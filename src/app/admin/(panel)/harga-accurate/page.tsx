@@ -8,6 +8,7 @@ import {
   ambilOpsiFilter,
   isKolomUrut,
   type ArahUrut,
+  type FilterTautan,
 } from "@/lib/api/accurate/price-table"
 import { HargaAccurateView } from "./view"
 import { TabelHargaView } from "./tabel-harga-view"
@@ -48,6 +49,7 @@ type Props = {
     page?: string
     urut?: string
     arah?: string
+    tautan?: string
   }>
 }
 
@@ -122,11 +124,19 @@ async function TabDaftar({
   bolehLihatModal: boolean
   bolehEditModal: boolean
 }) {
+  // `tautan` bertipe sempit sejak awal — nilai dari alamat divalidasi di sini,
+  // dan "" berarti "semua" (bukan penyaring yang gagal dibaca).
+  const tautan: FilterTautan | "" =
+    searchParams.tautan === "tertaut" || searchParams.tautan === "belum"
+      ? searchParams.tautan
+      : ""
+
   const filter = {
     q: searchParams.q?.trim() ?? "",
     kategori: searchParams.kategori ?? "",
     brand: searchParams.brand ?? "",
     status: searchParams.status ?? "",
+    tautan,
   }
   const page = Number(searchParams.page ?? 1) || 1
 
@@ -138,7 +148,7 @@ async function TabDaftar({
     searchParams.arah === "desc" ? "desc" : searchParams.arah === "asc" ? "asc" : undefined
 
   const [hasil, opsi] = await Promise.all([
-    listHargaAccurate({ ...filter, page, urut, arah }),
+    listHargaAccurate({ ...filter, tautan: tautan || undefined, page, urut, arah }),
     ambilOpsiFilter(),
   ])
 
