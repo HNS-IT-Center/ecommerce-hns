@@ -384,6 +384,26 @@ model Product {
   sku  String? @unique @db.VarChar(100)
   gtin String? @db.VarChar(50)
 
+  /// Kode barang di Accurate (`accurate_products`.`Kode Accurate`) — penambat
+  /// tetap antara katalog web dan database kasir. Lihat docs/13.
+  ///
+  /// NULL untuk mayoritas produk, dan itu keadaan normal, bukan galat: dari
+  /// 7.041 barang Accurate hanya 976 yang punya kaitan sah ke produk web saat
+  /// kolom ini dibuat. Sisanya ditautkan mencicil lewat panel.
+  ///
+  /// UNIK: satu kode Accurate hanya boleh menambat satu produk. Tanpa itu, satu
+  /// barang Accurate bisa mengirim harganya ke beberapa produk sekaligus — dan
+  /// itu bukan kekhawatiran teoretis, `accurate_woo_mapping` yang lama memang
+  /// memuat satu "produk" yang menyerap 1.092 kode (docs/13 §2.1). Multiple
+  /// NULL tetap sah di MariaDB, jadi keunikan ini tidak menghalangi produk yang
+  /// belum tertaut.
+  ///
+  /// Dipilih menggantikan `sku` (cuma 26% terisi) dan barcode (produk web tidak
+  /// punya kolomnya). Kalau satu produk punya padanan berawalan `1` dan `2`,
+  /// yang dipakai berawalan `2` — awalan `1` skema lama yang 71% isinya sudah
+  /// tidak aktif (docs/13 §3.2).
+  accurateCode String? @unique @map("accurate_code") @db.VarChar(50)
+
   name String @db.VarChar(500)
   slug String @unique @db.VarChar(191)
 
