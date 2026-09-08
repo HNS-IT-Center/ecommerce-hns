@@ -27,16 +27,36 @@ mana?*
 | Barang di `accurate_products` | **7.041** | dari ekspor harian |
 | Produk di `products` (web) | **5.415** | katalog |
 | Baris di `accurate_woo_mapping` | 4.707 | pemetaan hasil pencocokan lama |
-| Pemetaan **layak dipercaya** | **2.068** | `needs_review=0` DAN `confidence_score>=90` |
-| Barang Accurate yang benar-benar tertaut | **1.980 (28%)** | inilah angka yang penting |
+| Pemetaan bertanda layak dipercaya | 2.068 | `needs_review=0` DAN `confidence_score>=90` |
+| — di antaranya menunjuk `woo_product_id = 0` | **1.092** | **produk hantu, lihat §2.1** |
+| **Barang Accurate yang benar-benar tertaut** | **976 (13,9%)** | menunjuk produk web yang sungguh ada |
 | Produk web punya `sku` | 1.401 (26%) | terlalu kosong untuk jadi kunci |
 | Barang Accurate punya `barcode_ean` | 3.562 (51%) | — |
 | Produk web punya kolom barcode | **TIDAK ADA** | kolomnya belum pernah dibuat |
 
-**Kesimpulannya: 72% barang Accurate tidak punya kaitan tepercaya ke produk
-web.** Pemetaan yang ada lahir dari pencocokan nama berskor, dan lebih dari
-separuhnya ditandai perlu ditinjau — memang tidak layak dipakai memindahkan
-harga, karena salah pasang berarti harga produk A pindah ke produk B.
+**Kesimpulannya: 86% barang Accurate tidak punya kaitan ke produk web.**
+Pemetaan yang ada lahir dari pencocokan nama berskor, dan salah pasang berarti
+harga produk A pindah ke produk B.
+
+### 2.1 Cacat yang harus dibersihkan lebih dulu: pemetaan ke produk hantu
+
+**1.092 baris di `accurate_woo_mapping` menunjuk `woo_product_id = 0`.** Tidak
+ada produk ber-`woo_id` 0 di katalog — angka itu bukan penunjuk ke apa pun,
+melainkan nilai kosong yang tertulis sebagai nol.
+
+Yang membuatnya berbahaya: seluruh 1.092 baris itu bertanda `needs_review = 0`
+dan `confidence_score = 100`. Menurut ukuran apa pun yang dipakai kode sekarang,
+mereka **pemetaan paling tepercaya di seluruh tabel** — dan semuanya menunjuk ke
+ketiadaan.
+
+Kekeliruan ini sempat masuk ke versi pertama dokumen ini: angka tertaut ditulis
+1.980 (28%), karena `woo_product_id IS NOT NULL` menganggap nol sebagai
+penunjuk yang sah. Angka sebenarnya 976, hampir setengahnya.
+
+**Konsekuensinya untuk Fase 1:** jangan mengisi kolom penambat dari
+`accurate_woo_mapping` apa adanya. Saring `woo_product_id > 0` **dan** pastikan
+produknya benar-benar ada lewat join ke `products` — bukan sekadar percaya pada
+skornya.
 
 ---
 
@@ -52,7 +72,50 @@ dari kenyataan rak, jadi memindahkannya ke web justru menyesatkan pembeli —
 menampilkan "tersedia" untuk barang yang sudah tidak ada lebih buruk daripada
 tidak menampilkan apa-apa.
 
-### 3.2 Penautan: KOLOM KODE ACCURATE DI PRODUK
+### 3.2 Kode berawalan 2 yang dipakai, bukan yang berawalan 1
+
+**Aturan dari pemilik project:** barang di Accurate punya dua skema kode. Yang
+dipakai adalah **yang berawalan `2`**.
+
+Diperiksa terhadap data, dan datanya mendukung dengan jelas:
+
+| | Awalan `1` (6 digit) | Awalan `2` (10 digit) |
+|---|---|---|
+| Jumlah | 1.474 | 5.517 |
+| Ditandai **tidak aktif** (`STATUS = YA`) | **1.052 (71%)** | 51 (0,9%) |
+| Punya stok | 157 (11%) | 2.138 (39%) |
+| Punya harga jual (`SP`) | **112 (8%)** | **2.188 (40%)** |
+
+Awalan `1` adalah skema lama yang sebagian besar isinya sudah mati: tujuh dari
+sepuluh ditandai tidak aktif, dan hanya delapan dari seratus yang punya harga
+jual. Awalan `2` yang hidup — 99% aktif, dan empat dari sepuluh berharga.
+Kodenya sendiri tampak memuat tahun-bulan (`2507…` = Juli 2025, `2603…` = Maret
+2026), yang menjelaskan kenapa ia bertambah terus sementara yang lama tidak.
+
+Dari 976 tautan yang benar-benar sah, **806 (83%) sudah berawalan `2`** — jadi
+aturannya bukan pembalikan arah, melainkan penegasan yang sudah berjalan.
+
+**Yang TIDAK terbukti, dan sebaiknya tidak diandalkan:** keterangan awal
+menyebut "banyak nama dobel karena ada dua SKU". Di dalam `accurate_products`
+hanya ada **7** kelompok nama kembar, dan **nol** di antaranya mencampur awalan
+`1` dengan `2` — yang kembar justru dua-duanya berawalan `2` dari bulan berbeda.
+Di sisi pemetaan, hanya **6** produk web yang tertaut ke kedua skema sekaligus.
+
+Artinya duplikasi lintas-skema bukan masalah besar dalam data yang kita punya.
+Aturan "pakai yang berawalan 2" tetap dipakai, tapi alasannya yang benar adalah
+**awalan 1 sudah mati**, bukan karena ada banyak kembaran yang harus dipilih.
+Membedakan keduanya penting: kalau nanti ada barang yang HANYA punya kode
+berawalan `1` dan masih hidup, ia tidak boleh ikut terbuang.
+
+**Penerapannya:**
+- Saat menautkan otomatis, dahulukan kode berawalan `2`.
+- Kalau satu produk web tertaut ke kedua skema, **yang berawalan `2` yang
+  menang**, dan yang berawalan `1` dilepas.
+- Barang berawalan `1` yang masih aktif dan berharga (157 berstok, 112 berharga)
+  **tidak dibuang** — ia tetap boleh ditautkan kalau memang tidak ada padanan
+  berawalan `2`.
+
+### 3.3 Penautan: KOLOM KODE ACCURATE DI PRODUK
 
 Tabel `products` mendapat kolom baru berisi kode Accurate barang itu. Sekali
 ditautkan, tautannya tepat selamanya — tidak ada pencocokan ulang berdasarkan
@@ -82,8 +145,11 @@ belum tertaut, dan itu keadaan normal, bukan galat).
 Lewat prosedur `docs/08` — **`migrate dev` dan `db push` dua-duanya dilarang.**
 Tulis `migration.sql`-nya, baca SQL-nya, baru `migrate deploy`.
 
-Isi awalnya dari 1.980 pemetaan yang sudah tepercaya, supaya pekerjaan
-pencocokan lama tidak dibuang percuma.
+Isi awalnya dari **976 tautan yang benar-benar sah**, supaya pekerjaan
+pencocokan lama tidak dibuang percuma. Saringannya wajib `woo_product_id > 0`
+**dan** join ke `products` — bukan sekadar `needs_review=0` dan skor tinggi,
+karena 1.092 baris berskor 100 justru menunjuk produk hantu (§2.1). Kalau satu
+produk web punya kedua skema kode, ambil yang berawalan `2` (§3.2).
 
 ### Fase 2 — Layar penautan
 
