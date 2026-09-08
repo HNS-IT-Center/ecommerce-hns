@@ -313,13 +313,44 @@ sama seperti waktu itu.
 
 ---
 
-## 8. Yang masih terbuka
+## 8. Pembagian wewenang, dan kapan sinkronisasi dijalankan
 
-- **Barang Accurate yang tidak punya produk web sama sekali** — dibiarkan, atau
-  suatu saat dibuatkan produk draft? Pemilik project belum memutuskan; untuk
-  sekarang di luar ruang lingkup.
-- **Seberapa sering sinkronisasi dijalankan** — tiap impor, atau saat staff
-  memintanya?
+Ketiga pertanyaan yang semula terbuka sudah dijawab pemilik project (8 September
+2026).
+
+### 8.1 PIC memegang harganya, tim web memegang sinkronisasinya
+
+**Isi harga sepenuhnya wewenang PIC.** Tim web tidak menentukan berapa harga
+sebuah barang — ia menentukan **kapan** harga itu berpindah ke katalog, dan
+memegang kendali penuh untuk menjalankannya ulang.
+
+Dua wewenang berbeda yang tidak saling menimpa, dan itu sebabnya §6 berlaku:
+harga yang sudah disunting di panel web tidak ditimpa sinkronisasi berikutnya.
+Kalau memang harus dikembalikan ke angka Accurate, tim web menjalankan
+sinkronisasi ulang **dengan sengaja** — sebuah tindakan, bukan efek samping.
+
+### 8.2 Barang tanpa produk web: cukup diberitahu, tidak dibuatkan
+
+Barang Accurate yang tidak punya produk web **tidak dibuatkan produk draft**.
+Yang dibutuhkan cuma keterangan: **ada di web, atau belum**.
+
+Maka tabel Update Harga mendapat penanda status per baris — sesuatu yang
+langsung terbaca, bukan angka yang harus ditafsirkan. Gunanya dua: staff tahu
+barang mana yang percuma diurus harganya karena belum ada di katalog, dan daftar
+"belum ada di web" itu sendiri menjadi antrean kerja untuk Fase 2.
+
+### 8.3 Dijalankan saat barang baru datang, bukan terjadwal
+
+Sinkronisasi **tidak berjalan sendiri**. Ia dijalankan saat ada unit baru masuk
+gudang — alurnya sudah berjalan begitu di lapangan:
+
+1. Tim gudang menyiapkan filternya di Google Sheet saat barang datang.
+2. Tim web menarik dari Sheet itu (**Import Data Sheet**, sudah ada).
+3. Tim web meninjau pratinjau lalu menerapkan harga.
+
+Konsekuensinya untuk rancangan: **tidak perlu penjadwal, tidak perlu proses
+latar.** Menambahkannya justru melawan §5 — sinkronisasi terjadwal berarti harga
+pelanggan berubah tanpa ada yang menekan tombol.
 
 ---
 
