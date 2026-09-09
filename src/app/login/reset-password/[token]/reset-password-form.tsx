@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { Loader2, TriangleAlert } from "lucide-react"
 import { resetPasswordAction } from "../../actions"
 import { EMPTY_RESET_PASSWORD_STATE } from "../../state"
+import { localizedValidation } from "@/lib/utils/form-validation"
 
 const inputClass =
   "w-full rounded-xl border border-input bg-muted/50 px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:bg-background"
@@ -53,6 +54,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
           required
           minLength={10}
           autoFocus
+          {...localizedValidation}
           className={inputClass}
         />
         <p className="mt-1 text-xs text-muted-foreground">Minimal 10 karakter.</p>
@@ -69,6 +71,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
           autoComplete="new-password"
           required
           minLength={10}
+          {...localizedValidation}
           className={inputClass}
         />
       </div>

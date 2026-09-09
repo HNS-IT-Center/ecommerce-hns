@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { Loader2, TriangleAlert, Eye, EyeOff } from "lucide-react"
 import { registerAction } from "./actions"
 import { EMPTY_REGISTER_STATE } from "./state"
+import { localizedValidation } from "@/lib/utils/form-validation"
 
 const inputClass =
   "w-full rounded-xl border border-input bg-muted/50 px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:bg-background"
@@ -49,6 +50,7 @@ function PasswordField({
           minLength={10}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          {...localizedValidation}
           className={`${inputClass} pr-10`}
         />
         <button
@@ -128,6 +130,7 @@ export function RegisterForm() {
           autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
+          {...localizedValidation}
           className={inputClass}
         />
       </div>
@@ -148,6 +151,7 @@ export function RegisterForm() {
           title="Huruf kecil, angka, titik, garis bawah, dan tanda hubung saja."
           value={username}
           onChange={(e) => setUsername(e.target.value)}
+          {...localizedValidation}
           className={inputClass}
         />
         <p className="mt-1 text-xs text-muted-foreground">
@@ -167,6 +171,7 @@ export function RegisterForm() {
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
+          {...localizedValidation}
           className={inputClass}
         />
       </div>
@@ -184,6 +189,7 @@ export function RegisterForm() {
           placeholder="08xxxxxxxxxx"
           value={phoneNumber}
           onChange={(e) => setPhoneNumber(e.target.value)}
+          {...localizedValidation}
           className={inputClass}
         />
       </div>
