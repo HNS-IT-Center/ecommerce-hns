@@ -79,14 +79,25 @@ jobs:
         run: |
           gagal=0
 
+          # Dilaporkan DUA KALI dengan sengaja: sebagai baris log biasa, dan
+          # sebagai anotasi `::error::`. Isi log Actions hanya bisa dibaca orang
+          # yang sudah login ke GitHub, sedangkan anotasi terbaca lewat API tanpa
+          # login — termasuk oleh yang sedang menolong dari jauh. Tanpa anotasi,
+          # "gagal di preflight" masih harus dibuka orang dulu untuk tahu
+          # variabel mana yang bermasalah, dan itu justru yang mau dihilangkan.
+          laporkan_gagal() {
+            echo "  GAGAL  $1 — $2"
+            echo "::error title=Env belum siap::$1 — $2"
+            gagal=1
+          }
+
           # Aturan di bawah ini disalin dari skema Zod di src/config/env.ts.
           # Kalau skemanya berubah, ubah juga di sini — kalau tidak, preflight
           # akan menyatakan "siap" untuk build yang tetap gagal.
           panjang_minimal() {
             nilai="${!1-}"
             if [ "${#nilai}" -lt "$2" ]; then
-              echo "  GAGAL  $1 — kosong atau kurang dari $2 karakter"
-              gagal=1
+              laporkan_gagal "$1" "kosong atau kurang dari $2 karakter"
             else
               echo "  ok     $1"
             fi
@@ -95,11 +106,9 @@ jobs:
           wajib_url() {
             nilai="${!1-}"
             if [ -z "$nilai" ]; then
-              echo "  GAGAL  $1 — belum diisi (wajib URL lengkap, mis. https://contoh.id)"
-              gagal=1
+              laporkan_gagal "$1" "belum diisi (wajib URL lengkap, mis. https://contoh.id)"
             elif ! printf '%s' "$nilai" | grep -qE '^https?://[^[:space:]]+$'; then
-              echo "  GAGAL  $1 — bukan URL yang sah (harus mulai http:// atau https://)"
-              gagal=1
+              laporkan_gagal "$1" "bukan URL yang sah (harus mulai http:// atau https://)"
             else
               echo "  ok     $1"
             fi
