@@ -49,6 +49,83 @@ jobs:
         # cocok dengan schema di commit ini.
         run: npx prisma generate
 
+      - name: Periksa env sebelum build
+        # KENAPA ADA: `src/config/env.ts` memvalidasi SELURUH env dengan Zod saat
+        # modulnya dimuat, dan itu terjadi di tengah `next build` — sesudah
+        # kompilasi dan TypeScript lolos. Akibatnya satu secret yang belum diisi
+        # menggagalkan build pada detik ke-35 dengan tumpukan ZodError, dan yang
+        # membaca log harus menerjemahkannya sendiri. Langkah ini memindahkan
+        # kegagalan itu ke depan, dengan pesan yang menyebut nama variabelnya.
+        #
+        # JEBAKAN YANG DIJAGA DI SINI: `${{ secrets.X }}` untuk secret yang TIDAK
+        # ADA menghasilkan STRING KOSONG, bukan undefined. Karena itu
+        # `z.string().url().optional()` pun tetap gagal — `.optional()` hanya
+        # mengizinkan undefined. Variabel "opsional" seperti
+        # NEXT_PUBLIC_R2_PUBLIC_URL ikut diperiksa justru karena itu.
+        #
+        # NILAINYA TIDAK PERNAH DICETAK, panjangnya pun tidak. Repo ini publik,
+        # jadi log Actions bisa dibaca siapa saja; GitHub menyensor nilai secret
+        # secara otomatis, tapi tidak menyensor angka yang kita hitung sendiri
+        # dari nilai itu. Yang tercetak hanya nama dan lolos/gagal.
+        env:
+          NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
+          NEXT_PUBLIC_IMAGE_DOMAIN: ${{ secrets.NEXT_PUBLIC_IMAGE_DOMAIN }}
+          NEXT_PUBLIC_WHATSAPP_CS_NUMBER: ${{ secrets.NEXT_PUBLIC_WHATSAPP_CS_NUMBER }}
+          NEXT_PUBLIC_R2_PUBLIC_URL: ${{ secrets.NEXT_PUBLIC_R2_PUBLIC_URL }}
+          WOOCOMMERCE_URL: ${{ secrets.WOOCOMMERCE_URL }}
+          WOOCOMMERCE_CONSUMER_KEY: ${{ secrets.WOOCOMMERCE_CONSUMER_KEY }}
+          WOOCOMMERCE_CONSUMER_SECRET: ${{ secrets.WOOCOMMERCE_CONSUMER_SECRET }}
+          REVALIDATE_SECRET: ${{ secrets.REVALIDATE_SECRET }}
+        run: |
+          gagal=0
+
+          # Aturan di bawah ini disalin dari skema Zod di src/config/env.ts.
+          # Kalau skemanya berubah, ubah juga di sini — kalau tidak, preflight
+          # akan menyatakan "siap" untuk build yang tetap gagal.
+          panjang_minimal() {
+            nilai="${!1-}"
+            if [ "${#nilai}" -lt "$2" ]; then
+              echo "  GAGAL  $1 — kosong atau kurang dari $2 karakter"
+              gagal=1
+            else
+              echo "  ok     $1"
+            fi
+          }
+
+          wajib_url() {
+            nilai="${!1-}"
+            if [ -z "$nilai" ]; then
+              echo "  GAGAL  $1 — belum diisi (wajib URL lengkap, mis. https://contoh.id)"
+              gagal=1
+            elif ! printf '%s' "$nilai" | grep -qE '^https?://[^[:space:]]+$'; then
+              echo "  GAGAL  $1 — bukan URL yang sah (harus mulai http:// atau https://)"
+              gagal=1
+            else
+              echo "  ok     $1"
+            fi
+          }
+
+          echo "Secret yang dibutuhkan saat build:"
+          wajib_url      NEXT_PUBLIC_SITE_URL
+          wajib_url      NEXT_PUBLIC_R2_PUBLIC_URL
+          wajib_url      WOOCOMMERCE_URL
+          panjang_minimal NEXT_PUBLIC_IMAGE_DOMAIN 1
+          panjang_minimal NEXT_PUBLIC_WHATSAPP_CS_NUMBER 1
+          panjang_minimal WOOCOMMERCE_CONSUMER_KEY 1
+          panjang_minimal WOOCOMMERCE_CONSUMER_SECRET 1
+          panjang_minimal REVALIDATE_SECRET 32
+
+          if [ "$gagal" -ne 0 ]; then
+            echo ""
+            echo "Build dihentikan sebelum dimulai."
+            echo "Perbaiki yang bertanda GAGAL di Settings > Secrets and variables > Actions,"
+            echo "lalu jalankan ulang workflow ini (tab Actions > Run workflow) — tanpa perlu commit baru."
+            exit 1
+          fi
+
+          echo ""
+          echo "Semua env yang dibutuhkan build sudah terisi."
+
       - name: Build
         # `next build` langsung, BUKAN `npm run build` — lihat catatan migrasi
         # di kepala berkas ini.
