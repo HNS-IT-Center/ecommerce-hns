@@ -13,6 +13,7 @@ import {
   type TerapkanHasil,
 } from "./actions"
 import type { ImportResult } from "@/lib/api/accurate/import-sheet"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 
 /**
  * Tabel pratinjau harga Accurate vs katalog + penerapan terpilih.
@@ -29,8 +30,8 @@ import type { ImportResult } from "@/lib/api/accurate/import-sheet"
  *
  * Hal yang sama berlaku untuk baris ber-`disuntingManusia`: harganya terakhir
  * diubah orang lewat panel, sesudah sinkronisasi terakhirnya (docs/13 §6). Ia
- * tetap tampil, tetap bisa dicentang manual, tapi tidak pernah ikut "pilih
- * semua yang aman" — menimpa keputusan orang harus disengaja.
+ * tetap tampil, tetap bisa dicentang manual, tapi tidak pernah ikut "Terapkan
+ * semua aman" — menimpa keputusan orang harus disengaja.
  */
 export function HargaAccurateView({ initial }: { initial: AccuratePricePreview }) {
   const [preview, setPreview] = React.useState(initial)
@@ -42,6 +43,7 @@ export function HargaAccurateView({ initial }: { initial: AccuratePricePreview }
   const [error, setError] = React.useState<string | null>(null)
   const [konfirmImport, setKonfirmImport] = React.useState(false)
   const [importHasil, setImportHasil] = React.useState<ImportResult | null>(null)
+  const [konfirmSemua, setKonfirmSemua] = React.useState(false)
 
   // Baris yang BOLEH diterapkan: punya harga Accurate & harganya beda dari web.
   const dapatDiterapkan = React.useMemo(
@@ -55,6 +57,17 @@ export function HargaAccurateView({ initial }: { initial: AccuratePricePreview }
     [preview.rows],
   )
 
+  /**
+   * "Aman" untuk diterapkan sekaligus: dapat diterapkan, tanpa peringatan (data
+   * kotor / selisih ekstrem), DAN belum disunting manusia (docs/13 §6 — suntingan
+   * staff tidak ditimpa otomatis). Inilah himpunan yang dipakai tombol
+   * "Terapkan semua aman".
+   */
+  const amanUntukDiterapkan = React.useMemo(
+    () => dapatDiterapkan.filter((r) => r.peringatan === null && !r.disuntingManusia),
+    [dapatDiterapkan],
+  )
+
   function toggle(kode: string) {
     setDipilih((prev) => {
       const next = new Set(prev)
@@ -64,21 +77,40 @@ export function HargaAccurateView({ initial }: { initial: AccuratePricePreview }
     })
   }
 
-  function pilihSemuaAman() {
-    /**
-     * "Aman" = dapat diterapkan, tanpa peringatan, DAN harganya belum disunting
-     * manusia.
-     *
-     * Yang terakhir itu aturan §6: harga yang sudah diubah orang di panel tidak
-     * ditimpa sinkronisasi. Barisnya tetap ada di layar dan tetap bisa dicentang
-     * sendiri — yang dihindari adalah ia ikut terbawa saat seseorang menekan
-     * "pilih semua", karena pada saat itulah pekerjaan orang lain hilang tanpa
-     * ada yang merasa membatalkannya.
-     */
-    const aman = dapatDiterapkan
-      .filter((r) => r.peringatan === null && !r.disuntingManusia)
-      .map((r) => r.kodeAccurate)
-    setDipilih(new Set(aman))
+  /**
+   * Jalur bersama penerapan harga — dipakai baik oleh penerapan terpilih manual
+   * maupun tombol "Terapkan semua aman". Menerima daftar {wooId, regularPrice}
+   * yang sudah final.
+   */
+  function jalankanTerapkan(items: { wooId: number; regularPrice: number }[]) {
+    setError(null)
+    setHasil(null)
+    if (items.length === 0) {
+      setError("Tidak ada baris yang bisa diterapkan.")
+      return
+    }
+    startTransition(async () => {
+      const res = await terapkanHargaAction(items)
+      setHasil(res)
+      // Muat ulang supaya harga web yang baru ikut tercermin.
+      const fresh = await refreshPreviewAction()
+      if (fresh.preview) setPreview(fresh.preview)
+      setDipilih(new Set())
+    })
+  }
+
+  /**
+   * Terapkan SEMUA baris aman sekaligus — satu klik, tanpa mencentang per baris.
+   * Himpunan `amanUntukDiterapkan` sudah menyaring peringatan & suntingan staff,
+   * jadi pengaman §2.7 tetap utuh. Dipicu setelah konfirmasi.
+   */
+  function terapkanSemuaAman() {
+    jalankanTerapkan(
+      amanUntukDiterapkan.map((r) => ({
+        wooId: r.wooId,
+        regularPrice: r.hargaAccurate.nilai as number,
+      })),
+    )
   }
 
   function segarkan() {
@@ -113,25 +145,10 @@ export function HargaAccurateView({ initial }: { initial: AccuratePricePreview }
   }
 
   function terapkan() {
-    setError(null)
-    setHasil(null)
     const items = preview.rows
       .filter((r) => dipilih.has(r.kodeAccurate) && r.hargaAccurate.nilai !== null)
       .map((r) => ({ wooId: r.wooId, regularPrice: r.hargaAccurate.nilai as number }))
-
-    if (items.length === 0) {
-      setError("Belum ada baris yang dipilih.")
-      return
-    }
-
-    startTransition(async () => {
-      const res = await terapkanHargaAction(items)
-      setHasil(res)
-      // Muat ulang supaya harga web yang baru ikut tercermin.
-      const fresh = await refreshPreviewAction()
-      if (fresh.preview) setPreview(fresh.preview)
-      setDipilih(new Set())
-    })
+    jalankanTerapkan(items)
   }
 
   if (!preview.configured) {
@@ -167,11 +184,20 @@ export function HargaAccurateView({ initial }: { initial: AccuratePricePreview }
         <Button variant="outline" size="sm" onClick={segarkan} disabled={pending}>
           {pending ? "Memuat…" : "Segarkan"}
         </Button>
-        <Button variant="outline" size="sm" onClick={pilihSemuaAman} disabled={pending}>
-          Pilih semua yang aman
+        <Button
+          size="sm"
+          onClick={() => setKonfirmSemua(true)}
+          disabled={pending || amanUntukDiterapkan.length === 0}
+        >
+          Terapkan semua aman {amanUntukDiterapkan.length > 0 ? `(${amanUntukDiterapkan.length})` : ""}
         </Button>
-        <Button size="sm" onClick={terapkan} disabled={pending || dipilih.size === 0}>
-          Terapkan {dipilih.size > 0 ? `(${dipilih.size})` : ""}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={terapkan}
+          disabled={pending || dipilih.size === 0}
+        >
+          Terapkan terpilih {dipilih.size > 0 ? `(${dipilih.size})` : ""}
         </Button>
       </div>
 
@@ -194,6 +220,15 @@ export function HargaAccurateView({ initial }: { initial: AccuratePricePreview }
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={konfirmSemua}
+        onOpenChange={setKonfirmSemua}
+        title={`Terapkan ${amanUntukDiterapkan.length} harga aman ke web?`}
+        description="Harga SRP Accurate ditulis ke katalog dan langsung terlihat pelanggan. Baris berperingatan dan yang disunting staff tidak ikut."
+        confirmLabel="Ya, terapkan"
+        onConfirm={terapkanSemuaAman}
+      />
 
       {importHasil && (
         <div className="rounded-md border border-green-500/40 bg-green-500/10 px-3 py-2 text-sm">
