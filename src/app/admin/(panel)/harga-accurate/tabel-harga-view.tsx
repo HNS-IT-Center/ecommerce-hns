@@ -16,6 +16,7 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { Combobox, type ComboboxOption } from "@/components/ui/combobox"
 import { formatRupiah } from "@/lib/utils"
 import type {
   BarisTabelHarga,
@@ -304,14 +305,16 @@ export function TabelHargaView({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Pilihan
+          <PilihanCari
             label="Semua Kategori"
+            placeholder="Cari kategori…"
             nilai={filter.kategori}
             opsi={opsi.kategori}
             onPilih={(v) => navigasi(bangunUrl({ kategori: v, page: 1 }))}
           />
-          <Pilihan
+          <PilihanCari
             label="Semua Brand"
+            placeholder="Cari brand…"
             nilai={filter.brand}
             opsi={opsi.brand}
             onPilih={(v) => navigasi(bangunUrl({ brand: v, page: 1 }))}
@@ -1004,5 +1007,65 @@ function Pilihan({
         </option>
       ))}
     </select>
+  )
+}
+
+/**
+ * Versi `Pilihan` yang BISA DICARI — untuk filter beropsi banyak (Kategori 108,
+ * Brand 135) yang tak enak digulir sebagai `<select>` polos. Memakai ULANG
+ * `Combobox` yang sudah ada (§2.3): portal, navigasi papan ketik, dan
+ * penyaringan sudah selesai di sana.
+ *
+ * `requireOption` menyala — filter hanya sah kalau menunjuk kategori/brand yang
+ * benar-benar ada; teks bebas dipulihkan saat input ditinggalkan. Opsi pertama
+ * "Semua …" (nilai "") untuk mengosongkan filter.
+ */
+function PilihanCari({
+  label,
+  placeholder,
+  nilai,
+  opsi,
+  onPilih,
+  beriLabel,
+}: {
+  label: string
+  placeholder?: string
+  nilai: string
+  opsi: string[]
+  onPilih: (v: string) => void
+  beriLabel?: (v: string) => string
+}) {
+  const items = React.useMemo<ComboboxOption[]>(
+    () => [
+      { id: "", label },
+      ...opsi.map((o) => ({ id: o, label: beriLabel ? beriLabel(o) : o })),
+    ],
+    [opsi, label, beriLabel],
+  )
+
+  const labelUntuk = (v: string) => items.find((i) => String(i.id) === v)?.label ?? label
+
+  // Teks diselaraskan SAAT RENDER saat `nilai` berubah dari luar (mis. filter
+  // di-reset dari URL) — pola sama seperti CategoryPicker, bukan useEffect.
+  const [teks, setTeks] = React.useState(() => labelUntuk(nilai))
+  const [nilaiTerakhir, setNilaiTerakhir] = React.useState(nilai)
+  if (nilai !== nilaiTerakhir) {
+    setNilaiTerakhir(nilai)
+    setTeks(labelUntuk(nilai))
+  }
+
+  return (
+    <Combobox
+      requireOption
+      className="w-44"
+      value={teks}
+      onValueChange={setTeks}
+      onCommit={(dipilih) => {
+        const cocok = items.find((i) => i.label.toLowerCase() === dipilih.trim().toLowerCase())
+        onPilih(cocok ? String(cocok.id) : "")
+      }}
+      options={items}
+      placeholder={placeholder}
+    />
   )
 }
