@@ -6,21 +6,19 @@ import { buildSpecTableHtml, parseSpecEntries } from "@/lib/utils/spec-table"
 import { checkInputFits, rateLimitResponse } from "@/lib/api/groq/rate-limit"
 
 /**
- * Sempat memakai `llama-3.1-8b-instant` karena pada spesifikasi pendek ia
- * memecah baris paling rinci (21 baris vs 11, cakupan sama-sama 10/10). Itu
- * tidak bertahan pada tempelan yang panjang: jatah TPM model itu cuma 6.000,
- * paling sempit di antara semua model yang tersedia, sehingga tempelan
- * marketplace biasa (~3.800 token) langsung ditolak 413 sebelum diproses.
+ * Dulu memakai `llama-3.3-70b-versatile`, tapi model itu ditarik dari akun ini
+ * (Groq membalas 404 `model_not_found`, tercatat 24 Agustus 2026) — begitu juga
+ * seluruh keluarga `llama-*`. Diganti ke `openai/gpt-oss-120b` per 10 September
+ * 2026: dari daftar `GET /openai/v1/models` yang masih ada, ia satu-satunya —
+ * bersama `qwen/qwen3.8-27b` — yang lolos mode `response_format: json_object`
+ * (kandidat lain, `openai/gpt-oss-20b` dan `qwen/qwen3.6-27b`, membalas 400
+ * "Failed to (generate|validate) JSON" pada uji yang sama). Dipilih yang 120b
+ * karena sudah dipakai dan terbukti di endpoint pc-prebuild-performance.
  *
- * Diukur pada tempelan panjang yang sama:
- *   llama-3.1-8b-instant   GAGAL 413 (input 3.8k token > jatah 6.000 TPM)
- *   llama-3.3-70b          12 baris, cakupan 10/10, 1,5 dtk  <- dipakai
- *
- * `openai/gpt-oss-120b` sudah gugur lebih dulu: ia membuang tiga spesifikasi
- * (baterai, berat, garansi) — persis yang dilarang aturan prompt di bawah.
- * Kerincian yang hilang saat pindah ke 70b ditutup oleh aturan 4 di prompt.
+ * Catatan lama menyebut gpt-oss membuang beberapa spesifikasi (baterai, berat,
+ * garansi); kerincian itu dijaga oleh aturan 1 & 4 di prompt di bawah.
  */
-const MODEL = "llama-3.3-70b-versatile"
+const MODEL = "openai/gpt-oss-120b"
 
 /**
  * Ekstraksi, bukan karangan: suhu 0 supaya spesifikasi yang sama selalu
@@ -29,8 +27,17 @@ const MODEL = "llama-3.3-70b-versatile"
 const TEMPERATURE = 0
 
 /**
- * Cukup untuk produk dengan ~45 baris spesifikasi; keluaran terukur selama ini
- * 324-500 token, jadi ini murni jaring pengaman.
+ * `gpt-oss-120b` model reasoning: sebagian jatah keluaran habis untuk kanal
+ * penalaran sebelum JSON ditulis. Kalau seluruh `max_tokens` termakan penalaran,
+ * JSON keluar kosong dan Groq membalas 400 `json_validate_failed`. `low` menahan
+ * penalaran agar jatahnya cukup untuk isi tabel — pada uji 10 September 2026
+ * tetap menghasilkan cakupan 8/8 tanpa kehilangan kerincian.
+ */
+const REASONING_EFFORT = "low"
+
+/**
+ * Cukup untuk produk dengan ~45 baris spesifikasi. Angka ini memberi ruang
+ * untuk penalaran singkat model sekaligus tabelnya.
  *
  * Tidak dinaikkan lebih tinggi karena `max_tokens` DIPESAN di muka terhadap
  * jatah TPM (lihat lib/api/groq/rate-limit.ts): setiap token yang dicadangkan
@@ -95,6 +102,7 @@ ${text}
       model: MODEL,
       temperature: TEMPERATURE,
       max_tokens: MAX_TOKENS,
+      reasoning_effort: REASONING_EFFORT,
       response_format: { type: "json_object" },
     })
 

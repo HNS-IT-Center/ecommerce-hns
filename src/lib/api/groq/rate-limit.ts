@@ -16,17 +16,20 @@
  */
 export const GROQ_TPM: Record<string, number> = {
   /**
-   * TIDAK TERSEDIA LAGI di akun ini sejak 24 Agustus 2026 — Groq membalas 404
-   * `model_not_found`. Barisnya sengaja ditinggal sebagai catatan, karena
-   * `format-specs` dan `generate-short-description` masih menunjuk model ini
-   * dan karena itu sedang mati. Jangan memakainya untuk endpoint baru; periksa
-   * dulu daftar model yang benar-benar ada lewat `GET /openai/v1/models`.
+   * Ketiga endpoint AI (`format-specs`, `generate-short-description`,
+   * `pc-prebuild-performance`) memakai `openai/gpt-oss-120b`.
+   *
+   * Seluruh keluarga `llama-*` — termasuk `llama-3.3-70b-versatile` dan
+   * `llama-3.1-8b-instant` yang pernah tercatat di sini — sudah TIDAK ADA LAGI
+   * di akun ini (Groq 404 `model_not_found`, dikonfirmasi ulang lewat
+   * `GET /openai/v1/models` pada 10 September 2026); barisnya dihapus supaya
+   * daftar ini tidak menyesatkan. `qwen/qwen3.6-27b` juga sudah ditarik dan
+   * digantikan `qwen/qwen3.8-27b`. Sebelum memakai model untuk endpoint baru,
+   * periksa dulu daftar yang benar-benar ada lewat `GET /openai/v1/models`.
    */
-  "llama-3.3-70b-versatile": 12000,
   "openai/gpt-oss-120b": 8000,
   "openai/gpt-oss-20b": 8000,
-  "qwen/qwen3.6-27b": 8000,
-  "llama-3.1-8b-instant": 6000,
+  "qwen/qwen3.8-27b": 8000,
   "groq/compound": 70000,
 }
 
