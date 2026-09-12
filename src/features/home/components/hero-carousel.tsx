@@ -11,6 +11,7 @@ import {
   CarouselItem,
   type CarouselApi,
 } from "@/components/ui/carousel"
+import { useCarouselAutoplay } from "@/hooks/use-carousel-autoplay"
 
 export type HeroSlide = {
   id: string
@@ -31,6 +32,13 @@ export type HeroSlide = {
 export function HeroCarousel({ slides }: { slides: HeroSlide[] }) {
   const [api, setApi] = React.useState<CarouselApi>()
   const [current, setCurrent] = React.useState(0)
+  /**
+   * Panah dan titik indikator adalah overlay `absolute` DI LUAR root Embla,
+   * jadi hover dipantau dari wrapper ini. Kalau dipantau dari root Embla saja,
+   * memindahkan kursor ke tombol panah terbaca sebagai keluar dari carousel —
+   * putaran otomatis menyala persis sebelum tombolnya diklik.
+   */
+  const containerRef = React.useRef<HTMLDivElement>(null)
   // Number of dots is fixed by our slides, so derive it instead of storing it.
   const count = slides.length
 
@@ -84,21 +92,18 @@ export function HeroCarousel({ slides }: { slides: HeroSlide[] }) {
     return () => window.clearTimeout(handle)
   }, [])
 
-  // Auto-play effect
-  React.useEffect(() => {
-    if (!api) return
-    const interval = setInterval(() => {
-      api.scrollNext()
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [api])
+  // Putar otomatis, lengkap dengan jedanya — lihat `use-carousel-autoplay.ts`.
+  useCarouselAutoplay(api, 5000, containerRef)
 
   // Tanpa banner aktif, seluruh blok disembunyikan — carousel kosong setinggi
   // 400px di puncak beranda jauh lebih buruk daripada tidak ada sama sekali.
   if (slides.length === 0) return null
 
   return (
-    <div className="relative w-full max-w-7xl mx-auto px-4 md:px-6 mt-6">
+    <div
+      ref={containerRef}
+      className="relative w-full max-w-7xl mx-auto px-4 md:px-6 mt-6"
+    >
       <Carousel setApi={setApi} className="w-full" opts={{ loop: true }}>
         <CarouselContent>
           {slides.map((slide, index) => (

@@ -24,7 +24,7 @@ import { BuilderQuickViewDialog } from "./builder-quick-view-dialog"
 import { cheapestAvailableVariation } from "@/lib/utils/variation"
 import { SaveBuildDialog } from "./save-build-dialog"
 import { StartNewBuildDialog } from "./start-new-build-dialog"
-import { Check, Edit2, MessageCircle, Printer, Search, X, Loader2, RotateCcw, XCircle, History } from "lucide-react"
+import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Edit2, MessageCircle, Printer, Search, X, Loader2, RotateCcw, History } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useToastManager } from "@/components/ui/toast"
@@ -618,6 +618,64 @@ export function DynamicBuilderView({
   const selectedStepsCount = steps.filter(s => Array.isArray(selections[s.id]) && selections[s.id].length > 0).length
   const totalSteps = steps.length
 
+  /** Langkah sesudah yang sedang dibuka, atau `undefined` kalau ini yang terakhir. */
+  const nextStep =
+    activeStepIndex >= 0 && activeStepIndex < totalSteps - 1
+      ? steps[activeStepIndex + 1]
+      : undefined
+
+  /** Langkah sebelum yang sedang dibuka, atau `undefined` kalau ini yang pertama. */
+  const prevStep = activeStepIndex > 0 ? steps[activeStepIndex - 1] : undefined
+
+  /**
+   * Aksi "Kembali" pada bar aksi mobile.
+   *
+   * Sengaja TIDAK memanggil pengingat langkah wajib seperti `handleAdvanceStep`.
+   * Pengingat itu masuk akal saat orang meninggalkan sebuah langkah untuk maju;
+   * memunculkannya saat mereka mundur untuk membetulkan sesuatu justru
+   * menegur orang yang sedang menuju perbaikan.
+   */
+  const handleGoBackStep = () => {
+    if (!prevStep) return
+
+    setActiveStep(prevStep.id)
+    setIsMobileMyBuildOpen(false)
+    setIsMobileStepsOpen(false)
+  }
+
+  /**
+   * Aksi "Lanjut" pada bar aksi mobile.
+   *
+   * MENGINGATKAN, bukan memblokir. Langkah wajib yang masih kosong cuma
+   * memunculkan toast lalu perpindahan tetap terjadi: orang yang sedang
+   * membandingkan harga sering melewati satu langkah dengan sengaja, dan
+   * mengunci mereka di sana membuat builder terasa rusak padahal tidak ada yang
+   * salah. Yang belum diisi tidak hilang dari pandangan — ia tetap tercatat di
+   * Build Progress dan di hitungan "3/8", dan `validateRequiredSteps` tetap
+   * menjaga pintu terakhir sebelum rakitan dikirim ke CS.
+   */
+  const handleAdvanceStep = () => {
+    if (!nextStep) return
+
+    const current = steps[activeStepIndex]
+    const currentEmpty =
+      !Array.isArray(selections[current.id]) || selections[current.id].length === 0
+
+    if (current.isRequired && currentEmpty) {
+      toastManager.add({
+        title: `${current.name} belum dipilih`,
+        description: "Anda bisa kembali ke langkah ini kapan saja.",
+        timeout: 3000,
+      })
+    }
+
+    setActiveStep(nextStep.id)
+    setIsMobileMyBuildOpen(false)
+    setIsMobileStepsOpen(false)
+    // Gulir ke atas TIDAK dipanggil di sini: efek yang mengawasi `activeStepId`
+    // sudah melakukannya untuk setiap perpindahan langkah, dari mana pun asalnya.
+  }
+
   // Sort selected items to top
   const activeStepSelections = activeStep ? (Array.isArray(selections[activeStep.id]) ? selections[activeStep.id] : []) : []
 
@@ -725,7 +783,12 @@ export function DynamicBuilderView({
           Reset
         </button>
       </div>
-      <div className="space-y-2 flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 -mr-1 pb-24 md:pb-0">
+      {/* `pb-24` versi mobile sudah dilepas: jaraknya dulu mengganjal dua FAB
+          bulat yang mengambang di atas laci ini. FAB-nya sudah diganti bar aksi
+          di dasar layar, dan bar itu duduk di bawah laci (`z-[45]` lawan
+          `z-[55]`), jadi tidak ada lagi yang perlu dihindari — yang tersisa
+          hanyalah 96px ruang kosong di ujung gulir. */}
+      <div className="space-y-2 flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 -mr-1">
         {steps.map((step, index) => {
           const stepSels = selections[step.id]
           const isSelected = Array.isArray(stepSels) && stepSels.length > 0
@@ -943,16 +1006,20 @@ export function DynamicBuilderView({
 
         {/* Dua aksi utama sebaris supaya panel tidak memanjang ke bawah. */}
         <div className="grid grid-cols-2 gap-2">
+          {/* Memakai `handleAdvanceStep` yang SAMA dengan bar aksi mobile,
+              bukan salinan logikanya. Dua tombol yang sama-sama berarti "maju
+              satu langkah" tidak boleh berbeda perilaku — pengingat langkah
+              wajib yang kosong harus muncul dari mana pun perpindahan dimulai.
+
+              Labelnya "Lanjut", bukan "Continue": ini teks yang dibaca
+              pelanggan, dan CLAUDE.md §7 mewajibkan copywriting UI dalam Bahasa
+              Indonesia. */}
           <Button
-            onClick={() => {
-              if (activeStepIndex < totalSteps - 1) {
-                setActiveStep(steps[activeStepIndex + 1].id)
-                setIsMobileMyBuildOpen(false)
-              }
-            }}
+            onClick={handleAdvanceStep}
+            disabled={!nextStep}
             className="w-full cursor-pointer bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold h-10 rounded-lg text-sm transition-colors"
           >
-            Continue
+            Lanjut
           </Button>
 
           <Button
@@ -992,31 +1059,178 @@ export function DynamicBuilderView({
   )
 
   return (
-    <div className="flex flex-col lg:flex-row gap-8 max-w-[1600px] mx-auto w-full pb-4 md:pb-0">
+    <div className="flex flex-col lg:flex-row gap-8 max-w-[1600px] mx-auto w-full pb-[124px] md:pb-0">
 
-      {/* MOBILE DRAWER TOGGLES (Hidden on Desktop) */}
-      <div className="fixed bottom-24 right-4 z-[60] md:hidden print:hidden flex flex-col gap-4">
-        {/* Save/My Build Button */}
-        <Button 
-          onClick={() => {
-            setIsMobileMyBuildOpen(!isMobileMyBuildOpen)
-            if (isMobileStepsOpen) setIsMobileStepsOpen(false)
-          }}
-          className="cursor-pointer rounded-full shadow-[0_0_15px_rgba(0,0,0,0.5)] dark:shadow-[0_0_15px_rgba(255,255,255,0.2)] bg-black hover:bg-black/80 active:scale-95 h-12 w-12 p-0 flex items-center justify-center text-white transition-all"
-        >
-          {isMobileMyBuildOpen ? <XCircle className="h-6 w-6" /> : <SaveIcon size={22} />}
-        </Button>
+      {/*
+        BAR AKSI MOBILE — menggantikan dua FAB bulat yang dulu mengambang di
+        `bottom-24 right-4`.
 
-        {/* Steps/Stack Button */}
-        <Button 
-          onClick={() => {
-            setIsMobileStepsOpen(!isMobileStepsOpen)
-            if (isMobileMyBuildOpen) setIsMobileMyBuildOpen(false)
-          }}
-          className="cursor-pointer rounded-full shadow-[0_0_15px_rgba(0,0,0,0.5)] dark:shadow-[0_0_15px_rgba(255,255,255,0.2)] bg-black hover:bg-black/80 active:scale-95 h-12 w-12 p-0 flex items-center justify-center text-white transition-all"
-        >
-          {isMobileStepsOpen ? <XCircle className="h-6 w-6" /> : <Stack3Icon size={22} />}
-        </Button>
+        Masukan dari pengguna mobile: setelah memilih komponen mereka tidak tahu
+        harus menekan apa untuk lanjut. Memang tidak ada yang bisa ditekan —
+        satu-satunya tombol "Continue" duduk DI DALAM panel My Build, yang hanya
+        terbuka lewat lingkaran hitam berikon disket. Ikon disket berarti
+        "simpan" bagi siapa pun, jadi tidak ada alasan menekannya, dan langkah
+        berikutnya jadi tidak pernah ditemukan.
+
+        Karena itu aksi lanjutnya sekarang duduk permanen di layar, bukan di
+        balik ikon. Kedua laci tetap ada, tapi pemicunya kini punya nama.
+
+        `bottom-[60px]`: tepat di atas MobileDock (tinggi 60px, `fixed bottom-0`
+        — lihat mobile-dock.tsx). Dock sengaja TIDAK disembunyikan di sini
+        seperti yang dilakukan halaman produk: di `/build-pc` Header versi
+        mobile juga sudah disembunyikan, jadi menghilangkan dock akan menyisakan
+        halaman tanpa satu pun jalan keluar selain tombol back peramban.
+
+        `z-[45]`: di bawah laci (`z-[55]`) dan tirainya (`z-[50]`) supaya bar
+        ini ikut tertutup saat laci terbuka — barnya tidak boleh mengambang di
+        atas panel yang baru saja ia buka.
+
+        FloatingWhatsAppButton tidak perlu diperhitungkan: ia sudah
+        menyembunyikan dirinya di `/build-pc` (lihat `hasOwnWhatsAppCta`).
+      */}
+      <div className="fixed inset-x-0 bottom-[60px] z-[45] md:hidden print:hidden border-t border-border bg-[var(--background-50)] shadow-[0_-4px_20px_rgba(0,0,0,0.14)]">
+        <div className="flex items-stretch gap-2 px-3 py-2">
+          {/*
+            Sisi kiri: harga sebagai INFORMASI, lalu dua pil berlabel.
+
+            Dua versi sebelumnya gagal di tempat yang sama, dan sebabnya baru
+            jelas setelah dipakai: harganya dijadikan tombol, dengan chevron
+            polos sebagai satu-satunya penanda. Tidak ada yang menduga chevron
+            itu membuka panel berisi Print/PDF, Simpan, dan Konsultasi — satu
+            penguji malah mengiranya pemindah langkah. Akibatnya empat aksi
+            terpenting di halaman ini praktis tidak pernah ditemukan.
+
+            Pelajarannya: chevron menempel pada angka bukan penanda tujuan, ia
+            cuma penanda "ada sesuatu". Jadi harga dikembalikan menjadi apa
+            adanya — tidak bisa diklik, merah seperti total di keranjang dan di
+            panel My Build — dan setiap tujuan diberi pil berbingkai dengan
+            namanya tertulis.
+          */}
+          <div className="flex min-w-0 flex-1 flex-col items-start justify-center gap-1">
+            {/* `text-sale-red`: konvensi total di seluruh project (lihat
+                CartView dan ringkasan My Build di berkas ini). Sebelumnya warna
+                teks biasa, dan itu membuat satu-satunya angka rupiah di layar
+                justru tidak terbaca sebagai harga. */}
+            <span className="max-w-full truncate text-[13px] font-black leading-tight text-sale-red tabular-nums">
+              {formatRupiah(displayedTotal)}
+            </span>
+
+            <div className="flex max-w-full items-center gap-1.5">
+              {/* Lompat ke langkah mana pun. Kembali/Lanjut cuma bergerak satu
+                  langkah; pil ini membuka daftar lengkapnya, dan itu tetap
+                  satu-satunya cara menuju langkah yang jauh. Angkanya POSISI
+                  langkah — sama persis dengan `3/8` di bar mengambang atas,
+                  karena keduanya membuka daftar yang sama. Hitungan "Komponen
+                  dipilih" tetap ada di panel My Build. */}
+              <button
+                onClick={() => {
+                  setIsMobileStepsOpen(true)
+                  setIsMobileMyBuildOpen(false)
+                }}
+                className="flex shrink-0 cursor-pointer items-center gap-1 rounded-full border border-border bg-background px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground transition-colors active:bg-muted"
+                aria-label={`Langkah ${activeStepIndex + 1} dari ${totalSteps}. Ketuk untuk lompat ke langkah lain.`}
+              >
+                <Stack3Icon size={10} />
+                <span className="leading-tight">
+                  {activeStepIndex + 1}/{totalSteps}
+                </span>
+              </button>
+
+              {/* Pil inilah satu-satunya jalan ke Print/PDF, Simpan, dan
+                  Konsultasi, jadi ia WAJIB berlabel kata — bukan ikon, bukan
+                  chevron sendirian. `aria-label` menyebut ketiga aksinya supaya
+                  pengguna pembaca layar tidak perlu membuka panel untuk tahu
+                  isinya. */}
+              <button
+                onClick={() => {
+                  setIsMobileMyBuildOpen(true)
+                  setIsMobileStepsOpen(false)
+                }}
+                className="flex min-w-0 cursor-pointer items-center gap-0.5 rounded-full border border-border bg-background px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground transition-colors active:bg-muted"
+                aria-label="Lihat rakitan: cetak PDF, simpan rakitan, atau konsultasi via WhatsApp"
+              >
+                <span className="truncate leading-tight">Rakitan</span>
+                <ChevronUp className="h-2.5 w-2.5 shrink-0" />
+              </button>
+            </div>
+          </div>
+
+          {/*
+            Kembali & Lanjut — DUA-DUANYA berlabel kata.
+
+            Bentuk ini menggantikan tombol tunggal "Lanjut ke <nama langkah>".
+            Alasannya dua, dan keduanya datang dari pemakaian nyata:
+
+            1. Nama langkah BUKAN konstanta — staff mengetiknya di admin lewat
+               input teks tanpa batas panjang (lihat step-card.tsx), jadi "Power
+               Supply Unit (PSU)" sama mungkinnya dengan "RAM". Label tetap
+               membuat lebar tombol tidak lagi bergantung pada data, sehingga
+               tidak ada lagi yang perlu dipotong elipsis.
+            2. Tidak ada kontrol "mundur" yang terlihat sebelumnya. Satu-satunya
+               jalan ke langkah sebelumnya adalah membuka daftar langkah, dan
+               orang tidak menemukannya.
+
+            Yang dikorbankan: label lama menyebutkan langkah berikutnya. Itu
+            ditebus bar mengambang atas, yang selalu menampilkan nama langkah
+            aktif dan berubah seketika saat Lanjut ditekan.
+
+            Ikon polos sengaja DIHINDARI di sini. Dua kali berturut-turut
+            penanda tanpa kata di halaman ini terbukti tidak terbaca; tombol
+            paling penting di layar bukan tempat untuk mencobanya lagi.
+          */}
+          {/* `grid-cols-2`: kedua tombol WAJIB selebar satu sama lain. Dengan
+              flex biasa lebarnya mengikuti panjang katanya masing-masing,
+              sehingga "Kembali" selalu lebih besar dari "Lanjut" dan pasangan
+              yang seharusnya setara terlihat timpang. Grid memberi keduanya
+              satu ukuran: yang terlebar menentukan, yang lain menyesuaikan —
+              termasuk saat "Lanjut" berganti menjadi "Konsultasi" di langkah
+              terakhir. */}
+          <div className="grid shrink-0 grid-cols-2 items-center gap-1.5">
+            {/* Di langkah pertama tombolnya DINONAKTIFKAN, bukan disembunyikan:
+                kontrol yang muncul-hilang membuat tata letak melompat dan
+                memindahkan tombol Lanjut tepat saat jari hendak menekannya. */}
+            <Button
+              onClick={handleGoBackStep}
+              disabled={!prevStep}
+              variant="outline"
+              className="h-auto w-full cursor-pointer gap-0.5 rounded-xl px-2 py-2 text-xs font-bold"
+              aria-label={prevStep ? `Kembali ke ${prevStep.name}` : "Sudah di langkah pertama"}
+            >
+              <ChevronLeft className="h-3.5 w-3.5 shrink-0" />
+              Kembali
+            </Button>
+
+            {nextStep ? (
+              <Button
+                onClick={handleAdvanceStep}
+                className="h-auto w-full cursor-pointer gap-0.5 rounded-xl bg-blue-600 px-2 py-2 text-xs font-bold text-white transition-colors hover:bg-blue-700 active:bg-blue-800"
+                aria-label={`Lanjut ke ${nextStep.name}`}
+              >
+                Lanjut
+                <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+              </Button>
+            ) : (
+              /* Langkah terakhir: tidak ada lagi tempat untuk maju, jadi
+                 tombolnya berganti peran menjadi aksi penutup. Handler-nya SAMA
+                 PERSIS dengan tombol Konsultasi di panel My Build — termasuk
+                 `validateRequiredSteps` dan pembacaan ulang harga di server. */
+              <Button
+                onClick={handleCheckoutWA}
+                disabled={sendingWA}
+                className="h-auto w-full cursor-pointer gap-1 rounded-xl bg-[#25D366] px-2 py-2 text-xs font-bold text-white transition-colors hover:bg-[#1EBE5A] active:bg-[#17A74C]"
+              >
+                {sendingWA ? (
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                ) : (
+                  <MessageCircle className="h-4 w-4 shrink-0" />
+                )}
+                <span className="truncate">
+                  {sendingWA ? "Menyiapkan…" : "Konsultasi"}
+                </span>
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* DESKTOP SIDEBAR: Steps Progress */}
@@ -1088,7 +1302,7 @@ export function DynamicBuilderView({
             Progress") banner tetap jadi hal pertama dari isi builder yang
             terlihat — bukan terselip di antara grid produk.
 
-            `mt-[112px] md:mt-0`: berbeda dari `<h1>` desktop di bawah (yang
+            `mt-[60px] md:mt-0`: berbeda dari `<h1>` desktop di bawah (yang
             `hidden md:block` karena judulnya pindah ke bar mengambang di
             mobile), banner ini SELALU dirender, termasuk di mobile. Bar
             mengambang itu `fixed top-0` dan menimpa apa pun yang duduk di
@@ -1108,7 +1322,7 @@ export function DynamicBuilderView({
              sama dengan banner "rakitan sebelumnya": tulisan hitam di atas
              amber pastel, tombol berlatar putih yang menjadi gelap saat
              disentuh. */
-          <div className="mb-6 mt-[112px] md:mt-0 flex flex-col items-start gap-2 rounded-xl border border-amber-300 bg-amber-100 px-4 py-3 text-sm text-neutral-900 dark:border-amber-800/60 dark:bg-amber-200/90 dark:text-neutral-900 print:hidden sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+          <div className="mb-6 mt-[60px] md:mt-0 flex flex-col items-start gap-2 rounded-xl border border-amber-300 bg-amber-100 px-4 py-3 text-sm text-neutral-900 dark:border-amber-800/60 dark:bg-amber-200/90 dark:text-neutral-900 print:hidden sm:flex-row sm:items-center sm:justify-between sm:gap-3">
             <div>
               <span className="font-bold">Muat paket &ldquo;{presetLoad.name}&rdquo;?</span>{" "}
               Rakitan yang sedang kamu susun akan diganti.
@@ -1145,7 +1359,7 @@ export function DynamicBuilderView({
              pastel bertulisan hitam di kedua tema, sama seperti banner amber di
              atasnya. Karena itu varian `dark:` di sini menyetel ulang ke nilai
              terang, bukan menggelapkannya. */
-          <div className="mb-6 mt-[112px] md:mt-0 flex flex-col items-start gap-2 rounded-xl border border-blue-300 bg-blue-100 px-4 py-3 text-sm text-neutral-900 dark:border-blue-700/60 dark:bg-blue-200/90 dark:text-neutral-900 print:hidden sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+          <div className="mb-6 mt-[60px] md:mt-0 flex flex-col items-start gap-2 rounded-xl border border-blue-300 bg-blue-100 px-4 py-3 text-sm text-neutral-900 dark:border-blue-700/60 dark:bg-blue-200/90 dark:text-neutral-900 print:hidden sm:flex-row sm:items-center sm:justify-between sm:gap-3">
             <div className="flex items-center gap-2">
               <History className="h-4 w-4 shrink-0" />
               <span className="font-semibold">Melanjutkan rakitan sebelumnya</span>
@@ -1216,31 +1430,62 @@ export function DynamicBuilderView({
 
         {/* MOBILE FLOATING NAVBAR (Pill) FOR SEARCH & SORT */}
         {activeStep && (
-          <div className="md:hidden fixed top-0 left-0 right-0 z-[45] p-3 pointer-events-none">
-            <div className="bg-background/80 backdrop-blur-xl border shadow-lg rounded-2xl p-3 pointer-events-auto flex flex-col gap-2.5">
+          <div className="md:hidden fixed top-0 left-0 right-0 z-[45] p-2 pointer-events-none">
+            {/* Tingginya dipangkas dari tiga baris menjadi DUA: kolom cari dan
+                kedua tombol urut sekarang berbagi satu baris. Bar ini `fixed`
+                di puncak layar, jadi setiap piksel tingginya dibayar dua kali —
+                sekali oleh dirinya sendiri, sekali lagi oleh `mt` yang harus
+                mengganjal grid produk di bawahnya. Padding, jarak antarbaris,
+                dan ukuran teksnya ikut diturunkan satu tingkat. */}
+            <div className="bg-background/80 backdrop-blur-xl border shadow-lg rounded-2xl p-2 pointer-events-auto flex flex-col gap-1.5">
               {/* Nama step ikut di dalam bar mengambang. Kalau ditaruh di alur
                   normal halaman (seperti <h1> versi desktop), bar ini menutupinya
                   begitu halaman digulir — padahal justru saat menggulir daftar
-                  panjang pengguna perlu tahu sedang memilih komponen apa. */}
+                  panjang pengguna perlu tahu sedang memilih komponen apa.
+
+                  Namanya SEKALIGUS pemicu daftar langkah, dengan chevron ke
+                  bawah sebagai penandanya. Inilah tempat orang pertama kali
+                  mencari saat bertanya "saya di langkah mana, dan bagaimana
+                  pindah?" — menaruh satu-satunya jalan pindah di tempat lain
+                  membuat pertanyaan itu tidak pernah terjawab.
+
+                  `<button>` dibungkus `<h1>`, bukan sebaliknya: isi `<button>`
+                  hanya boleh phrasing content, sedangkan `<h1>` bukan — menaruh
+                  judulnya di dalam tombol menghasilkan HTML yang tidak sah. */}
               <div className="flex items-baseline justify-between gap-2">
-                <h1 className="text-base font-extrabold tracking-tight truncate">
-                  {activeStep.name}
+                <h1 className="min-w-0 flex-1 text-sm font-extrabold tracking-tight">
+                  <button
+                    onClick={() => {
+                      setIsMobileStepsOpen(true)
+                      setIsMobileMyBuildOpen(false)
+                    }}
+                    className="flex w-full cursor-pointer items-center gap-1 text-left"
+                    aria-label={`Langkah ${activeStepIndex + 1} dari ${totalSteps}: ${activeStep.name}. Ketuk untuk pindah langkah.`}
+                  >
+                    <span className="truncate">{activeStep.name}</span>
+                    <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  </button>
                 </h1>
-                <span className="text-[11px] font-semibold text-muted-foreground shrink-0">
+                <span className="text-[10px] font-semibold text-muted-foreground shrink-0">
                   {activeStepIndex + 1}/{totalSteps}
                 </span>
               </div>
 
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder={`Cari ${activeStep.name}...`}
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9 h-9 rounded-xl bg-card border-border/50 text-sm"
-                />
-              </div>
-              <div className="flex gap-2">
+              {/* Kolom cari dan tombol urut SATU baris. Tombolnya menyusut
+                  ke lebar isinya (`shrink-0`, bukan `flex-1`) supaya sisa
+                  ruangnya jatuh ke kolom cari — itu yang paling sering dipakai.
+                  Label "Price" diterjemahkan jadi "Harga": teks ini dibaca
+                  pelanggan, dan CLAUDE.md §7 mewajibkan Bahasa Indonesia. */}
+              <div className="flex items-center gap-1.5">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="absolute left-2.5 top-[9px] h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder={`Cari ${activeStep.name}...`}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-8 h-8 rounded-lg bg-card border-border/50 text-xs"
+                  />
+                </div>
                 <button 
                   onClick={() => {
                     if (sortMode === "name_asc") setSortMode("name_desc")
@@ -1248,7 +1493,7 @@ export function DynamicBuilderView({
                     else setSortMode("name_asc")
                     window.scrollTo({ top: 0, behavior: 'smooth' })
                   }}
-                  className="cursor-pointer flex-1 h-8 bg-muted text-foreground rounded-lg text-xs font-semibold hover:bg-muted/80 active:scale-95 transition-all whitespace-nowrap"
+                  className="cursor-pointer shrink-0 h-8 px-2 bg-muted text-foreground rounded-lg text-[10px] font-bold hover:bg-muted/80 active:scale-95 transition-all whitespace-nowrap"
                 >
                   A-Z {sortMode === "name_asc" ? "↓" : sortMode === "name_desc" ? "↑" : ""}
                 </button>
@@ -1258,20 +1503,30 @@ export function DynamicBuilderView({
                     else setSortMode("price_asc")
                     window.scrollTo({ top: 0, behavior: 'smooth' })
                   }}
-                  className="cursor-pointer flex-1 h-8 bg-muted text-foreground rounded-lg text-xs font-semibold hover:bg-muted/80 active:scale-95 transition-all whitespace-nowrap"
+                  className="cursor-pointer shrink-0 h-8 px-2 bg-muted text-foreground rounded-lg text-[10px] font-bold hover:bg-muted/80 active:scale-95 transition-all whitespace-nowrap"
                 >
-                  Price {sortMode === "price_asc" ? "↓" : sortMode === "price_desc" ? "↑" : ""}
+                  Harga {sortMode === "price_asc" ? "↓" : sortMode === "price_desc" ? "↑" : ""}
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Jarak atas di mobile menyesuaikan tinggi bar mengambang (judul +
-            kolom cari + tombol sort) dikurangi `py-8` milik pembungkus halaman,
-            supaya kartu pertama tidak tertutup tapi juga tidak menyisakan
-            celah kosong berlebih. */}
-        <div className="md:mt-0 mt-[112px]">
+        {/* Jarak atas di mobile menyesuaikan tinggi bar mengambang dikurangi
+            `py-8` milik pembungkus halaman, supaya kartu pertama tidak tertutup
+            tapi juga tidak menyisakan celah kosong berlebih.
+
+            Dulu `112px`, saat barnya masih tiga baris (judul / kolom cari /
+            tombol sort). Sejak kolom cari dan tombol urut disatukan, barnya
+            setinggi ~84px dari puncak layar: pembungkus `p-2` (8) + kartu
+            [`p-2` (8) + judul 20 + `gap-1.5` (6) + baris cari 32 + `p-2` (8) +
+            border 2]. Dikurangi `py-8` (32) menyisakan 52px, dibulatkan ke 60
+            supaya kartu pertama punya sedikit napas dari tepi bawah bar.
+
+            Angka ini WAJIB ikut berubah setiap kali tinggi bar berubah — ia
+            dipakai di TIGA tempat (dua banner + grid ini), dan kalau tertinggal
+            gejalanya bukan error melainkan elemen yang diam-diam tertutup. */}
+        <div className="md:mt-0 mt-[60px]">
           {loading ? (
             <div className="flex items-center justify-center py-32">
               <Loader2 className="w-10 h-10 animate-spin text-muted-foreground/30" />

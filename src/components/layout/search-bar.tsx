@@ -335,14 +335,29 @@ export function SearchBar({ className }: SearchBarProps = {}) {
   return (
     <>
       <ScannerOverlay open={isScannerOpen} onOpenChange={handleScannerOpenChange} />
-      {isOpen && !isMobileSearchOpen && typeof document !== 'undefined' && createPortal(
-        <div 
-          className="fixed top-16 inset-x-0 bottom-0 z-40 bg-black/60 backdrop-blur-sm"
-          onClick={() => closeDropdown()}
-        />,
-        document.body
-      )}
       <div className={cn("relative w-full z-50", className)}>
+        {/* Scrim yang meredupkan halaman SEKALIGUS isi header.
+
+            Ia sengaja anak dari root SearchBar, bukan portal ke <body>:
+            header ber-`z-50`, jadi scrim di level body tidak akan pernah bisa
+            menutupinya tanpa ikut menutupi search bar ini — SearchBar
+            terkurung di stacking context header yang sama. Sebagai anak di
+            sini, seluruh lapisan `z-50` milik root ikut naik di atas logo,
+            MegaMenu, dan nav, sementara form di bawahnya tetap tergambar di
+            atas scrim (`-z-10`).
+
+            Ukurannya `left-0 top-0 w-full h-[100dvh]`, bukan `inset-0`:
+            header memakai `backdrop-blur`, dan `backdrop-filter` membentuk
+            containing block untuk descendant `fixed` — jadi `inset-0` di sini
+            hanya akan seukuran kotak header. Header sendiri menempel di
+            (0,0) dan selebar layar, jadi koordinat ini jatuh tepat di
+            viewport. */}
+        {isOpen && !isMobileSearchOpen && (
+          <div
+            className="fixed left-0 top-0 h-[100dvh] w-full -z-10 bg-black/60 backdrop-blur-sm"
+            onClick={() => closeDropdown()}
+          />
+        )}
         {isMobileSearchOpen ? (
           createPortal(
             <div className="fixed inset-0 z-[100] bg-background overflow-y-auto h-[100dvh] overscroll-none">

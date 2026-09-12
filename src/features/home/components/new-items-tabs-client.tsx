@@ -9,7 +9,7 @@ import RosetteDiscountIcon from "@/components/icons/discount-icon"
 import LikeIcon from "@/components/icons/like-icon"
 import Link from "next/link"
 
-type Tab = {
+export type Tab = {
   id: string
   label: string
   categorySlug?: string | string[]

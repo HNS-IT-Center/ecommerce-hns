@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useCallback, useSyncExternalStore } from "react"
+import { useCallback, useSyncExternalStore } from "react"
 import useEmblaCarousel from "embla-carousel-react"
 import { ProductCard, type Product } from "@/components/ui/product-card"
+import { useCarouselAutoplay } from "@/hooks/use-carousel-autoplay"
 
 interface DealsCarouselProps {
   products: Product[]
@@ -28,6 +29,18 @@ export function DealsCarousel({ products }: DealsCarouselProps) {
     loop: true,
     align: "start",
     slidesToScroll: 1,
+    /**
+     * Geseran kencang boleh melewati beberapa kartu sekaligus.
+     *
+     * Tanpa ini Embla meredam setiap geseran kuat jadi persis satu snap —
+     * `allowedForce()` menggantinya dengan `scrollTarget.byIndex(next)` —
+     * sehingga mengibaskan jari sekuat apa pun di daftar 15 produk tetap
+     * memindahkan satu kartu. Dengan `skipSnaps`, jarak luncurnya sebanding
+     * dengan tenaga geseran, tapi titik berhentinya TETAP di posisi snap
+     * (`dragFree` sengaja dibiarkan mati — itu yang membuat kartu berhenti
+     * terpotong separuh di tepi).
+     */
+    skipSnaps: true,
   })
 
 
@@ -75,15 +88,11 @@ export function DealsCarousel({ products }: DealsCarouselProps) {
     () => 0
   )
 
-  // Putar otomatis. Tetap efek — ini memang efek samping berjangka waktu,
-  // bukan penyalinan state.
-  useEffect(() => {
-    if (!emblaApi) return
-    const interval = setInterval(() => {
-      emblaApi.scrollNext()
-    }, 4000)
-    return () => clearInterval(interval)
-  }, [emblaApi])
+  // Putar otomatis. Hook-nya yang mengurus jeda saat tab tersembunyi, kursor
+  // menggantung di atas daftar, atau pengunjung sedang menggeser sendiri —
+  // lihat `use-carousel-autoplay.ts`. Titik indikator berada di dalam root
+  // Embla, jadi `containerRef` tidak perlu dioper.
+  useCarouselAutoplay(emblaApi, 4000)
 
   return (
     <div className="overflow-hidden pb-4" ref={emblaRef}>
