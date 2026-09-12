@@ -7,6 +7,7 @@ import { ChevronDown, ChevronRight, Search } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import type { Brand } from "@/lib/api/woocommerce/brands"
+import { LiveSearch } from "./live-search"
 
 interface ShopSidebarProps {
   categories: ProductCategory[]
@@ -243,6 +244,39 @@ export function ShopSidebar({
       </div>
 
       <div className="flex flex-col w-full">
+        {/* Kata Kunci — HANYA di mobile.
+
+            Di mobile kotak pencarian di atas grid disembunyikan: ia tergulung
+            hilang begitu pembeli menelusuri produk, sehingga menyaring hasil
+            berarti menggulung jauh ke atas dulu. Satu-satunya kontrol
+            penyaringan yang selalu terjangkau sambil menggulung adalah
+            gelembung filter yang `fixed` di kanan bawah — jadi kata kuncinya
+            ikut pindah ke dalam sini.
+
+            Di desktop blok ini TIDAK dirender: kotak di atas grid masih ada di
+            sana, dan menampilkan dua kotak yang menulis parameter yang sama
+            persis dalam satu layar cuma membingungkan.
+
+            Catatan: "Hapus Filter" di atas sengaja TIDAK mengosongkan kotak
+            ini — lihat `clearFilters`. Kata kunci adalah konteks halaman yang
+            sedang dilihat pembeli, bukan salah satu penyaring; di `/search` ia
+            bahkan jadi judul halamannya. Itu sebabnya blok ini diberi tombol
+            kosongkan sendiri. */}
+        {isMobile && (
+          <div className="border-b border-border pb-6 mb-6">
+            <h3 className="text-base font-bold text-foreground mb-3">Kata Kunci</h3>
+            <LiveSearch
+              basePath={basePath}
+              paramName={searchParamName}
+              placeholder="Cari di dalam hasil..."
+              fullWidth
+            />
+            <p className="mt-2 text-xs text-muted-foreground">
+              Menyaring hasil yang sedang tampil, tanpa membatalkan filter di bawah.
+            </p>
+          </div>
+        )}
+
         {/* Kategori Filter */}
         <div className="border-b border-border pb-6 mb-6">
           <button 

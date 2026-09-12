@@ -1,5 +1,4 @@
 import type { Metadata } from "next"
-import { Filter } from "lucide-react"
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { Breadcrumb } from "@/components/seo/breadcrumb"
@@ -15,8 +14,8 @@ import { getPrisma } from "@/lib/prisma/client"
 import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper"
 import { getStockDisplayMode } from "@/lib/api/stock-display"
 import { collectCategoryAndDescendantIds } from "@/lib/utils/category-tree"
-import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet"
-import { VisuallyHidden } from "@radix-ui/react-visually-hidden"
+import { ShopFilterBubble } from "@/features/shop/components/shop-filter-bubble"
+import { countActiveShopFilters } from "@/lib/utils/shop-filters"
 import type { GetProductsParams } from "@/types/woocommerce"
 
 const PER_PAGE = 30
@@ -144,6 +143,8 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
 
   const basePath = basePathParams.toString() ? `/search?${basePathParams.toString()}` : "/search"
 
+  const activeFilterCount = countActiveShopFilters(resolvedParams)
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <Header />
@@ -184,10 +185,15 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
             {/* Product Grid Area */}
             <div className="flex-1 flex flex-col">
               <div className="mb-6 flex flex-col sm:flex-row gap-4 items-center justify-between w-full">
-                <div className="w-full sm:flex-1">
+                {/* Sama seperti `/shop`: hanya dari `md` ke atas. Di mobile
+                    kotak ini tergulung hilang, dan perannya diambil kotak
+                    "Kata Kunci" di dalam sheet filter yang gelembungnya
+                    `fixed`. Kata kunci yang aktif tetap terlihat di mobile
+                    karena halaman ini sudah memakainya sebagai judul. */}
+                <div className="hidden md:block md:flex-1">
                   <LiveSearch basePath="/search" paramName={SEARCH_PARAM} />
                 </div>
-                <div className="w-full sm:w-auto">
+                <div className="w-full sm:ml-auto sm:w-auto">
                   <ShopSort basePath="/search" />
                 </div>
               </div>
@@ -216,28 +222,14 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         </div>
 
         {/* Mobile Filter Bubble Overlay */}
-        <div className="md:hidden fixed bottom-[160px] right-4 z-40">
-          <Sheet>
-            <SheetTrigger className="flex h-12 w-12 items-center justify-center rounded-full bg-black text-white shadow-xl hover:bg-black/80 transition-transform active:scale-95">
-              <Filter className="h-5 w-5" />
-            </SheetTrigger>
-            <SheetContent side="left" className="w-[85vw] sm:w-[400px] overflow-y-auto px-6 py-6 custom-scrollbar">
-              <VisuallyHidden>
-                <SheetTitle>Filter & Urutkan</SheetTitle>
-              </VisuallyHidden>
-              <div className="flex flex-col gap-6 pt-4">
-                <ShopSidebar
-                  categories={categories}
-                  brands={brands}
-                  maxPriceLimit={maxPriceLimit}
-                  basePath="/search"
-                  searchParamName={SEARCH_PARAM}
-                  isMobile
-                />
-              </div>
-            </SheetContent>
-          </Sheet>
-        </div>
+        <ShopFilterBubble
+          categories={categories}
+          brands={brands}
+          maxPriceLimit={maxPriceLimit}
+          basePath="/search"
+          searchParamName={SEARCH_PARAM}
+          activeFilterCount={activeFilterCount}
+        />
       </main>
       <Footer />
     </div>

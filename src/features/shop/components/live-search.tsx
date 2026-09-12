@@ -3,16 +3,30 @@
 import { useState, useEffect, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Input } from "@/components/ui/input"
-import { Search } from "lucide-react"
+import { Search, X } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 interface LiveSearchProps {
   /** Route tujuan saat kata kunci berubah. Default `/shop`. */
   basePath?: string
   /** Nama query param kata kunci — `search` di `/shop`, `q` di `/search`. */
   paramName?: string
+  /** Teks placeholder. Default cocok untuk kotak pencarian di atas grid. */
+  placeholder?: string
+  /**
+   * Melepas batas lebar `md:max-w-sm`. Dipakai saat kotak ini dipasang di
+   * dalam panel sempit (sheet filter mobile) yang sudah mengatur lebarnya
+   * sendiri.
+   */
+  fullWidth?: boolean
 }
 
-export function LiveSearch({ basePath = "/shop", paramName = "search" }: LiveSearchProps = {}) {
+export function LiveSearch({
+  basePath = "/shop",
+  paramName = "search",
+  placeholder = "Cari produk...",
+  fullWidth = false,
+}: LiveSearchProps = {}) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const initialSearch = searchParams.get(paramName) || ""
@@ -67,15 +81,28 @@ export function LiveSearch({ basePath = "/shop", paramName = "search" }: LiveSea
   }
 
   return (
-    <div className="relative w-full md:max-w-sm">
+    <div className={cn("relative w-full", !fullWidth && "md:max-w-sm")}>
       <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         type="text"
-        placeholder="Cari produk..."
+        placeholder={placeholder}
         value={searchTerm}
         onChange={(e) => setSearchTerm(e.target.value)}
-        className="pl-9 bg-background"
+        className="pl-9 pr-9 bg-background"
       />
+      {/* Tombol kosongkan. Di mobile kotak ini hidup di dalam sheet filter,
+          dan menghapus kata kunci dengan menahan backspace di papan ketik
+          layar adalah pekerjaan yang tidak perlu ada. */}
+      {searchTerm && (
+        <button
+          type="button"
+          onClick={() => setSearchTerm("")}
+          aria-label="Kosongkan kata kunci"
+          className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
     </div>
   )
 }
