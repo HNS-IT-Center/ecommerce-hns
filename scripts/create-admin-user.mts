@@ -141,15 +141,37 @@ try {
   const passwordHash = await hashPassword(password)
   const namaFinal = nama || sudahAda?.name || email.split("@")[0]
 
+  // Dibulatkan ke detik utuh: `iat` di dalam token juga berpresisi detik, dan
+  // menyimpan milidetik di sini membuat token yang diterbitkan pada detik yang
+  // sama terbaca "lebih tua" lalu mati sendiri seketika. Pola sama dengan
+  // `src/app/admin/(panel)/akun/actions.ts`.
+  const changedAt = new Date(Math.floor(Date.now() / 1000) * 1000)
+
   const user = await prisma.user.upsert({
     where: { email },
     // Username hanya ditulis kalau memang diberikan. Tanpa penjagaan ini,
     // menjalankan ulang script untuk mengganti password akan menghapus username
     // yang sudah terpasang — dan pemiliknya baru sadar saat cara masuk yang
     // biasa ia pakai tiba-tiba tidak dikenali.
-    update: { passwordHash, name: namaFinal, ...(username ? { username } : {}) },
+    //
+    // `passwordChangedAt` WAJIB ikut saat mengganti password akun yang sudah
+    // ada. Token sesi bersifat stateless — tidak ada baris sesi yang bisa
+    // dihapus — jadi tanpa penanda ini password lama memang tak bisa dipakai
+    // masuk lagi, tapi cookie yang TERLANJUR beredar tetap sah sampai
+    // kedaluwarsa. Untuk reset yang alasannya justru kekhawatiran akses tak
+    // sah, itu bagian yang paling perlu ditutup.
+    update: {
+      passwordHash,
+      passwordChangedAt: changedAt,
+      name: namaFinal,
+      ...(username ? { username } : {}),
+    },
     // `username` sudah dipastikan ada di atas untuk akun baru; penegasan non-null
     // di sini hanya menjelaskan itu kepada pembaca tipe.
+    //
+    // `passwordChangedAt` sengaja TIDAK ikut di sini. Akun yang baru lahir belum
+    // punya sesi beredar yang perlu dicabut, dan NULL memang artinya itu —
+    // "password belum pernah diganti sejak kolom ini ada" (prisma/schema.prisma).
     create: { email, name: namaFinal, passwordHash, username: username! },
     select: { id: true, email: true, name: true, username: true, createdAt: true },
   })
@@ -158,6 +180,11 @@ try {
     `\n${sudahAda ? "Password diperbarui" : "Akun dibuat"}: ${user.name} <${user.email}>` +
       (user.username ? ` (username: ${user.username})` : "")
   )
+  // Disebut eksplisit supaya efeknya terlihat oleh yang menjalankan: pencabutan
+  // sesi adalah separuh alasan skrip ini dipakai saat ada kekhawatiran akses tak
+  // sah, dan tanpa baris ini ia terjadi diam-diam. Kalimat yang sama dipakai
+  // panel di `src/app/admin/(panel)/akun/actions.ts`.
+  if (sudahAda) console.log("Sesi di perangkat lain sudah diputus.")
   console.log(`Total akun admin sekarang: ${await prisma.user.count()}`)
 } finally {
   await prisma.$disconnect()
