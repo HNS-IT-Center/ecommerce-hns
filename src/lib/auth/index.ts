@@ -8,6 +8,7 @@
  * "lewat apa dia masuk".
  */
 import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
 import { getPrisma } from "@/lib/prisma/client"
 import {
   SESSION_COOKIE,
@@ -17,14 +18,20 @@ import {
   verifySession,
   type SessionPayload,
 } from "./session"
+import { parseAdminRole, type AdminRole } from "./roles"
 
 export { SESSION_COOKIE, SESSION_MAX_AGE_SECONDS, verifySession, type SessionPayload }
+export { type AdminRole }
 
 export type AdminUser = {
   id: string
   email: string
   name: string
   image: string | null
+  role: AdminRole
+  /** Peran RBAC dinamis. Null = pakai `role` lama (owner/staff) — lihat
+   *  `muatIzinUser` di permissions.ts. */
+  roleId: string | null
 }
 
 /** Dilempar saat aksi dipanggil tanpa sesi yang sah. */
@@ -32,6 +39,21 @@ export class UnauthorizedError extends Error {
   constructor(message = "Anda harus masuk untuk melakukan tindakan ini.") {
     super(message)
     this.name = "UnauthorizedError"
+  }
+}
+
+/**
+ * Dilempar saat pemanggilnya sudah masuk, tapi rolenya tidak cukup.
+ *
+ * Sengaja dibedakan dari `UnauthorizedError`: yang satu berarti "silakan
+ * masuk", yang ini berarti "masuk lagi pun tidak akan menolong". Memakai satu
+ * galat untuk keduanya membuat panel mengarahkan orang ke halaman login yang
+ * tidak menyelesaikan apa pun.
+ */
+export class ForbiddenError extends Error {
+  constructor(message = "Tindakan ini hanya untuk akun owner.") {
+    super(message)
+    this.name = "ForbiddenError"
   }
 }
 
@@ -59,7 +81,7 @@ export async function getCurrentUser(): Promise<AdminUser | null> {
 
   const user = await getPrisma().user.findUnique({
     where: { id: session.sub },
-    select: { id: true, email: true, name: true, image: true, passwordChangedAt: true },
+    select: { id: true, email: true, name: true, image: true, passwordChangedAt: true, role: true, roleId: true },
   })
   if (!user) return null
 
@@ -85,7 +107,18 @@ export async function getCurrentUser(): Promise<AdminUser | null> {
   // Dibentuk ulang secara eksplisit, bukan disebar dengan spread: `AdminUser`
   // adalah yang dilihat seluruh panel, dan `passwordChangedAt` tidak ada
   // urusannya di sana.
-  return { id: user.id, email: user.email, name: user.name, image: user.image }
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    image: user.image,
+    // Dibaca dari database, TIDAK dari cookie. Role sengaja tidak pernah masuk
+    // payload sesi: kalau ia ikut ditandatangani di token, menurunkan seseorang
+    // jadi staff baru berlaku setelah cookienya kedaluwarsa — sampai tujuh hari
+    // kemudian. Dengan dibaca ulang tiap kali, pencabutan izin langsung berlaku.
+    role: parseAdminRole(user.role),
+    roleId: user.roleId,
+  }
 }
 
 /** Sama seperti `getCurrentUser`, tapi melempar kalau tidak ada sesi. */
@@ -93,6 +126,72 @@ export async function requireAuth(): Promise<AdminUser> {
   const user = await getCurrentUser()
   if (!user) throw new UnauthorizedError()
   return user
+}
+
+/**
+ * Sama seperti `requireAuth`, tapi menuntut role `owner`.
+ *
+ * WAJIB dipanggil DI DALAM setiap server action yang butuh owner — satu
+ * pemanggilan per action, bukan satu pemeriksaan terpusat di layout atau
+ * middleware.
+ *
+ * Alasannya: pemeriksaan di layer atas melindungi HALAMAN, sedangkan server
+ * action adalah endpoint HTTP tersendiri yang bisa dipanggil langsung tanpa
+ * pernah memuat halaman itu. Menyembunyikan tombolnya di UI juga bukan
+ * pengamanan — ia cuma menyembunyikan tombol. Yang menahan permintaan hanyalah
+ * pemeriksaan yang berjalan di server, di dalam action itu sendiri.
+ *
+ * Konsekuensi yang disengaja: action baru yang lupa memanggil ini TIDAK
+ * otomatis terlindungi. Itu memang pertukarannya — penjaga terpusat yang bisa
+ * terlewat diam-diam justru lebih berbahaya, karena ia memberi rasa aman tanpa
+ * ada yang benar-benar memeriksa.
+ */
+export async function requireOwner(): Promise<AdminUser> {
+  const user = await requireAuth()
+  if (user.role !== "owner") throw new ForbiddenError()
+  return user
+}
+
+/**
+ * Sama seperti `requireOwner`, tapi menuntut izin RBAC atas satu halaman —
+ * `requirePermission("harga-accurate", "edit")`.
+ *
+ * WAJIB dipanggil DI DALAM server action yang mengubah data halaman itu, dengan
+ * alasan yang sama persis seperti `requireOwner`: menyembunyikan menu di sidebar
+ * bukan pengamanan; yang menahan permintaan hanyalah pemeriksaan yang berjalan
+ * di server. `import` dinamis untuk menghindari lingkar impor dengan
+ * `permissions.ts` (yang mengambil tipe dari berkas ini).
+ */
+export async function requirePermission(
+  page: import("./permissions").AdminPage,
+  minimal: import("./permissions").AccessLevel = "view",
+): Promise<AdminUser> {
+  const user = await requireAuth()
+  const { muatIzinUser, bisaAkses } = await import("./permissions")
+  const izin = await muatIzinUser(user)
+  if (!bisaAkses(izin, page, minimal)) throw new ForbiddenError()
+  return user
+}
+
+/**
+ * Penjaga untuk `page.tsx` sebuah halaman admin: pastikan user boleh MELIHAT
+ * halaman ini, kalau tidak lempar ke /admin (bukan error page — halaman yang
+ * tak boleh dibuka lebih baik mengalihkan diam-diam).
+ *
+ * Mengembalikan user + izin yang sudah dimuat, supaya halaman bisa memakainya
+ * lagi (mis. menentukan apakah menampilkan tombol edit) tanpa query kedua.
+ * Tidak menggantikan penjaga di server action — ia melindungi HALAMAN; action
+ * tetap butuh `requirePermission`-nya sendiri.
+ */
+export async function requirePageView(
+  page: import("./permissions").AdminPage,
+): Promise<{ user: AdminUser; izin: import("./permissions").PermissionSet }> {
+  const user = await getCurrentUser()
+  if (!user) redirect("/admin/login")
+  const { muatIzinUser, bisaAkses } = await import("./permissions")
+  const izin = await muatIzinUser(user)
+  if (!bisaAkses(izin, page, "view")) redirect("/admin")
+  return { user, izin }
 }
 
 /** Pasang cookie sesi. Dipanggil setelah kredensial terbukti benar. */

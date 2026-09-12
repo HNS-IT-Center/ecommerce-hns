@@ -5,26 +5,21 @@ import { UnauthorizedError, requireAuth } from "@/lib/auth"
 import { checkInputFits, rateLimitResponse } from "@/lib/api/groq/rate-limit"
 
 /**
- * Sengaja BERBEDA dari model di format-specs, dan bukan karena yang ini "lebih
- * besar berarti lebih baik". Ini satu-satunya teks di panel admin yang dibaca
- * langsung oleh pembeli, dan selisih kualitasnya kentara pada spesifikasi yang
- * sama:
+ * Sama dengan format-specs: `openai/gpt-oss-120b`. Model llama yang dulu dipakai
+ * di sini (`llama-3.3-70b-versatile`) sudah tidak ada lagi di akun ini, begitu
+ * juga seluruh keluarga `llama-*` (Groq 404 `model_not_found`).
  *
- *   llama-3.1-8b : "Mainkan game favorit Anda dengan kinerja luar biasa dan
- *                   grafis yang mengagumkan menggunakan ASUS ROG Strix G16,
- *                   dilengkapi dengan…"  (~205 karakter, melewati target 160)
- *   llama-3.3-70b: "Laptop gaming ASUS ROG Strix G16 dengan prosesor Intel Core
- *                   i7 dan VGA NVIDIA GeForce RTX 4060 untuk pengalaman bermain
- *                   yang mulus."          (~130 karakter, langsung ke inti)
+ * Catatan lama di berkas ini menyatakan `openai/gpt-oss-*` "membalas 400 Failed
+ * to validate JSON pada response_format json_object" — itu TERBANTAH pada uji
+ * ulang 10 September 2026: `gpt-oss-120b` lolos bersih (`gpt-oss-20b` dan
+ * `qwen3.6-27b` yang gagal; `qwen3.8-27b` juga lolos). Dipilih yang 120b karena
+ * satu model untuk ketiga endpoint AI memudahkan perawatan dan sudah terbukti di
+ * pc-prebuild-performance.
  *
- * Tidak ada yang dikorbankan: karena menulis lebih ringkas, yang 70b justru
- * lebih cepat di sini (0,3 dtk vs 1,2 dtk) dengan token lebih sedikit.
- *
- * `qwen/qwen3.6-27b` dan `openai/gpt-oss-*` tidak bisa dipakai untuk kedua
- * endpoint ini — keduanya membalas 400 "Failed to validate JSON" pada mode
- * response_format json_object.
+ * Teks ini yang dibaca langsung pembeli; batas ~160 karakter dijaga oleh aturan
+ * prompt dan `max_tokens` di bawah, bukan oleh pilihan model.
  */
-const MODEL = "llama-3.3-70b-versatile"
+const MODEL = "openai/gpt-oss-120b"
 
 /**
  * Berbeda dari format-specs yang bersuhu 0: ini teks yang DIBACA PEMBELI, bukan
@@ -35,8 +30,24 @@ const MODEL = "llama-3.3-70b-versatile"
  */
 const TEMPERATURE = 0.35
 
-/** Targetnya ~160 karakter (±60 token); sisanya cuma jaring pengaman. */
-const MAX_TOKENS = 300
+/**
+ * `gpt-oss-120b` adalah model reasoning: ia memakai sebagian jatah keluaran
+ * untuk kanal penalaran SEBELUM menulis JSON. Tanpa dikekang, penalaran itu
+ * menghabiskan seluruh `max_tokens` dan JSON-nya keluar kosong — Groq lalu
+ * membalas 400 `json_validate_failed` dengan `failed_generation:""`. Disetel
+ * `low` supaya jatahnya cukup untuk isi JSON. (Diukur 10 September 2026 pada
+ * tempelan spesifikasi panjang: tanpa ini gagal 3/3.)
+ */
+const REASONING_EFFORT = "low"
+
+/**
+ * Targetnya ~160 karakter, tapi 300 TIDAK cukup untuk model reasoning ini:
+ * meski `reasoning_effort` sudah `low`, pada 300 hasilnya masih rapuh (lolos
+ * 2/3, sisanya JSON kosong). Pada 800 lolos 3/3. Ini jaring pengaman keluaran,
+ * bukan target panjang — deskripsinya tetap ~160 karakter karena aturan prompt.
+ * Masih jauh di bawah TPM 8.000, jadi kelonggaran tempelan input tetap lega.
+ */
+const MAX_TOKENS = 800
 
 function stripHtml(html: string): string {
   return html
@@ -111,6 +122,7 @@ ${plainText}
       model: MODEL,
       temperature: TEMPERATURE,
       max_tokens: MAX_TOKENS,
+      reasoning_effort: REASONING_EFFORT,
       response_format: { type: "json_object" },
     })
 

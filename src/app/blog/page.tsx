@@ -11,7 +11,7 @@ import { formatDate } from "@/lib/utils"
 const PER_PAGE = 12
 
 export const metadata = {
-  title: "Blog — HNS IT Center",
+  title: "Blog",
   description: "Tips, rekomendasi, dan berita seputar PC, laptop, dan gaming gear.",
 }
 

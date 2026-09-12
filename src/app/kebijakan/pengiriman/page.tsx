@@ -3,7 +3,7 @@ import { PolicyPageLayout } from "@/components/layout/policy-page-layout"
 import { getPolicyPage } from "@/lib/api/policy"
 
 export const metadata = {
-  title: "Kebijakan Pengiriman — HNS IT Center",
+  title: "Kebijakan Pengiriman",
   description: "Area, estimasi waktu, dan opsi pengiriman/pengambilan barang di HNS IT Center.",
 }
 

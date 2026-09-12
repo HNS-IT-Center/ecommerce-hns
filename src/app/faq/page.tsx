@@ -3,7 +3,7 @@ import { Accordion, AccordionItem, AccordionTrigger, AccordionPanel } from "@/co
 import { getFaqItems } from "@/lib/api/policy"
 
 export const metadata = {
-  title: "FAQ — HNS IT Center",
+  title: "FAQ",
   description: "Pertanyaan yang sering diajukan seputar belanja di HNS IT Center.",
 }
 

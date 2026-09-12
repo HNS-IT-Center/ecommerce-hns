@@ -1,0 +1,10 @@
+{
+  "//": "Dipakai HANYA oleh skrip verifikasi: npx tsx --tsconfig scripts/tsconfig.uji.json <skrip>. Bedanya dengan tsconfig.json root cuma satu — alias 'server-only' ke stub, supaya modul layanan bisa diimpor apa adanya dari Node. Build Next & npm run typecheck tidak memakai berkas ini.",
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["../src/*"],
+      "server-only": ["./stubs/server-only.ts"]
+    }
+  }
+}

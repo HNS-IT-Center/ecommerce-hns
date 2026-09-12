@@ -9,10 +9,15 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
-export function ShopSort() {
+interface ShopSortProps {
+  /** Route tujuan saat urutan berubah. Default `/shop`. */
+  basePath?: string
+}
+
+export function ShopSort({ basePath = "/shop" }: ShopSortProps = {}) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  
+
   const currentOrderBy = searchParams.get("orderby") || "default"
   const currentOrder = searchParams.get("order") || "desc"
 
@@ -32,7 +37,7 @@ export function ShopSort() {
       params.set("order", order)
     }
     
-    router.push(`/shop?${params.toString()}`, { scroll: false })
+    router.push(`${basePath}?${params.toString()}`, { scroll: false })
   }
 
   return (

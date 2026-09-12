@@ -1,6 +1,26 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
-import { PcBuilderStepConfig } from "@/app/admin/(panel)/pc-builder/actions"
+import { PcBuilderStepConfig } from "@/lib/pc-builder/config"
+
+/**
+ * Satu pilihan varian pada produk bervarian.
+ *
+ * `id`-nya adalah id baris VARIATION di tabel `products` — baris varian juga
+ * sebuah Product, jadi dialah yang memegang harga, stok, dan SKU. Begitu
+ * dipilih, id inilah yang menjadi `BuilderProduct.id`, sehingga seluruh jalur
+ * hilir (penetapan harga katalog, quotation cetak, rakitan tersimpan) tidak
+ * perlu tahu apa pun soal varian: bagi mereka ia produk biasa dengan id biasa.
+ */
+export type BuilderVariation = {
+  id: number
+  /** Nilai atribut pembedanya, mis. "1TB · Hitam". */
+  label: string
+  price: number
+  regularPrice: number
+  salePrice: number
+  stock: number
+  image?: string
+}
 
 export type BuilderProduct = {
   id: number
@@ -13,12 +33,71 @@ export type BuilderProduct = {
   sold: number
   stock: number
   type: string
+  /**
+   * Atribut yang dipakai memeriksa kompatibilitas antar step (Socket, Form
+   * Factor, dst).
+   *
+   * Untuk pilihan hasil varian, isinya atribut INDUK — bukan atribut baris
+   * variannya sendiri. Atribut sebuah varian adalah atribut PEMBEDA-nya
+   * (Kapasitas, Warna), dan socket sebuah motherboard tidak pernah tercatat di
+   * sana. Kalau atribut varian yang dipakai, langkah yang bergantung pada
+   * socket akan membuang pilihan yang sebenarnya cocok — diam-diam, tanpa
+   * pesan apa pun.
+   */
   attributes: { attributeId: number, attributeName: string, valueId: number, valueName: string }[]
+  /** Terisi hanya pada pilihan hasil varian: id baris induk yang bertipe VARIABLE. */
+  parentId?: number
+  /** Nama induk. Sama isinya dengan `name`, disimpan terpisah supaya `displayVariationName` bisa dipakai apa adanya. */
+  parentName?: string
+  /** Nilai atribut pembeda varian yang dipilih, mis. "1TB · Hitam". */
+  variationLabel?: string
+  /**
+   * Varian yang tersedia. Pada kartu katalog: anak-anak dari induk VARIABLE
+   * ini. Pada pilihan yang sudah masuk rakitan: saudara-saudaranya — sengaja
+   * ikut disimpan supaya tombol "Ganti varian" tetap bekerja setelah halaman
+   * dimuat ulang dari localStorage, tanpa bergantung pada produknya kebetulan
+   * ada di halaman grid yang sedang terbuka.
+   */
+  variations?: BuilderVariation[]
 }
 
 export type BuilderSelection = {
   product: BuilderProduct
   quantity: number
+}
+
+/**
+ * Menjumlahkan seluruh komponen rakitan menurut harga satuan yang diberikan
+ * PEMANGGIL — satu-satunya penjumlahan rakitan yang ada di project ini.
+ *
+ * `unitPriceOf` dioper dari luar dengan alasan yang sama seperti `groupTotal`
+ * di lib/cart/grouping.ts: di panel `/build-pc` harga satuannya berasal dari
+ * katalog (`useBuilderCatalogPricing`), bukan dari angka yang mengendap di
+ * localStorage. Menjumlahkan harga satuan katalog boleh — yang dilarang
+ * CLAUDE.md §2.7 adalah menurunkan harga baru dari rumus.
+ *
+ * `skip` dipakai membuang komponen yang sudah tidak terbit di katalog, supaya
+ * total di layar sama dengan total yang berangkat ke CS.
+ *
+ * Sengaja fungsi lepas, bukan method store: ia dipanggil saat render dengan
+ * harga katalog yang TIDAK tersimpan di store, dan menaruhnya di dalam store
+ * hanya akan mengundang orang menjumlahkan harga localStorage lagi.
+ */
+export function sumBuilderSelections(
+  selections: Record<string, BuilderSelection[]>,
+  unitPriceOf: (selection: BuilderSelection) => number,
+  skip?: (selection: BuilderSelection) => boolean
+): number {
+  return Object.values(selections).reduce((total, stepSelections) => {
+    if (!Array.isArray(stepSelections)) return total
+    return (
+      total +
+      stepSelections.reduce((sum, sel) => {
+        if (skip?.(sel)) return sum
+        return sum + unitPriceOf(sel) * sel.quantity
+      }, 0)
+    )
+  }, 0)
 }
 
 interface NewBuilderState {
@@ -33,14 +112,21 @@ interface NewBuilderState {
   updateQuantity: (stepId: string, productId: number, quantity: number) => void
   setActiveStep: (stepId: string) => void
   setBudget: (budget: string) => void
-  getTotalPrice: () => number
   clearSelections: () => void
+  /**
+   * Timpa seluruh `selections` sekaligus, dipakai tombol "Lanjutkan di
+   * Builder" dari rakitan tersimpan (lib/api/saved-pc-builds.ts) — beda dari
+   * `selectProduct` yang menambah satu per satu dan menjalankan pemeriksaan
+   * kompatibilitas antar step. Rakitan tersimpan sudah pernah lolos
+   * pemeriksaan itu saat pertama disusun, jadi tidak diulang di sini.
+   */
+  hydrateSelections: (selections: Record<string, BuilderSelection[]>) => void
   reset: () => void
 }
 
 export const useNewBuilderStore = create<NewBuilderState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
   steps: [],
   selections: {},
   activeStepId: null,
@@ -158,15 +244,14 @@ export const useNewBuilderStore = create<NewBuilderState>()(
   
   setBudget: (budget) => set({ budget }),
 
-  getTotalPrice: () => {
-    const { selections } = get()
-    return Object.values(selections).reduce((total, stepSelections) => {
-      const stepTotal = stepSelections.reduce((sum, sel) => sum + (sel.product.price * sel.quantity), 0)
-      return total + stepTotal
-    }, 0)
-  },
-
   clearSelections: () => set({ selections: {} }),
+
+  hydrateSelections: (selections) => {
+    set((state) => ({
+      selections,
+      activeStepId: state.steps.length > 0 ? state.steps[0].id : null,
+    }))
+  },
 
   reset: () => {
     set((state) => ({

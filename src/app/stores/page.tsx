@@ -1,109 +1,151 @@
-import { Header } from "@/components/layout/header"
-import { Footer } from "@/components/layout/footer"
-import { MapPin, Clock, MessageCircle, Navigation } from "lucide-react"
-import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
-import { STORES } from "@/lib/constants/stores"
-import { env } from "@/config/env"
+import { Header } from "@/components/layout/header";
+import { Footer } from "@/components/layout/footer";
+import { JsonLd } from "@/components/seo/json-ld";
+import { getActiveStores } from "@/lib/api/stores";
+import { getDirectionsUrl, getWhatsAppUrl } from "@/features/stores/lib/maps";
+import { buildStoreJsonLd } from "@/features/stores/lib/structured-data";
+import { StorePanel } from "@/features/stores/components/store-panel";
+import { env } from "@/config/env";
 
 export const metadata = {
-  title: "Lokasi Toko — HNS IT Center",
+  title: "Lokasi Toko",
   description: "Temukan lokasi toko cabang HNS IT Center di Batam.",
-}
+};
 
-export default function StoresPage() {
-  const stores = STORES.map((store) => ({
-    ...store,
-    waUrl: buildWhatsAppUrl(
-      env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER,
-      `Halo HNS IT Center, saya ingin bertanya tentang toko ${store.name}.`
-    ),
-  }))
+/**
+ * Halaman ini dulunya statis. Sekarang membaca database, jadi tanpa ISR ia akan
+ * memukul MariaDB tiap kunjungan — padahal daftar toko berubah beberapa kali
+ * setahun. Satu jam adalah batas atas keterlambatan yang tidak akan pernah
+ * terpakai: `revalidateStorePages()` di aksi admin sudah membuang cache ini
+ * seketika setiap kali toko disimpan.
+ */
+export const revalidate = 3600;
+
+/** Pertanyaan yang benar-benar ditanyakan sebelum orang berangkat ke toko. */
+const FAQ_KUNJUNGAN = [
+  {
+    q: "Bisa cek stok dulu sebelum datang?",
+    a: "Bisa, dan untuk barang tertentu memang disarankan. Chat WhatsApp cabang yang dituju sambil menyebutkan tipe barangnya — stok tiap cabang berbeda.",
+  },
+  {
+    q: "Ada tempat parkir?",
+    a: "Ada di kedua cabang. Untuk cabang yang berada di dalam mal, ikuti area parkir mal seperti biasa.",
+  },
+  {
+    q: "Jam berapa paling sepi?",
+    a: "Pagi menjelang siang di hari kerja biasanya paling lengang. Akhir pekan sore paling ramai, terutama untuk konsultasi rakit PC.",
+  },
+  {
+    q: "Mau servis, langsung bawa unitnya saja?",
+    a: "Boleh langsung datang. Bawa kelengkapan yang berkaitan dengan keluhannya — adaptor, kabel, atau media instalasi — supaya teknisi tidak perlu menebak.",
+  },
+];
+
+export default async function StoresPage() {
+  const stores = await getActiveStores();
+
+  const panels = stores.map((store) => ({
+    id: store.id,
+    name: store.name,
+    address: store.address,
+    hours: store.hours,
+    mapsUrl: store.mapsUrl,
+    phone: store.phone,
+    googlePlaceId: store.googlePlaceId,
+    latitude: store.latitude,
+    longitude: store.longitude,
+    waUrl: getWhatsAppUrl(store),
+    directionsUrl: getDirectionsUrl(store),
+  }));
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
+      {stores.map((store) => (
+        <JsonLd
+          key={store.id}
+          data={buildStoreJsonLd(store, env.NEXT_PUBLIC_SITE_URL)}
+        />
+      ))}
+
       <Header />
       <main className="flex-1">
-        {/* Title Section */}
         <section className="bg-brand-green py-12 text-center text-primary-foreground">
           <h1 className="text-3xl font-extrabold tracking-tight md:text-4xl lg:text-5xl">
-            OUR STORE & BRANCH
+            TOKO &amp; CABANG KAMI
           </h1>
           <p className="mt-4 text-lg text-primary-foreground/80">
             Temukan lokasi toko terdekat kami di kota Anda
           </p>
         </section>
 
-        {/* Global Map Section */}
-        <section className="w-full">
-          <div className="h-[400px] w-full bg-muted lg:h-[500px]">
-            {/* Embed Google Maps for Batam Region */}
-            <iframe
-              src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d127641.17387440938!2d103.9317584102604!3d1.0827284451022378!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x31d98d75a1334f51%3A0xc34cc420a3240e94!2sBatam%2C%20Batam%20City%2C%20Riau%20Islands!5e0!3m2!1sen!2sid!4v1717000000000!5m2!1sen!2sid"
-              width="100%"
-              height="100%"
-              style={{ border: 0 }}
-              allowFullScreen={true}
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-              className="grayscale hover:grayscale-0 transition-all duration-500"
-            ></iframe>
-          </div>
-        </section>
-
-        {/* Store Grid Section */}
-        <section className="mx-auto max-w-7xl px-4 py-16 md:px-6">
-          <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-            {stores.map((store) => (
-              <div key={store.id} className="overflow-hidden rounded-2xl border bg-card shadow-sm transition-all hover:shadow-md">
-                {/* Store Image Placeholder */}
-                <div className="relative h-48 w-full bg-muted">
-                  <div className="flex h-full w-full flex-col items-center justify-center bg-brand-green/10 text-brand-green">
-                    <MapPin className="mb-2 h-10 w-10 opacity-50" />
-                    <span className="font-semibold">{store.name}</span>
-                  </div>
+        {/*
+          Seluruh isi halaman berbagi satu lebar. Susunan lama menaruh peta
+          selebar layar penuh di atas konten yang menyempit di tengah, dan
+          perbedaan lebar itulah yang membuat halamannya terasa kosong.
+        */}
+        <div className="mx-auto w-full max-w-6xl px-4 py-10 md:py-14">
+          {stores.length === 0 ? (
+            <p className="rounded-2xl border border-dashed p-8 text-center text-muted-foreground">
+              Data toko belum tersedia. Hubungi kami lewat WhatsApp untuk
+              menanyakan lokasi cabang terdekat.
+            </p>
+          ) : (
+            <>
+              {/* Fakta ringkas: menjawab "ada berapa" dan "kapan buka" sebelum
+                  orang menggulir. Sengaja tanpa angka rating — angka presisi yang
+                  tidak ada yang memperbaruinya lebih merusak daripada tidak ada. */}
+              <dl className="flex flex-wrap gap-x-8 gap-y-2 rounded-xl border bg-card px-5 py-3.5 text-sm text-muted-foreground">
+                <div className="flex gap-1.5">
+                  <dt>Jumlah cabang</dt>
+                  <dd className="font-bold text-foreground">{stores.length}</dd>
                 </div>
-
-                <div className="p-6">
-                  <h3 className="text-xl font-bold">{store.name}</h3>
-                  
-                  <div className="mt-4 flex items-start gap-3 text-sm text-muted-foreground">
-                    <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand-green" />
-                    <p className="leading-relaxed">{store.address}</p>
-                  </div>
-                  
-                  <div className="mt-4 flex items-center gap-3 text-sm font-medium text-foreground">
-                    <Clock className="h-4 w-4 text-sale-red" />
-                    <p>{store.hours}</p>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="mt-8 grid grid-cols-2 gap-3">
-                    <a
-                      href={store.mapsUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-center gap-2 rounded-xl border border-input bg-background px-4 py-3 text-sm font-bold shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-                    >
-                      <Navigation className="h-4 w-4" />
-                      Google Maps
-                    </a>
-                    <a
-                      href={store.waUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center justify-center gap-2 rounded-xl bg-[#25D366] px-4 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-[#25D366]/90"
-                    >
-                      <MessageCircle className="h-4 w-4" />
-                      WhatsApp
-                    </a>
-                  </div>
+                <div className="flex gap-1.5">
+                  <dt>Buka</dt>
+                  <dd className="font-bold text-foreground">setiap hari</dd>
                 </div>
+                <div className="flex gap-1.5">
+                  <dt>Wilayah</dt>
+                  <dd className="font-bold text-foreground">Batam</dd>
+                </div>
+              </dl>
+
+              {/* Grid meregangkan anaknya sama tinggi secara bawaan; `h-full` di
+                  dalam panel dan `mt-auto` pada barisan tombol yang membuat
+                  tombolnya rata di dasar walau alamatnya berbeda panjang. */}
+              <div className="mt-6 grid gap-6 md:grid-cols-2">
+                {panels.map((store) => (
+                  <StorePanel key={store.id} store={store} />
+                ))}
               </div>
-            ))}
-          </div>
-        </section>
+            </>
+          )}
+
+          <section className="mt-12">
+            <h2 className="text-xl font-bold md:text-2xl">
+              Sebelum berkunjung
+            </h2>
+            <div className="mt-4 divide-y rounded-2xl border bg-card">
+              {FAQ_KUNJUNGAN.map((item) => (
+                <details key={item.q} className="group px-5 py-4">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-semibold marker:content-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+                    {item.q}
+                    <span
+                      className="shrink-0 text-xl leading-none text-muted-foreground transition-transform group-open:rotate-45"
+                      aria-hidden="true"
+                    >
+                      +
+                    </span>
+                  </summary>
+                  <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
+                    {item.a}
+                  </p>
+                </details>
+              ))}
+            </div>
+          </section>
+        </div>
       </main>
       <Footer />
     </div>
-  )
+  );
 }

@@ -7,7 +7,16 @@ const trustItems = [
     icon: Tags,
   },
   {
-    title: "Teknisi Berpengalaman",
+    /**
+     * "Teknisi Ahli", bukan "Teknisi Berpengalaman".
+     *
+     * Judul di kartu ini `truncate` di bawah 640px supaya keempat kartu sama
+     * tinggi, dan yang 21 huruf itu satu-satunya yang kena — di layar mobile ia
+     * terbaca "Teknisi Berpengala…", memotong justru kata yang membawa artinya.
+     * Dipendekkan sampai muat utuh, bukan `truncate`-nya yang dibuang, supaya
+     * kartunya tetap rata.
+     */
+    title: "Teknisi Ahli",
     description: "Layanan rakit & service in-house",
     icon: Wrench,
   },

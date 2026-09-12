@@ -1,6 +1,6 @@
 "use client"
 
-import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect, useRef } from "react"
+import React, { createContext, useContext, useState, useCallback, ReactNode, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { CheckCircle2, X } from "lucide-react"
 
@@ -93,33 +93,50 @@ export function useFlyToCart() {
   return context
 }
 
-function FlyElement({ item }: { item: FlyItem }) {
-  const [target, setTarget] = useState({ x: item.startX, y: item.startY })
+/**
+ * Titik tujuan bola terbang: pusat ikon keranjang yang sedang terlihat.
+ *
+ * Diukur dari DOM sungguhan (`getBoundingClientRect`), jadi hanya sah dipanggil
+ * di browser. Ada DUA ikon `.cart-target-icon` di halaman — versi desktop dan
+ * versi bilah mobile — dan hanya satu yang terlihat pada satu waktu; yang
+ * tersembunyi punya lebar 0. Itulah kenapa pemilihannya lewat ukuran, bukan
+ * lewat urutan.
+ */
+function hitungTargetKeranjang(): { x: number; y: number } {
+  const visibleCart = Array.from(document.querySelectorAll(".cart-target-icon")).find((el) => {
+    const r = el.getBoundingClientRect()
+    return r.width > 0 && r.height > 0
+  })
 
-  useEffect(() => {
-    const cartEls = document.querySelectorAll(".cart-target-icon")
-    
-    // Cari elemen yang tidak ter-hide oleh CSS (width > 0)
-    const visibleCart = Array.from(cartEls).find(el => {
-      const r = el.getBoundingClientRect()
-      return r.width > 0 && r.height > 0
-    })
-    
-    if (visibleCart) {
-      const rect = visibleCart.getBoundingClientRect()
-      // Pusatkan bola di ikon target
-      setTarget({
-        x: rect.left + rect.width / 2 - 12, // 12 adalah setengah dari ukuran bola (24px)
-        y: rect.top + rect.height / 2 - 12,
-      })
-    } else {
-      // Fallback koordinat jika ikon tidak ditemukan (pojok kanan atas)
-      setTarget({
-        x: window.innerWidth - 40,
-        y: 20,
-      })
+  if (visibleCart) {
+    const rect = visibleCart.getBoundingClientRect()
+    // Pusatkan bola di ikon target (12 = setengah ukuran bola 24px)
+    return {
+      x: rect.left + rect.width / 2 - 12,
+      y: rect.top + rect.height / 2 - 12,
     }
-  }, [item])
+  }
+
+  // Cadangan kalau ikonnya tidak ditemukan: pojok kanan atas.
+  return { x: window.innerWidth - 40, y: 20 }
+}
+
+function FlyElement({ item }: { item: FlyItem }) {
+  /**
+   * Dihitung SEKALI saat komponen ini mount, lewat inisialisasi malas
+   * `useState` — bukan `useEffect` + `setState`.
+   *
+   * Aman karena komponen ini baru dirender SETELAH pembeli menekan tombol,
+   * jadi ikon keranjangnya sudah lama terpasang dan terukur saat fungsi ini
+   * berjalan. Nilainya juga tidak pernah berubah setelah itu: satu bola punya
+   * satu tujuan, lalu komponennya dilepas begitu animasinya selesai.
+   *
+   * Versi lama memakai efek, sehingga render pertama SELALU memakai posisi
+   * awal (`item.startX/startY`) sebagai tujuan, baru dikoreksi setelah efeknya
+   * jalan. Framer Motion sudah mulai menganimasikan dengan tujuan yang salah
+   * pada frame pertama itu.
+   */
+  const [target] = useState(hitungTargetKeranjang)
 
   return (
     <motion.div

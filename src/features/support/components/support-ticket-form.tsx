@@ -1,59 +1,80 @@
-"use client"
+import { Ticket, ShieldCheck, MessageCircle } from "lucide-react"
 
-import { useState, type FormEvent } from "react"
-import { Ticket, ArrowRight, ShieldCheck } from "lucide-react"
-
-export function SupportTicketForm() {
-  const [ticketCode, setTicketCode] = useState("")
-
-  const handleSearch = (e: FormEvent) => {
-    e.preventDefault()
-
-    if (!ticketCode.trim()) return
-
-    // Supabase placeholder URL. The user will replace this later.
-    // Example: https://my-project.supabase.co/tiket/HNS-123
-    const supabaseUrl = `https://[link-supabase-anda.com]/tiket/${encodeURIComponent(ticketCode.trim())}`
-
-    // Redirect to the ticket URL
-    window.location.href = supabaseUrl
-  }
-
+/**
+ * Halaman klaim garansi & servis.
+ *
+ * **Kotak pencarian tiket sengaja dimatikan, bukan dihapus.** Sebelumnya ia
+ * mengirim pelanggan ke alamat placeholder yang tidak pernah diganti:
+ *
+ *     https://[link-supabase-anda.com]/tiket/HNS-240101-001
+ *
+ * Tanda kurung siku itu ikut terkirim apa adanya, jadi browser gagal
+ * menemukan hostnya dan pelanggan mendarat di halaman error — sudah
+ * meninggalkan situs HNS, atas nama tombol bertuliskan "Cari". Halaman ini
+ * ditaut dari footer SETIAP halaman, jadi jangkauannya bukan sudut yang jarang
+ * dikunjungi.
+ *
+ * Supabase juga tidak ada di tech stack (CLAUDE.md §4 menetapkan Prisma /
+ * MariaDB), dan tidak ada model tiket maupun pesanan di `prisma/schema.prisma`.
+ * Fitur pelacakannya bukan "belum disambung" — belum pernah ada.
+ *
+ * Kolomnya tetap ditampilkan dalam keadaan mati supaya halaman ini jujur soal
+ * apa yang sedang disiapkan, sementara jalur yang benar-benar bekerja —
+ * WhatsApp — berdiri di sebelahnya. Menyalakannya kembali butuh backend tiket
+ * yang sungguhan, bukan sekadar mengganti URL.
+ */
+export function SupportTicketForm({ waUrl }: { waUrl: string }) {
   return (
-    <div className="bg-card border rounded-3xl shadow-xl overflow-hidden p-8 md:p-12 text-center">
-      <div className="mx-auto w-20 h-20 bg-sale-red/10 rounded-full flex items-center justify-center mb-6">
-        <ShieldCheck className="w-10 h-10 text-sale-red" />
+    <div className="overflow-hidden rounded-3xl border bg-card p-8 text-center shadow-xl md:p-12">
+      <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-sale-red/10">
+        <ShieldCheck className="h-10 w-10 text-sale-red" />
       </div>
 
-      <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-4 text-foreground">
-        Pusat Bantuan & Klaim Garansi
+      <h1 className="mb-4 text-3xl font-extrabold tracking-tight text-foreground md:text-4xl">
+        Pusat Bantuan &amp; Klaim Garansi
       </h1>
-      <p className="text-muted-foreground mb-10 text-lg max-w-xl mx-auto">
-        Silakan masukkan nomor tiket servis atau klaim garansi Anda untuk melacak status pengerjaan secara real-time.
+      <p className="mx-auto mb-8 max-w-xl text-lg text-muted-foreground">
+        Untuk klaim garansi, servis, atau menanyakan status pengerjaan, hubungi tim kami lewat
+        WhatsApp. Siapkan nomor nota pembelian atau nomor tiket servis Anda.
       </p>
 
-      <form onSubmit={handleSearch} className="max-w-xl mx-auto relative">
-        <div className="relative flex items-center">
-          <Ticket className="absolute left-4 w-6 h-6 text-muted-foreground" />
+      <a
+        href={waUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-2 rounded-2xl bg-[#25D366] px-8 py-4 text-base font-bold text-white transition-opacity hover:opacity-90"
+      >
+        <MessageCircle className="h-5 w-5" />
+        Hubungi Lewat WhatsApp
+      </a>
+
+      <div className="mx-auto mt-12 max-w-xl border-t pt-8">
+        <p className="mb-4 text-sm font-semibold text-muted-foreground">
+          Pelacakan tiket online belum tersedia
+        </p>
+
+        <div className="relative flex items-center opacity-60">
+          <Ticket className="absolute left-4 h-6 w-6 text-muted-foreground" aria-hidden="true" />
           <input
             type="text"
             placeholder="Contoh: HNS-240101-001"
-            value={ticketCode}
-            onChange={(e) => setTicketCode(e.target.value)}
-            className="w-full h-16 pl-14 pr-32 rounded-2xl border-2 border-input bg-background text-lg outline-none focus:border-brand-green transition-colors"
-            required
+            disabled
+            aria-label="Pelacakan tiket online belum tersedia"
+            className="h-16 w-full cursor-not-allowed rounded-2xl border-2 border-input bg-muted/40 pl-14 pr-32 text-lg outline-none"
           />
           <button
-            type="submit"
-            className="absolute right-2 top-2 bottom-2 bg-foreground text-background px-6 rounded-xl font-bold flex items-center gap-2 hover:bg-foreground/90 transition-colors"
+            type="button"
+            disabled
+            className="absolute bottom-2 right-2 top-2 cursor-not-allowed rounded-xl bg-muted px-6 font-bold text-muted-foreground"
           >
-            Cari <ArrowRight className="w-4 h-4" />
+            Cari
           </button>
         </div>
-      </form>
 
-      <div className="mt-8 text-sm text-muted-foreground">
-        Belum punya tiket? Silakan hubungi admin kami melalui WhatsApp di menu Kontak.
+        <p className="mt-4 text-sm text-muted-foreground">
+          Sedang disiapkan. Sementara ini, status pengerjaan bisa ditanyakan langsung lewat
+          WhatsApp di atas.
+        </p>
       </div>
     </div>
   )

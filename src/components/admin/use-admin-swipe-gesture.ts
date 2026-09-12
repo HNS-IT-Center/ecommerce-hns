@@ -5,7 +5,12 @@ import { useSidebar } from "@/components/ui/sidebar"
 
 /**
  * Admin Swipe Gesture hook
- * Opens sidebar on confident left-to-right swipe.
+ * Opens sidebar on confident right-to-left swipe.
+ *
+ * Arahnya mengikuti sisi munculnya panel (`mobileSide="right"` di AppSidebar):
+ * panel yang masuk dari kanan ditarik dengan usapan KE KIRI, seolah menyeret
+ * panelnya keluar. Usapan ke arah berlawanan akan terasa seperti mendorong
+ * panel menjauh justru untuk memunculkannya.
  *
  * Rules:
  * - Gesture must start anywhere on screen (not just edge)
@@ -21,7 +26,16 @@ export function useAdminSwipeGesture() {
   useEffect(() => {
     const MIN_SWIPE_DISTANCE = 60   // px horizontal travel required
     const MAX_ANGLE_RATIO = 0.5     // dy/dx must be < 0.5 (shallow angle)
-    const MIN_VELOCITY = 0.3        // px/ms to count as intentional
+    // Dulu ada `MIN_VELOCITY = 0.3` di sini beserta perhitungan `duration` di
+    // bawah, tapi tidak satu pun pernah dipakai — gerakan lambat tetap lolos.
+    // Keduanya dibuang, BUKAN disambungkan: menyalakan syarat kecepatan yang
+    // belum pernah aktif berarti mengubah perilaku gestur tanpa ada yang
+    // memintanya. Kalau memang diinginkan, itu perubahan tersendiri yang perlu
+    // diuji di perangkat sungguhan.
+    //
+    // Perhitungan lamanya pun cacat: `(e as any).startTime` bukan properti
+    // TouchEvent yang sah, jadi nilainya selalu `undefined` dan hasilnya selalu
+    // jatuh ke `300`.
 
     // Check if the touch target is inside a horizontally scrollable container
     function isInsideHorizontalScroller(el: Element | null): boolean {
@@ -52,23 +66,24 @@ export function useAdminSwipeGesture() {
       const touch = e.changedTouches[0]
       const dx = touch.clientX - touchStart.current.x
       const dy = touch.clientY - touchStart.current.y
-      const duration = e.timeStamp - (e as any).startTime || 300
 
-      // Must be moving right
-      if (dx < 0) {
+      // Must be moving left (panel masuk dari kanan)
+      if (dx > 0) {
         touchStart.current = null
         return
       }
 
+      const distance = Math.abs(dx)
+
       // Angle check: horizontal must dominate
-      const angleRatio = Math.abs(dy) / Math.abs(dx)
+      const angleRatio = Math.abs(dy) / distance
       if (angleRatio > MAX_ANGLE_RATIO) {
         touchStart.current = null
         return
       }
 
       // Distance check
-      if (dx < MIN_SWIPE_DISTANCE) {
+      if (distance < MIN_SWIPE_DISTANCE) {
         touchStart.current = null
         return
       }

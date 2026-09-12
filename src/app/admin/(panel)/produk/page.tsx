@@ -2,14 +2,25 @@ import Link from "next/link"
 import { Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react"
 import { getProductsPaginated, getProductAttributes } from "@/lib/api/woocommerce/products"
 import { getCategoriesForAdmin } from "@/lib/api/woocommerce/categories"
+import { getStockDisplayMode } from "@/lib/api/stock-display"
+import { requirePageView } from "@/lib/auth"
 import { ProductDataTable } from "./product-data-table"
+import { StockDisplayToggle } from "./stock-display-toggle"
 
 type Props = {
-  searchParams: Promise<{ q?: string; page?: string; sort?: string; order?: string; status_filter?: string }>
+  searchParams: Promise<{
+    q?: string
+    page?: string
+    sort?: string
+    order?: string
+    status_filter?: string
+    type_filter?: string
+  }>
 }
 
 export default async function AdminProdukPage({ searchParams }: Props) {
-  const { q, page, sort, order, status_filter } = await searchParams
+  await requirePageView("produk")
+  const { q, page, sort, order, status_filter, type_filter } = await searchParams
   const currentPage = Number(page ?? 1)
   const currentSort = (sort === "title" || sort === "sku" || sort === "price" || sort === "date") ? sort : "date"
   const currentOrder = (order === "asc" || order === "desc") ? order : "desc"
@@ -23,7 +34,13 @@ export default async function AdminProdukPage({ searchParams }: Props) {
     apiStockStatus = "outofstock"
   }
 
-  const [{ products, totalPages }, categories, attributeOptions] = await Promise.all([
+  // Tipe adalah dimensi terpisah dari status, jadi keduanya bisa dikombinasikan
+  // — mis. "Draft" + "Bervariasi" untuk memeriksa produk varian yang belum
+  // terbit.
+  const apiType =
+    type_filter === "simple" || type_filter === "variable" ? type_filter : undefined
+
+  const [{ products, totalPages }, categories, attributeOptions, stockDisplayMode] = await Promise.all([
     getProductsPaginated({
       search: q,
       page: currentPage,
@@ -32,9 +49,11 @@ export default async function AdminProdukPage({ searchParams }: Props) {
       order: currentOrder,
       status: apiStatus,
       stock_status: apiStockStatus,
+      type: apiType,
     }),
     getCategoriesForAdmin(),
     getProductAttributes(),
+    getStockDisplayMode(),
   ])
 
   const rows = products.map((product) => ({
@@ -42,6 +61,11 @@ export default async function AdminProdukPage({ searchParams }: Props) {
     name: product.name,
     sku: product.sku ?? "",
     status: product.status,
+    // Penanda produk bervariasi + jumlah varian, supaya staff tahu sebelum
+    // membuka form bahwa harga yang tampil adalah "mulai dari" dan bahwa
+    // produk ini punya anak yang ikut terpengaruh.
+    type: product.type,
+    variationCount: product.variations?.length ?? 0,
     price: Number(product.price || 0),
     image: product.images?.[0]?.src ?? null,
     stockStatus: product.stock_status,
@@ -64,7 +88,15 @@ export default async function AdminProdukPage({ searchParams }: Props) {
         </Link>
       </div>
 
+      {/* Sakelar tampilan stok berdiri di atas tabel, bukan di dalam bilah
+          filter: filter di sana hanya mengubah apa yang dilihat staff di
+          halaman ini, sedangkan sakelar ini mengubah apa yang dilihat
+          PELANGGAN di seluruh situs. */}
       <div className="mt-6">
+        <StockDisplayToggle mode={stockDisplayMode} />
+      </div>
+
+      <div className="mt-4">
         <ProductDataTable
           products={rows}
           attributeOptions={attributeOptions}
@@ -91,12 +123,13 @@ export default async function AdminProdukPage({ searchParams }: Props) {
             if (sort) params.set("sort", sort)
             if (order) params.set("order", order)
             if (status_filter) params.set("status_filter", status_filter)
+            if (type_filter) params.set("type_filter", type_filter)
             params.set("page", String(p))
             return `/admin/produk?${params.toString()}`
           }
 
           let startPage = Math.max(1, currentPage - 2)
-          let endPage = Math.min(totalPages, startPage + 4)
+          const endPage = Math.min(totalPages, startPage + 4)
           if (endPage - startPage < 4) {
             startPage = Math.max(1, endPage - 4)
           }

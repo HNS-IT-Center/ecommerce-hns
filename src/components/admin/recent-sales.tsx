@@ -1,71 +1,59 @@
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/ui/avatar"
+import { Laptop, Cpu, Keyboard, Monitor, Printer } from "lucide-react"
+
+// Data placeholder — belum tersambung ke order asli.
+// Ganti dengan hasil query order terbaru begitu lib/services/dashboard tersedia.
+const recentOrders = [
+  {
+    icon: Laptop,
+    product: "ASUS ROG Strix G16",
+    buyer: "Andi Saputra",
+    amount: "Rp 18.500.000",
+  },
+  {
+    icon: Cpu,
+    product: "AMD Ryzen 7 7800X3D",
+    buyer: "Budi Hartono",
+    amount: "Rp 5.750.000",
+  },
+  {
+    icon: Monitor,
+    product: "LG UltraGear 27\" 165Hz",
+    buyer: "Citra Wulandari",
+    amount: "Rp 3.200.000",
+  },
+  {
+    icon: Keyboard,
+    product: "Keychron K8 Pro",
+    buyer: "Dedi Kurniawan",
+    amount: "Rp 1.150.000",
+  },
+  {
+    icon: Printer,
+    product: "Epson EcoTank L3250",
+    buyer: "Eka Putri",
+    amount: "Rp 2.890.000",
+  },
+]
 
 export function RecentSales() {
   return (
-    <div className="space-y-8">
-      <div className="flex items-center">
-        <Avatar className="h-9 w-9">
-          <AvatarImage src="/avatars/01.png" alt="Avatar" />
-          <AvatarFallback>OM</AvatarFallback>
-        </Avatar>
-        <div className="ml-4 space-y-1">
-          <p className="text-sm font-medium leading-none">Olivia Martin</p>
-          <p className="text-sm text-muted-foreground">
-            olivia.martin@email.com
-          </p>
+    <div className="space-y-6">
+      {recentOrders.map((order) => (
+        <div key={order.product} className="flex items-center">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10">
+            <order.icon className="h-4 w-4 text-primary" />
+          </div>
+          <div className="ml-4 space-y-1 min-w-0">
+            <p className="text-sm font-medium leading-none truncate">
+              {order.product}
+            </p>
+            <p className="text-sm text-muted-foreground truncate">
+              {order.buyer}
+            </p>
+          </div>
+          <div className="ml-auto shrink-0 pl-2 font-medium">{order.amount}</div>
         </div>
-        <div className="ml-auto font-medium">+$1,999.00</div>
-      </div>
-      <div className="flex items-center">
-        <Avatar className="flex h-9 w-9 items-center justify-center space-y-0 border">
-          <AvatarImage src="/avatars/02.png" alt="Avatar" />
-          <AvatarFallback>JL</AvatarFallback>
-        </Avatar>
-        <div className="ml-4 space-y-1">
-          <p className="text-sm font-medium leading-none">Jackson Lee</p>
-          <p className="text-sm text-muted-foreground">jackson.lee@email.com</p>
-        </div>
-        <div className="ml-auto font-medium">+$39.00</div>
-      </div>
-      <div className="flex items-center">
-        <Avatar className="h-9 w-9">
-          <AvatarImage src="/avatars/03.png" alt="Avatar" />
-          <AvatarFallback>IN</AvatarFallback>
-        </Avatar>
-        <div className="ml-4 space-y-1">
-          <p className="text-sm font-medium leading-none">Isabella Nguyen</p>
-          <p className="text-sm text-muted-foreground">
-            isabella.nguyen@email.com
-          </p>
-        </div>
-        <div className="ml-auto font-medium">+$299.00</div>
-      </div>
-      <div className="flex items-center">
-        <Avatar className="h-9 w-9">
-          <AvatarImage src="/avatars/04.png" alt="Avatar" />
-          <AvatarFallback>WK</AvatarFallback>
-        </Avatar>
-        <div className="ml-4 space-y-1">
-          <p className="text-sm font-medium leading-none">William Kim</p>
-          <p className="text-sm text-muted-foreground">will@email.com</p>
-        </div>
-        <div className="ml-auto font-medium">+$99.00</div>
-      </div>
-      <div className="flex items-center">
-        <Avatar className="h-9 w-9">
-          <AvatarImage src="/avatars/05.png" alt="Avatar" />
-          <AvatarFallback>SD</AvatarFallback>
-        </Avatar>
-        <div className="ml-4 space-y-1">
-          <p className="text-sm font-medium leading-none">Sofia Davis</p>
-          <p className="text-sm text-muted-foreground">sofia.davis@email.com</p>
-        </div>
-        <div className="ml-auto font-medium">+$39.00</div>
-      </div>
+      ))}
     </div>
   )
 }

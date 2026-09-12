@@ -4,13 +4,15 @@ import * as React from "react"
 import { Trash2 } from "lucide-react"
 
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox"
+import { TagInput } from "@/components/ui/tag-input"
 import type { ProductAttributeTaxonomy } from "@/types/woocommerce"
 
 type AttributeRowProps = {
   name: string
-  value: string
+  /** Bisa lebih dari satu, mis. ["ATX", "Micro-ATX"]. */
+  values: string[]
   onNameChange: (name: string) => void
-  onValueChange: (value: string) => void
+  onValuesChange: (values: string[]) => void
   onRemove: () => void
   attributeOptions: ProductAttributeTaxonomy[]
 }
@@ -20,16 +22,22 @@ function slugifyAttributeName(name: string): string {
 }
 
 /**
- * Satu baris Spesifikasi/Atribut. Nama & nilai boleh dipilih dari yang sudah
- * ada di database (supaya konsisten antar produk, mis. "Warna" tidak jadi
- * "warna" di satu produk dan "Warna " di produk lain) atau diketik baru —
- * backend meng-upsert otomatis saat produk disimpan.
+ * Satu baris Spesifikasi/Atribut.
+ *
+ * Nama & nilai boleh dipilih dari yang sudah ada di database (supaya konsisten
+ * antar produk, mis. "Warna" tidak jadi "warna" di satu produk dan "Warna " di
+ * produk lain) atau diketik baru — backend meng-upsert otomatis saat produk
+ * disimpan.
+ *
+ * Nilainya jamak: satu atribut sah punya beberapa nilai sekaligus, mis. casing
+ * yang muat "ATX" dan "Micro-ATX". Struktur database sudah mendukung itu (satu
+ * baris `product_attributes` per nilai).
  */
 export function AttributeRow({
   name,
-  value,
+  values,
   onNameChange,
-  onValueChange,
+  onValuesChange,
   onRemove,
   attributeOptions,
 }: AttributeRowProps) {
@@ -39,6 +47,11 @@ export function AttributeRow({
     () => attributeOptions.map((attr) => ({ id: attr.id, label: attr.name })),
     [attributeOptions]
   )
+
+  // Nilai hanya bisa diisi setelah atributnya jelas: daftar saran diambil
+  // per-atribut, dan mengetik nilai tanpa nama atribut menghasilkan data yang
+  // tidak bisa disimpan.
+  const hasAttribute = name.trim().length > 0
 
   React.useEffect(() => {
     let cancelled = false
@@ -77,17 +90,18 @@ export function AttributeRow({
         options={nameOptions}
         placeholder="Nama (mis. Warna)"
         createHint={(q) => `Atribut baru: "${q}"`}
-        className="flex-1"
+        className="w-full max-w-[13rem] shrink-0"
         inputClassName="text-xs md:text-xs"
       />
-      <Combobox
-        value={value}
-        onValueChange={onValueChange}
+      <TagInput
+        values={values}
+        onValuesChange={onValuesChange}
         options={valueOptions}
-        placeholder="Nilai (mis. Hitam)"
+        placeholder={hasAttribute ? "Nilai (mis. Hitam) — Enter" : "Pilih atribut dulu"}
         createHint={(q) => `Nilai baru: "${q}"`}
+        disabled={!hasAttribute}
+        disabledHint="Isi nama atribut di sebelah kiri dulu."
         className="flex-1"
-        inputClassName="text-xs md:text-xs"
       />
       <button
         type="button"

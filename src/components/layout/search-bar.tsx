@@ -3,11 +3,13 @@
 import { useId, useRef, useState, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { useRouter } from "next/navigation"
-import { Search, ArrowLeft } from "lucide-react"
+import { Search, ArrowLeft, ScanLine } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { useLiveSearch } from "@/features/search/hooks/use-live-search"
 import { SearchResultsDropdown } from "@/features/search/components/search-results-dropdown"
+import { ScannerOverlay } from "@/features/search/components/scanner-overlay"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 const MIN_QUERY_LENGTH = 2
 
@@ -20,18 +22,26 @@ export function SearchBar({ className }: SearchBarProps = {}) {
   const [isFocused, setIsFocused] = useState(false)
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
-  const [isMobile, setIsMobile] = useState(false)
+  const [isScannerOpen, setIsScannerOpen] = useState(false)
+  // Lewat `useIsMobile()`, bukan salinan `useState` + listener resize sendiri:
+  // breakpointnya sama persis (768px) dan hook itu memakai
+  // `useSyncExternalStore`, jadi tidak melanggar `set-state-in-effect` dan
+  // tidak menghasilkan render bertingkat.
+  const isMobile = useIsMobile()
   const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
   const listboxId = useId()
 
-  useEffect(() => {
-    setIsMobile(window.innerWidth < 768)
-    const handleResize = () => setIsMobile(window.innerWidth < 768)
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
+  /**
+   * Menandai bahwa overlay menaruh satu entry history miliknya sendiri, supaya
+   * tombol Back menutup overlay alih-alih meninggalkan halaman.
+   *
+   * Ref, bukan state: nilainya dibaca di dalam listener `popstate` dan di
+   * `closeDropdown`, dan keduanya tidak boleh memicu render ulang.
+   */
+  const historyEntryRef = useRef(false)
+
 
   const isOpen = (isFocused || isMobileSearchOpen) && query.trim().length >= MIN_QUERY_LENGTH
 
@@ -57,6 +67,36 @@ export function SearchBar({ className }: SearchBarProps = {}) {
     }
   }, [isMobileSearchOpen, isOpen, isMobile])
 
+  /**
+   * Tombol Back menutup overlay, bukan meninggalkan halaman.
+   *
+   * Saat overlay dibuka, satu entry history disisipkan. Tekan Back akan
+   * mem-pop entry itu — `popstate` menutup overlay dan halaman di baliknya
+   * tetap utuh. Tanpa ini pembeli yang menekan Back saat sedang mengetik
+   * langsung terlempar ke halaman sebelumnya, dan pencariannya hilang.
+   *
+   * Overlay hanya menutup diri di sini; entry-nya sudah lepas oleh pop itu
+   * sendiri, jadi `historyEntryRef` dinolkan tanpa memanggil `history.back()`
+   * lagi (itulah alasan `closeDropdown` tidak dipakai di listener ini).
+   */
+  useEffect(() => {
+    if (!isMobileSearchOpen) return
+
+    window.history.pushState({ hnsSearchOverlay: true }, "")
+    historyEntryRef.current = true
+
+    const handlePopState = () => {
+      historyEntryRef.current = false
+      setIsFocused(false)
+      setIsMobileSearchOpen(false)
+      setHighlightedIndex(-1)
+      inputRef.current?.blur()
+    }
+
+    window.addEventListener("popstate", handlePopState)
+    return () => window.removeEventListener("popstate", handlePopState)
+  }, [isMobileSearchOpen])
+
   const { results, status } = useLiveSearch(query)
 
   // Reset highlight saat query berubah — adjust state selama render (bukan
@@ -72,11 +112,62 @@ export function SearchBar({ className }: SearchBarProps = {}) {
 
   const getOptionId = (index: number) => `${listboxId}-option-${index}`
 
-  const closeDropdown = () => {
+  /**
+   * Menutup overlay dari dalam aplikasi: tombol kembali di overlay, Escape,
+   * klik backdrop, klik hasil, maupun submit pencarian.
+   *
+   * Kalau overlay sempat menaruh entry history sendiri, entry itu dilepas
+   * lewat `history.back()` — tanpa ini pembeli yang menutup overlay secara
+   * manual meninggalkan satu entry yatim, dan tekan Back berikutnya hanya
+   * "memakan" entry itu tanpa berpindah halaman.
+   *
+   * `isNavigating` menandai bahwa pemanggil akan berpindah halaman setelah ini,
+   * dan di situ entry-nya justru TIDAK boleh di-pop. `history.back()` bersifat
+   * asinkron: browser mengantrekan pop-nya, tidak menjalankannya inline. Jadi
+   * `router.push` yang menyusul sempat menimpa entry teratas lebih dulu, lalu
+   * pop yang tadi diantrekan memakan entry hasil push itu — pembeli melihat
+   * halaman tujuan sekejap lalu terlempar balik ke halaman asal. Itulah sebab
+   * pencarian mobile dulu terlihat "tidak bereaksi" saat ditekan Enter atau
+   * hasilnya diketuk; memanggil `closeDropdown()` lebih dulu tidak menolong,
+   * karena kedua operasi berakhir di antrean yang sama.
+   *
+   * Saat bernavigasi, entry overlay cukup dibiarkan tertimpa oleh push-nya.
+   * Hasilnya juga yang paling masuk akal buat pembeli: dari halaman produk,
+   * Back mengembalikannya ke halaman asal — bukan membuka ulang overlay
+   * pencarian yang sudah selesai ia pakai.
+   *
+   * Penandanya dimatikan sebelum `history.back()` supaya listener `popstate`
+   * yang ikut terpanggil tahu pop ini sudah ditangani dan tidak menutup ulang.
+   */
+  const closeDropdown = (options?: { isNavigating?: boolean }) => {
     setIsFocused(false)
     setIsMobileSearchOpen(false)
     setHighlightedIndex(-1)
-    if (inputRef.current) inputRef.current.blur()
+    inputRef.current?.blur()
+
+    if (historyEntryRef.current) {
+      historyEntryRef.current = false
+      if (!options?.isNavigating) {
+        window.history.back()
+      }
+    }
+  }
+
+  /**
+   * Menutup pemindai. Saat ia menutup KARENA berpindah halaman, overlay
+   * pencarian di belakangnya ikut ditutup dengan tanda yang sama — kalau tidak,
+   * overlay itu tetap menutupi halaman produk yang baru saja dibuka, dan entri
+   * riwayatnya ditarik tepat saat `router.push` sedang berjalan (lihat catatan
+   * panjang di `closeDropdown`).
+   */
+  const handleScannerOpenChange = (
+    open: boolean,
+    options?: { isNavigating?: boolean }
+  ) => {
+    setIsScannerOpen(open)
+    if (!open && options?.isNavigating) {
+      closeDropdown({ isNavigating: true })
+    }
   }
 
   const handleFocus = () => {
@@ -90,20 +181,31 @@ export function SearchBar({ className }: SearchBarProps = {}) {
     blurTimeoutRef.current = setTimeout(() => setIsFocused(false), 150)
   }
 
-  const goToSearchResults = () => {
-    if (query.trim()) {
-      router.push(`/search?q=${encodeURIComponent(query.trim())}`)
-    }
-  }
-
+  /**
+   * Menekan Enter SELALU menutup overlay.
+   *
+   * Sebelumnya overlay hanya tertutup sebagai efek samping: berpindah halaman
+   * mem-remount komponen ini. Begitu pembeli sudah berada di `/search`,
+   * mencari lagi cuma mengganti query param — tidak ada remount, dan overlay
+   * menggantung menutupi hasil yang baru saja diminta.
+   */
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (isOpen && highlightedIndex >= 0 && results[highlightedIndex]) {
-      router.push(`/product/${results[highlightedIndex].slug}`)
-      closeDropdown()
-      return
-    }
-    goToSearchResults()
+
+    const highlighted =
+      isOpen && highlightedIndex >= 0 ? results[highlightedIndex] : undefined
+    const target = highlighted
+      ? `/product/${highlighted.slug}`
+      : query.trim()
+        ? `/search?q=${encodeURIComponent(query.trim())}`
+        : null
+
+    if (!target) return
+
+    // `isNavigating` supaya entry history overlay tidak di-pop dan membatalkan
+    // push di bawahnya — lihat `closeDropdown`.
+    closeDropdown({ isNavigating: true })
+    router.push(target)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -163,11 +265,24 @@ export function SearchBar({ className }: SearchBarProps = {}) {
             onKeyDown={handleKeyDown}
             placeholder="Cari laptop, komponen PC..."
             className={cn(
-              "w-full shadow-sm appearance-none pl-9 focus-visible:ring-1 focus-visible:ring-primary transition-all duration-200",
+              "w-full shadow-sm appearance-none pl-9 pr-11 focus-visible:ring-1 focus-visible:ring-primary transition-all duration-200",
               "bg-background border border-border rounded-lg text-sm",
               isMobileSearchOpen ? "h-11 text-base" : "h-10"
             )}
           />
+          {/* Pemindai QR/barcode. `onMouseDown` dicegat supaya menekan tombol
+              ini tidak lebih dulu mem-blur input — di desktop blur itu menutup
+              dropdown dan menggeser tata letak tepat sebelum klik mendarat. */}
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setIsScannerOpen(true)}
+            aria-label="Pindai QR atau barcode produk"
+            title="Pindai QR atau barcode produk"
+            className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <ScanLine className="h-4.5 w-4.5" />
+          </button>
         </div>
       </div>
       
@@ -183,7 +298,9 @@ export function SearchBar({ className }: SearchBarProps = {}) {
               query={query}
               highlightedIndex={highlightedIndex}
               onHoverIndex={setHighlightedIndex}
-              onSelect={closeDropdown}
+              // Kedua tautan di dropdown berpindah halaman lewat <Link>, jadi
+              // entry overlay dibiarkan tertimpa push-nya, bukan di-pop.
+              onSelect={() => closeDropdown({ isNavigating: true })}
               getOptionId={getOptionId}
               className={isMobileSearchOpen ? "static shadow-none border-none mt-0 max-h-none overflow-visible rounded-none" : undefined}
             />
@@ -217,14 +334,30 @@ export function SearchBar({ className }: SearchBarProps = {}) {
 
   return (
     <>
-      {isOpen && !isMobileSearchOpen && typeof document !== 'undefined' && createPortal(
-        <div 
-          className="fixed top-16 inset-x-0 bottom-0 z-40 bg-black/60 backdrop-blur-sm" 
-          onClick={closeDropdown}
-        />,
-        document.body
-      )}
+      <ScannerOverlay open={isScannerOpen} onOpenChange={handleScannerOpenChange} />
       <div className={cn("relative w-full z-50", className)}>
+        {/* Scrim yang meredupkan halaman SEKALIGUS isi header.
+
+            Ia sengaja anak dari root SearchBar, bukan portal ke <body>:
+            header ber-`z-50`, jadi scrim di level body tidak akan pernah bisa
+            menutupinya tanpa ikut menutupi search bar ini — SearchBar
+            terkurung di stacking context header yang sama. Sebagai anak di
+            sini, seluruh lapisan `z-50` milik root ikut naik di atas logo,
+            MegaMenu, dan nav, sementara form di bawahnya tetap tergambar di
+            atas scrim (`-z-10`).
+
+            Ukurannya `left-0 top-0 w-full h-[100dvh]`, bukan `inset-0`:
+            header memakai `backdrop-blur`, dan `backdrop-filter` membentuk
+            containing block untuk descendant `fixed` — jadi `inset-0` di sini
+            hanya akan seukuran kotak header. Header sendiri menempel di
+            (0,0) dan selebar layar, jadi koordinat ini jatuh tepat di
+            viewport. */}
+        {isOpen && !isMobileSearchOpen && (
+          <div
+            className="fixed left-0 top-0 h-[100dvh] w-full -z-10 bg-black/60 backdrop-blur-sm"
+            onClick={() => closeDropdown()}
+          />
+        )}
         {isMobileSearchOpen ? (
           createPortal(
             <div className="fixed inset-0 z-[100] bg-background overflow-y-auto h-[100dvh] overscroll-none">

@@ -1,10 +1,13 @@
 import { Metadata } from "next"
 
+import { requirePageView } from "@/lib/auth"
+
 export const metadata: Metadata = {
   title: "Color Overview | Admin Panel",
 }
 
-export default function ColorsPage() {
+export default async function ColorsPage() {
+  await requirePageView("colors")
   return (
     <div className="flex flex-col gap-6">
       <div className="mb-4">

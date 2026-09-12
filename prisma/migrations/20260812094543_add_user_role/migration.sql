@@ -1,0 +1,29 @@
+-- Tingkatan akun admin: "owner" | "staff".
+--
+-- Hari ini bedanya cuma satu: `owner` boleh menghapus akun pelanggan secara
+-- permanen, `staff` tidak. Penghapusan itu hard delete beserta cascade ke
+-- rakitan tersimpan (CLAUDE.md §2.8) dan tidak bisa dibatalkan, jadi ia tidak
+-- pantas tersedia untuk setiap orang yang kebetulan bisa masuk panel.
+--
+-- VARCHAR(16), bukan ENUM MySQL. Union literal di TypeScript (`AdminRole`)
+-- yang memegang daftar nilainya — docs/06-coding-standards.md §1.4, pola sama
+-- seperti `customer_verification_tokens.purpose`. Menambah nilai ketiga nanti
+-- tidak perlu ALTER TABLE.
+
+-- DEFAULT 'owner', bukan 'staff'.
+--
+-- Tabel ini berisi 1 baris saat migrasi ini ditulis — admin yang aktif dipakai
+-- sekarang. Kalau default-nya 'staff', baris itu ikut turun dan database ini
+-- tidak punya satu pun owner: tidak ada yang bisa menghapus pelanggan, DAN
+-- tidak ada yang bisa menaikkan siapa pun kembali jadi owner. Panelnya
+-- mengunci dirinya sendiri, dan satu-satunya jalan keluar adalah UPDATE manual
+-- lewat SQL.
+--
+-- Arah longgar ini dipilih sadar: menurunkan orang lewat panel itu murah,
+-- memulihkan panel terkunci itu mahal.
+--
+-- Default-nya TIDAK dibuang setelah ini (beda dengan `stores.slug` di
+-- 20260805085409, yang default-nya cuma jembatan backfill). Di sini
+-- `@default("owner")` memang ada di skema Prisma sebagai perilaku permanen
+-- untuk admin baru, jadi membuangnya justru akan memunculkan drift.
+ALTER TABLE `users` ADD COLUMN `role` VARCHAR(16) NOT NULL DEFAULT 'owner';

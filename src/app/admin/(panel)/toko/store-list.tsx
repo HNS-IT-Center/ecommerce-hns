@@ -1,9 +1,10 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import Link from "next/link"
-import { Pencil, TriangleAlert } from "lucide-react"
-import { deleteStore } from "./actions"
+import { useState } from "react";
+import Link from "next/link";
+import { Pencil, TriangleAlert } from "lucide-react";
+import { formatOpeningHours, type StoreHours } from "@/lib/utils/opening-hours";
+import { deleteStore } from "./actions";
 
 /**
  * Daftar toko dengan konfirmasi hapus.
@@ -24,33 +25,59 @@ import { deleteStore } from "./actions"
  * sudah terlihat tepat di atas tombolnya.
  */
 type StoreRow = {
-  id: string
-  name: string
-  address: string
-  hours: string
-  phone: string
-}
+  id: string;
+  name: string;
+  address: string;
+  phone: string;
+  hours: StoreHours[];
+};
 
 export function StoreList({ stores }: { stores: StoreRow[] }) {
-  const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+
+  /**
+   * Nama yang diketik staff di kotak konfirmasi.
+   *
+   * Menghapus toko berarti alamat, jam tujuh hari, koordinat, dan nomor WA
+   * cabang itu hilang dari halaman pelanggan seketika. Tombol "Ya, hapus" saja
+   * terlalu mudah ditekan karena letaknya di tempat yang sama untuk setiap baris
+   * — mengetik namanya memaksa mata membaca baris MANA yang sedang dihapus.
+   */
+  const [ketikan, setKetikan] = useState("");
+
+  const mintaKonfirmasi = (id: string | null) => {
+    setConfirmingId(id);
+    setKetikan("");
+  };
 
   if (stores.length === 0) {
-    return <p className="text-sm text-muted-foreground">Belum ada data toko.</p>
+    return (
+      <p className="text-sm text-muted-foreground">Belum ada data toko.</p>
+    );
   }
 
   return (
     <div className="space-y-3">
       {stores.map((store) => {
-        const isConfirming = confirmingId === store.id
+        const isConfirming = confirmingId === store.id;
 
         return (
-          <div key={store.id} className="rounded-xl border border-border bg-background p-4">
+          <div
+            key={store.id}
+            className="rounded-xl border border-border bg-background p-4"
+          >
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <h2 className="font-bold">{store.name}</h2>
-                <p className="mt-1 text-sm text-muted-foreground">{store.address}</p>
-                <p className="mt-1 text-sm text-muted-foreground">{store.hours}</p>
-                <p className="mt-1 text-sm text-muted-foreground">WA: {store.phone}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {store.address}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {formatOpeningHours(store.hours)}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  WA: {store.phone || "— belum diisi"}
+                </p>
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
@@ -74,7 +101,9 @@ export function StoreList({ stores }: { stores: StoreRow[] }) {
                 */}
                 <button
                   type="button"
-                  onClick={() => setConfirmingId(isConfirming ? null : store.id)}
+                  onClick={() =>
+                    mintaKonfirmasi(isConfirming ? null : store.id)
+                  }
                   aria-expanded={isConfirming}
                   aria-controls={`konfirmasi-hapus-${store.id}`}
                   className="rounded-lg px-3 py-1.5 text-sm font-semibold text-destructive transition-colors hover:bg-destructive/10"
@@ -91,21 +120,45 @@ export function StoreList({ stores }: { stores: StoreRow[] }) {
               >
                 <p className="flex items-start gap-2 text-xs text-destructive">
                   <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  Hapus <strong className="font-bold">{store.name}</strong> dari daftar toko? Datanya
-                  tetap tersimpan dan bisa dipulihkan lewat database, tapi tidak lagi muncul di panel.
+                  Toko ini akan hilang dari halaman lokasi dan halaman kontak
+                  seketika, beserta alamat, jam tujuh hari, dan nomor
+                  WhatsApp-nya. Barisnya tetap tersimpan di database dan bisa
+                  dipulihkan, tapi tidak lagi muncul di panel.
                 </p>
 
-                <form action={deleteStore} className="mt-2 flex flex-wrap gap-2">
+                <label
+                  className="mt-3 block text-xs text-muted-foreground"
+                  htmlFor={`ketik-nama-${store.id}`}
+                >
+                  Ketik{" "}
+                  <strong className="font-bold text-foreground">
+                    {store.name}
+                  </strong>{" "}
+                  untuk melanjutkan
+                </label>
+                <input
+                  id={`ketik-nama-${store.id}`}
+                  value={ketikan}
+                  onChange={(e) => setKetikan(e.target.value)}
+                  autoComplete="off"
+                  className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-1.5 text-sm outline-none focus:border-destructive"
+                />
+
+                <form
+                  action={deleteStore}
+                  className="mt-2 flex flex-wrap gap-2"
+                >
                   <input type="hidden" name="id" value={store.id} />
                   <button
                     type="submit"
-                    className="rounded-lg bg-destructive px-3 py-1 text-xs font-bold text-white transition-opacity hover:opacity-90"
+                    disabled={ketikan.trim() !== store.name}
+                    className="rounded-lg bg-destructive px-3 py-1 text-xs font-bold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Ya, hapus
                   </button>
                   <button
                     type="button"
-                    onClick={() => setConfirmingId(null)}
+                    onClick={() => mintaKonfirmasi(null)}
                     className="rounded-lg px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted"
                   >
                     Batal
@@ -114,8 +167,8 @@ export function StoreList({ stores }: { stores: StoreRow[] }) {
               </div>
             )}
           </div>
-        )
+        );
       })}
     </div>
-  )
+  );
 }

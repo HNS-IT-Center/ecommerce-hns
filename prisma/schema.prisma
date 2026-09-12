@@ -1,11 +1,22 @@
-// Skema database admin panel (data non-produk: toko/lokasi, kebijakan/FAQ).
-// Data produk TETAP di WooCommerce (lihat CLAUDE.md §2.2) — tabel di sini
-// khusus untuk konten yang sebelumnya hardcode di kode.
+// Skema database project ini. Sejak 25 Juli 2026 data produk ikut di sini —
+// Prisma DB adalah source of truth untuk produk/kategori/brand (CLAUDE.md
+// §2.2), bukan lagi WooCommerce REST API. WordPress tinggal dipakai untuk blog
+// dan sebagai file host gambar produk.
+//
+// (Baris ini sebelumnya masih menyatakan "data produk TETAP di WooCommerce" —
+// keterangan yang sudah tidak benar sejak keputusan itu.)
 //
 // Setup:
 //   1. Isi DATABASE_URL di .env.local (mysql://user:password@host:port/dbname)
-//   2. npx prisma migrate dev --name init
+//   2. npx prisma migrate deploy
 //   3. npx prisma db seed   (isi konten kebijakan/FAQ yang sudah final)
+//
+// `migrate deploy`, BUKAN `migrate dev` — perintah itu dilarang di repo ini
+// dan alasannya ada di docs/08-database-migrations.md. Singkatnya: user
+// MariaDB Hostinger tidak punya izin CREATE DATABASE untuk shadow database,
+// dan kalau riwayat migrasi dianggap tidak cocok, `migrate dev` menawarkan
+// me-reset database — yang berarti menghapus katalog produk beserta akun
+// admin. `db push` juga tidak dipakai lagi sejak 5 Agustus 2026.
 
 generator client {
   provider = "prisma-client-js"
@@ -22,11 +33,9 @@ datasource db {
 
 /**
  * Pengguna admin panel.
- *
  * Sengaja BUKAN tabel Auth.js. Panel ini dipakai segelintir PIC internal, tidak
  * ada pendaftaran mandiri, dan akun dibuat manual lewat script — jadi provider
  * OAuth beserta tabel Account/Session-nya adalah mesin yang tidak terpakai.
- *
  * `email` adalah kunci sambungan antar cara login. Kalau nanti Google atau SSO
  * ditambahkan, identitas yang mereka buktikan dicocokkan ke baris ini; tabel
  * inilah yang memutuskan siapa boleh masuk, bukan providernya. Saat itu tiba,
@@ -34,21 +43,38 @@ datasource db {
  * dibuat sekarang karena dengan satu provider ia kolom kosong.
  */
 model User {
-  id           String  @id @default(uuid())
-  email        String  @unique @db.VarChar(191)
-  name         String  @db.VarChar(191)
+  id    String @id @default(uuid())
+  email String @unique @db.VarChar(191)
+  name  String @db.VarChar(191)
 
-  /// Cara masuk kedua, di samping email — WAJIB, bukan pilihan. Setiap akun
-  /// admin punya dua identitas dan keduanya bisa dipakai masuk; kalau kolomnya
-  /// nullable, janji itu hanya berlaku untuk akun yang kebetulan mengisinya.
+  /// Cara masuk kedua, di samping email. NULLABLE sejak Satu Login (5 Sep 2026):
+  /// tabel ini kini juga menampung pelanggan, dan pelanggan yang mendaftar lewat
+  /// Google tidak punya username. Untuk akun ADMIN, username tetap wajib diisi —
+  /// aturan itu dijaga di jalur pembuatan admin, bukan di kolom.
   ///
   /// Disimpan huruf kecil, tidak boleh mengandung '@'. Larangan itu yang membuat
-  /// pemilahan "ini email atau username" tidak pernah ambigu, dan mencegah
-  /// seseorang mendaftarkan username berbentuk email milik orang lain.
-  username String @unique @db.VarChar(191)
-  // scrypt: "salt:hash" heksadesimal, dihitung dengan crypto bawaan Node.
-  passwordHash String  @map("password_hash") @db.VarChar(255)
+  /// pemilahan "ini email atau username" tidak pernah ambigu.
+  username     String? @unique @db.VarChar(191)
+  /// scrypt: "salt:hash" heksadesimal. NULLABLE sejak Satu Login: pelanggan
+  /// Google tidak punya password. Akun tanpa password_hash hanya bisa masuk
+  /// lewat `googleSub`.
+  passwordHash String? @map("password_hash") @db.VarChar(255)
   image        String? @db.VarChar(1000)
+
+  /// Identitas Google (sub claim), untuk akun yang masuk lewat Google. Dibawa
+  /// dari `customers` saat Satu Login. NULL untuk akun email+password.
+  googleSub String? @unique @map("google_sub") @db.VarChar(191)
+
+  /// Nomor telepon (pelanggan). NULL untuk admin.
+  phoneNumber String? @map("phone_number") @db.VarChar(20)
+
+  /// Kapan email diverifikasi (pelanggan email+password). NULL = belum / tak
+  /// relevan (admin, atau akun Google yang emailnya sudah pasti terverifikasi).
+  emailVerifiedAt DateTime? @map("email_verified_at")
+
+  /// Penanda pencabutan sesi khusus jalur pelanggan (setara passwordChangedAt).
+  /// Dibawa dari `customers` saat Satu Login.
+  sessionsRevokedAt DateTime? @map("sessions_revoked_at")
 
   /// Penanda pencabutan sesi. Token sesi bersifat stateless — tidak ada tabel
   /// sesi yang bisa dihapus barisnya — jadi pencabutan dilakukan lewat
@@ -65,20 +91,154 @@ model User {
   /// sesi yang perlu dicabut.
   passwordChangedAt DateTime? @map("password_changed_at")
 
+  /// "owner" | "staff" — lihat `AdminRole` di lib/auth/roles.ts.
+  ///
+  /// String biasa, bukan enum Prisma: docs/06-coding-standards.md §1.4, pola
+  /// yang sama dipakai `customer_verification_tokens.purpose`.
+  ///
+  /// Bedanya cuma satu hal hari ini — `owner` boleh menghapus akun pelanggan
+  /// secara permanen, `staff` tidak. Penghapusan itu tidak bisa dibatalkan
+  /// (CLAUDE.md §2.8: hard delete, cascade ke rakitan tersimpan), jadi ia tidak
+  /// pantas tersedia untuk setiap orang yang kebetulan bisa masuk panel.
+  ///
+  /// `@default("owner")`, BUKAN "staff". Kolom ini lahir di database yang sudah
+  /// berisi admin aktif; kalau baris lama jatuh ke `staff`, tidak ada satu pun
+  /// owner tersisa dan panel mengunci dirinya sendiri — termasuk mengunci
+  /// kemampuan menaikkan orang kembali. Default longgar di sini adalah pilihan
+  /// sadar: menurunkan orang lewat panel itu mudah, memulihkan panel yang
+  /// terkunci butuh akses SQL langsung.
+  ///
+  /// Penjaga terkait ada di `assertNotLastOwner` (lib/api/admin-users.ts):
+  /// owner terakhir tidak boleh menurunkan dirinya sendiri, dengan alasan yang
+  /// sama persis.
+  role String @default("owner") @db.VarChar(16)
+
+  /// Peran RBAC dinamis (tabel `Role`). NULLABLE dan sengaja begitu: kolom ini
+  /// lahir di database yang sudah berisi admin aktif yang belum punya peran
+  /// dinamis. Saat `roleId` null, izin dihitung dari `role` lama (owner/staff)
+  /// lewat `levelAksesHalaman()` — jadi baris lama tidak pernah terkunci hanya
+  /// karena kolom ini ditambahkan. `onDelete: SetNull`: menghapus sebuah peran
+  /// mengembalikan penggunanya ke perilaku lama, BUKAN mengunci mereka.
+  roleId String? @map("role_id")
+  roleRef Role?  @relation(fields: [roleId], references: [id], onDelete: SetNull)
+
+  /// Relasi milik pelanggan, dibawa ke sini saat Satu Login (FK fisik sudah
+  /// diarahkan ke `users`). Kosong untuk akun admin.
+  savedBuilds        SavedPcBuild[]
+  verificationTokens CustomerVerificationToken[]
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("users")
 }
 
+/// Peran RBAC yang bisa dibuat/disunting lewat panel Manajemen User.
+///
+/// MASTER TIDAK ada di sini — master dipatok ke email di `MASTER_ADMIN_EMAIL`
+/// dan dicek sebelum peran apa pun (lib/auth/permissions.ts). Menaruh master
+/// sebagai baris data berarti ia bisa dihapus/diturunkan lewat UI; justru itu
+/// yang dihindari.
+model Role {
+  id   String @id @default(uuid())
+  /// Nama tampil, mis. "Kasir", "Editor Harga". Unik supaya tidak ada dua peran
+  /// bernama sama yang membingungkan saat memilih di UI.
+  name String @unique @db.VarChar(64)
+  description String? @db.VarChar(255)
+
+  permissions RolePermission[]
+  users       User[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("roles")
+}
+
+/// Izin satu peran atas satu halaman admin. Satu baris per (peran, halaman).
+///
+/// `page` = segmen path setelah `/admin/` (mis. "harga-accurate"), daftar sahnya
+/// dipegang `ADMIN_PAGES` di lib/auth/permissions.ts — bukan enum DB, mengikuti
+/// pola string-union project (docs/06 §1.4). `access` = "none" | "view" |
+/// "edit". Halaman yang TIDAK punya baris untuk sebuah peran diperlakukan
+/// "none" oleh `levelAksesHalaman()` (aman-tertutup): peran hanya bisa apa yang
+/// diberikan secara eksplisit.
+model RolePermission {
+  id     String @id @default(uuid())
+  roleId String @map("role_id")
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  page   String @db.VarChar(48)
+  access String @db.VarChar(8)
+
+  /// Satu peran tidak boleh punya dua baris untuk halaman yang sama — kalau
+  /// tidak, level mana yang berlaku jadi ambigu.
+  @@unique([roleId, page])
+  @@map("role_permissions")
+}
+
 model Store {
-  id        String @id
+  id String @id
+
+  /// Alamat halaman cabang, terpisah dari `id`.
+  ///
+  /// Dipisah karena keduanya menjawab pertanyaan berbeda. `id` menjawab "baris
+  /// mana" dan direferensikan `store_hours` — mengubahnya berarti migrasi foreign
+  /// key. `slug` menjawab "URL apa", dan itu memang berubah: staff salah ketik,
+  /// cabang pindah, namanya diperbarui. Menyatukan keduanya membuat kesalahan
+  /// ketik jadi permanen.
+  ///
+  /// Unik di tingkat database. Supaya penghapusan tidak mengunci alamat yang bagus
+  /// selamanya — persis yang terjadi pada `id` kemarin — `softDeleteStore`
+  /// membubuhkan akhiran pada slug baris yang dihapus, sehingga slug aslinya
+  /// langsung bebas dipakai lagi.
+  slug String @unique @db.VarChar(191)
+
   name      String
   address   String @db.Text
-  hours     String
   mapsUrl   String @map("maps_url")
-  phone     String
   sortOrder Int    @default(0) @map("sort_order")
+
+  /// Nomor WhatsApp cabang ini. Sempat dihapus ketika dikira seluruh percakapan
+  /// masuk lewat satu pintu; ternyata tiap cabang punya nomornya sendiri, dan
+  /// mengarahkan pelanggan Nagoya Hill ke nomor Gateway berarti pertanyaan soal
+  /// stok dijawab oleh toko yang tidak memegang barangnya.
+  ///
+  /// Disimpan apa adanya seperti yang diketik staff ("0821-8559-8887"); normalisasi
+  /// ke bentuk internasional terjadi saat membangun tautan wa.me, supaya angka yang
+  /// mereka lihat di panel sama dengan yang mereka kenal.
+  ///
+  /// `@default("")` semata-mata jembatan migrasi: dua toko yang sudah ada tidak
+  /// punya nilai, dan kolom NOT NULL tanpa default akan menolak `db push`.
+  /// Kosongnya tidak dibiarkan lolos — `assertFilled` menuntutnya terisi setiap
+  /// kali toko disimpan lewat panel.
+  phone String @default("")
+
+  /// Koordinat toko. Peta dibangun dari angka ini, bukan dari pencarian teks:
+  /// mencocokkan nama dan alamat menyerahkan hasilnya pada tebakan penyedia peta,
+  /// dan tebakan itu sudah terbukti meleset — kedua kartu toko sempat menunjuk
+  /// Pizza Hut dan sebuah kelenteng, bukan toko kalian.
+  ///
+  /// Nullable supaya toko bisa dibuat lebih dulu dan koordinatnya menyusul;
+  /// yang belum punya koordinat jatuh ke pencarian alamat seperti sebelumnya.
+  ///
+  /// `Decimal` dengan sembilan angka di belakang koma, bukan `Float`: presisi
+  /// biner Float menggeser titik beberapa meter setiap kali nilainya dibaca ulang,
+  /// dan untuk membedakan dua ruko bersebelahan itu sudah cukup merepotkan.
+  latitude  Decimal? @db.Decimal(12, 9)
+  longitude Decimal? @db.Decimal(12, 9)
+
+  /// Pengenal tempat di Google. TIDAK dipakai menggambar peta — itu tugas
+  /// koordinat — melainkan untuk tombol Petunjuk Arah, supaya aplikasi Google Maps
+  /// membuka listing yang persis alih-alih sekadar menuju sepasang koordinat.
+  googlePlaceId String? @map("google_place_id") @db.VarChar(191)
+
+  // Jam buka pindah ke tabel sendiri, satu baris per hari. Sebelumnya ia satu
+  // string bebas ("SETIAP HARI SENIN SAMPAI SABTU 09.00 - 21.00, MINGGU ...")
+  // yang tidak bisa dibaca mesin: `openingHoursSpecification` untuk Google
+  // menuntut hari dan jam sebagai nilai terpisah, dan menguraikannya kembali
+  // dari teks bebas hanya memindahkan tebakan ke tempat lain.
+  hours StoreHours[]
 
   // Penghapusan menyisakan jejak, bukan melenyapkan baris. Tombol hapus di
   // layar toko sebelumnya langsung memanggil delete() tanpa konfirmasi apa pun.
@@ -92,6 +252,35 @@ model Store {
 
   @@index([deletedAt])
   @@map("stores")
+}
+
+/**
+ * Jam buka satu toko, satu baris per hari.
+ * `dayOfWeek` mengikuti `Date.getDay()` JavaScript — 0 Minggu sampai 6 Sabtu —
+ * supaya tidak ada penerjemahan diam-diam antara nilai yang disimpan dan nilai
+ * yang dipakai kode saat menentukan "apakah toko buka sekarang".
+ * `isClosed` ada karena "tutup" bukan sekadar jam kosong: hari yang tidak
+ * tercatat sama sekali berarti "belum diisi staff", dan itu berbeda dari "hari
+ * ini memang libur". Membedakan keduanya mencegah halaman menampilkan toko buka
+ * 24 jam hanya karena barisnya belum sempat diisi.
+ * Jam disimpan sebagai teks "HH:MM" 24 jam, bukan DateTime: yang dicatat adalah
+ * waktu dinding yang berulang tiap minggu, bukan satu titik waktu — menyimpannya
+ * sebagai DateTime memaksa tanggal palsu dan mengundang pergeseran zona waktu.
+ */
+model StoreHours {
+  id        Int     @id @default(autoincrement())
+  storeId   String  @map("store_id")
+  dayOfWeek Int     @map("day_of_week") @db.TinyInt
+  isClosed  Boolean @default(false) @map("is_closed")
+  opensAt   String  @map("opens_at") @db.VarChar(5)
+  closesAt  String  @map("closes_at") @db.VarChar(5)
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  // Satu hari hanya boleh punya satu baris per toko. Tanpa ini, dua kali simpan
+  // menghasilkan Senin ganda dan halaman menampilkan dua jam yang bertentangan.
+  @@unique([storeId, dayOfWeek])
+  @@map("store_hours")
 }
 
 model PolicyPage {
@@ -129,8 +318,8 @@ enum ProductType {
 
 enum ProductStatus {
   PUBLISHED // CSV "Telah Terbit" = 1   (4.775 baris)
-  DRAFT     // CSV "Telah Terbit" = 0   (287 baris)
-  PRIVATE   // CSV "Telah Terbit" = -1  (72 baris)
+  DRAFT // CSV "Telah Terbit" = 0   (287 baris)
+  PRIVATE // CSV "Telah Terbit" = -1  (72 baris)
 }
 
 enum StockStatus {
@@ -146,6 +335,26 @@ enum CatalogVisibility {
   HIDDEN
 }
 
+/**
+ * Asal-usul sebuah baris produk.
+ *
+ * Dipakai sinkronisasi WooCommerce untuk tahu baris mana yang boleh ia sentuh.
+ * Bukan sekadar penanda: `woo_id` produk buatan panel admin dulu diambil dari
+ * `max(woo_id) + 1`, yaitu ruang angka YANG SAMA dengan post ID WordPress.
+ * Saat kolom ini ditambahkan, `woo_id` tertinggi kita 34397 sementara
+ * WooCommerce sudah memakai 35598 — sekali katalognya disinkronkan, produk
+ * berikutnya yang dibuat staff akan berebut nomor dengan produk yang dibuat di
+ * WordPress, dan `@unique` pada `woo_id` yang akan menggagalkannya.
+ *
+ * Karena itu produk LOCAL sekarang dinomori dari pita tinggi (lihat
+ * `LOCAL_WOO_ID_BASE` di lib/api/woocommerce/products.ts), dan sinkronisasi
+ * melewatinya.
+ */
+enum ProductSource {
+  WOO   // Berasal dari WooCommerce. Boleh disegarkan oleh sinkronisasi.
+  LOCAL // Dibuat di panel admin. Sinkronisasi TIDAK boleh menyentuhnya.
+}
+
 enum BannerDisplayMode {
   IMAGE_ONLY // Gambar mengisi seluruh slide; tanpa overlay teks / scrim gelap
   IMAGE_TEXT // Perilaku bawaan: gambar + overlay teks
@@ -157,23 +366,76 @@ model Product {
   id    Int @id @default(autoincrement())
   wooId Int @unique @map("woo_id") // ID asli WooCommerce, untuk sinkronisasi
 
-  type   ProductType
-  status ProductStatus     @default(DRAFT)
+  /// Defaultnya sengaja LOCAL, bukan WOO.
+  ///
+  /// Dua arah salahnya tidak setara: baris WOO yang salah ditandai LOCAL cuma
+  /// berhenti menerima pembaruan harga, sedangkan baris LOCAL yang salah
+  /// ditandai WOO bisa ditimpa — atau bertabrakan nomor — oleh sinkronisasi.
+  /// Kode yang lupa menyebut kolom ini karena itu jatuh ke pilihan yang tidak
+  /// merusak data, dan importer WooCommerce-lah yang wajib menyatakan WOO
+  /// secara eksplisit.
+  source ProductSource @default(LOCAL)
+
+  type       ProductType
+  status     ProductStatus     @default(DRAFT)
   visibility CatalogVisibility @default(VISIBLE)
 
   // 27,2% terisi di sumber. NULL diperbolehkan; multiple NULL sah di MySQL/MariaDB.
   sku  String? @unique @db.VarChar(100)
   gtin String? @db.VarChar(50)
 
-  name String  @db.VarChar(500)
-  slug String  @unique @db.VarChar(191)
+  /// Kode barang di Accurate (`accurate_products`.`Kode Accurate`) — penambat
+  /// tetap antara katalog web dan database kasir. Lihat docs/13.
+  ///
+  /// NULL untuk mayoritas produk, dan itu keadaan normal, bukan galat: dari
+  /// 7.041 barang Accurate hanya 976 yang punya kaitan sah ke produk web saat
+  /// kolom ini dibuat. Sisanya ditautkan mencicil lewat panel.
+  ///
+  /// UNIK: satu kode Accurate hanya boleh menambat satu produk. Tanpa itu, satu
+  /// barang Accurate bisa mengirim harganya ke beberapa produk sekaligus — dan
+  /// itu bukan kekhawatiran teoretis, `accurate_woo_mapping` yang lama memang
+  /// memuat satu "produk" yang menyerap 1.092 kode (docs/13 §2.1). Multiple
+  /// NULL tetap sah di MariaDB, jadi keunikan ini tidak menghalangi produk yang
+  /// belum tertaut.
+  ///
+  /// Dipilih menggantikan `sku` (cuma 26% terisi) dan barcode (produk web tidak
+  /// punya kolomnya). Kalau satu produk punya padanan berawalan `1` dan `2`,
+  /// yang dipakai berawalan `2` — awalan `1` skema lama yang 71% isinya sudah
+  /// tidak aktif (docs/13 §3.2).
+  accurateCode String? @unique @map("accurate_code") @db.VarChar(50)
+
+  name String @db.VarChar(500)
+  slug String @unique @db.VarChar(191)
+
+  /// Slug produk ini di WooCommerce, untuk 301 redirect setelah cutover.
+  ///
+  /// 1.016 produk slug-nya berbeda antara Woo dan store — sebagian karena slug
+  /// Woo terpotong (`...b760m-a-wi-...`), salah warna, atau cuma berisi angka
+  /// (`3250`). Slug store yang lebih benar sengaja DIPERTAHANKAN; yang lama
+  /// disimpan di sini supaya alamat yang sudah beredar tetap mendarat.
+  ///
+  /// Disimpan dalam bentuk TER-DECODE. Woo menuliskan simbol inci sebagai
+  /// persen-encoding (`%e2%80%b3` = `″`) pada 158 slug, sedangkan Next.js sudah
+  /// men-decode parameter rute sebelum sampai ke handler — menyimpan bentuk
+  /// ter-encode berarti pencocokannya tidak akan pernah kena.
+  ///
+  /// Sengaja MENEMPEL di baris produk, bukan tabel peta tersendiri: slug tujuan
+  /// dibaca dari kolom `slug` di baris yang sama saat redirect terjadi, jadi
+  /// mengganti slug produk di admin tidak pernah membuat petanya basi. Peta
+  /// yang di-generate saat build akan menunjuk alamat mati begitu ada yang
+  /// mengubah slug, dan 301 yang salah di-cache browser secara permanen.
+  ///
+  /// NULL = tidak ada alamat lama yang perlu dijembatani. TIDAK unique: kolom
+  /// ini hanya dibaca setelah pencarian `slug` gagal, dan keunikan alamat tetap
+  /// dijaga oleh `slug` sendiri.
+  wooSlug String? @map("woo_slug") @db.VarChar(191)
 
   shortDescription String? @map("short_description") @db.Text
   description      String? @db.MediumText
 
   // Harga rupiah. Decimal(14,2) menampung sampai Rp 999.999.999.999,99
   regularPrice Decimal? @map("regular_price") @db.Decimal(14, 2)
-  salePrice    Decimal? @map("sale_price")    @db.Decimal(14, 2)
+  salePrice    Decimal? @map("sale_price") @db.Decimal(14, 2)
 
   // Batas akhir masa obral. NULL = obral tanpa batas waktu.
   // Kolomnya TIDAK dikosongkan otomatis saat lewat tanggal — nilai obral tetap
@@ -182,11 +444,11 @@ model Product {
   // pada detik tanggalnya tanpa bergantung pada cron yang bisa saja mati.
   saleEndDate DateTime? @map("sale_end_date")
 
-  stockStatus  StockStatus? @map("stock_status")
-  stockQty     Int?         @map("stock_qty")
-  backordersAllowed Boolean? @map("backorders_allowed")
-  soldIndividually  Boolean? @map("sold_individually")
-  reviewsAllowed    Boolean? @map("reviews_allowed")
+  stockStatus       StockStatus? @map("stock_status")
+  stockQty          Int?         @map("stock_qty")
+  backordersAllowed Boolean?     @map("backorders_allowed")
+  soldIndividually  Boolean?     @map("sold_individually")
+  reviewsAllowed    Boolean?     @map("reviews_allowed")
 
   // Satu video per produk — link eksternal (YouTube/Vimeo/mp4) atau URL R2 hasil upload.
   videoUrl String? @map("video_url") @db.VarChar(1000)
@@ -207,6 +469,16 @@ model Product {
   images     ProductImage[]
   attributes ProductAttribute[]
 
+  /// Hash isi yang terakhir berhasil terkirim ke Woo. Worker melewati job yang
+  /// hash-nya tidak berubah — melindungi dari enqueue berulang, dan dari
+  /// enqueue-all yang kelak mengantre ribuan produk sekaligus.
+  ///
+  /// Sengaja menempel di Product, bukan tabel terpisah: kedua kolom ini tidak
+  /// sensitif, jadi tidak ada yang bocor kalau ikut ter-serialize ke HTML.
+  syncHash     String?   @map("sync_hash") @db.VarChar(64)
+  lastSyncedAt DateTime? @map("last_synced_at")
+
+  syncJobs ProductSyncJob[]
   // Jejak migrasi — dibuang setelah Woo pensiun & data terverifikasi
   importNotes String?  @map("import_notes") @db.Text
   importedAt  DateTime @default(now()) @map("imported_at")
@@ -225,12 +497,56 @@ model Product {
 // --------------------------------------------------------------------------- banner promo
 
 /**
+ * Kampanye yang menaungi beberapa banner sekaligus — mis. "Promo Agustus 2026".
+ * Batch adalah alat kontrol admin, BUKAN pengelompokan tampilan. Beranda tetap
+ * memperlihatkan satu deret slide datar; pengunjung tidak pernah melihat batch.
+ * Karena itu batch sengaja TIDAK punya urutannya sendiri — urutan hanya ada di
+ * `PromoBanner.sortOrder`, satu daftar untuk seluruh beranda. Kalau batch juga
+ * punya urutan, ada dua angka yang menentukan satu hal yang sama dan salah
+ * satunya pasti akan menang diam-diam.
+ * Gunanya tiga: satu saklar untuk mematikan seluruh kampanye, satu jadwal yang
+ * menggantikan pengetikan tanggal berulang di tiap banner anggotanya, dan
+ * catatan arsip — kampanye yang sudah lewat tetap terdaftar beserta anggotanya,
+ * supaya staff bisa melihat kembali "Agustus dulu isinya banner apa saja".
+ */
+model BannerBatch {
+  id String @id @default(uuid())
+
+  name String @db.VarChar(150)
+
+  /// Gerbang induk. Banner anggotanya baru tayang kalau ini juga menyala.
+  isActive Boolean @default(true) @map("is_active")
+
+  /// Jadwal setingkat kampanye. Berpotongan dengan jadwal tiap banner —
+  /// keduanya harus sedang tayang. Lihat `bannerLiveState` di lib/utils/banner.
+  startsAt DateTime? @map("starts_at")
+  endsAt   DateTime? @map("ends_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /**
+   * Soft delete, mengikuti `users` dan `stores` (CLAUDE.md §2.8): ini data
+   * operasional milik HNS yang dihapus staff karena salah input, bukan data
+   * pribadi orang lain.
+   * Di sini ada alasan tambahan yang khusus. Kampanye yang sudah lewat justru
+   * yang ingin disimpan — batch ADALAH arsipnya. Menghapus barisnya sungguhan
+   * akan memicu `onDelete: SetNull` pada seluruh banner anggotanya, sehingga
+   * keterangan "banner ini bagian dari Promo Agustus 2026" lenyap dari
+   * tiap-tiap banner. Yang hilang persis catatan yang mau disimpan.
+   */
+  deletedAt DateTime? @map("deleted_at")
+
+  banners PromoBanner[]
+
+  @@map("banner_batches")
+}
+
+/**
  * Slide hero di beranda.
- *
  * Sebelumnya berupa array yang ditulis langsung di dalam
  * features/home/components/hero-carousel.tsx, sehingga mengganti promo mingguan
  * berarti menyunting kode dan menunggu deploy.
- *
  * `startsAt`/`endsAt` TIDAK ditegakkan lewat cron. Sama seperti masa berlaku
  * harga obral, jadwalnya dihitung saat dibaca (lihat lib/api/banners.ts) supaya
  * promo mulai dan berhenti tepat waktu tanpa bergantung pada job yang bisa mati.
@@ -243,7 +559,7 @@ model PromoBanner {
   subtitle String? @db.VarChar(500)
 
   ctaLabel String? @map("cta_label") @db.VarChar(100)
-  ctaHref  String? @map("cta_href")  @db.VarChar(1000)
+  ctaHref  String? @map("cta_href") @db.VarChar(1000)
 
   /// Gambar latar opsional. Kalau kosong, slide memakai warna solid `bgClass`.
   imageUrl String? @map("image_url") @db.VarChar(1000)
@@ -251,6 +567,23 @@ model PromoBanner {
 
   displayMode BannerDisplayMode @default(IMAGE_TEXT) @map("display_mode")
 
+  /**
+   * Kampanye penaung, opsional — banner tanpa batch berdiri sendiri.
+   * `onDelete: SetNull`, BUKAN Cascade. Menghapus batch adalah tindakan
+   * merapikan ("kampanye Agustus sudah lewat"), dan tidak ada orang yang
+   * bermaksud ikut menghapus gambar-gambarnya saat melakukannya. Banner-nya
+   * tetap hidup dan hanya kehilangan labelnya.
+   */
+  batchId String?      @map("batch_id")
+  batch   BannerBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  /**
+   * Urutan tampil di beranda, 0 paling atas.
+   * Ditulis ulang seluruhnya (0..n-1) oleh `reorderBanners` setiap kali daftar
+   * di admin diseret. Angkanya TIDAK lagi bisa diketik lewat form banner:
+   * kolom isian dan daftar seret adalah dua sumber kebenaran untuk hal yang
+   * sama, dan yang satu akan menimpa yang lain tanpa diketahui staff.
+   */
   sortOrder Int     @default(0) @map("sort_order")
   isActive  Boolean @default(true) @map("is_active")
 
@@ -261,6 +594,7 @@ model PromoBanner {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([isActive, sortOrder])
+  @@index([batchId])
   @@map("promo_banners")
 }
 
@@ -277,6 +611,29 @@ model Category {
 
   // Path lengkap: "KOMPONEN PC / NB > MOTHERBOARD > MOTHERBOARD INTEL"
   path  String @unique @db.VarChar(500)
+
+  /// Slug kategori LAMA di WooCommerce, untuk 301 redirect setelah cutover.
+  ///
+  /// BERISI SEGMEN TERAKHIR, BUKAN PATH PENUH. Untuk alamat lama
+  /// `/product-category/komponen-pc-nb/motherboard-pc/motherboard-intel/`
+  /// kolom ini berisi `motherboard-intel` saja.
+  ///
+  /// Kedua bentuk alamat hidup di WooCommerce: bentuk datar menjawab 200
+  /// untuk seluruh 154 kategori, sementara `og:url` mengiklankan bentuk
+  /// bertingkat sebagai kanonik untuk 124 di antaranya. Menyimpan segmen
+  /// terakhir membuat satu baris melayani KEDUA bentuk. Path penuh juga akan
+  /// ikut basi kalau slug induk di Woo berubah — dan segmen induknya slug
+  /// Woo (`motherboard-pc`), bukan slug store (`komponen-pc-nb-motherboard`).
+  ///
+  /// Route `/product-category/[...slug]` mengambil elemen TERAKHIR dan
+  /// mencocokkannya ke sini. Mengisi kolom ini dengan path penuh membuat
+  /// lookup gagal diam-diam — hanya terlihat sebagai 404 biasa.
+  ///
+  /// Unique aman: yang masuk sini hanya 101 kategori, dan tidak ada dua yang
+  /// segmen terakhirnya sama (diverifikasi 2 Sep 2026). 17 slug Woo yang
+  /// sebenarnya MEREK diarahkan ke /shop?brand= lewat peta terpisah di route,
+  /// bukan lewat kolom ini — beberapa di antaranya menunjuk merek yang sama.
+  wooSlug String? @unique @map("woo_slug") @db.VarChar(191)
   depth Int    @default(1)
 
   parentId Int?       @map("parent_id")
@@ -319,6 +676,14 @@ model Brand {
   id   Int    @id @default(autoincrement())
   name String @db.VarChar(191)
   slug String @unique @db.VarChar(191)
+
+  /// URL logo di R2 (lihat `lib/api/cloudflare/r2.ts`), diunggah lewat
+  /// /api/admin/media seperti gambar produk.
+  ///
+  /// NULLABLE dan sengaja begitu: brand yang sudah ada tidak punya logo, dan
+  /// memaksa kolom ini wajib berarti setiap baris lama harus diisi lebih dulu.
+  /// VarChar(500) mengikuti panjang URL R2 yang sudah dipakai kolom gambar lain.
+  logoUrl String? @map("logo_url") @db.VarChar(500)
 
   products Product[]
 
@@ -376,8 +741,8 @@ model Attribute {
   id   Int    @id @default(autoincrement())
   name String @unique @db.VarChar(191)
 
-  values             AttributeValue[]
-  productAttributes  ProductAttribute[]
+  values            AttributeValue[]
+  productAttributes ProductAttribute[]
 
   @@map("attributes")
 }
@@ -455,4 +820,391 @@ model ProductLog {
   @@index([productId])
   @@index([createdAt])
   @@map("product_logs")
+}
+
+/**
+ * Quotation rakitan PC yang pernah dicetak dari /build-pc.
+ * Satu baris = satu KOMBINASI komponen unik, bukan satu klik Print. Dua orang
+ * yang merakit isi yang sama persis akan berbagi baris ini. Tanpa dedupe itu,
+ * tabel akan penuh duplikat karena satu orang biasa menekan Print berkali-kali
+ * untuk rakitan yang sama.
+ * `items` menyimpan snapshot harga saat quotation diterbitkan, supaya halaman
+ * verifikasi /q/[code] bisa membandingkannya dengan harga terkini dan
+ * menandai kalau ada selisih. `updatedAt` menandai kapan snapshot itu terakhir
+ * disegarkan.
+ */
+model PcBuildQuote {
+  id          Int    @id @default(autoincrement())
+  // Kode yang dicetak di PDF, mis. "HNSPC-260804-7K3M".
+  code        String @unique @db.VarChar(32)
+  // SHA-256 dari daftar `productId:qty` terurut. Inilah kunci dedupe-nya.
+  contentHash String @unique @map("content_hash") @db.VarChar(64)
+
+  // Snapshot: [{ productId, name, sku, price, quantity, stepName }]
+  items Json
+
+  subtotal    Decimal @db.Decimal(14, 2)
+  assemblyFee Decimal @map("assembly_fee") @db.Decimal(14, 2)
+  total       Decimal @db.Decimal(14, 2)
+
+  itemCount Int @map("item_count")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  /// Sisi balik relasi ke `PcBuildSubmission`. WAJIB ada karena Prisma menolak
+  /// relasi satu arah — tapi ia TIDAK menghasilkan kolom apa pun di database.
+  ///
+  /// JANGAN PERNAH meng-`include` field ini pada jalur yang bisa diakses publik.
+  /// `pc_build_submissions` berisi nama dan nomor WhatsApp pelanggan, sedangkan
+  /// `/verify/[code]` adalah halaman terbuka tanpa autentikasi. Yang menjaga
+  /// keduanya terpisah adalah `getQuoteByCode()` yang tidak menyertakan relasi
+  /// ini — bukan ketiadaan field-nya.
+  submissions PcBuildSubmission[]
+
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@map("pc_build_quotes")
+}
+
+/**
+ * Rakitan yang DIKIRIM pelanggan ke HNS lewat tombol "Kirim ke HNS".
+ * Tabel sendiri, bukan kolom tambahan di `PcBuildQuote`, dan alasannya struktural.
+ * `contentHash` di sana `@unique`, sehingga dua baris dengan isi rakitan sama
+ * mustahil ada. Kalau identitas pengirim ditaruh di tabel itu, kiriman pelanggan
+ * yang isinya kebetulan sama dengan quotation milik staff akan masuk cabang
+ * `update` dan MENIMPA datanya — dan pelanggan kedua yang mengirim rakitan sama
+ * menimpa yang pertama. Rakitan dari preset yang sama menghasilkan hash identik,
+ * jadi kebetulan itu tidak jarang.
+ * Perbedaan yang mendasarinya: untuk quotation cetak, isi rakitan ADALAH identitas
+ * dokumen — dua cetakan dengan isi sama memang satu dokumen. Untuk kiriman
+ * pelanggan, yang menjadi identitas adalah PENGIRIMNYA. Dua orang mengirim rakitan
+ * RTX 4060 yang sama adalah dua prospek, bukan satu.
+ * Karena itu tidak ada constraint unik apa pun di sini: satu baris per kiriman,
+ * selalu.
+ */
+model PcBuildSubmission {
+  id Int @id @default(autoincrement())
+
+  /// Relasi lewat `id`, BUKAN lewat `code`. Kode adalah pengenal yang dibaca
+  /// manusia dan formatnya bisa berubah suatu hari; kalau relasinya bersandar
+  /// pada kode, perubahan format memutus sambungannya.
+  quoteId Int          @map("quote_id")
+  quote   PcBuildQuote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  /// Salinan kode saat kiriman dibuat, supaya daftar di panel bisa menampilkannya
+  /// tanpa join. Sengaja BUKAN sumber kebenaran — `quote.code` yang berlaku.
+  quoteCode String @map("quote_code") @db.VarChar(32)
+
+  /// Data pribadi. Lihat catatan retensi di bawah.
+  customerName  String @map("customer_name") @db.VarChar(120)
+  customerPhone String @map("customer_phone") @db.VarChar(32)
+
+  /// "baru" | "dibaca" | "selesai". Penggerak lencana di panel admin: yang
+  /// dihitung hanya yang berstatus "baru", dan staff bisa memadamkannya dengan
+  /// menandai sudah dibaca. Lencana yang tidak pernah bisa padam berubah jadi
+  /// hiasan yang diabaikan.
+  status String @default("baru") @db.VarChar(16)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  /// RETENSI 12 BULAN. Nama dan nomor WhatsApp adalah data pribadi dan tidak
+  /// boleh disimpan selamanya. Penghapusannya dijalankan terpisah (skrip
+  /// berkala), bukan otomatis oleh database — supaya terlihat dan bisa
+  /// dihentikan kalau suatu saat aturannya berubah.
+  ///
+  /// Tabel ini TIDAK BOLEH terjangkau dari endpoint publik mana pun. Halaman
+  /// verifikasi /verify/[code] membaca `pc_build_quotes` saja, dan relasinya
+  /// sengaja satu arah — `PcBuildQuote` tidak punya balikan ke sini, sehingga
+  /// identitas pelanggan tidak punya jalan sampai ke halaman publik itu.
+  @@index([status, createdAt])
+  @@index([createdAt])
+  @@map("pc_build_submissions")
+}
+
+// --------------------------------------------------------------------------- akun pelanggan
+
+/**
+ * Akun pelanggan — login Google. Tabel TERPISAH dari `User` (akun admin);
+ * lihat docs/09-google-oauth-setup.md §1 kenapa keduanya tidak boleh
+ * disatukan (googleId di `users` berarti siapa pun yang membuat akun Google
+ * atas email seorang staf bisa masuk ke panel admin).
+ * Rancangan final ada di docs/09 §8 — dicatat ulang di sini karena kolomnya
+ * sengaja minim, dan alasan "kenapa tidak lebih" sama pentingnya dengan
+ * "kenapa ada":
+ * - Kunci identitas adalah `googleSub`, BUKAN email. Email bisa diganti
+ * pemiliknya di akun Google; kalau itu jadi kunci, akun yang sudah punya
+ * rakitan tersimpan bisa "hilang" begitu emailnya berubah.
+ * - Tidak ada access/refresh token yang disimpan — dipakai sekali saat
+ * login lalu dibuang.
+ * - Tidak ada foto profil — halaman akun tidak memakainya, dan data pribadi
+ * paling aman adalah yang tidak pernah disimpan.
+ * Penghapusan akun ini HARD DELETE (lihat CLAUDE.md §2.8), bukan soft
+ * delete seperti `users`/`stores`. Ini data pribadi milik pelanggan sendiri;
+ * kalau mereka minta dihapus, menyembunyikan barisnya lewat `deletedAt`
+ * berarti kita tetap menyimpan email dan nama yang sudah diminta dihapus —
+ * kebalikan dari yang diminta.
+ */
+model Customer {
+  id String @id @default(uuid())
+
+  /// Subject claim dari id_token Google (`sub`). Unik dan tidak pernah
+  /// berubah untuk satu akun Google, tidak seperti email.
+  ///
+  /// NULLABLE sejak login email+password ditambahkan (2026-08-12) — akun
+  /// yang daftar manual tidak pernah punya ini.
+  ///
+  /// SEJAK 7 Sep 2026 satu akun BOLEH punya dua jalur identitas. Orang yang
+  /// akunnya lahir lewat password lalu menekan "Masuk dengan Google" kini
+  /// ditautkan ke akun yang sama (`api/auth/google/callback`), tidak lagi
+  /// ditolak. Aturan lama ("satu email = satu jalur, tidak pernah digabung")
+  /// dipilih demi menghindari alur hubungkan-akun yang rumit, tapi harganya
+  /// dibayar pemakai: orang yang sama, dengan email yang sama, tertahan di
+  /// depan pintu tanpa alasan yang bisa ia mengerti.
+  ///
+  /// Penautan otomatis aman KARENA `exchangeCodeForIdentity` menolak id_token
+  /// yang `email_verified != true` — Google membuktikan kepemilikan email itu
+  /// lebih dulu. Ia juga tidak membuka jalan baru: siapa pun yang menguasai
+  /// email tersebut sudah bisa mengambil alih akunnya lewat "Lupa password".
+  /// Kalau syarat `email_verified` itu suatu hari dilonggarkan, penautan ini
+  /// HARUS ikut ditinjau — di situlah letak jaminannya.
+  ///
+  /// Arah sebaliknya BELUM berubah: daftar manual dengan email yang sudah
+  /// terpakai akun Google masih ditolak (`register/actions.ts`).
+  googleSub String? @unique @map("google_sub") @db.VarChar(191)
+
+  /// `scrypt`: "salt:hash" heksadesimal — pola SAMA PERSIS dengan
+  /// `users.password_hash` (lihat lib/auth/password.ts). NULL untuk akun
+  /// yang cuma pernah masuk lewat Google.
+  passwordHash String? @map("password_hash") @db.VarChar(255)
+
+  /// UNIK sejak password ditambahkan — jadi kunci pencarian akun saat masuk
+  /// manual. Sebelumnya (Google-only) sengaja TIDAK unik karena identitas
+  /// sebenarnya adalah `googleSub`; sekarang harus unik supaya satu email
+  /// tidak bisa dipakai mendaftar dua kali dengan cara berbeda tanpa
+  /// disadari menjadi dua akun terpisah.
+  email String @unique @db.VarChar(191)
+  name  String @db.VarChar(191)
+
+  /// Nama masuk alternatif, dipakai bareng email saat login manual — lihat
+  /// findCustomerByEmailOrUsername di lib/auth/customer-password.ts.
+  ///
+  /// NULLABLE: akun Google tidak pernah mengisi ini saat login pertama
+  /// (Google tidak memberi username). Wajib diisi lewat /akun/lengkapi-profil
+  /// sebelum akun itu bisa dipakai lebih lanjut — lihat requireCompleteProfile
+  /// di lib/auth/customer.ts. Akun daftar-manual mengisinya sejak awal, jadi
+  /// baris itu tidak pernah transit lewat NULL.
+  username String? @unique @db.VarChar(32)
+
+  /// Wajib untuk keperluan follow-up CS (checkout WhatsApp, konfirmasi
+  /// pesanan). Sama seperti `username`: NULLABLE hanya karena akun Google
+  /// tidak pernah mengisinya di langkah OAuth itu sendiri — wajib dilengkapi
+  /// lewat /akun/lengkapi-profil, TIDAK boleh dilewati (skip). Tidak diberi
+  /// `@unique`: satu nomor HP yang sama dipakai beberapa anggota keluarga
+  /// untuk akun terpisah adalah kasus wajar, tidak seperti email/username.
+  /// Format disimpan apa adanya (string), validasi angka+panjang di server
+  /// action — tanpa verifikasi OTP (belum ada integrasi SMS/WA di project
+  /// ini, lihat CLAUDE.md §2.1 kalau ini mau ditambah nanti).
+  phoneNumber String? @map("phone_number") @db.VarChar(20)
+
+  /// NULL = akun daftar-manual yang belum mengklik link verifikasi, dan
+  /// BELUM BOLEH dipakai masuk. Akun dari Google selalu langsung terisi
+  /// (Google sudah membuktikan kepemilikan email itu, tidak perlu verifikasi
+  /// kedua) — lihat exchangeCodeForIdentity di lib/auth/google.ts yang
+  /// menolak id_token dengan email_verified != true.
+  emailVerifiedAt DateTime? @map("email_verified_at")
+
+  /// Penanda pencabutan sesi, pola yang sama dengan `users.password_changed_at`
+  /// — token yang terbit sebelum waktu ini dianggap mati walau tanda tangan
+  /// dan masa berlakunya masih sah. Diisi (bukan dihapus barisnya) sesaat
+  /// sebelum akun dihapus, supaya cookie yang sudah beredar tidak "masih
+  /// login" ke akun yang sudah tidak ada. Juga diisi saat reset password
+  /// berhasil, supaya sesi yang mungkin sudah dibajak lewat password lama
+  /// langsung mati.
+  sessionsRevokedAt DateTime? @map("sessions_revoked_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// Relasi savedBuilds & verificationTokens DIPINDAH ke model `User` saat Satu
+  /// Login (5 Sep 2026): FK fisiknya kini menunjuk `users`, bukan `customers`.
+  /// Model ini tetap ada sementara — dibaca `getCurrentCustomer` sampai
+  /// konsolidasi sesi (Fase B) merampungkan penyatuan.
+
+  @@map("customers")
+}
+
+/**
+ * Token sekali pakai untuk verifikasi email dan reset password — dua
+ * kebutuhan yang bentuknya identik (kirim link ke email, klik, tervalidasi
+ * sekali, kedaluwarsa), jadi satu tabel dengan `purpose`, bukan dua tabel
+ * kembar.
+ */
+model CustomerVerificationToken {
+  id String @id @default(uuid())
+
+  /// FK diarahkan ke `users` sejak Satu Login (pelanggan kini baris di users).
+  /// Nama kolom `customer_id` dipertahankan supaya tidak perlu migrasi rename.
+  customerId String @map("customer_id")
+  customer   User   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  /// SHA-256 dari token mentah, BUKAN token itu sendiri — pola sama seperti
+  /// cookie sesi (lib/auth/customer-session.ts): kalau tabel ini pernah
+  /// bocor (dump database, log query), penyerang tidak bisa langsung
+  /// memakai isinya untuk verifikasi/reset. Token mentah hanya pernah ada
+  /// di URL yang dikirim ke email pemilik akun.
+  tokenHash String @unique @map("token_hash") @db.VarChar(64)
+
+  /// "verify_email" | "reset_password". String biasa (bukan enum Prisma) —
+  /// lihat docs/06-coding-standards.md §1.4, project ini menghindari enum
+  /// Prisma untuk union kecil semacam ini.
+  purpose String @db.VarChar(32)
+
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([customerId, purpose])
+  @@map("customer_verification_tokens")
+}
+
+/**
+ * Rakitan PC yang disimpan pelanggan dari /build-pc. TIDAK berhubungan dengan
+ * `PcBuildQuote`/`PcBuildSubmission` — dua sistem itu adalah snapshot harga
+ * BEKU untuk dokumen penawaran cetak (harganya sengaja tidak pernah berubah
+ * setelah dicetak, demi `/verify/[code]`).
+ * Rakitan tersimpan berbeda: harga yang DIBAYAR selalu harga katalog
+ * TERKINI (dibaca ulang dari `Product` setiap kali ditampilkan — nama,
+ * gambar, ketersediaan pun begitu; lihat CLAUDE.md §2.7), TAPI `items` juga
+ * menyimpan harga acuan PER KOMPONEN pada saat disimpan/terakhir
+ * "diperbarui", supaya pelanggan bisa melihat berapa yang naik/turun sejak
+ * ia terakhir melihat rakitannya — pola yang sama seperti `/verify/[code]`
+ * membandingkan `PcBuildQuote.items[].price` dengan harga sekarang. Harga
+ * acuan ini murni pembanding tampilan, bukan angka yang pernah dipakai
+ * sebagai dasar pembayaran/checkout.
+ * Layer pembaca (lib/api/saved-pc-builds.ts) yang menghitung selisihnya dan
+ * menandai komponen yang sudah dihapus/di-draft-kan staff sebagai "tidak
+ * tersedia" — bukan kolom di sini.
+ */
+model SavedPcBuild {
+  id         String @id @default(uuid())
+  /// FK diarahkan ke `users` sejak Satu Login. Nama kolom `customer_id`
+  /// dipertahankan supaya tidak perlu migrasi rename.
+  customerId String @map("customer_id")
+
+  customer User @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  name String @db.VarChar(120)
+
+  /// [{ stepId, stepName, productId, quantity, price }]. `price` = harga
+  /// acuan per satuan saat disimpan/terakhir diperbarui — lihat catatan di
+  /// atas model.
+  items Json
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([customerId, updatedAt])
+  @@map("saved_pc_builds")
+}
+
+/**
+ * Jejak penghapusan akun pelanggan.
+ * Penghapusan akun pelanggan bersifat permanen (CLAUDE.md §2.8: hard delete,
+ * cascade ke rakitan tersimpan). Tanpa tabel ini, tindakan yang paling tidak
+ * bisa dibatalkan di seluruh panel justru satu-satunya yang tidak meninggalkan
+ * bekas apa pun — tidak ada cara menjawab "siapa yang menghapus akun ini, dan
+ * atas dasar apa" beberapa bulan kemudian.
+ * YANG SENGAJA TIDAK DISIMPAN: email, nama, nomor HP, username. Justru itulah
+ * data yang pelanggan minta dihapus. Menyalinnya ke tabel audit berarti
+ * penghapusannya tidak pernah benar-benar terjadi — persis masalah yang dibahas
+ * §2.8 soal kenapa akun pelanggan tidak boleh soft delete. Yang tersisa di sini
+ * hanyalah UUID tak bermakna, angka, dan kalimat yang ditulis staff sendiri.
+ * TIDAK ADA foreign key ke `customers`. Bukan kelalaian: barisnya sudah tidak
+ * ada saat log ini ditulis, jadi FK justru akan menolak penyimpanannya. Relasi
+ * apa pun ke tabel itu juga berisiko menahan penghapusan yang seharusnya jalan.
+ */
+model CustomerDeletionLog {
+  id String @id @default(uuid())
+
+  /// UUID akun yang dihapus. Sengaja `String` biasa tanpa relasi — lihat
+  /// catatan di atas. Berguna untuk mencocokkan kalau id-nya masih tercatat di
+  /// tempat lain (mis. tiket CS), tapi dengan sendirinya tidak mengungkap
+  /// siapa pun.
+  deletedCustomerId String @map("deleted_customer_id") @db.VarChar(191)
+
+  /// Admin yang menekan tombolnya. Diambil dari sesi server, TIDAK PERNAH dari
+  /// formulir — jejak audit yang bisa dipalsukan oleh pelakunya sendiri tidak
+  /// ada gunanya sebagai jejak (pola sama seperti `deletedBy` di `stores`).
+  ///
+  /// Tanpa FK juga: admin bisa dihapus (soft delete) belakangan, dan log ini
+  /// harus tetap utuh meski begitu.
+  deletedByUserId String @map("deleted_by_user_id") @db.VarChar(191)
+
+  /// Berapa rakitan tersimpan yang ikut terhapus lewat cascade. Dihitung
+  /// SEBELUM penghapusan, karena sesudahnya barisnya sudah tidak ada dan angka
+  /// ini tidak bisa direkonstruksi dari mana pun.
+  ///
+  /// Bukan data pribadi — cuma angka — tapi menjawab pertanyaan yang wajar
+  /// muncul belakangan: "pelanggan bilang kehilangan rakitannya, memang ada
+  /// berapa?"
+  savedBuildCount Int @map("saved_build_count")
+
+  /// Alasan singkat yang diketik staff (mis. "permintaan hapus data via CS
+  /// WhatsApp 12 Agt"). Wajib diisi — kolomnya NOT NULL dan server action
+  /// menolak string kosong.
+  ///
+  /// Ini satu-satunya kolom yang bisa memuat teks bebas, jadi satu-satunya yang
+  /// bisa kemasukan data pribadi kalau staff menuliskannya. Antarmukanya
+  /// memberi peringatan; secara teknis tidak ada yang bisa mencegahnya, dan
+  /// membatasinya lebih jauh akan membuat alasannya tidak berguna.
+  reason String @db.VarChar(500)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([deletedByUserId])
+  @@map("customer_deletion_logs")
+}
+
+enum SyncJobStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+  SKIPPED
+}
+
+/// Antrean push ke WooCommerce. Diisi saat produk berubah di admin, dikosongkan
+/// oleh worker cron. Tahap ini hanya mengisi — belum ada yang mengirim.
+model ProductSyncJob {
+  id        Int           @id @default(autoincrement())
+  productId Int           @map("product_id")
+  product   Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  status    SyncJobStatus @default(PENDING)
+
+  /// Kunci anti-duplikat. Diisi = productId selama PENDING, di-NULL-kan saat job
+  /// diklaim worker. MySQL/MariaDB tidak menganggap NULL sebagai duplikat di
+  /// unique index, sehingga riwayat DONE/FAILED bebas menumpuk sementara job
+  /// PENDING tetap satu per produk.
+  ///
+  /// Dipakai menggantikan @@unique([productId, status]): constraint gabungan itu
+  /// berlaku untuk SEMUA status, sehingga job kedua gagal saat hendak jadi DONE —
+  /// yaitu setelah datanya terlanjur terkirim ke Woo.
+  ///
+  /// Partial index (WHERE status=PENDING) tidak tersedia di MariaDB; ini padanannya.
+  dedupeKey Int? @unique @map("dedupe_key")
+
+  attempts      Int      @default(0)
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at")
+  lastError     String?  @map("last_error") @db.Text
+
+  claimedAt DateTime? @map("claimed_at")
+  claimedBy String?   @map("claimed_by") @db.VarChar(100)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status, nextAttemptAt])
+  @@index([productId])
+  @@map("product_sync_jobs")
 }

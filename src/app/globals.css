@@ -139,6 +139,62 @@
     --sidebar-accent-foreground: var(--accent-900);
     --sidebar-border: var(--background-200);
     --sidebar-ring: var(--primary-500);
+
+    --chart-1: var(--primary-500);
+    --chart-2: var(--text-500);
+    --chart-3: #d97706;
+    --chart-4: var(--secondary-300);
+    --chart-5: var(--accent-400);
+
+    /* Kartu produk — token yang bisa ditimpa Theme Editor lewat `.theme-card`.
+       Nilainya sengaja disetel PERSIS sama dengan warna Tailwind yang dulu
+       ditulis langsung di product-card.tsx (red-500/800, orange-500/800),
+       supaya refactor ke variabel ini tidak mengubah tampilan sedikit pun.
+       Ditaruh di sini, bukan di `@theme inline`, karena token di blok itu
+       di-inline saat build sehingga tidak bisa ditimpa per-scope saat runtime.
+
+       DUA LAPIS, dan itu disengaja.
+
+       `*-default` memegang angkanya; token yang dipakai komponen menunjuk ke
+       sana. Lapisan ini ADA supaya blok reset tema default (lihat `themeToCss`
+       di lib/theme/css.ts) punya sesuatu yang bisa ditunjuk.
+
+       Dulu reset itu memakai `initial`, dan itu bug: pada custom property,
+       `initial` BUKAN "kembali ke nilai global" melainkan guaranteed-invalid.
+       Karena `.theme-card` lebih spesifik daripada `:root`, reset selalu
+       menang — `var(--card-badge-sale)` gagal resolve, dan badge diskon yang
+       seharusnya merah tampil abu-abu (begitu pula harga). Gejalanya muncul
+       justru saat tema "default", yaitu keadaan paling normal.
+
+       Token `*-decor` TIDAK butuh perlakuan ini: pemakainya sudah menulis
+       fallback sendiri (`var(--card-decor, 0)`), jadi `initial` di sana memang
+       berarti "mati" — persis yang diinginkan. */
+    --card-badge-sale-default: oklch(63.7% 0.237 25.331);
+    --card-badge-sale-fold-default: oklch(44.4% 0.177 26.899);
+    --card-badge-hot-default: oklch(70.5% 0.213 47.604);
+    --card-badge-hot-fold-default: oklch(47% 0.157 37.304);
+    /* Hijau. Sebelumnya biru (oklch 62.3% 0.214 259.815) — warna itu tabrakan
+       dengan `--primary-500`, yang dipakai tautan dan tombol, jadi badge "New"
+       terbaca seperti elemen yang bisa diklik.
+
+       Lightness 55% dipilih supaya teks putih di atasnya lolos WCAG AA (~4.9:1).
+       Nilai `--text-500` (#30cf85) yang sudah ada di ramp hanya mencapai ~1.9:1
+       dengan putih, jadi tidak dipakai di sini meski nadanya sama. */
+    --card-badge-new-default: oklch(55% 0.14 155);
+    /* Sisi lipatan badge "New". Mengikuti perlakuan `sale`/`hot`: hue sama,
+       lightness diturunkan supaya terbaca sebagai bagian badge yang jatuh ke
+       bayangan, bukan warna kedua. Tidak perlu lolos kontras teks — tidak ada
+       teks di atasnya. */
+    --card-badge-new-fold-default: oklch(36% 0.1 155);
+    --card-price-default: oklch(63.7% 0.237 25.331);
+
+    --card-badge-sale: var(--card-badge-sale-default);
+    --card-badge-sale-fold: var(--card-badge-sale-fold-default);
+    --card-badge-hot: var(--card-badge-hot-default);
+    --card-badge-hot-fold: var(--card-badge-hot-fold-default);
+    --card-badge-new: var(--card-badge-new-default);
+    --card-badge-new-fold: var(--card-badge-new-fold-default);
+    --card-price: var(--card-price-default);
   }
   .dark {
     --text-50: #05150d;
@@ -230,6 +286,12 @@
     --sidebar-accent-foreground: var(--accent-900);
     --sidebar-border: var(--background-200);
     --sidebar-ring: var(--primary-500);
+
+    --chart-1: var(--primary-500);
+    --chart-2: var(--text-500);
+    --chart-3: #f59e0b;
+    --chart-4: var(--secondary-300);
+    --chart-5: var(--accent-400);
   }
 
   * {
@@ -250,6 +312,12 @@
   --color-success: var(--text-500);
   --color-warning: #d97706;
   --color-info: var(--secondary-500);
+
+  /* Tailwind bawaan berhenti di `7xl` (80rem). Panel admin yang isinya dua
+     kolom kartu butuh satu tingkat lagi supaya kolomnya tidak sesempit di
+     layar 1440px. Menambah token di sini, bukan menulis `max-w-[96rem]` di
+     satu berkas, supaya lebarnya sama di setiap halaman yang memakainya. */
+  --container-8xl: 96rem;
 }
 
 
@@ -266,6 +334,259 @@
   }
 }
 
+/**
+ * Ayunan ornamen Natal.
+ *
+ * Titik tumpunya di ATAS (`transform-origin: top center`) supaya ornamen
+ * berayun menggantung dari talinya, bukan berputar di tengah badannya —
+ * perbedaan kecil yang menentukan apakah gerakannya terbaca sebagai benda
+ * tergantung atau sekadar ikon yang bergoyang.
+ *
+ * Amplitudonya hanya 2,5 derajat dan siklusnya lambat. Hiasan ini menempel di
+ * header yang ikut tergulung sepanjang kunjungan; gerakan yang lebih besar akan
+ * menarik perhatian terus-menerus dan mengganggu, bukan menyenangkan.
+ */
+.christmas-ornament {
+  transform-origin: top center;
+  animation: christmas-sway 6s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes christmas-sway {
+  0%, 100% { transform: rotate(-2.5deg); }
+  50% { transform: rotate(2.5deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .christmas-ornament {
+    animation: none;
+  }
+}
+
+/**
+ * Pola salju — DI FOOTER DAN SETRIP DI BAWAH NAVBAR SAJA.
+ *
+ * Versi sebelumnya memasang pola ini sebagai latar seluruh situs dan hasilnya
+ * terlalu ramai: pola bertekstur yang berjalan di belakang daftar produk dan
+ * tabel spesifikasi membuat halaman terasa berisik, dan yang paling terganggu
+ * justru halaman yang paling sering dipakai. Sekarang polanya hanya muncul di
+ * dua tempat yang memang bingkai, bukan tempat membaca — footer, dan setrip
+ * pendek tepat di bawah navbar.
+ *
+ * ====================================================================
+ * SETEL DI SINI:
+ *
+ *   --snow-pattern-opacity   seberapa pekat warnanya
+ *   --snow-pattern-size      seberapa rapat kepingnya (kecil = rapat)
+ * ====================================================================
+ *
+ * Karena cakupannya sempit dan tidak ada teks panjang di atasnya, nilai setinggi
+ * ini aman di sini — angka yang sama terasa berlebihan waktu sempat dipakai
+ * sebagai latar seluruh halaman.
+ *
+ * KERAPATAN. Ubinnya sengaja dibuat BESAR (260px). Ubin memuat 19 keping;
+ * makin besar ubinnya, makin renggang jarak antar keping saat diulang. Nilai
+ * 150px sempat dipakai dan hasilnya terlalu padat di footer — kepingnya
+ * bertemu satu sama lain dan bidangnya terbaca penuh, bukan bertekstur.
+ */
+.christmas-pattern {
+  --snow-pattern-opacity: 0.65;
+  --snow-pattern-size: 260px;
+
+  opacity: var(--snow-pattern-opacity);
+  background-size: var(--snow-pattern-size) var(--snow-pattern-size);
+}
+
+/* Di layar sempit ubinnya dikecilkan sedikit — ubin 260px di lebar 360px hanya
+   muat sekali lewat, dan pengulangannya berhenti terbaca sebagai pola. */
+@media (max-width: 639px) {
+  .christmas-pattern {
+    --snow-pattern-size: 190px;
+  }
+}
+
+/**
+ * Ikon keranjang versi Natal di navbar.
+ *
+ * Dua ikon selalu ada di DOM, dan CSS memilih mana yang tampil. Gerbangnya
+ * `--chrome-decor`, yang hanya diset tema chrome Natal — sama seperti
+ * `--card-decor` untuk kartu produk.
+ *
+ * Alasan memakai CSS, bukan kondisi di React: `CartBadge` adalah komponen
+ * klien yang tidak bisa membaca database, dan ia dipakai di header desktop
+ * maupun mobile. Satu aturan CSS mengurus keduanya; prop harus dialirkan dua
+ * kali lewat dua jalur berbeda.
+ *
+ * Ikon Sinterklas `display:none` secara bawaan, jadi tanpa tema Natal ia tidak
+ * pernah dilukis sama sekali.
+ */
+/**
+ * Ditukar lewat `scale`, bukan `display`.
+ *
+ * `display` tidak bisa dihitung dari sebuah custom property — nilainya kata
+ * kunci, bukan angka, jadi `calc()` tidak berlaku dan tidak ada cara menurunkan
+ * `none`/`revert` dari `--chrome-decor` tanpa menulis selektor terpisah untuk
+ * tiap tema. `scale` bisa: nilai 0 melipat ikonnya hingga tak berukuran, dan
+ * karena keduanya `position:absolute` di kotak yang sama, yang ber-skala 0
+ * tidak menyisakan ruang.
+ *
+ * `--chrome-decor` bernilai 1 hanya saat tema chrome Natal aktif.
+ */
+.christmas-cart-default,
+.christmas-cart-santa {
+  grid-area: 1 / 1;
+}
+
+.christmas-cart-default {
+  scale: calc(1 - var(--chrome-decor, 0));
+}
+
+.christmas-cart-santa {
+  scale: var(--chrome-decor, 0);
+}
+
+/**
+ * Untaian Natal saat kursor menyapu kartu produk.
+ *
+ * GERBANGNYA ADA DI SINI, bukan di React. `--card-decor` hanya diset tema kartu
+ * Natal di dalam scope `.theme-card`, jadi `ProductCard` tidak perlu tahu tema
+ * apa pun — ia dipakai di sebelas tempat, dan mengoper prop tema ke semuanya
+ * berarti sebelas jalur yang bisa lupa diperbarui.
+ *
+ * `@media (hover: hover)` membungkus animasinya: di perangkat sentuh tidak ada
+ * hover, jadi hiasan di sana akan tersangkut menutupi foto produk setelah
+ * disentuh sekali.
+ */
+.christmas-card-decor {
+  --decor-on: var(--card-decor, 0);
+
+  /* Tanpa tema, seluruh lapisan tidak terlihat. */
+  opacity: var(--decor-on, 0);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  /**
+   * TURUN dari atas, lalu naik kembali.
+   *
+   * Jalur masuk dan keluarnya SAMA, hanya berlawanan arah — dan itu sebabnya di
+   * sini dipakai `transition`, bukan `@keyframes`.
+   *
+   * Ini juga yang memperbaiki bug: versi sebelumnya memasang animasi "keluar"
+   * sebagai keadaan diam, sehingga animasi itu ikut berjalan SEKALI saat halaman
+   * pertama dimuat — di semua kartu sekaligus, tanpa ada yang menyentuh
+   * kursornya. Transition tidak punya masalah itu: ia hanya berjalan ketika
+   * nilainya benar-benar berubah, dan saat halaman dimuat tidak ada yang
+   * berubah.
+   *
+   * `translateY(-102%)` menaruhnya tepat di atas bingkai gambar, dan
+   * `overflow-hidden` pada pembungkusnya yang menyembunyikannya di sana.
+   * Dikalikan `--decor-on` supaya saat tema mati untaiannya tidak pernah
+   * bergeser ke mana pun.
+   */
+  .christmas-card-garland {
+    transform: translate3d(0, calc(-102% * var(--decor-on, 0)), 0);
+    transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform;
+  }
+
+  /**
+   * Turun ke posisinya. Easing-nya melambat di ujung sehingga untaiannya
+   * terlihat berhenti karena bobotnya sendiri, bukan direm mendadak.
+   */
+  .group:hover .christmas-card-garland {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/**
+ * Tanpa animasi: untaian tetap muncul saat hover, tapi langsung, tanpa gerak.
+ * Menghapusnya sama sekali akan menghilangkan hiasan Natal dari kartu produk
+ * bagi orang yang cuma tidak ingin ada yang bergerak.
+ */
+@media (prefers-reduced-motion: reduce) {
+  /* Untaian tetap muncul saat hover, tapi langsung di tempatnya — tanpa
+     gerakan turun-naik. Menghapusnya sama sekali akan menghilangkan hiasan
+     Natal dari kartu produk bagi orang yang cuma tidak ingin ada yang
+     bergerak. */
+  .christmas-card-garland {
+    transition: none !important;
+    transform: none !important;
+  }
+
+  .christmas-card-decor {
+    opacity: 0;
+  }
+
+  .group:hover .christmas-card-decor {
+    opacity: var(--decor-on, 0);
+  }
+}
+
+/**
+ * Salju yang jatuh di bawah navbar.
+ *
+ * Pitanya diberi mask gradien supaya keping salju MEMUDAR di ujung bawah, bukan
+ * terpotong garis lurus. Tanpa ini batas efeknya terlihat sebagai garis tegas
+ * dan langsung terbaca sebagai kotak yang menempel di halaman.
+ */
+.christmas-snow {
+  /* SATU nilai mengatur tinggi pita DAN jarak jatuh keping. Kalau keduanya
+     ditulis terpisah, salju berhenti sebelum ujung pita (terlihat menggantung)
+     atau jatuh melewatinya (separuh siklusnya terbuang di area tak terlihat,
+     dan saljunya terlihat jarang padahal jumlahnya sama).
+
+     Sepertiga layar, dibatasi 320px supaya tidak berlebihan di layar tinggi
+     dan tidak hilang di layar pendek. Lihat `christmas-snow.tsx` untuk alasan
+     memilih sepertiga, bukan setengah. */
+  --snow-depth: min(33vh, 320px);
+
+  height: var(--snow-depth);
+
+  /* Memudar di ujung bawah supaya keping MENGHILANG, bukan terpotong garis
+     lurus yang langsung terbaca sebagai kotak yang menempel di halaman. */
+  mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 55%, transparent 100%);
+}
+
+/* Di layar sempit pitanya sedikit dipendekkan: 33vh di ponsel adalah pita yang
+   panjang sekali dibanding lebarnya, dan 14 keping di dalamnya jadi renggang. */
+@media (max-width: 639px) {
+  .christmas-snow {
+    --snow-depth: min(30vh, 240px);
+  }
+}
+
+.christmas-flake {
+  animation-name: christmas-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  will-change: transform;
+}
+
+/**
+ * Melayang ke samping DI TENGAH jatuh, bukan lurus ke bawah.
+ *
+ * Salju sungguhan tidak pernah jatuh vertikal — pergeseran kecil di titik 50%
+ * inilah yang membedakan "salju" dari "titik-titik yang turun".
+ */
+@keyframes christmas-fall {
+  0% {
+    transform: translate3d(0, -20px, 0);
+  }
+  50% {
+    transform: translate3d(var(--drift, 10px), calc(var(--snow-depth, 200px) * 0.45), 0);
+  }
+  100% {
+    transform: translate3d(0, var(--snow-depth, 200px), 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .christmas-snow {
+    display: none;
+  }
+}
+
 
 /* Admin sidebar: override the Shadcn sidebar --sidebar token with our primary blue */
 .admin-sidebar,
@@ -277,8 +598,32 @@
   --sidebar-accent: rgba(255,255,255,0.15);
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: rgba(255,255,255,0.15);
+  background-image: linear-gradient(160deg, #0d2959 0%, #143d85 30%, #2166de 60%, #1b52b1 100%);
   background-color: #2166de !important;
   color: #ffffff !important;
+}
+
+/* Desktop memakai satu lapis pembungkus lagi di dalam `.admin-sidebar`
+   (`sidebar-inner`), dan pembungkus itu mengecat dirinya sendiri dengan
+   `bg-sidebar` — biru rata yang MENUTUPI gradasi milik induknya. Ponsel tidak
+   punya lapisan itu, jadi gradasinya terlihat; itulah sebabnya kedua ukuran
+   layar tampak berbeda. Gradasi yang sama diturunkan ke lapisan tersebut
+   supaya keduanya seragam. */
+.admin-sidebar [data-slot="sidebar-inner"] {
+  background-image: linear-gradient(160deg, #0d2959 0%, #143d85 30%, #2166de 60%, #1b52b1 100%);
+  background-color: #2166de !important;
+}
+
+/* Bilah atas ponsel. Sudutnya dibuat sama dengan sidebar (160deg) supaya arah
+   gelap-ke-terangnya sinambung saat panel meluncur keluar dari bawah bilah —
+   biru rata di sini akan terlihat sebagai warna yang berbeda, bukan permukaan
+   yang sama. Ukurannya dikunci ke tinggi sidebar agar potongan gradasi yang
+   tampil di bilah sepadan dengan potongan teratas panel. */
+.admin-topbar {
+  background-image: linear-gradient(160deg, #0d2959 0%, #143d85 30%, #2166de 60%, #1b52b1 100%);
+  background-color: #2166de;
+  background-size: auto 100vh;
+  background-repeat: no-repeat;
 }
 
 /* @tailwindcss/typography: override prose colors to match design tokens */
@@ -307,4 +652,103 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 input[type="number"] {
   -moz-appearance: textfield;
+}
+
+/* ---------------------------------------------------------------------------
+   Print / Save-as-PDF
+   Dipakai terutama oleh /build-pc/print (quotation rakitan PC).
+   --------------------------------------------------------------------------- */
+/* Margin 0 di SEMUA sisi. Header/footer bawaan browser (tanggal, judul, URL,
+   "1/2") dicetak di dalam area margin halaman — dengan margin 0 area itu tidak
+   ada, jadi Chrome/Edge tidak punya tempat untuk menaruhnya.
+
+   Catatan: ini bukan jaminan mutlak. Tidak ada CSS/JS yang benar-benar bisa
+   mematikan header/footer browser (disengaja oleh vendor: itu bukti asal-usul
+   dokumen). Kalau pengguna mengubah "Margins" ke Default di dialog cetak,
+   header/footer akan muncul lagi. Untuk hasil yang dijamin bersih, jalannya
+   generate PDF sendiri di server.
+
+   Karena margin 0, seluruh jarak ke tepi kertas disediakan oleh elemen:
+   horizontal lewat `.print-sheet`, vertikal lewat `.print-page-pad` (lihat
+   di bawah). */
+@page {
+  size: A4;
+  margin: 0;
+}
+
+@media print {
+  /* Elemen mengambang global (MobileDock, tombol WhatsApp, toast, drawer)
+     tidak boleh ikut tercetak. */
+  .no-print {
+    display: none !important;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    /* Warna aksen quotation harus tetap tercetak, bukan dibuat putih. */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Tema gelap tidak boleh terbawa ke kertas. */
+  .dark body,
+  body.dark {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /* Jangan potong baris item quotation di tengah halaman. */
+  .print-avoid-break {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Jarak kiri/kanan ke tepi kertas (karena @page margin 0). Padding atas &
+     bawah di sini hanya berlaku di halaman pertama dan terakhir — jarak untuk
+     halaman di tengah ditangani oleh trik thead/tfoot di bawah. */
+  .print-sheet {
+    width: 100%;
+    padding: 12mm 9mm;
+  }
+
+  /* Berapa banyak item yang muat per halaman ditentukan sendiri oleh tinggi
+     barisnya — nama produk panjang membungkus jadi dua baris, jadi jumlah
+     tetap (mis. "8 per halaman") akan salah begitu ada nama yang panjang.
+     Aturan di bawah membiarkan tabel mengalir, tapi memaksa potongannya jatuh
+     di tempat yang benar. */
+
+  /* Header tabel diulang di setiap halaman lanjutan supaya kolom
+     Qty/Harga/Subtotal tetap punya judul. */
+  thead {
+    display: table-header-group;
+  }
+
+  /* Jarak atas halaman ke-2 dst. Karena @page memakai margin 0, padding pada
+     `.print-sheet` hanya membuat jarak di halaman PERTAMA — halaman lanjutan
+     akan menempel ke tepi atas kertas. `thead` diulang di setiap halaman,
+     jadi padding di sini efektif menjadi "margin atas" halaman lanjutan. */
+  thead th {
+    padding-top: 12mm;
+  }
+
+  /* ...tapi di halaman pertama thead muncul tepat setelah judul "Rincian
+     Komponen", jadi padding 12mm di sana akan terlihat sebagai celah kosong
+     yang janggal. Baris pertama tabel menariknya kembali ke atas; halaman
+     lanjutan tidak terpengaruh karena hanya thead yang diulang. */
+  table.print-table {
+    margin-top: -12mm;
+  }
+
+  /* Satu baris item tidak boleh terbelah dua halaman. */
+  tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Jangan tinggalkan judul kategori sendirian di dasar halaman. */
+  tbody > tr:first-child {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
 }

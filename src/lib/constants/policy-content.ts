@@ -5,10 +5,10 @@
 //      supaya halaman publik tidak pernah kosong/rusak untuk pengunjung asli.
 
 export type PolicyPageContent = {
-  slug: string
-  title: string
-  content: string // HTML
-}
+  slug: string;
+  title: string;
+  content: string; // HTML
+};
 
 export const POLICY_PAGES: PolicyPageContent[] = [
   {
@@ -134,13 +134,13 @@ export const POLICY_PAGES: PolicyPageContent[] = [
 <p>Untuk pertanyaan lebih lanjut, silakan hubungi kami melalui halaman <a href="/contact">Kontak Kami</a>.</p>
 `.trim(),
   },
-]
+];
 
 export type FaqItemContent = {
-  question: string
-  answer: string
-  sortOrder: number
-}
+  question: string;
+  answer: string;
+  sortOrder: number;
+};
 
 export const FAQ_ITEMS: FaqItemContent[] = [
   {
@@ -168,7 +168,8 @@ export const FAQ_ITEMS: FaqItemContent[] = [
     sortOrder: 3,
   },
   {
-    question: "Bagaimana jika produk yang diterima rusak atau tidak sesuai pesanan?",
+    question:
+      "Bagaimana jika produk yang diterima rusak atau tidak sesuai pesanan?",
     answer:
       "Hubungi CS kami sesegera mungkin melalui WhatsApp dengan bukti foto/video. Lihat detail lengkap di halaman Kebijakan Pengembalian Barang.",
     sortOrder: 4,
@@ -188,7 +189,11 @@ export const FAQ_ITEMS: FaqItemContent[] = [
   {
     question: "Di mana lokasi toko dan jam operasionalnya?",
     answer:
-      "Kami memiliki 2 toko di Batam: Nagoya Gateway dan Nagoya Hill Mall. Lihat alamat dan jam operasional lengkap di halaman Toko Fisik.",
+      // Sengaja tidak menyebut nama maupun jumlah cabang. Teks ini di-seed sekali
+      // ke database dan tidak ikut berubah saat cabang ditambah, ditutup, atau
+      // dipindah — jadi menyebut spesifiknya di sini menjamin ia akan salah suatu
+      // hari nanti. Halaman lokasi toko membaca data yang sebenarnya.
+      "Lihat alamat lengkap, jam operasional, dan peta seluruh cabang kami di halaman Toko Fisik.",
     sortOrder: 7,
   },
-]
+];

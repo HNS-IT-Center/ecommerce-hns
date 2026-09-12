@@ -7,15 +7,38 @@ import { ChevronDown, ChevronRight, Search } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import type { Brand } from "@/lib/api/woocommerce/brands"
+import { LiveSearch } from "./live-search"
 
 interface ShopSidebarProps {
   categories: ProductCategory[]
   brands?: Brand[]
   maxPriceLimit?: number
   isMobile?: boolean
+  /**
+   * Route tujuan saat filter berubah. Default `/shop`.
+   *
+   * Sidebar ini dipakai di dua route (`/shop` dan `/search`) yang keduanya
+   * memakai set filter yang sama. Tanpa prop ini setiap centang filter di
+   * `/search` akan melempar pembeli ke `/shop` dan keyword-nya hilang.
+   */
+  basePath?: string
+  /**
+   * Nama query param kata kunci pencarian yang harus DIPERTAHANKAN saat
+   * "Hapus Filter" ditekan — `search` di `/shop`, `q` di `/search`.
+   * Menghapus filter berarti membuang kategori/merek/harga, bukan membatalkan
+   * pencarian yang sedang dilihat pembeli.
+   */
+  searchParamName?: string
 }
 
-export function ShopSidebar({ categories, brands = [], maxPriceLimit = 100000000, isMobile }: ShopSidebarProps) {
+export function ShopSidebar({
+  categories,
+  brands = [],
+  maxPriceLimit = 100000000,
+  isMobile,
+  basePath = "/shop",
+  searchParamName = "search",
+}: ShopSidebarProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -44,6 +67,50 @@ export function ShopSidebar({ categories, brands = [], maxPriceLimit = 100000000
     setOpenSections(prev => ({ ...prev, [section]: !prev[section] }))
   }
 
+  /**
+   * DUA EFEK DI BERKAS INI SENGAJA DIKECUALIKAN dari `set-state-in-effect` dan
+   * `exhaustive-deps` — keputusan sadar 13 Agustus 2026, bukan aturan yang
+   * dilewatkan karena merepotkan.
+   *
+   * **Alasannya riwayat berkas ini.** Perbaikan sejenis pernah dilakukan di
+   * sini dan MENGUBAH PERILAKU tanpa disengaja (lihat `PRE-DEPLOY-CHECKLIST.md`,
+   * batch 13 Juli 2026): kategori auto-expand yang sebelumnya memaksa dirinya
+   * selalu terbuka, berubah jadi bisa ditutup manual. Waktu itu kebetulan
+   * justru perbaikan — tapi ia terjadi tanpa ada yang merencanakannya.
+   *
+   * Perilaku yang berlaku HARI INI sudah benar dan sengaja. Menukarnya demi
+   * satu angka lint bukan pertukaran yang sepadan, apalagi selama repo ini
+   * belum punya uji otomatis yang menjaganya (lihat task "Pasang test suite").
+   *
+   * **REKAMAN BASELINE — inilah yang wajib dijaga.** Diukur 13 Agustus 2026
+   * lewat Playwright dengan selector spesifik (`input[id^="cat-"]` untuk
+   * centang, ikon `chevron-down`/`chevron-right` untuk buka/tutup):
+   *
+   *   A. `/shop` polos
+   *      → 0 tercentang, 6 grup terbuka, 6 tertutup
+   *   B. `/shop?category=komponen-pc-nb` (kategori INDUK)
+   *      → `cat-4` tercentang, 6 terbuka (tidak berubah)
+   *   C. `/shop?category=komponen-pc-nb-motherboard` (kategori ANAK)
+   *      → `cat-5` tercentang, 7 terbuka — INDUKNYA AUTO-EXPAND
+   *   D. `/shop?minPrice=1000000&maxPrice=5000000`
+   *      → 0 tercentang, 6 terbuka; slider mengikuti nilai URL
+   *   E. Klik tombol chevron pada grup yang auto-expand (`cat-4`)
+   *      → ikon berubah `chevron-down` → `chevron-right`
+   *      → artinya AUTO-EXPAND BISA DITUTUP MANUAL. Ini perilaku yang paling
+   *        rawan hilang; kalau setelah perubahan grupnya memaksa terbuka lagi,
+   *        itu kemunduran ke bug lama.
+   *
+   *   0 error konsol di seluruh skenario.
+   *
+   * Catatan cara menguji: JANGAN menyimpulkan dari hitungan total grup terbuka.
+   * Menutup satu grup bisa memunculkan grup lain sehingga totalnya kebetulan
+   * sama (sempat terbaca "7 → 7" dan tampak seperti tidak bisa ditutup).
+   * Periksa ikon pada TOMBOL SPESIFIK milik kategori yang bersangkutan.
+   *
+   * Kalau suatu saat aturan ini mau ditegakkan di sini, syaratnya: uji otomatis
+   * untuk kelima skenario di atas ada lebih dulu.
+   */
+
   // Auto-expand the parent of the currently selected child categories.
   const currentCategoriesStr = currentCategories.join(",")
   useEffect(() => {
@@ -54,6 +121,7 @@ export function ShopSidebar({ categories, brands = [], maxPriceLimit = 100000000
         parentIdsToExpand[cat.parent] = true
       }
     })
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- lihat catatan di atas
     setExpandedCats(prev => {
       let hasChanges = false
       const next = { ...prev }
@@ -65,6 +133,7 @@ export function ShopSidebar({ categories, brands = [], maxPriceLimit = 100000000
       }
       return hasChanges ? next : prev
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lihat catatan di atas
   }, [categories, currentCategoriesStr])
 
   const handleCategoryChange = (slug: string, checked: boolean) => {
@@ -78,7 +147,7 @@ export function ShopSidebar({ categories, brands = [], maxPriceLimit = 100000000
         if (c !== slug) params.append("category", c)
       })
     }
-    router.push(`/shop?${params.toString()}`, { scroll: false })
+    router.push(`${basePath}?${params.toString()}`, { scroll: false })
   }
 
   const handleBrandChange = (slug: string, checked: boolean) => {
@@ -92,7 +161,7 @@ export function ShopSidebar({ categories, brands = [], maxPriceLimit = 100000000
         if (b !== slug) params.append("brand", b)
       })
     }
-    router.push(`/shop?${params.toString()}`, { scroll: false })
+    router.push(`${basePath}?${params.toString()}`, { scroll: false })
   }
 
   const handleOnSaleChange = (checked: boolean) => {
@@ -100,7 +169,7 @@ export function ShopSidebar({ categories, brands = [], maxPriceLimit = 100000000
     params.delete("page")
     if (checked) params.set("onSale", "true")
     else params.delete("onSale")
-    router.push(`/shop?${params.toString()}`, { scroll: false })
+    router.push(`${basePath}?${params.toString()}`, { scroll: false })
   }
 
   const handlePriceCommit = () => {
@@ -111,8 +180,8 @@ export function ShopSidebar({ categories, brands = [], maxPriceLimit = 100000000
     
     if (localPriceRange[1] < maxPriceLimit) params.set("maxPrice", localPriceRange[1].toString())
     else params.delete("maxPrice")
-    
-    router.push(`/shop?${params.toString()}`, { scroll: false })
+
+    router.push(`${basePath}?${params.toString()}`, { scroll: false })
   }
 
   // Reset local state if external URL changes
@@ -120,12 +189,20 @@ export function ShopSidebar({ categories, brands = [], maxPriceLimit = 100000000
     const currentMin = Number(searchParams.get("minPrice")) || 0
     const currentMax = Number(searchParams.get("maxPrice")) || maxPriceLimit
     if (currentMin !== localPriceRange[0] || currentMax !== localPriceRange[1]) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- lihat catatan di atas
       setLocalPriceRange([currentMin, currentMax])
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lihat catatan di atas
   }, [searchParams, maxPriceLimit])
 
   const clearFilters = () => {
-    router.push("/shop", { scroll: false })
+    // Kata kunci pencarian bukan filter — ia konteks halaman yang sedang
+    // dilihat pembeli. Membuangnya di sini akan mengosongkan hasil `/search`.
+    const keyword = searchParams.get(searchParamName)
+    const params = new URLSearchParams()
+    if (keyword) params.set(searchParamName, keyword)
+    const queryString = params.toString()
+    router.push(queryString ? `${basePath}?${queryString}` : basePath, { scroll: false })
   }
 
   const toggleExpand = (id: number) => {
@@ -167,6 +244,39 @@ export function ShopSidebar({ categories, brands = [], maxPriceLimit = 100000000
       </div>
 
       <div className="flex flex-col w-full">
+        {/* Kata Kunci — HANYA di mobile.
+
+            Di mobile kotak pencarian di atas grid disembunyikan: ia tergulung
+            hilang begitu pembeli menelusuri produk, sehingga menyaring hasil
+            berarti menggulung jauh ke atas dulu. Satu-satunya kontrol
+            penyaringan yang selalu terjangkau sambil menggulung adalah
+            gelembung filter yang `fixed` di kanan bawah — jadi kata kuncinya
+            ikut pindah ke dalam sini.
+
+            Di desktop blok ini TIDAK dirender: kotak di atas grid masih ada di
+            sana, dan menampilkan dua kotak yang menulis parameter yang sama
+            persis dalam satu layar cuma membingungkan.
+
+            Catatan: "Hapus Filter" di atas sengaja TIDAK mengosongkan kotak
+            ini — lihat `clearFilters`. Kata kunci adalah konteks halaman yang
+            sedang dilihat pembeli, bukan salah satu penyaring; di `/search` ia
+            bahkan jadi judul halamannya. Itu sebabnya blok ini diberi tombol
+            kosongkan sendiri. */}
+        {isMobile && (
+          <div className="border-b border-border pb-6 mb-6">
+            <h3 className="text-base font-bold text-foreground mb-3">Kata Kunci</h3>
+            <LiveSearch
+              basePath={basePath}
+              paramName={searchParamName}
+              placeholder="Cari di dalam hasil..."
+              fullWidth
+            />
+            <p className="mt-2 text-xs text-muted-foreground">
+              Menyaring hasil yang sedang tampil, tanpa membatalkan filter di bawah.
+            </p>
+          </div>
+        )}
+
         {/* Kategori Filter */}
         <div className="border-b border-border pb-6 mb-6">
           <button 

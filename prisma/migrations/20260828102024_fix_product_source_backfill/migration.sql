@@ -1,0 +1,24 @@
+-- Memperbaiki backfill di `20260828101600_add_product_source`, yang batas
+-- waktunya meleset satu hari dan menyisakan 176 produk hasil import tertandai
+-- 'LOCAL'.
+--
+-- Kenapa meleset: batas '2026-07-25' diambil dari hasil pemeriksaan yang
+-- menampilkan `imported_at` lewat driver mariadb, dan driver itu mengubahnya ke
+-- zona waktu lokal (WIB, UTC+7) sebelum dicetak. Batch import kedua yang
+-- sebenarnya jatuh pada 2026-07-25 karena itu terbaca sebagai "2026-07-24",
+-- sehingga batasnya dipasang tepat memotong batch tersebut. Datanya tidak
+-- pernah salah — hanya tampilannya. Bandingkan dengan `DATE_FORMAT()` yang
+-- diformat di sisi server kalau ragu.
+--
+-- Akibatnya tertahan di sisi yang aman, sesuai rancangan default kolom ini:
+-- 176 baris itu berhenti menerima pembaruan harga, bukan tertimpa atau hilang.
+--
+-- Batas baru memakai margin lebar. Dua batch import berada di 2026-07-24 dan
+-- 2026-07-25; tiga produk yang memang dibuat lewat panel admin berada di
+-- 2026-08-03, 2026-08-07, dan 2026-08-08. Tidak ada apa pun di antara
+-- 2026-07-26 dan 2026-08-02, jadi '2026-08-01' tidak memotong kelompok mana pun
+-- meski tanggalnya digeser beberapa jam ke arah mana pun.
+--
+-- Di database baru yang dibangun dari nol, pernyataan ini tidak berpengaruh:
+-- tabel `products` masih kosong saat migrasi berjalan.
+UPDATE `products` SET `source` = 'WOO' WHERE `imported_at` < '2026-08-01';

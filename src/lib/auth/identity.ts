@@ -70,10 +70,39 @@ export function validateUsername(username: string): string | null {
   return null
 }
 
+/** Angka saja, boleh diawali `+`. 9–15 digit — cakupan longgar nomor HP Indonesia
+ * (dengan atau tanpa kode negara) tanpa memaksa format tertentu. */
+const PHONE_PATTERN = /^\+?\d{9,15}$/
+
+/**
+ * Kembalikan pesan kesalahan, atau null kalau nomornya sah.
+ *
+ * Cuma cek bentuk (angka, panjang wajar) — TIDAK ada verifikasi OTP.
+ * Project ini belum punya integrasi SMS/WhatsApp API untuk itu; kalau nanti
+ * dibutuhkan, itu pekerjaan terpisah yang lebih besar, bukan tambahan kecil
+ * di sini. Lihat CLAUDE.md §2.1.
+ */
+export function validatePhoneNumber(phoneNumber: string): string | null {
+  const trimmed = phoneNumber.trim()
+  if (!PHONE_PATTERN.test(trimmed)) {
+    return "Nomor HP tidak valid — isi angka saja (boleh diawali +), 9–15 digit."
+  }
+  return null
+}
+
 export type IdentityLookup = {
   id: string
   email: string
-  passwordHash: string
+  /// Nullable sejak Satu Login: tabel `users` kini juga memuat pelanggan Google
+  /// yang tak punya password. Pemanggil (admin/login) sudah menangani null
+  /// dengan hash boneka lalu menolak — akun tanpa password tak bisa masuk.
+  passwordHash: string | null
+  /// Peran akun — dipakai login terpadu (/login) untuk menentukan tujuan:
+  /// "pelanggan" → storefront, selainnya → panel admin. Lihat lib/auth/roles.ts.
+  role: string
+  /// Verifikasi email (pelanggan email+password). Login terpadu menolak
+  /// pelanggan yang belum verifikasi; admin tak punya nilai ini (null = lolos).
+  emailVerifiedAt: Date | null
 }
 
 /**
@@ -90,6 +119,53 @@ export async function findUserByIdentifier(raw: string): Promise<IdentityLookup 
 
   return getPrisma().user.findFirst({
     where: isEmail(identifier) ? { email: identifier } : { username: identifier },
-    select: { id: true, email: true, passwordHash: true },
+    select: { id: true, email: true, passwordHash: true, role: true, emailVerifiedAt: true },
   })
+}
+
+export type GoogleAccountLookup = {
+  id: string
+  email: string
+  role: string
+  /** Sudah tertaut ke akun Google ini? null = belum, perlu ditautkan. */
+  googleSub: string | null
+  username: string | null
+  phoneNumber: string | null
+}
+
+/**
+ * Cari akun untuk identitas Google — lewat `googleSub` dulu, lalu email.
+ *
+ * Dua jalur karena keduanya menjawab pertanyaan berbeda. `googleSub` tidak
+ * pernah berubah untuk satu akun Google, jadi ia kunci utama bagi yang sudah
+ * pernah masuk. Email dipakai untuk yang BELUM pernah — orang yang akunnya
+ * dibuat lewat password lalu suatu hari menekan "Masuk dengan Google".
+ *
+ * Mencari di `users`, bukan `customers`: sejak Satu Login semua akun (admin
+ * maupun pelanggan) hidup di sana, dan hanya di sana ada `role` yang menentukan
+ * tujuan setelah masuk.
+ *
+ * Mencocokkan lewat email hanya AMAN karena pemanggilnya sudah memastikan
+ * Google memverifikasi email itu (`exchangeCodeForIdentity` menolak id_token
+ * dengan `email_verified != true`). Tanpa jaminan itu, fungsi ini akan menjadi
+ * jalan mengambil alih akun orang lain hanya dengan mengaku memakai emailnya.
+ */
+export async function findUserByGoogleIdentity(
+  googleSub: string,
+  email: string
+): Promise<GoogleAccountLookup | null> {
+  const prisma = getPrisma()
+  const select = {
+    id: true,
+    email: true,
+    role: true,
+    googleSub: true,
+    username: true,
+    phoneNumber: true,
+  } as const
+
+  const bySub = await prisma.user.findUnique({ where: { googleSub }, select })
+  if (bySub) return bySub
+
+  return prisma.user.findUnique({ where: { email: normalizeIdentifier(email) }, select })
 }

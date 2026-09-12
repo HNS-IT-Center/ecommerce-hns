@@ -3,7 +3,7 @@ import { PolicyPageLayout } from "@/components/layout/policy-page-layout"
 import { getPolicyPage } from "@/lib/api/policy"
 
 export const metadata = {
-  title: "Kebijakan Pembatalan Pesanan — HNS IT Center",
+  title: "Kebijakan Pembatalan Pesanan",
   description: "Ketentuan pembatalan pesanan di HNS IT Center.",
 }
 

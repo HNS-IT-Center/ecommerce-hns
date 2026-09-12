@@ -15,11 +15,11 @@ type BlogPostPageProps = {
 export async function generateMetadata({ params }: BlogPostPageProps): Promise<Metadata> {
   const { slug } = await params
   const post = await getPostBySlug(slug)
-  if (!post) return { title: "Artikel tidak ditemukan — HNS IT Center" }
+  if (!post) return { title: "Artikel tidak ditemukan" }
 
   const ui = mapWpPostToUI(post)
   return {
-    title: `${ui.title} — HNS IT Center`,
+    title: ui.title,
     description: ui.excerpt.slice(0, 160),
     openGraph: { images: [ui.imageUrl] },
   }
@@ -54,7 +54,16 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
           <p className="mt-3 text-sm text-muted-foreground">{formatDate(ui.date)}</p>
 
           <div className="relative mt-8 aspect-video w-full overflow-hidden rounded-2xl bg-muted">
-            <Image src={ui.imageUrl} alt={ui.imageAlt} fill className="object-cover" priority />
+            {/* Lebar artikel dibatasi pembungkusnya, jadi di layar besar gambar
+                ini tidak pernah selebar viewport. */}
+            <Image
+              src={ui.imageUrl}
+              alt={ui.imageAlt}
+              fill
+              sizes="(min-width: 768px) 768px, 100vw"
+              className="object-cover"
+              priority
+            />
           </div>
 
           <div

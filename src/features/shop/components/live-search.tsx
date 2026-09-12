@@ -3,12 +3,33 @@
 import { useState, useEffect, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Input } from "@/components/ui/input"
-import { Search } from "lucide-react"
+import { Search, X } from "lucide-react"
+import { cn } from "@/lib/utils"
 
-export function LiveSearch() {
+interface LiveSearchProps {
+  /** Route tujuan saat kata kunci berubah. Default `/shop`. */
+  basePath?: string
+  /** Nama query param kata kunci — `search` di `/shop`, `q` di `/search`. */
+  paramName?: string
+  /** Teks placeholder. Default cocok untuk kotak pencarian di atas grid. */
+  placeholder?: string
+  /**
+   * Melepas batas lebar `md:max-w-sm`. Dipakai saat kotak ini dipasang di
+   * dalam panel sempit (sheet filter mobile) yang sudah mengatur lebarnya
+   * sendiri.
+   */
+  fullWidth?: boolean
+}
+
+export function LiveSearch({
+  basePath = "/shop",
+  paramName = "search",
+  placeholder = "Cari produk...",
+  fullWidth = false,
+}: LiveSearchProps = {}) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const initialSearch = searchParams.get("search") || ""
+  const initialSearch = searchParams.get(paramName) || ""
   const [searchTerm, setSearchTerm] = useState(initialSearch)
   const isMounted = useRef(false)
 
@@ -21,37 +42,67 @@ export function LiveSearch() {
     const timer = setTimeout(() => {
       const params = new URLSearchParams(searchParams.toString())
       if (searchTerm) {
-        params.set("search", searchTerm)
+        params.set(paramName, searchTerm)
       } else {
-        params.delete("search")
+        params.delete(paramName)
       }
       params.delete("page")
-      router.push(`/shop?${params.toString()}`, { scroll: false })
+      router.push(`${basePath}?${params.toString()}`, { scroll: false })
     }, 500)
 
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm]) // Only trigger on searchTerm change
 
-  // Sync state if URL changes externally
-  useEffect(() => {
-    const currentSearch = searchParams.get("search") || ""
-    if (currentSearch !== searchTerm) {
-      setSearchTerm(currentSearch)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams])
+  /**
+   * Menyelaraskan isi kotak saat URL berubah dari LUAR — tombol Back, klik
+   * kategori di sidebar, atau tautan yang membawa kata kunci.
+   *
+   * Pola "sesuaikan state saat render", BUKAN `useEffect` + `setState`. Versi
+   * efek melanggar `react-hooks/set-state-in-effect` dan punya cacat yang
+   * terlihat: kotaknya masih menampilkan kata lama untuk satu render penuh
+   * setelah URL berganti, baru kemudian dikoreksi. Menekan Back sempat
+   * memperlihatkan kata pencarian yang salah.
+   *
+   * `urlSearch` dibandingkan dengan penanda terakhir yang kita catat, bukan
+   * dengan `searchTerm` itu sendiri. Kalau dibandingkan dengan `searchTerm`,
+   * setiap ketikan pengguna akan langsung ditimpa kembali oleh nilai URL yang
+   * belum sempat diperbarui debounce — kotaknya jadi tidak bisa diketik.
+   *
+   * Dibaca lewat `paramName`, bukan `"search"` harfiah: `/search` memakai
+   * `?q=` sementara `/shop` memakai `?search=`. Mengunci ke `"search"` membuat
+   * kotak di `/search` tidak pernah menyelaraskan diri dengan URL-nya.
+   */
+  const urlSearch = searchParams.get(paramName) || ""
+  const [lastUrlSearch, setLastUrlSearch] = useState(urlSearch)
+  if (urlSearch !== lastUrlSearch) {
+    setLastUrlSearch(urlSearch)
+    setSearchTerm(urlSearch)
+  }
 
   return (
-    <div className="relative w-full md:max-w-sm">
+    <div className={cn("relative w-full", !fullWidth && "md:max-w-sm")}>
       <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         type="text"
-        placeholder="Cari produk..."
+        placeholder={placeholder}
         value={searchTerm}
         onChange={(e) => setSearchTerm(e.target.value)}
-        className="pl-9 bg-background"
+        className="pl-9 pr-9 bg-background"
       />
+      {/* Tombol kosongkan. Di mobile kotak ini hidup di dalam sheet filter,
+          dan menghapus kata kunci dengan menahan backspace di papan ketik
+          layar adalah pekerjaan yang tidak perlu ada. */}
+      {searchTerm && (
+        <button
+          type="button"
+          onClick={() => setSearchTerm("")}
+          aria-label="Kosongkan kata kunci"
+          className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
     </div>
   )
 }

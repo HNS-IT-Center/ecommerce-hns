@@ -1,6 +1,5 @@
 import { getPrisma } from "../src/lib/prisma/client"
 import { POLICY_PAGES, FAQ_ITEMS } from "../src/lib/constants/policy-content"
-import { STORES } from "../src/lib/constants/stores"
 
 const DEFAULT_BANNERS = [
   {
@@ -49,15 +48,11 @@ async function main() {
   await prisma.faqItem.createMany({ data: FAQ_ITEMS })
   console.log(`Seeded ${FAQ_ITEMS.length} FAQ items.`)
 
-  for (const [index, store] of STORES.entries()) {
-    const data = { ...store, sortOrder: index }
-    await prisma.store.upsert({
-      where: { id: store.id },
-      create: data,
-      update: data,
-    })
-  }
-  console.log(`Seeded ${STORES.length} stores.`)
+  // Toko TIDAK lagi di-seed. Datanya dikelola staff lewat /admin/toko dan sudah
+  // berisi alamat serta tautan peta sungguhan; blok lama di sini melakukan
+  // upsert dengan `update: data`, sehingga menjalankan seed sekali lagi akan
+  // menimpa hasil kerja mereka dengan contoh — persis yang dicegah `update: {}`
+  // pada banner di bawah.
 
   // Dua slide yang dulu ditulis langsung di hero-carousel.tsx. Dipindahkan ke
   // sini supaya beranda tetap tampil sama setelah hero beralih ke database.

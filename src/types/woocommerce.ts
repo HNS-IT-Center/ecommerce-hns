@@ -106,6 +106,15 @@ export type GetProductsParams = {
    */
   status?: "publish" | "draft" | "private" | "any";
   stock_status?: "instock" | "outofstock" | "onbackorder";
+  /**
+   * Menyaring daftar berdasarkan jenis produk. Dipakai admin untuk memisahkan
+   * produk bervariasi — harga & stoknya ditentukan per varian, jadi keduanya
+   * butuh perlakuan berbeda saat disunting massal.
+   *
+   * "variation" sengaja tidak ditawarkan: varian adalah anak yang sudah
+   * tersaring `parentId: null` di daftar induk.
+   */
+  type?: "simple" | "variable" | "grouped" | "external";
 };
 
 export type ProductAttributeTaxonomy = {
@@ -123,10 +132,30 @@ export type ProductAttributeTerm = {
 // Payload buat create/update produk lewat admin panel. Cuma field yang
 // benar-benar dipakai form admin — WooCommerce menerima jauh lebih banyak
 // field opsional daripada ini.
+/** Satu varian yang dikirim form admin untuk produk bertipe "variable". */
+export type ProductVariationInput = {
+  /** Terisi hanya untuk varian yang sudah ada; kosong berarti varian baru. */
+  id?: number;
+  /** Nilai atribut pembeda, mis. { WARNA: "MERAH" }. */
+  attributes: Record<string, string>;
+  sku?: string;
+  regular_price?: string;
+  sale_price?: string;
+  stock_status?: "instock" | "outofstock" | "onbackorder";
+  /** `null` = stok tidak dilacak per jumlah (bukan "nol"). */
+  stock_quantity?: number | null;
+  /** Kosong = varian ikut gambar utama induk. */
+  image_url?: string | null;
+};
+
 export type ProductInput = {
   name: string;
-  type?: "simple";
+  type?: "simple" | "variable";
   status?: "publish" | "draft" | "private";
+  /** Nama atribut pembeda varian, mis. ["WARNA"]. Hanya untuk type "variable". */
+  variation_attributes?: string[];
+  /** Daftar varian lengkap. Varian lama yang tak ada di sini akan dihapus. */
+  variations?: ProductVariationInput[];
   description?: string;
   short_description?: string;
   regular_price?: string;
@@ -134,7 +163,8 @@ export type ProductInput = {
   date_on_sale_to_gmt?: string;
   manage_stock?: boolean;
   stock_status?: "instock" | "outofstock" | "onbackorder";
-  stock_quantity?: number;
+  /** `null` = stok tidak dilacak per jumlah (bukan "nol"). */
+  stock_quantity?: number | null;
   categories?: Array<{ id: number }>;
   attributes?: Array<{ name: string; options: string[]; visible?: boolean }>;
   images?: Array<{ url: string }>;

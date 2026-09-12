@@ -8,12 +8,24 @@
  * dan yang dihemat bukan cuma penyimpanan R2 tapi juga waktu muat halaman
  * produk bagi pembeli.
  *
+ * Batas bawaannya BUKAN aturan universal — lihat `CompressOptions`. Banner
+ * beranda tampil selebar container 1232px yang di layar DPR 2 menuntut ~2464
+ * piksel nyata, jadi ia menaikkan batasnya sendiri. Memakai 1600 di sana
+ * membuat gambarnya diperbesar peramban dan teks di dalamnya terlihat pecah.
+ *
  * Berjalan di browser (butuh `document`/`Image`), jadi hanya boleh dipanggil
  * dari Client Component.
  */
 
 const MAX_DIMENSION = 1600
 const WEBP_QUALITY = 0.9
+
+export type CompressOptions = {
+  /** Sisi terpanjang maksimum, dalam piksel. Default 1600 (gambar produk). */
+  maxDimension?: number
+  /** Kualitas encoder WebP, 0-1. Default 0.9. */
+  quality?: number
+}
 
 export type CompressedImage = {
   file: File
@@ -44,7 +56,13 @@ function withExtension(fileName: string, extension: string): string {
   return `${fileName.replace(/\.[^.]+$/, "")}.${extension}`
 }
 
-export async function compressImage(file: File): Promise<CompressedImage> {
+export async function compressImage(
+  file: File,
+  options: CompressOptions = {}
+): Promise<CompressedImage> {
+  const maxDimension = options.maxDimension ?? MAX_DIMENSION
+  const quality = options.quality ?? WEBP_QUALITY
+
   // GIF bisa beranimasi, dan menggambarnya ke canvas cuma menyisakan frame
   // pertama — diam-diam merusak gambarnya. Lewatkan apa adanya.
   if (file.type === "image/gif") {
@@ -56,7 +74,7 @@ export async function compressImage(file: File): Promise<CompressedImage> {
   try {
     const image = await loadImage(sourceUrl)
 
-    const scale = Math.min(1, MAX_DIMENSION / Math.max(image.width, image.height))
+    const scale = Math.min(1, maxDimension / Math.max(image.width, image.height))
     const width = Math.round(image.width * scale)
     const height = Math.round(image.height * scale)
 
@@ -66,9 +84,13 @@ export async function compressImage(file: File): Promise<CompressedImage> {
 
     const context = canvas.getContext("2d")
     if (!context) throw new Error("Canvas tidak tersedia di browser ini")
+    // Bawaan Chrome adalah "low", yang menyusutkan gambar dalam satu langkah
+    // tanpa penyaringan yang memadai — teks tipis dan garis halus di dalam
+    // banner promo langsung bergerigi. "high" memakai penyaring bertingkat.
+    context.imageSmoothingQuality = "high"
     context.drawImage(image, 0, 0, width, height)
 
-    const blob = await canvasToBlob(canvas, "image/webp", WEBP_QUALITY)
+    const blob = await canvasToBlob(canvas, "image/webp", quality)
 
     // Kalau hasil "kompresi" justru lebih besar (sering terjadi pada gambar
     // kecil yang sudah teroptimasi), pakai berkas aslinya. Mengunggah versi

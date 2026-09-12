@@ -1,64 +1,44 @@
 "use client"
 
-import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis } from "recharts"
+import { Bar, BarChart, XAxis, YAxis } from "recharts"
 
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart"
+
+// Data placeholder — belum tersambung ke sumber order/revenue asli.
+// Ganti dengan hasil agregasi dari lib/services/dashboard begitu tersedia.
 const data = [
-  {
-    name: "Jan",
-    total: Math.floor(Math.random() * 5000) + 1000,
-  },
-  {
-    name: "Feb",
-    total: Math.floor(Math.random() * 5000) + 1000,
-  },
-  {
-    name: "Mar",
-    total: Math.floor(Math.random() * 5000) + 1000,
-  },
-  {
-    name: "Apr",
-    total: Math.floor(Math.random() * 5000) + 1000,
-  },
-  {
-    name: "May",
-    total: Math.floor(Math.random() * 5000) + 1000,
-  },
-  {
-    name: "Jun",
-    total: Math.floor(Math.random() * 5000) + 1000,
-  },
-  {
-    name: "Jul",
-    total: Math.floor(Math.random() * 5000) + 1000,
-  },
-  {
-    name: "Aug",
-    total: Math.floor(Math.random() * 5000) + 1000,
-  },
-  {
-    name: "Sep",
-    total: Math.floor(Math.random() * 5000) + 1000,
-  },
-  {
-    name: "Oct",
-    total: Math.floor(Math.random() * 5000) + 1000,
-  },
-  {
-    name: "Nov",
-    total: Math.floor(Math.random() * 5000) + 1000,
-  },
-  {
-    name: "Dec",
-    total: Math.floor(Math.random() * 5000) + 1000,
-  },
+  { month: "Jan", total: 3820 },
+  { month: "Feb", total: 3410 },
+  { month: "Mar", total: 4390 },
+  { month: "Apr", total: 1980 },
+  { month: "May", total: 4870 },
+  { month: "Jun", total: 4540 },
+  { month: "Jul", total: 1720 },
+  { month: "Aug", total: 3260 },
+  { month: "Sep", total: 2190 },
+  { month: "Oct", total: 2540 },
+  { month: "Nov", total: 4980 },
+  { month: "Dec", total: 4310 },
 ]
+
+const chartConfig = {
+  total: {
+    label: "Penjualan",
+    color: "var(--chart-1)",
+  },
+} satisfies ChartConfig
 
 export function Overview() {
   return (
-    <ResponsiveContainer width="100%" height={350}>
+    <ChartContainer config={chartConfig} className="aspect-auto h-[350px] w-full">
       <BarChart data={data}>
         <XAxis
-          dataKey="name"
+          dataKey="month"
           stroke="#888888"
           fontSize={12}
           tickLine={false}
@@ -71,13 +51,9 @@ export function Overview() {
           axisLine={false}
           tickFormatter={(value) => `$${value}`}
         />
-        <Bar
-          dataKey="total"
-          fill="currentColor"
-          radius={[4, 4, 0, 0]}
-          className="fill-primary"
-        />
+        <ChartTooltip content={<ChartTooltipContent indicator="dot" />} />
+        <Bar dataKey="total" fill="var(--color-total)" radius={[4, 4, 0, 0]} />
       </BarChart>
-    </ResponsiveContainer>
+    </ChartContainer>
   )
 }

@@ -1,4 +1,4 @@
-import { StoreForm } from "../store-form"
+import { StoreForm } from "../store-form";
 
 export default function AdminTokoBaruPage() {
   return (
@@ -8,5 +8,5 @@ export default function AdminTokoBaruPage() {
         <StoreForm />
       </div>
     </div>
-  )
+  );
 }

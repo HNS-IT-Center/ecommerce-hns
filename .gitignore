@@ -115,15 +115,36 @@ _ui_reference/
 *.zip
 
 # ============================================================================
-# Project docs & notes (internal only, jangan push)
+# Project docs & notes
 # ============================================================================
-docs/
+#
+# `docs/` dan `CLAUDE.md` SENGAJA ikut git sejak 7 Agustus 2026.
+#
+# Sebelumnya keduanya diabaikan, dan akibatnya dua salinan CLAUDE.md yang
+# berbeda hidup di dua laptop tanpa pernah bertemu — satu masih mewajibkan data
+# produk dari WooCommerce REST API dan tidak punya aturan harga sama sekali.
+# Salinan itulah yang dibaca agent saat insiden `db push`. Aturan yang hanya ada
+# di satu laptop bukan aturan.
+#
+# Isinya sudah diperiksa: tidak ada kredensial, hostname database, IP, atau data
+# pribadi. Nomor CS dan alamat email yang disebut sudah publik di situs.
+# Sebelum menambah dokumen baru, periksa hal yang sama.
 notes/
-*.md
-!README.md
 AI_AGENT_ROLE.md
-CLAUDE.md
 PROJECT_BRIEF.md
+TODO.local.md
+
+# Catatan kerja harian — status yang cepat basi, bukan aturan. Sengaja tetap
+# lokal supaya tidak ada yang membacanya sebagai sumber kebenaran.
+CONTEXT-HANDOFF.md
+PRE-DEPLOY-CHECKLIST.md
+PROGRESS.md
+
+# Ekspor data operasional yang kebetulan menumpang di docs/. Ini BUKAN
+# dokumentasi: ekspor katalog memuat stok, catatan pembelian, dan harga normal
+# maupun obral untuk ~4.900 produk. Kalau perlu berbagi, kirim lewat jalur
+# internal, jangan lewat repo.
+docs/*.csv
 .claude
 csv/
 
@@ -134,3 +155,19 @@ wc-product-export-*.csv
 
 # Dump rollback yang dibuat script migrasi data — artefak lokal, bukan sumber.
 scripts/backup-*.json
+
+# Dump SQL di akar repo — cadangan database, BUKAN bagian dari aplikasi.
+#
+# Isinya bukan sekadar besar: dump WordPress/aplikasi memuat email dan nama
+# pelanggan, hash password, serta akun admin. Satu `git add -A` yang tidak
+# disengaja akan mengirim semua itu ke repo publik, dan menghapusnya kemudian
+# tidak menghapusnya dari riwayat.
+#
+# Polanya sengaja diawali garis miring: `/*.sql` hanya mencakup akar repo,
+# sehingga `prisma/migrations/**/migration.sql` — yang justru WAJIB ikut git —
+# tidak ikut terabaikan.
+#
+# docs/10 §4 memang meminta dump disimpan DI LUAR folder repo. Baris ini jaring
+# pengaman kalau ada yang terlanjur mengunduhnya ke sini.
+/*.sql
+backup/

@@ -15,16 +15,47 @@ export type ComboboxOption = {
 type ComboboxProps = {
   value: string
   onValueChange: (value: string) => void
+  /**
+   * Dipanggil hanya saat pilihan benar-benar DITETAPKAN — klik saran, tekan
+   * Enter, atau meninggalkan input dengan teks terisi. Berbeda dari
+   * `onValueChange` yang menyala di setiap ketikan.
+   *
+   * Pakai ini untuk aksi yang tidak boleh berulang per huruf. Tanpa pemisahan
+   * ini, pemanggil yang "menambah sesuatu" di `onValueChange` akan menambah
+   * satu entri untuk tiap huruf: mengetik "WARNA" menghasilkan W, WA, WAR,
+   * WARN, WARNA.
+   */
+  onCommit?: (value: string) => void
   options: ComboboxOption[]
   placeholder?: string
   /** Ditampilkan di bawah daftar saat teks yang diketik tidak cocok dengan opsi manapun. */
   createHint?: (query: string) => string
+  /**
+   * Wajib memilih dari daftar — teks bebas TIDAK sah.
+   *
+   * Kebalikan dari perilaku bawaan komponen ini, yang sengaja menerima nilai
+   * baru karena backend meng-upsert nama atribut/brand yang belum ada. Ada
+   * pemakaian yang tidak boleh begitu: memindahkan kategori ke induk yang
+   * "diketik" berarti aksinya berjalan dengan sasaran yang tidak pernah ada.
+   *
+   * Saat `true`, teks yang tidak cocok dengan opsi manapun dipulihkan ke
+   * pilihan sah terakhir begitu input ditinggalkan, dan `createHint`
+   * diabaikan.
+   */
+  requireOption?: boolean
+  /** Diteruskan ke <input>, supaya <label htmlFor> di pemanggil tetap menunjuk sasaran yang benar. */
+  inputId?: string
   className?: string
   inputClassName?: string
   disabled?: boolean
 }
 
-const MAX_VISIBLE_OPTIONS = 30
+// Cukup untuk menampung seluruh master atribut (61 saat ini) tanpa memotong
+// diam-diam. Sebelumnya 30, dan itu membuat separuh atribut yang ada di sistem
+// tidak pernah muncul di daftar saran — terlihat seperti datanya hilang.
+const MAX_VISIBLE_OPTIONS = 200
+// Sesuai `max-h-52` (13rem = 208px) pada dropdown + margin 4px terhadap input.
+const DROPDOWN_MAX_HEIGHT = 212
 
 /**
  * Input teks bebas dengan saran dari data yang sudah ada (mis. nama atribut,
@@ -42,17 +73,23 @@ const MAX_VISIBLE_OPTIONS = 30
 export function Combobox({
   value,
   onValueChange,
+  onCommit,
   options,
   placeholder,
   createHint,
+  requireOption = false,
+  inputId,
   className,
   inputClassName,
   disabled,
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false)
-  const [position, setPosition] = React.useState<{ top: number; left: number; width: number } | null>(
-    null
-  )
+  const [position, setPosition] = React.useState<{
+    top?: number
+    bottom?: number
+    left: number
+    width: number
+  } | null>(null)
   const anchorRef = React.useRef<HTMLDivElement>(null)
 
   const filtered = React.useMemo(() => {
@@ -66,19 +103,41 @@ export function Combobox({
   const exactMatch = options.some(
     (option) => option.label.toLowerCase() === value.trim().toLowerCase()
   )
-  const showCreateHint = Boolean(value.trim()) && !exactMatch && Boolean(createHint)
+  const showCreateHint =
+    !requireOption && Boolean(value.trim()) && !exactMatch && Boolean(createHint)
+
+  // Pilihan sah terakhir, dipakai memulihkan isian saat orang mengetik sesuatu
+  // yang tidak ada di daftar lalu berpindah fokus. Tanpa ini, input bisa
+  // ditinggalkan berisi teks yang tidak menunjuk apa pun.
+  const lastValidRef = React.useRef(value)
+  React.useEffect(() => {
+    if (!requireOption) return
+    if (!value.trim() || exactMatch) lastValidRef.current = value
+  }, [requireOption, value, exactMatch])
   const isVisible = open && (filtered.length > 0 || showCreateHint)
 
   // Posisi dropdown mengikuti input. Dihitung ulang saat dibuka dan saat
   // halaman digulir/diubah ukurannya — karena elemennya berada di `body`,
   // ia tidak ikut bergerak sendiri bersama kartunya.
+  //
+  // Dropdown default terbuka ke bawah, tapi kalau ruang di bawah lebih sempit
+  // dari tinggi dropdown (mis. input ini ada di baris paling bawah form,
+  // dekat batas viewport), ia dibalik ke atas supaya tidak terpotong.
   React.useLayoutEffect(() => {
     if (!isVisible) return
 
     function updatePosition() {
       const rect = anchorRef.current?.getBoundingClientRect()
       if (!rect) return
-      setPosition({ top: rect.bottom + 4, left: rect.left, width: rect.width })
+
+      const spaceBelow = window.innerHeight - rect.bottom
+      const spaceAbove = rect.top
+
+      if (spaceBelow < DROPDOWN_MAX_HEIGHT && spaceAbove > spaceBelow) {
+        setPosition({ bottom: window.innerHeight - rect.top + 4, left: rect.left, width: rect.width })
+      } else {
+        setPosition({ top: rect.bottom + 4, left: rect.left, width: rect.width })
+      }
     }
 
     updatePosition()
@@ -93,12 +152,46 @@ export function Combobox({
   return (
     <div ref={anchorRef} className={cn("relative", className)}>
       <Input
+        id={inputId}
         value={value}
         disabled={disabled}
         placeholder={placeholder}
         onChange={(e) => onValueChange(e.target.value)}
         onFocus={() => setOpen(true)}
-        onBlur={() => setOpen(false)}
+        onBlur={() => {
+          setOpen(false)
+          if (requireOption) {
+            if (!exactMatch) {
+              const pulih = lastValidRef.current
+              onValueChange(pulih)
+              onCommit?.(pulih)
+            }
+            return
+          }
+          // Teks yang sudah diketik ikut ditetapkan saat meninggalkan input,
+          // supaya admin tidak kehilangan isian karena lupa menekan Enter.
+          if (onCommit && value.trim()) onCommit(value.trim())
+        }}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return
+          // Enter di dalam form ini berarti "pakai nilai ini", bukan submit —
+          // submit tak sengaja akan menyimpan produk yang belum selesai diisi.
+          e.preventDefault()
+          const first = filtered[0]
+          // Saat wajib dari daftar, Enter berarti "ambil saran teratas" —
+          // bukan "pakai apa yang saya ketik", yang di mode ini tidak sah.
+          const chosen = requireOption
+            ? exactMatch
+              ? value.trim()
+              : first?.label
+            : first && !value.trim()
+              ? first.label
+              : value.trim()
+          if (!chosen) return
+          onValueChange(chosen)
+          onCommit?.(chosen)
+          setOpen(false)
+        }}
         autoComplete="off"
         className={inputClassName}
       />
@@ -108,7 +201,12 @@ export function Combobox({
         createPortal(
           <div
             className="fixed z-[100] max-h-52 overflow-y-auto rounded-lg border border-input bg-popover p-1 shadow-lg"
-            style={{ top: position.top, left: position.left, width: position.width }}
+            style={{
+              top: position.top,
+              bottom: position.bottom,
+              left: position.left,
+              width: position.width,
+            }}
           >
             {filtered.map((option) => {
               const isSelected = option.label.toLowerCase() === value.trim().toLowerCase()
@@ -121,6 +219,7 @@ export function Combobox({
                   onMouseDown={(e) => {
                     e.preventDefault()
                     onValueChange(option.label)
+                    onCommit?.(option.label)
                     setOpen(false)
                   }}
                   className={cn(

@@ -11,7 +11,7 @@ export default async function AdminProdukBaruPage() {
   ])
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-6xl pb-12">
       <h1 className="text-2xl font-bold">Tambah Produk Baru</h1>
       <div className="mt-6">
         <ProdukForm

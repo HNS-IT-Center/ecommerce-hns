@@ -20,9 +20,11 @@ import type { ProductCategory } from "@/types/woocommerce"
 
 interface MegaMenuProps {
   categories?: ProductCategory[]
+  /** Sakelar PC Prebuild, dibaca di server oleh Header lalu dioper ke sini. */
+  showPrebuild?: boolean
 }
 
-export function MegaMenu({ categories = [] }: MegaMenuProps) {
+export function MegaMenu({ categories = [], showPrebuild = false }: MegaMenuProps) {
   // Build category hierarchy (shared dengan MobileMenu, lihat lib/utils/category-tree.ts)
   const mappedCategories = buildCategoryTree(categories)
 
@@ -121,6 +123,17 @@ export function MegaMenu({ categories = [] }: MegaMenuProps) {
             PC Builder
           </NavigationMenuLink>
         </NavigationMenuItem>
+
+        {/* Hanya muncul kalau sakelar PC Prebuild menyala. Nilainya dibaca di
+            server (header) lalu dioper ke sini, karena komponen ini `use client`
+            dan tidak boleh menyentuh lapisan data sendiri (CLAUDE.md §2.5). */}
+        {showPrebuild && (
+          <NavigationMenuItem>
+            <NavigationMenuLink render={<Link href="/pc-prebuild" className={cn(navigationMenuTriggerStyle(), "bg-transparent font-bold tracking-wide uppercase text-[13px]")} />}>
+              PC Prebuild
+            </NavigationMenuLink>
+          </NavigationMenuItem>
+        )}
         
         <NavigationMenuItem>
           <NavigationMenuLink render={<Link href="/shop" className={cn(navigationMenuTriggerStyle(), "bg-transparent font-bold tracking-wide uppercase text-[13px]")} />}>
