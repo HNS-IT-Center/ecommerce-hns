@@ -12,7 +12,7 @@ import { useCatalogPricing } from "@/features/checkout/hooks/use-catalog-pricing
 import { UnavailableNotice } from "@/components/shared/price-change-notice"
 import { formatRupiah } from "@/lib/utils"
 import { Trash2, Plus, Minus, ShoppingBag, ArrowRight, X, PackageOpen } from "lucide-react"
-import Image from "next/image"
+import { ProductImage } from "@/components/ui/product-image"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
@@ -530,7 +530,7 @@ function ItemCard({
             ruang baca yang layak. */}
         <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-muted sm:h-20 sm:w-20">
           {item.image ? (
-            <Image src={item.image} alt={item.name} fill sizes="80px" className="object-cover" />
+            <ProductImage src={item.image} alt={item.name} fill sizes="80px" className="object-cover" />
           ) : (
             <div className="flex h-full w-full items-center justify-center">
               <ShoppingBag className="h-6 w-6 text-muted-foreground/30" />

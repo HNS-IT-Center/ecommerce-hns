@@ -1,4 +1,4 @@
-import Image from "next/image"
+import { ProductImage } from "@/components/ui/product-image"
 import Link from "next/link"
 
 import { formatRupiah } from "@/lib/utils"
@@ -107,7 +107,7 @@ export function SearchResultsDropdown({
                 )}
               >
                 <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-md bg-muted">
-                  <Image
+                  <ProductImage
                     src={product.image_url}
                     alt={product.name}
                     fill

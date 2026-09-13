@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image"
+import { ProductImage } from "@/components/ui/product-image"
 import Link from "next/link"
 import { LayoutGrid, ShoppingCart } from "lucide-react"
 import WhatsappIcon from "@/components/icons/whatsapp-icon"
@@ -185,13 +185,17 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
           diganti di /admin/theme; itu memang yang diminta.
         */}
         <div className="relative aspect-square w-full overflow-hidden bg-white rounded-t-xl group/image">
-          <Image
+          <ProductImage
             src={product.image_url}
             alt={product.name}
             fill
             sizes="(max-width: 768px) 50vw, 25vw"
             priority={priority}
             className="object-contain transition-transform duration-500 group-hover:scale-105"
+            /* Latar kotaknya sudah putih disengaja (lihat catatan di atas);
+               placeholder ikut putih supaya tidak jadi kotak abu di tengah
+               kartu. Ikonnya sendiri tetap memakai warna tema. */
+            fallbackClassName="bg-white"
           />
 
           {/* Hiasan Natal saat hover. Tidak diberi kondisi di React: seluruh

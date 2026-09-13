@@ -21,7 +21,7 @@ import {
   TriangleAlert,
 } from "lucide-react"
 import Link from "next/link"
-import Image from "next/image"
+import { ProductImage } from "@/components/ui/product-image"
 import { useState } from "react"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
@@ -348,20 +348,18 @@ function ItemRow({
           lewat items-stretch, jadi tidak ada ruang menganga di bawahnya.
           Di sm ke atas kembali kotak 128px seperti sebelumnya. */}
       <div className="relative w-24 shrink-0 self-stretch overflow-hidden rounded-lg border bg-background p-1.5 sm:h-32 sm:w-32 sm:self-auto">
-        {item.image ? (
-          <Image
-            src={item.image}
-            alt={item.name}
-            fill
-            // 96px (w-24) di bawah breakpoint sm, 128px (sm:w-32) di atasnya.
-            sizes="(min-width: 640px) 128px, 96px"
-            className="object-contain object-center"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-muted">
-            <ShoppingBag className="h-8 w-8 text-muted-foreground/30" />
-          </div>
-        )}
+        {/* Penjaga `item.image ? :` yang dulu ada di sini sudah tidak perlu —
+            ProductImage menangani gambar kosong DAN gambar yang 404 dengan
+            placeholder yang sama. Menyisakannya berarti dua fallback berbeda
+            untuk satu kotak yang sama. */}
+        <ProductImage
+          src={item.image}
+          alt={item.name}
+          fill
+          // 96px (w-24) di bawah breakpoint sm, 128px (sm:w-32) di atasnya.
+          sizes="(min-width: 640px) 128px, 96px"
+          className="object-contain object-center"
+        />
       </div>
 
       {/* Product Details */}
@@ -533,13 +531,7 @@ function BundleBlock({
           {group.lines.map((line) => (
             <li key={line.id} className="flex items-center gap-3 px-4 py-3">
               <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border bg-background">
-                {line.image ? (
-                  <Image src={line.image} alt="" fill sizes="48px" className="object-contain p-1" />
-                ) : (
-                  <span className="flex h-full w-full items-center justify-center bg-muted">
-                    <ShoppingBag className="h-4 w-4 text-muted-foreground/40" />
-                  </span>
-                )}
+                <ProductImage src={line.image} alt="" fill sizes="48px" className="object-contain p-1" />
               </div>
 
               <div className="min-w-0 flex-1">

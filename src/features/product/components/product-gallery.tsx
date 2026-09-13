@@ -1,6 +1,7 @@
 "use client"
 
 import Image from "next/image"
+import { ProductImage } from "@/components/ui/product-image"
 import { useState, useRef, useEffect } from "react"
 import { motion, AnimatePresence, type PanInfo } from "framer-motion"
 import { ChevronLeft, ChevronRight, X, Play } from "lucide-react"
@@ -398,7 +399,7 @@ export function ProductGallery({
             className="absolute inset-0 p-6 sm:p-10"
           >
             {activeSlide?.kind === "image" && (
-              <Image
+              <ProductImage
                 src={activeSlide.image.src}
                 alt={activeSlide.image.alt}
                 fill
@@ -544,7 +545,7 @@ export function ProductGallery({
                   </span>
                 </>
               ) : (
-                <Image
+                <ProductImage
                   src={slide.image.src}
                   alt={slide.image.alt}
                   fill
@@ -597,12 +598,16 @@ export function ProductGallery({
                   className="absolute inset-0 touch-none"
                 >
                   {activeSlide?.kind === "image" && (
-                    <Image
+                    <ProductImage
                       src={activeSlide.image.src}
                       alt={activeSlide.image.alt}
                       fill
                       sizes="100vw"
                       className="object-contain pointer-events-none"
+                      /* Lightbox latarnya gelap pekat; placeholder `bg-muted`
+                         terang akan menyala seperti lampu. Transparan saja —
+                         ikonnya sendiri sudah cukup terbaca. */
+                      fallbackClassName="bg-transparent"
                     />
                   )}
                 </motion.div>
