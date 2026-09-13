@@ -1,8 +1,9 @@
 import Link from "next/link"
 import Image from "next/image"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
-import { BANK_ACCOUNTS, CS_EMAIL, SOCIAL_LINKS } from "@/lib/constants/contact"
+import { CS_EMAIL, SOCIAL_LINKS } from "@/lib/constants/contact"
 import { InstagramIcon, TiktokIcon } from "@/components/icons/social-icons"
+import { FooterPaymentMethods } from "./footer-payment-methods"
 import WhatsappIcon from "@/components/icons/whatsapp-icon"
 import { env } from "@/config/env"
 import { getThemeSettings } from "@/lib/theme/settings"
@@ -158,22 +159,16 @@ export async function Footer() {
                 sebelahnya, padahal ia cuma keterangan. Putih transparan
                 membuatnya terbaca sebagai permukaan yang sedikit terangkat
                 dari footer, bukan tempelan. */}
-            <div className="flex gap-2 flex-wrap">
-              {/* Dirakit dari BANK_ACCOUNTS, bukan ditulis tangan. Daftar ini
-                  pernah memuat BNI dan QRIS padahal HNS tidak menerima
-                  keduanya — dan itu bertahan justru karena ia salinan
-                  terpisah dari rekening yang sebenarnya. Sekarang footer dan
-                  halaman checkout membaca sumber yang sama, jadi keduanya
-                  tidak bisa lagi berbeda. */}
-              {BANK_ACCOUNTS.map((account) => (
-                <span
-                  key={account.bank}
-                  className="rounded border border-white/20 bg-white/10 px-2 py-1 text-xs font-medium"
-                >
-                  {account.bank}
-                </span>
-              ))}
-            </div>
+            {/* Dirakit dari BANK_ACCOUNTS, bukan ditulis tangan. Daftar ini
+                pernah memuat BNI dan QRIS padahal HNS tidak menerima keduanya
+                — dan itu bertahan justru karena ia salinan terpisah dari
+                rekening yang sebenarnya. Sekarang footer dan halaman checkout
+                membaca sumber yang sama, jadi keduanya tidak bisa lagi
+                berbeda.
+
+                Komponen klien tersendiri supaya `Footer` tetap server
+                component — lihat catatan di berkasnya. */}
+            <FooterPaymentMethods />
             
             <h4 className="text-sm font-bold uppercase tracking-wider pt-4">Kontak</h4>
             <ul className="space-y-1 text-sm text-white/70">
