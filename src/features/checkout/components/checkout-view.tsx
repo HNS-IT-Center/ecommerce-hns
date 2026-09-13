@@ -17,7 +17,6 @@ import Image from "next/image"
 import Link from "next/link"
 import { buttonVariants } from "@/components/ui/button"
 import { WhatsAppOrderButton } from "./whatsapp-order-button"
-import { PaymentMethods } from "./payment-methods"
 
 export function CheckoutView() {
   const { items, getSelectedTotalPrice } = useCartStore()
@@ -166,16 +165,6 @@ export function CheckoutView() {
           <div className="mt-6 w-full max-w-sm">
             <WhatsAppOrderButton onPriced={setCatalogPricing} />
           </div>
-        </div>
-
-        {/*
-          DI BAWAH kotak WhatsApp, bukan di atasnya — urutannya mengikuti
-          urutan yang sebenarnya terjadi: pesanan dikonfirmasi dulu bersama CS
-          (stok, ongkir), baru ada yang perlu dibayar. Menaruh rekening lebih
-          dulu akan mengundang orang mentransfer sebelum totalnya pasti.
-        */}
-        <div className="mt-8">
-          <PaymentMethods />
         </div>
       </div>
 

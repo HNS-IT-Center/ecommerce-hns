@@ -17,13 +17,15 @@ import { BANK_ACCOUNTS, BANK_ACCOUNT_HOLDER } from "@/lib/constants/contact"
 export type BankAccount = (typeof BANK_ACCOUNTS)[number]
 
 /**
- * Dialog satu rekening — dipakai bersama oleh blok rekening di checkout
- * (`payment-methods.tsx`) dan chip di footer (`footer-payment-methods.tsx`).
+ * Dialog satu rekening, dibuka dari chip bank di footer
+ * (`components/layout/footer-payment-methods.tsx`).
  *
- * Dipisah ke berkasnya sendiri supaya nomor rekening hanya punya SATU tempat
- * ditampilkan. Dua salinan dialog berarti dua kesempatan memperbaiki sebagian
- * lalu lupa sisanya — alasan yang sama seperti `BANK_ACCOUNTS` di
- * `lib/constants/contact.ts`.
+ * Tetap berdiri sebagai berkas sendiri meski kini hanya punya satu pemanggil:
+ * ia pernah dipakai bersama blok rekening di halaman checkout, dan blok itu
+ * dibuang atas permintaan user (14 Sep 2026) karena footer sudah hadir di
+ * setiap halaman — termasuk checkout. Kalau suatu saat ada tempat kedua yang
+ * perlu menampilkan rekening, dialognya sudah siap dipakai ulang dan nomor
+ * rekening tetap hanya punya SATU tempat ditampilkan.
  *
  * `account` merangkap dua peran — isi dialog DAN penanda terbuka/tertutup —
  * karena keduanya selalu berubah bersamaan: tidak ada keadaan "terbuka tanpa
