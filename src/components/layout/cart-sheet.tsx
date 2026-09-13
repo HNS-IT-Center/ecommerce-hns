@@ -25,8 +25,8 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { useIsHydrated } from "@/hooks/use-is-hydrated"
-import { useRef, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useEffect, useRef, useState } from "react"
+import { usePathname, useRouter } from "next/navigation"
 
 export function CartSheet({ children }: { children: React.ReactNode }) {
   const {
@@ -42,6 +42,7 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
   } = useCartStore()
   const mounted = useIsHydrated()
   const router = useRouter()
+  const pathname = usePathname()
 
   const [isOpen, setIsOpen] = useState(false)
   const [clearOpen, setClearOpen] = useState(false)
@@ -78,6 +79,36 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
    * database — isinya belum berubah, jawabannya pasti sama.
    */
   const tandaTerakhirDibaca = useRef<string | null>(null)
+
+  /**
+   * Menutup panel begitu rute barunya benar-benar terpasang — BUKAN di dalam
+   * `onClick` tombol yang memulai perpindahan.
+   *
+   * `Sheet` memakai `useBackToClose`, yang mendorong satu entri riwayat boneka
+   * saat panel dibuka lalu menariknya kembali dengan `history.back()` saat
+   * panel ditutup. Navigasi App Router asinkron — Next menunggu muatan RSC
+   * dulu sebelum mendorong rutenya — jadi saat `onClick` berjalan, boneka itu
+   * masih puncak tumpukan. `history.back()` lalu memakan boneka tersebut DAN
+   * membatalkan navigasi yang belum sempat terjadi: tombol Checkout ditekan,
+   * server mengirim halamannya (`GET /checkout 200` di log), tapi orangnya
+   * tertahan di halaman semula tanpa pesan apa pun.
+   *
+   * Digantung pada `pathname`, URL sudah berbeda dari yang dicatat
+   * `useBackToClose` ketika panel akhirnya ditutup, jadi penjaganya mengenali
+   * perpindahan halaman dan tidak memanggil `history.back()` sama sekali.
+   *
+   * Pola yang sama sudah dipakai sidebar admin (`app-sidebar.tsx`) untuk sebab
+   * yang persis sama; `scanner-overlay.tsx` mencatat bug ini lebih dulu.
+   */
+  useEffect(() => {
+    // `set-state-in-effect` dimatikan dengan sadar: menunda penutupan panel
+    // sampai rute barunya terpasang justru INTI perbaikan ini. Menutupnya
+    // lebih awal — di onClick, atau lewat state turunan saat render —
+    // mengembalikan navigasi yang membatalkan dirinya sendiri.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsOpen(false)
+    // Sengaja hanya bereaksi pada rute.
+  }, [pathname])
 
   if (!mounted) {
     return <div onClick={(e) => e.preventDefault()}>{children}</div>
@@ -367,20 +398,18 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
               <Button
                 className="h-12 w-full gap-2 text-base font-bold"
                 disabled={selectedCount === 0}
-                onClick={() => {
-                  setIsOpen(false)
-                  router.push("/checkout")
-                }}
+                /* Panelnya TIDAK ditutup di sini — lihat efek `pathname` di
+                   atas. Menutupnya sekarang membatalkan navigasi ini. */
+                onClick={() => router.push("/checkout")}
               >
                 Checkout
                 <ArrowRight className="h-4 w-4" />
               </Button>
 
               <button
-                onClick={() => {
-                  setIsOpen(false)
-                  router.push("/cart")
-                }}
+                /* Sama seperti tombol Checkout di atas: penutupan panel
+                   diserahkan ke efek `pathname`. */
+                onClick={() => router.push("/cart")}
                 className="w-full cursor-pointer py-1 text-center text-xs font-semibold text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
               >
                 Lihat keranjang selengkapnya
