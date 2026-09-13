@@ -24,6 +24,7 @@ import { BuilderQuickViewDialog } from "./builder-quick-view-dialog"
 import { cheapestAvailableVariation } from "@/lib/utils/variation"
 import { SaveBuildDialog } from "./save-build-dialog"
 import { StartNewBuildDialog } from "./start-new-build-dialog"
+import { LoginPromptDialog } from "@/features/auth/components/login-prompt-dialog"
 import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Edit2, MessageCircle, Printer, Search, X, Loader2, RotateCcw, History } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -78,6 +79,9 @@ export function DynamicBuilderView({
   // setelah simpan sukses. Direset begitu SaveBuildDialog ditutup.
   const [saveDialogIsForNewBuild, setSaveDialogIsForNewBuild] = useState(false)
   const [isStartNewDialogOpen, setIsStartNewDialogOpen] = useState(false)
+  // Ajakan masuk untuk pengunjung tanpa akun yang menekan Simpan. Menggantikan
+  // lompatan langsung ke /login — lihat `handleOpenSaveDialog`.
+  const [isLoginPromptOpen, setIsLoginPromptOpen] = useState(false)
   /**
    * Pemilih varian: APA yang ditampilkan, dan APAKAH sedang terbuka — sengaja
    * dua state, bukan satu `BuilderProduct | null`.
@@ -489,8 +493,15 @@ export function DynamicBuilderView({
       return
     }
 
+    /*
+     * Dialog, BUKAN `window.location.href = "/login..."` seperti sebelumnya.
+     * Lompatan itu membuang halaman tepat setelah pelanggan selesai menyusun
+     * belasan komponen — tanpa sepatah kata, dan yang muncul formulir login
+     * yang tidak ia minta. Dialog menahan halamannya: rakitan tetap utuh di
+     * layar, dan "Nanti saja" mengembalikannya ke pekerjaannya.
+     */
     if (!isLoggedIn) {
-      window.location.href = "/login?next=/build-pc"
+      setIsLoginPromptOpen(true)
       return
     }
 
@@ -1626,6 +1637,18 @@ export function DynamicBuilderView({
         }}
         onConfirm={handleConfirmSaveBuild}
         onSaved={saveDialogIsForNewBuild ? handleDiscardAndStartNew : undefined}
+      />
+
+      {/*
+        `next` menunjuk /build-pc tanpa query. Rakitan yang sedang disusun
+        hidup di store terpisah yang bertahan lintas muat halaman, bukan di
+        URL, jadi pelanggan yang kembali setelah masuk menemukannya utuh.
+      */}
+      <LoginPromptDialog
+        open={isLoginPromptOpen}
+        onOpenChange={setIsLoginPromptOpen}
+        nextPath="/build-pc"
+        description="Rakitan Anda tersimpan di akun, jadi bisa dibuka lagi kapan saja dari perangkat mana pun. Rakitan yang sedang Anda susun tidak hilang."
       />
 
       {/* SELALU dirender — lihat catatan "Selalu ter-mount" di
