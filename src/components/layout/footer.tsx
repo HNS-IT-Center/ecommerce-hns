@@ -1,7 +1,7 @@
 import Link from "next/link"
 import Image from "next/image"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
-import { CS_EMAIL, SOCIAL_LINKS } from "@/lib/constants/contact"
+import { BANK_ACCOUNTS, CS_EMAIL, SOCIAL_LINKS } from "@/lib/constants/contact"
 import { InstagramIcon, TiktokIcon } from "@/components/icons/social-icons"
 import WhatsappIcon from "@/components/icons/whatsapp-icon"
 import { env } from "@/config/env"
@@ -159,11 +159,20 @@ export async function Footer() {
                 membuatnya terbaca sebagai permukaan yang sedikit terangkat
                 dari footer, bukan tempelan. */}
             <div className="flex gap-2 flex-wrap">
-              <span className="rounded border border-white/20 bg-white/10 px-2 py-1 text-xs font-medium">BCA</span>
-              <span className="rounded border border-white/20 bg-white/10 px-2 py-1 text-xs font-medium">Mandiri</span>
-              <span className="rounded border border-white/20 bg-white/10 px-2 py-1 text-xs font-medium">BRI</span>
-              <span className="rounded border border-white/20 bg-white/10 px-2 py-1 text-xs font-medium">BNI</span>
-              <span className="rounded border border-white/20 bg-white/10 px-2 py-1 text-xs font-medium">QRIS</span>
+              {/* Dirakit dari BANK_ACCOUNTS, bukan ditulis tangan. Daftar ini
+                  pernah memuat BNI dan QRIS padahal HNS tidak menerima
+                  keduanya — dan itu bertahan justru karena ia salinan
+                  terpisah dari rekening yang sebenarnya. Sekarang footer dan
+                  halaman checkout membaca sumber yang sama, jadi keduanya
+                  tidak bisa lagi berbeda. */}
+              {BANK_ACCOUNTS.map((account) => (
+                <span
+                  key={account.bank}
+                  className="rounded border border-white/20 bg-white/10 px-2 py-1 text-xs font-medium"
+                >
+                  {account.bank}
+                </span>
+              ))}
             </div>
             
             <h4 className="text-sm font-bold uppercase tracking-wider pt-4">Kontak</h4>

@@ -45,3 +45,35 @@ export const SOCIAL_LINKS = {
   instagram: "https://www.instagram.com/hns.itcenter/",
   tiktok: "https://www.tiktok.com/@hns.itcenter",
 } as const
+
+/**
+ * Rekening resmi HNS untuk pembayaran.
+ *
+ * Satu sumber, dengan alasan yang persis sama seperti `CS_EMAIL` di atas —
+ * dan di sini taruhannya lebih tinggi: nomor rekening yang salah satu digit
+ * mengirim uang pelanggan ke tempat lain, dan tidak seorang pun di HNS yang
+ * tahu sampai pelanggannya mengeluh.
+ *
+ * Daftar ini HANYA boleh memuat metode yang benar-benar bisa dipakai. Footer
+ * pernah mencantumkan BNI dan QRIS padahal HNS tidak menerima keduanya;
+ * pelanggan bisa sampai ke tahap membayar sebelum CS terpaksa menolaknya —
+ * pola yang sama dengan "Harga Member" di CLAUDE.md §2.7. Jangan tambahkan
+ * bank ke daftar ini sebelum rekeningnya ada.
+ *
+ * `nomor` disimpan tanpa spasi/pemisah, karena inilah yang disalin pelanggan
+ * ke m-banking. Pemformatan untuk dibaca mata adalah urusan tampilan.
+ */
+export const BANK_ACCOUNTS = [
+  { bank: "BCA", nomor: "0617751333" },
+  { bank: "BRI", nomor: "033101557788306" },
+  { bank: "Mandiri", nomor: "1090001772227" },
+] as const
+
+/**
+ * Pemilik seluruh rekening di `BANK_ACCOUNTS`.
+ *
+ * Ditampilkan bersama nomornya, bukan sekadar keterangan: pelanggan yang
+ * melihat nama PT di layar punya cara memastikan ia tidak sedang ditipu
+ * seseorang yang menyamar sebagai HNS dan menyodorkan rekening pribadi.
+ */
+export const BANK_ACCOUNT_HOLDER = "PT. Sentral Berkat Teknologi"
