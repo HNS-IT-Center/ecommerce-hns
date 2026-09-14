@@ -55,6 +55,14 @@ const geistMono = Geist_Mono({
  * Kalau suatu hari build punya database yang aman dijangkau (mis. replika
  * read-only atau runner ber-IP tetap), baris ini boleh dicabut dan prerender
  * kembali.
+ *
+ * PEMBARUAN 15 September 2026: syarat itu kemungkinan sudah terpenuhi. Deploy
+ * tidak lagi lewat runner GitHub (`deploy.yml` sudah menjadi `check.yml`, hanya
+ * memeriksa kode), melainkan auto-deploy hPanel yang membangun di sisi
+ * Hostinger — dan log build-nya menunjukkan `prisma migrate deploy` berhasil
+ * terhubung ke database produksi. Baris ini sengaja BELUM dicabut: mengembalikan
+ * prerender mengubah perilaku 20 rute dan perlu diuji tersendiri, bukan ikut
+ * terbawa perubahan jalur deploy.
  */
 export const dynamic = "force-dynamic";
 
