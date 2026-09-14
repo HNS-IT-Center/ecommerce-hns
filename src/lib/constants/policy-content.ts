@@ -24,12 +24,12 @@ export const POLICY_PAGES: PolicyPageContent[] = [
 </ul>
 <h2>Syarat Barang yang Dikembalikan</h2>
 <ul>
-<li>Kondisi seperti baru — dus, segel, manual, kabel, aksesori, bonus, dan invoice lengkap.</li>
+<li>Kondisi seperti baru - dus, segel, manual, kabel, aksesori, bonus, dan invoice lengkap.</li>
 <li>Tidak ada kerusakan fisik, goresan, bekas pemasangan, atau nomor seri yang hilang/tidak sesuai.</li>
 </ul>
 <h2>Barang yang Tidak Dapat Dikembalikan</h2>
 <ul>
-<li>Produk yang sudah dirakit khusus sesuai pesanan (Custom PC Builder) — kecuali cacat sejak awal.</li>
+<li>Produk yang sudah dirakit khusus sesuai pesanan (Custom PC Builder) - kecuali cacat sejak awal.</li>
 <li>Lisensi software/aktivasi digital dan kode voucher yang sudah diaktifkan.</li>
 <li>Produk consumable yang kemasannya sudah dibuka (mis. tinta/toner printer, thermal paste).</li>
 <li>Komponen yang sudah dipasang atau dimodifikasi (mis. prosesor dengan pin bengkok).</li>
@@ -69,11 +69,11 @@ export const POLICY_PAGES: PolicyPageContent[] = [
 <li>Voucher atau kode promo yang sudah dipakai tidak dapat dikonversi menjadi uang tunai.</li>
 </ul>
 <h2>Metode Refund</h2>
-<p>Karena pemesanan diproses secara manual melalui WhatsApp (belum ada pembayaran kartu/online), dana dikembalikan lewat <strong>transfer bank</strong> ke rekening atas nama pembeli — rekening yang sama dengan yang digunakan untuk pembayaran, kecuali pembeli menyampaikan rekening pengganti atas nama yang sama.</p>
+<p>Karena pemesanan diproses secara manual melalui WhatsApp (belum ada pembayaran kartu/online), dana dikembalikan lewat <strong>transfer bank</strong> ke rekening atas nama pembeli - rekening yang sama dengan yang digunakan untuk pembayaran, kecuali pembeli menyampaikan rekening pengganti atas nama yang sama.</p>
 <h2>Waktu Proses</h2>
 <ul>
 <li>Verifikasi dan persetujuan: maksimal <strong>2×24 jam kerja</strong> setelah dokumen/bukti lengkap kami terima.</li>
-<li>Transfer dana: <strong>3–7 hari kerja</strong> setelah pengajuan disetujui.</li>
+<li>Transfer dana: <strong>3-7 hari kerja</strong> setelah pengajuan disetujui.</li>
 </ul>
 <h2>Dokumen yang Diperlukan</h2>
 <ul>
@@ -94,7 +94,7 @@ export const POLICY_PAGES: PolicyPageContent[] = [
 <li><strong>Belum dibayar:</strong> pesanan otomatis dianggap batal jika tidak ada konfirmasi pembayaran setelah dihubungi CS.</li>
 <li><strong>Sudah dibayar, belum diproses/dirakit:</strong> dapat dibatalkan penuh.</li>
 <li><strong>Barang jadi (bukan rakitan) yang sudah dikemas tapi belum dikirim:</strong> masih dapat dibatalkan tanpa biaya tambahan.</li>
-<li><strong>Sudah dikirim:</strong> pesanan tidak dapat dibatalkan setelah barang sudah dikirim — ajukan <a href="/kebijakan/pengembalian-barang">pengembalian barang</a> setelah barang diterima.</li>
+<li><strong>Sudah dikirim:</strong> pesanan tidak dapat dibatalkan setelah barang sudah dikirim - ajukan <a href="/kebijakan/pengembalian-barang">pengembalian barang</a> setelah barang diterima.</li>
 </ul>
 <h2>Pembatalan oleh Kami</h2>
 <p>Kami dapat membatalkan pesanan bila stok ternyata tidak tersedia, komponen gagal pemeriksaan kualitas, atau ada kesalahan harga/informasi produk. Dalam kondisi ini, pembeli akan dihubungi untuk memilih refund penuh atau penggantian produk setara.</p>
@@ -116,7 +116,7 @@ export const POLICY_PAGES: PolicyPageContent[] = [
 <p>Kami melayani pengiriman ke seluruh Batam.</p>
 <h2>Estimasi Waktu</h2>
 <ul>
-<li>Dalam kota Batam: <strong>1–2 hari kerja</strong>.</li>
+<li>Dalam kota Batam: <strong>1-2 hari kerja</strong>.</li>
 </ul>
 <p>Pesanan yang dikonfirmasi setelah jam operasional toko akan diproses pada hari kerja berikutnya.</p>
 <h2>Ekspedisi</h2>
@@ -124,7 +124,7 @@ export const POLICY_PAGES: PolicyPageContent[] = [
 <h2>Biaya Pengiriman</h2>
 <p>Biaya pengiriman dihitung berdasarkan tujuan pengiriman, dikonfirmasi oleh CS kami sebelum pesanan diproses.</p>
 <h2>Gratis Ongkir</h2>
-<p>Untuk minimal belanja <strong>Rp3.000.000</strong>, pengantaran gratis. Titik pengantaran dikonfirmasi bersama CS mengikuti titik lokasi Grab/alamat tujuan pembeli — termasuk untuk produk furnitur seperti kursi dan meja.</p>
+<p>Untuk minimal belanja <strong>Rp3.000.000</strong>, pengantaran gratis. Titik pengantaran dikonfirmasi bersama CS mengikuti titik lokasi Grab/alamat tujuan pembeli - termasuk untuk produk furnitur seperti kursi dan meja.</p>
 <h2>Ambil di Toko (Self Pickup)</h2>
 <p>Pesanan juga dapat diambil langsung di salah satu toko kami tanpa biaya pengiriman. Lihat lokasi toko di halaman <a href="/stores">Toko Fisik</a>.</p>
 <p>Untuk pertanyaan lebih lanjut, silakan hubungi kami melalui halaman <a href="/contact">Kontak Kami</a>.</p>
@@ -148,7 +148,7 @@ export const FAQ_ITEMS: FaqItemContent[] = [
   {
     question: "Apakah bisa bayar di tempat (COD)?",
     answer:
-      "COD tersedia untuk area tertentu di Batam — konfirmasikan dengan CS kami via WhatsApp saat pemesanan. Untuk pembelian langsung di toko, pembayaran bisa dilakukan tunai atau transfer di tempat.",
+      "COD tersedia untuk area tertentu di Batam - konfirmasikan dengan CS kami via WhatsApp saat pemesanan. Untuk pembelian langsung di toko, pembayaran bisa dilakukan tunai atau transfer di tempat.",
     sortOrder: 1,
   },
   {
