@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   RefreshCw,
   Coins,
+  FileText,
   X,
 } from "lucide-react"
 
@@ -76,6 +77,17 @@ const adminNavItems: NavItem[] = [
   { title: "Banner Promo", url: "/admin/banner",   icon: Megaphone },
   { title: "Toko & Lokasi", url: "/admin/toko",    icon: Store },
   { title: "Manajemen User", url: "/admin/manajemen-user", icon: ShieldCheck },
+  /*
+   * Halamannya sudah ada sejak lama dan izinnya sudah terdaftar
+   * (`kebijakan` di lib/auth/permissions.ts), tapi tidak pernah punya menu —
+   * jadi satu-satunya cara membukanya adalah mengetik URL-nya langsung, dan
+   * staf yang tidak tahu URL itu tidak punya cara menemukannya sama sekali.
+   *
+   * Akibatnya nyata: isi kebijakan di database sempat tertinggal jauh di
+   * belakang aturan yang berlaku — masih menjanjikan pengiriman "seluruh
+   * Indonesia" dan biaya restocking 10% yang sudah dihapus.
+   */
+  { title: "Kebijakan",    url: "/admin/kebijakan", icon: FileText },
   { title: "Tema",         url: "/admin/theme",    icon: Palette },
   { title: "Logs",         url: "/admin/logs",     icon: ClipboardList },
 ]
