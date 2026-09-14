@@ -124,12 +124,29 @@ export async function priceCartFromCatalog(
   const ids = [...diminta.keys()].slice(0, MAX_LINES);
 
   const rows = await getPrisma().product.findMany({
-    // `status: PUBLISHED` bukan sekadar kerapian: tanpa ini, produk yang sengaja
-    // ditarik staf dari etalase masih bisa dipesan oleh siapa pun yang menyimpan
-    // id-nya.
-    where: { id: { in: ids }, status: ProductStatus.PUBLISHED },
+    /*
+     * `wooId`, BUKAN `id`. Keduanya kolom berbeda di tabel yang sama, dan
+     * hanya sebagian kecil baris yang nilainya kebetulan sama.
+     *
+     * Yang sampai ke sini adalah id dari keranjang pelanggan, dan seluruh
+     * storefront mengekspos `wooId` sebagai "id" produk — lihat
+     * `db-mapper.ts` (`id: prismaProduct.wooId`) yang dipakai setiap kartu,
+     * halaman produk, dan pencarian. Mencocokkannya dengan kolom `id`
+     * membuat kueri ini tidak menemukan apa-apa, `lines` kosong, dan checkout
+     * menyimpulkan SELURUH keranjang "sudah tidak tersedia" — padahal
+     * produknya terbit dan berstok.
+     *
+     * Gagalnya diam-diam: tidak ada error, kueri sukses dalam ~140ms, hanya
+     * hasilnya nol baris.
+     *
+     * `status: PUBLISHED` bukan sekadar kerapian: tanpa ini, produk yang
+     * sengaja ditarik staf dari etalase masih bisa dipesan oleh siapa pun
+     * yang menyimpan id-nya.
+     */
+    where: { wooId: { in: ids }, status: ProductStatus.PUBLISHED },
     select: {
       id: true,
+      wooId: true,
       name: true,
       sku: true,
       regularPrice: true,
@@ -142,7 +159,9 @@ export async function priceCartFromCatalog(
     },
   });
 
-  const ditemukan = new Map(rows.map((r) => [r.id, r]));
+  // Dikunci `wooId` karena itulah yang diminta pemanggil — sama dengan `ids`
+  // di atas. Memakai `r.id` di sini akan mengosongkan setiap pencarian.
+  const ditemukan = new Map(rows.map((r) => [r.wooId, r]));
 
   const lines: PricedCartLine[] = [];
   const unavailableProductIds: number[] = [];
@@ -158,7 +177,11 @@ export async function priceCartFromCatalog(
     const quantity = diminta.get(id)!;
     const unitPrice = harga(row.regularPrice, row.salePrice, row.saleEndDate);
     lines.push({
-      productId: row.id,
+      // `wooId` juga, supaya pemanggil bisa mencocokkan baris ini dengan baris
+      // keranjangnya. `checkout/actions.ts` memakai `cart.lines` sebagai kamus
+      // berkunci id-yang-dikirim-klien; mengembalikan `row.id` di sini membuat
+      // setiap pencarian meleset meski barisnya berhasil ditemukan.
+      productId: row.wooId,
       // Nama produk tersimpan dengan entitas HTML dari impor WooCommerce lama;
       // tanpa decode, CS menerima "Laptop &amp; Aksesori" di WhatsApp.
       name: decodeHtmlEntities(row.name),
