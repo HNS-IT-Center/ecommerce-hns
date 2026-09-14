@@ -11,6 +11,8 @@ import { parseRupiah } from "@/lib/utils"
 import { deleteProductAction, updateProductPriceAction, bulkUpdateProductStatusAction } from "./actions"
 import { QuickEditModal } from "./quick-edit-modal"
 import type { Product, ProductCategory, ProductAttributeTaxonomy } from "@/types/woocommerce"
+import type { RootCategoryOption } from "@/lib/api/woocommerce/categories"
+import type { FlaggedVariationCounts } from "@/lib/api/woocommerce/product-health"
 
 // Shadcn UI Tooltips
 import {
@@ -46,8 +48,27 @@ export type BulkProductRow = {
   /** "variable" = produk induk yang punya varian; harga tampil "mulai dari". */
   type: Product["type"]
   variationCount: number
+  /** Varian aktif bermasalah milik induk ini — selalu nol untuk produk simple. */
+  flaggedVariations: FlaggedVariationCounts
   /** Produk WooCommerce apa adanya — dipakai Quick Edit untuk mengisi form. */
   rawProduct: Product
+}
+
+/**
+ * Keterangan varian bermasalah di bawah kolom SKU/stok induk.
+ *
+ * Induk bervariasi masuk daftar "SKU Kosong" atau "Stok Kosong" karena
+ * variannya, sedangkan kolom milik induk itu sendiri memang lazim kosong. Tanpa
+ * keterangan ini barisnya tampak persis seperti induk yang sudah beres.
+ */
+function FlaggedVariationNote({ count, label }: { count: number; label: string }) {
+  if (count === 0) return null
+  return (
+    <span className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-warning">
+      <Layers className="h-3 w-3 shrink-0" />
+      {count} varian {label}
+    </span>
+  )
 }
 
 /**
@@ -123,6 +144,7 @@ type Props = {
   categories: { id: number; path: string }[]
   rawCategories: ProductCategory[] // For QuickEditModal
   attributeOptions: ProductAttributeTaxonomy[] // For QuickEditModal
+  rootCategories: RootCategoryOption[]
 }
 
 function SortIcon({ field, currentSort, currentOrder }: { field: string, currentSort: string, currentOrder: string }) {
@@ -134,7 +156,7 @@ function SortIcon({ field, currentSort, currentOrder }: { field: string, current
 // `categories` sengaja TIDAK ikut di-destructure walau ada di `Props`: komponen
 // ini memakai `rawCategories` (bentuk berpath) untuk seluruh keperluannya.
 // Prop-nya dipertahankan di tipe karena pemanggil masih mengirimnya.
-export function ProductDataTable({ products, rawCategories, attributeOptions }: Props) {
+export function ProductDataTable({ products, rawCategories, attributeOptions, rootCategories }: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -147,6 +169,11 @@ export function ProductDataTable({ products, rawCategories, attributeOptions }: 
   // Sort
   const statusFilter = searchParams.get("status_filter") || ""
   const typeFilter = searchParams.get("type_filter") || ""
+  // Bentuk lama `status_filter=empty_stock` dibaca sebagai kondisi stok kosong
+  // (lihat page.tsx), jadi dropdown kondisi ikut menampilkannya terpilih.
+  const flagFilter =
+    searchParams.get("flag_filter") || (statusFilter === "empty_stock" ? "empty-stock" : "")
+  const categoryFilter = searchParams.get("category_filter") || ""
   const currentSort = searchParams.get("sort") || "date"
   const currentOrder = searchParams.get("order") || "desc"
 
@@ -199,6 +226,23 @@ export function ProductDataTable({ products, rawCategories, attributeOptions }: 
     },
     [searchParams, pathname, router]
   )
+
+  /**
+   * Kondisi punya penanganan sendiri karena ia menggantikan bentuk lama
+   * `status_filter=empty_stock`: memilih kondisi apa pun harus ikut membuang
+   * nilai lama itu, kalau tidak "Semua Kondisi" tetap menyaring stok kosong.
+   */
+  const handleFlagChange = (value: string) => {
+    const params = new URLSearchParams(searchParams)
+    if (value) params.set("flag_filter", value)
+    else params.delete("flag_filter")
+    if (params.get("status_filter") === "empty_stock") params.delete("status_filter")
+    params.delete("page")
+
+    startTransition(() => {
+      router.push(`${pathname}?${params.toString()}`)
+    })
+  }
 
   // Debounced search
   useEffect(() => {
@@ -291,7 +335,7 @@ export function ProductDataTable({ products, rawCategories, attributeOptions }: 
           <option value="publish">Published</option>
           <option value="draft">Draft</option>
           <option value="private">Private</option>
-          <option value="empty_stock">Stok Kosong</option>
+          <option value="active">Published + Draft</option>
         </select>
 
         {/* Tipe sengaja jadi dropdown sendiri, bukan opsi tambahan di dropdown
@@ -307,6 +351,34 @@ export function ProductDataTable({ products, rawCategories, attributeOptions }: 
           <option value="">Semua Tipe</option>
           <option value="variable">Produk Bervariasi</option>
           <option value="simple">Produk Simple</option>
+        </select>
+
+        <select
+          value={categoryFilter}
+          onChange={(e) => handleFilterChange("category_filter", e.target.value)}
+          aria-label="Filter kategori induk"
+          className="rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+        >
+          <option value="">Semua Kategori</option>
+          {rootCategories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name}
+            </option>
+          ))}
+        </select>
+
+        {/* Kondisi data, terpisah dari status: "Draft" + "SKU Kosong" adalah
+            kombinasi yang wajar. Untuk produk bervariasi yang diperiksa adalah
+            variannya — induk memang lazim tanpa SKU dan stok sendiri. */}
+        <select
+          value={flagFilter}
+          onChange={(e) => handleFlagChange(e.target.value)}
+          aria-label="Filter kondisi data produk"
+          className="rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+        >
+          <option value="">Semua Kondisi</option>
+          <option value="missing-sku">SKU Kosong</option>
+          <option value="empty-stock">Stok Kosong</option>
         </select>
 
         <div className="flex-1 flex items-center gap-2 rounded-xl border border-input bg-background px-3 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary overflow-hidden">
@@ -469,6 +541,7 @@ export function ProductDataTable({ products, rawCategories, attributeOptions }: 
                 </td>
                 <td className="px-4 py-3 align-middle text-muted-foreground">
                   {product.sku || "-"}
+                  <FlaggedVariationNote count={product.flaggedVariations["missing-sku"]} label="tanpa SKU" />
                 </td>
                 <td className="px-4 py-3 align-middle">
                   <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -476,6 +549,7 @@ export function ProductDataTable({ products, rawCategories, attributeOptions }: 
                   }`}>
                     {product.stockStatus === 'instock' ? 'Tersedia' : 'Habis'}
                   </span>
+                  <FlaggedVariationNote count={product.flaggedVariations["empty-stock"]} label="stok kosong" />
                 </td>
                 <td className="px-4 py-3 align-middle font-semibold text-foreground text-xs">
                   {product.type === "variable" ? (
@@ -657,6 +731,8 @@ export function ProductDataTable({ products, rawCategories, attributeOptions }: 
                 <div className="text-xs text-muted-foreground truncate">
                   SKU: {product.sku || "-"}
                 </div>
+                <FlaggedVariationNote count={product.flaggedVariations["missing-sku"]} label="tanpa SKU" />
+                <FlaggedVariationNote count={product.flaggedVariations["empty-stock"]} label="stok kosong" />
               </div>
             </div>
 

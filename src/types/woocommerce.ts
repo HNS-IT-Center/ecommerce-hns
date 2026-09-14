@@ -104,8 +104,18 @@ export type GetProductsParams = {
    * tanpa itu produk baru, yang defaultnya draft, langsung lenyap dari daftar
    * begitu dibuat.
    */
-  status?: "publish" | "draft" | "private" | "any";
+  /**
+   * "active" = terbit + draft, tanpa private. Dipakai tautan "Lihat semua" dari
+   * dashboard admin, yang hanya menghitung dua status itu — tanpa pilihan ini
+   * daftar yang dibukanya ikut memuat produk private dan jumlahnya tidak cocok.
+   */
+  status?: "publish" | "draft" | "private" | "active" | "any";
   stock_status?: "instock" | "outofstock" | "onbackorder";
+  /**
+   * Hanya produk yang datanya belum beres — lihat `product-health.ts`. Untuk
+   * produk bervariasi, yang diperiksa adalah variannya, bukan induknya.
+   */
+  flag?: "missing-sku" | "empty-stock";
   /**
    * Menyaring daftar berdasarkan jenis produk. Dipakai admin untuk memisahkan
    * produk bervariasi — harga & stoknya ditentukan per varian, jadi keduanya

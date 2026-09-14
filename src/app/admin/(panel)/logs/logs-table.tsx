@@ -7,7 +7,7 @@ import { Eye, Search, Loader2, X, ChevronDown, ChevronUp, ChevronsUpDown, Chevro
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import Link from "next/link"
 import type { DateRange } from "react-day-picker"
-import { formatRupiah } from "@/lib/utils"
+import { actionBadgeClass, actionLabel, formatLogValue } from "@/lib/logs/actions"
 import { CalendarDateRangePicker } from "@/components/admin/date-range-picker"
 
 import {
@@ -46,27 +46,6 @@ type Props = {
   to: string
   action: string
   availableActions: string[]
-}
-
-/**
- * Nama aksi disimpan sebagai konstanta huruf besar supaya mudah disaring, tapi
- * yang membacanya di layar adalah staf toko — jadi labelnya diterjemahkan.
- * Aksi yang belum punya terjemahan tampil apa adanya, bukan kosong.
- */
-const ACTION_LABELS: Record<string, string> = {
-  UPDATE_PRICE: "Update Harga",
-  SYNC_PRICE: "Sinkron Harga (WooCommerce)",
-  SYNC_IMPORT: "Import dari WooCommerce",
-  EDIT_PRODUCT: "Edit Produk",
-  QUICK_EDIT: "Quick Edit",
-  UPLOAD_PRODUCTS: "Tambah Produk",
-  DELETE: "Hapus Produk",
-  BULK_STATUS: "Massal: Status",
-  BULK_STOCK_STATUS: "Massal: Stok",
-}
-
-function actionLabel(action: string) {
-  return ACTION_LABELS[action] ?? action
 }
 
 /** `YYYY-MM-DD` di zona waktu setempat — `toISOString()` menggeser tanggalnya. */
@@ -355,48 +334,6 @@ export function LogsTable({
     })
   }
 
-  const getActionBadgeColor = (logAction: string) => {
-    if (logAction.startsWith('BULK_')) return 'bg-orange-100 text-orange-800'
-    switch(logAction) {
-      case 'UPDATE_PRICE': return 'bg-blue-100 text-blue-800'
-      case 'SYNC_PRICE': return 'bg-cyan-100 text-cyan-800'
-      case 'SYNC_IMPORT': return 'bg-teal-100 text-teal-800'
-      case 'EDIT_PRODUCT': return 'bg-amber-100 text-amber-800'
-      case 'QUICK_EDIT': return 'bg-purple-100 text-purple-800'
-      case 'UPLOAD_PRODUCTS': return 'bg-green-100 text-green-800'
-      case 'DELETE': return 'bg-red-100 text-red-800'
-      default: return 'bg-slate-100 text-slate-800'
-    }
-  }
-
-  const formatLogValue = (logAction: string, val: string | null) => {
-    // String kosong pada harga berarti "tidak ada harga obral", bukan nol.
-    if (val === null || val === "") return "-"
-    if (logAction !== 'UPDATE_PRICE' && logAction !== 'SYNC_PRICE') return val
-
-    const num = Number(val)
-    if (!isNaN(num)) return formatRupiah(num)
-
-    // Harga normal dan harga obral yang berubah bersamaan disimpan sebagai
-    // objek JSON (`fieldAffected: "multiple"`), bukan satu angka. Tanpa
-    // cabang ini nilainya tampil sebagai JSON mentah di kolom log.
-    try {
-      const parsed: unknown = JSON.parse(val)
-      if (parsed && typeof parsed === 'object') {
-        return Object.entries(parsed as Record<string, unknown>)
-          .map(([field, value]) => {
-            const n = Number(value)
-            const label = field === 'sale_price' ? 'Obral' : 'Normal'
-            return `${label}: ${isNaN(n) || value === '' ? '-' : formatRupiah(n)}`
-          })
-          .join(', ')
-      }
-    } catch {
-      // Bukan JSON — tampilkan apa adanya.
-    }
-    return val
-  }
-
   return (
     <TooltipProvider delay={200}>
     <div className="space-y-4">
@@ -506,7 +443,7 @@ export function LogsTable({
                   <span className="line-clamp-2 break-words">{log.userName}</span>
                 </td>
                 <td className={`align-middle ${CELL_PADDING}`}>
-                  <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wider uppercase ${getActionBadgeColor(log.action)}`}>
+                  <span className={`inline-block rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wider uppercase ${actionBadgeClass(log.action)}`}>
                     {actionLabel(log.action)}
                   </span>
                 </td>
@@ -596,7 +533,7 @@ export function LogsTable({
         {logs.map((log) => (
           <div key={log.id} className="rounded-xl border border-border bg-background p-4 shadow-sm relative flex flex-col gap-3">
             <div className="flex justify-between items-start mb-1">
-              <span className={`text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded ${getActionBadgeColor(log.action)}`}>
+              <span className={`text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded ${actionBadgeClass(log.action)}`}>
                 {actionLabel(log.action)}
               </span>
               <span className="text-xs text-muted-foreground">
@@ -735,7 +672,7 @@ export function LogsTable({
                 </div>
                 <div>
                   <span className="text-muted-foreground block text-xs">Aksi</span>
-                  <span className={`inline-block mt-1 text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded ${getActionBadgeColor(selectedLog.action)}`}>
+                  <span className={`inline-block mt-1 text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded ${actionBadgeClass(selectedLog.action)}`}>
                     {actionLabel(selectedLog.action)}
                   </span>
                 </div>

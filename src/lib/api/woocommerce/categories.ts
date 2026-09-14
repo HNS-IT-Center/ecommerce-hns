@@ -123,6 +123,23 @@ export async function getCategoriesForAdmin(): Promise<AdminCategory[]> {
   }));
 }
 
+export type RootCategoryOption = { id: number; name: string };
+
+/**
+ * Kategori tingkat teratas saja — pilihan penyaring "kategori induk" di
+ * dashboard dan daftar produk admin. Penyaringnya sendiri mencakup seluruh
+ * keturunan (lihat `resolveCategoryScope`), jadi menawarkan subkategori di sini
+ * hanya memanjangkan daftar tanpa menambah kemampuan yang diminta.
+ */
+export async function getRootCategoriesForAdmin(): Promise<RootCategoryOption[]> {
+  const rows = await getPrisma().category.findMany({
+    where: { parentId: null },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+  return rows.map((row) => ({ id: row.id, name: decodeHtmlEntities(row.name) }));
+}
+
 /** Slug mengikuti path penuh, konvensi yang sudah dipakai seluruh tabel. */
 function slugFromPath(path: string): string {
   return path

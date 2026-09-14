@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { getPrisma } from "@/lib/prisma/client"
 import { requirePageView } from "@/lib/auth"
+import { PRICE_ACTIONS } from "@/lib/logs/actions"
 import { LogsTable } from "./logs-table"
 import { PcBuildLogsTable, type PcBuildQuoteRow } from "./pc-build-logs-table"
 import type { Prisma, ProductLog } from "@prisma/client"
@@ -26,21 +27,6 @@ type Props = {
  * `orderBy` Prisma, jadi apa pun di luar daftar ini ditolak.
  */
 const SORTABLE_FIELDS = ["createdAt", "userName", "action", "productName", "fieldAffected"]
-
-/**
- * Aksi yang membentuk riwayat harga sebuah produk.
- *
- * `SYNC_IMPORT` ikut walau ia sendiri bukan perubahan harga: ia menandai saat
- * produknya masuk ke katalog, dan tanpa itu baris harga pertama sebuah produk
- * muncul tanpa awal cerita. Penyaring aksi di tabel tetap bisa menyempitkannya
- * ke perubahan harga saja.
- *
- * Daftar ini sengaja tetap di kode, tidak dibangun dari isi tabel seperti
- * penyaring aksi: yang menentukan sebuah aksi "soal harga" adalah artinya bagi
- * orang, bukan kebetulan namanya mengandung kata PRICE. Aksi harga baru harus
- * ditambahkan ke sini dengan sadar.
- */
-const PRICE_ACTIONS = ["UPDATE_PRICE", "SYNC_PRICE", "SYNC_IMPORT"]
 
 /**
  * Menerjemahkan `YYYY-MM-DD` dari URL menjadi batas rentang waktu.

@@ -1,7 +1,8 @@
 import Link from "next/link"
 import { Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react"
 import { getProductsPaginated, getProductAttributes } from "@/lib/api/woocommerce/products"
-import { getCategoriesForAdmin } from "@/lib/api/woocommerce/categories"
+import { getCategoriesForAdmin, getRootCategoriesForAdmin } from "@/lib/api/woocommerce/categories"
+import { countFlaggedVariationsByParent, resolveCategoryScope } from "@/lib/api/woocommerce/product-health"
 import { getStockDisplayMode } from "@/lib/api/stock-display"
 import { requirePageView } from "@/lib/auth"
 import { ProductDataTable } from "./product-data-table"
@@ -15,24 +16,25 @@ type Props = {
     order?: string
     status_filter?: string
     type_filter?: string
+    flag_filter?: string
+    category_filter?: string
   }>
 }
 
 export default async function AdminProdukPage({ searchParams }: Props) {
   await requirePageView("produk")
-  const { q, page, sort, order, status_filter, type_filter } = await searchParams
+  const { q, page, sort, order, status_filter, type_filter, flag_filter, category_filter } = await searchParams
   const currentPage = Number(page ?? 1)
   const currentSort = (sort === "title" || sort === "sku" || sort === "price" || sort === "date") ? sort : "date"
   const currentOrder = (order === "asc" || order === "desc") ? order : "desc"
 
-  let apiStatus: "publish" | "draft" | "private" | "any" = "any"
-  let apiStockStatus: "instock" | "outofstock" | "onbackorder" | undefined = undefined
-
-  if (status_filter === "publish" || status_filter === "draft" || status_filter === "private") {
-    apiStatus = status_filter
-  } else if (status_filter === "empty_stock") {
-    apiStockStatus = "outofstock"
-  }
+  const apiStatus =
+    status_filter === "publish" ||
+    status_filter === "draft" ||
+    status_filter === "private" ||
+    status_filter === "active"
+      ? status_filter
+      : "any"
 
   // Tipe adalah dimensi terpisah dari status, jadi keduanya bisa dikombinasikan
   // — mis. "Draft" + "Bervariasi" untuk memeriksa produk varian yang belum
@@ -40,7 +42,21 @@ export default async function AdminProdukPage({ searchParams }: Props) {
   const apiType =
     type_filter === "simple" || type_filter === "variable" ? type_filter : undefined
 
-  const [{ products, totalPages }, categories, attributeOptions, stockDisplayMode] = await Promise.all([
+  // `status_filter=empty_stock` adalah bentuk lama, dari masa "Stok Kosong"
+  // masih menumpang di dropdown status. Tetap diterima supaya tautan yang
+  // terlanjur tersimpan tidak diam-diam kehilangan penyaringnya.
+  const apiFlag =
+    flag_filter === "missing-sku" || flag_filter === "empty-stock"
+      ? flag_filter
+      : status_filter === "empty_stock"
+        ? "empty-stock"
+        : undefined
+
+  const parsedCategory = Number(category_filter)
+  const categoryId = Number.isInteger(parsedCategory) && parsedCategory > 0 ? parsedCategory : null
+  const categoryScope = categoryId === null ? undefined : await resolveCategoryScope(categoryId)
+
+  const [{ products, totalPages }, categories, rootCategories, attributeOptions, stockDisplayMode] = await Promise.all([
     getProductsPaginated({
       search: q,
       page: currentPage,
@@ -48,13 +64,23 @@ export default async function AdminProdukPage({ searchParams }: Props) {
       orderby: currentSort,
       order: currentOrder,
       status: apiStatus,
-      stock_status: apiStockStatus,
       type: apiType,
+      flag: apiFlag,
+      // Daftar kosong berarti id kategori tidak dikenal. Ia tetap diteruskan
+      // sebagai `[0]`, bukan dibuang: `buildPrismaWhere` mengabaikan array
+      // kosong, dan penyaring yang diabaikan menampilkan SEMUA produk di bawah
+      // label kategori yang dipilih.
+      category: categoryScope ? (categoryScope.length > 0 ? categoryScope : [0]) : undefined,
     }),
     getCategoriesForAdmin(),
+    getRootCategoriesForAdmin(),
     getProductAttributes(),
     getStockDisplayMode(),
   ])
+
+  const flaggedVariations = await countFlaggedVariationsByParent(
+    products.filter((product) => product.type === "variable").map((product) => product.id)
+  )
 
   const rows = products.map((product) => ({
     id: product.id,
@@ -66,6 +92,10 @@ export default async function AdminProdukPage({ searchParams }: Props) {
     // produk ini punya anak yang ikut terpengaruh.
     type: product.type,
     variationCount: product.variations?.length ?? 0,
+    // Induk bervariasi masuk daftar "SKU/stok kosong" karena VARIANNYA, sementara
+    // kolom induknya sendiri memang kosong — tanpa angka ini barisnya tak bisa
+    // dibedakan dari induk yang sudah beres.
+    flaggedVariations: flaggedVariations.get(product.id) ?? { "missing-sku": 0, "empty-stock": 0 },
     price: Number(product.price || 0),
     image: product.images?.[0]?.src ?? null,
     stockStatus: product.stock_status,
@@ -100,6 +130,7 @@ export default async function AdminProdukPage({ searchParams }: Props) {
         <ProductDataTable
           products={rows}
           attributeOptions={attributeOptions}
+          rootCategories={rootCategories}
           categories={categories.map((c) => ({ id: c.id, path: c.path }))}
           rawCategories={categories.map(c => ({
             id: c.id,
@@ -124,6 +155,8 @@ export default async function AdminProdukPage({ searchParams }: Props) {
             if (order) params.set("order", order)
             if (status_filter) params.set("status_filter", status_filter)
             if (type_filter) params.set("type_filter", type_filter)
+            if (flag_filter) params.set("flag_filter", flag_filter)
+            if (category_filter) params.set("category_filter", category_filter)
             params.set("page", String(p))
             return `/admin/produk?${params.toString()}`
           }

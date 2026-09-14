@@ -13,6 +13,7 @@ import type {
 } from "@/types/woocommerce";
 import { decodeHtmlEntities } from "@/lib/utils/html";
 import { CategoryOperationError } from "./categories";
+import { ACTIVE_PRODUCT_STATUSES, parentFlagWhere } from "./product-health";
 
 /**
  * Nolkan harga obral yang masa berlakunya sudah lewat.
@@ -78,7 +79,9 @@ export function buildPrismaWhere(params: GetProductsParams): Prisma.ProductWhere
 
   // Storefront hanya boleh melihat produk terbit, jadi itu tetap defaultnya.
   // Admin melewatkan "any" supaya draft & private ikut terbawa.
-  if (params.status !== "any") {
+  if (params.status === "active") {
+    where.status = { in: ACTIVE_PRODUCT_STATUSES };
+  } else if (params.status !== "any") {
     where.status = STATUS_FROM_PARAM[params.status ?? "publish"];
   }
 
@@ -177,6 +180,16 @@ export function buildPrismaWhere(params: GetProductsParams): Prisma.ProductWhere
 
   if (params.type) {
     where.type = TYPE_FROM_PARAM[params.type];
+  }
+
+  // Lewat AND, bukan ditempel langsung: kondisinya berbentuk OR, dan menaruhnya
+  // di `where.OR` akan bertabrakan dengan filter lain yang kelak memakai kunci
+  // yang sama.
+  if (params.flag) {
+    where.AND = [
+      ...(where.AND ? (Array.isArray(where.AND) ? where.AND : [where.AND]) : []),
+      parentFlagWhere(params.flag),
+    ];
   }
 
   if (params.minPrice !== undefined || params.maxPrice !== undefined) {

@@ -1196,3 +1196,63 @@ yang diperbaiki di sini. Paginasi dan urutan sengaja TIDAK ikut masuk
 `AvailableBrandsParams`: keduanya tidak memengaruhi merek mana yang tersedia,
 dan kalau ikut jadi kunci cache, setiap pindah halaman membuat entri cache baru
 untuk daftar yang isinya sama.
+
+---
+
+## 18. Dashboard admin (`/admin`) & penyaring kondisi produk (14 September 2026)
+
+Halaman Overview admin dulu seluruhnya placeholder (angka penjualan karangan,
+grafik, "Pesanan Terbaru"). Sekarang ia berisi lima kartu dari data Prisma asli:
+
+| Kartu | Sumber (`lib/api/admin-dashboard.ts`) | Penyaring | Izin |
+|---|---|---|---|
+| Total produk (semua / simple / bervariasi + jumlah varian) | `getProductTypeTotals` | kategori induk | `produk` |
+| Produk tanpa SKU — kelompok simple & varian | `getProductFlagSummary("missing-sku")` | kategori induk | `produk` |
+| Stok kosong — kelompok simple & varian | `getProductFlagSummary("empty-stock")` | kategori induk | `produk` |
+| 10 produk terbaru (`importedAt`) | `getLatestProducts` | — | `produk` |
+| 20 log produk terakhir | `getRecentProductLogs` | harga (bawaan) / semua / per aksi | `logs` |
+
+- **Tanpa cache**, sengaja: staff memakai dashboard untuk memeriksa apakah SKU
+  atau stok yang baru diisi sudah keluar dari daftar.
+- **Semua hitungan produk hanya terbit + draft** (`ACTIVE_PRODUCT_STATUSES`).
+  Varian dihitung hanya kalau varian DAN induknya aktif.
+- **Mengganti penyaring memanggil server action** (`app/admin/(panel)/_overview/actions.ts`),
+  bukan mengubah URL: tiap kartu berdiri sendiri, dan mengganti kategori di satu
+  kartu tidak merender ulang kartu lain. Data awal tetap dirender server. Action
+  memeriksa izin ulang — menyembunyikan kartu di halaman bukan pengamanan.
+- `/admin` **tidak** memakai `requirePageView`: ia tujuan pengalihan halaman yang
+  ditolak. Kartu disaring per izin; user tanpa izin `produk` maupun `logs`
+  melihat pesan kosong.
+
+### Satu definisi "bermasalah", dua pemakai
+
+`lib/api/woocommerce/product-health.ts` adalah satu-satunya tempat yang
+mendefinisikan SKU kosong (`sku` NULL atau `""`) dan stok kosong
+(`OUTOFSTOCK` **atau** `stockQty <= 0`). Dashboard menghitung darinya, dan
+`buildPrismaWhere` menyaring daftar produk darinya lewat parameter baru
+`flag`. Diverifikasi 14 Sep 2026: angka kartu = jumlah baris daftar untuk semua
+kategori, AKSESSORIES KOMPUTER, dan LAPTOP & PC — mis. SKU kosong 1.617 simple /
+656 induk bervariasi.
+
+Jangan menyusun ulang kondisi ini di tempat lain. Kalau definisinya berubah,
+ubah di berkas itu supaya kartu dan daftar tetap bernilai sama.
+
+**Produk bervariasi ditandai lewat variannya.** Induk memang lazim tanpa SKU dan
+stok sendiri. Daftar admin hanya berisi induk, jadi "Lihat semua" untuk varian
+membuka daftar INDUK yang punya minimal satu varian aktif bermasalah, dan tabel
+menampilkan keterangan "N varian tanpa SKU / stok kosong"
+(`countFlaggedVariationsByParent`). Varian tidak punya baris
+`product_categories` sendiri (0 baris per 14 Sep 2026), jadi cakupan kategorinya
+dibaca dari induk.
+
+### Parameter baru di `/admin/produk`
+
+| Parameter | Nilai | Catatan |
+|---|---|---|
+| `status_filter` | + `active` | Terbit + draft. Dipakai semua tautan dari dashboard. |
+| `flag_filter` | `missing-sku`, `empty-stock` | Menggantikan `status_filter=empty_stock` lama, yang masih diterima. Stok kosong kini juga menjaring varian dan `stockQty <= 0`. |
+| `category_filter` | id kategori | Kategori beserta seluruh keturunannya (`resolveCategoryScope`). Id tak dikenal = hasil kosong, bukan semua produk. |
+
+`PRICE_ACTIONS`, label aksi, warna lencana, dan `formatLogValue` dipindah dari
+halaman/tabel Logs ke `lib/logs/actions.ts` supaya kartu log dan halaman Logs
+tidak bisa tampil berbeda.

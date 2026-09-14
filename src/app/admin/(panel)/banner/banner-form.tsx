@@ -46,6 +46,15 @@ type BannerFormProps = {
 const NO_BATCH_VALUE = "__none__"
 const NEW_BATCH_VALUE = "__new__"
 
+const NO_BATCH_LABEL = "Tanpa kampanye"
+const ARCHIVED_BATCH_LABEL = "Kampanye yang sudah dihapus"
+const NEW_BATCH_LABEL = "Buat kampanye baru…"
+
+/** Label satu kampanye — dipakai di daftar dropdown DAN di tombolnya. */
+function batchLabel(batch: BatchOption): string {
+  return batch.isActive ? batch.name : `${batch.name} · nonaktif`
+}
+
 function SectionHeading({
   icon: Icon,
   title,
@@ -85,6 +94,25 @@ export function BannerForm({ banner, action, batches }: BannerFormProps) {
    * melepas kaitannya, dan staff bisa melepaskannya sendiri kalau memang mau.
    */
   const hasArchivedBatch = Boolean(batchId) && !batchOptions.some((b) => b.id === batchId)
+
+  /**
+   * Label setiap pilihan untuk prop `items` milik `<Select>`.
+   *
+   * Select di sini dari Base UI, yang tidak mengetahui label sebuah pilihan
+   * sebelum daftarnya dibuka. Tanpa `items`, tombolnya menampilkan nilai
+   * mentah — `__none__` atau uuid kampanye — alih-alih nama kampanyenya.
+   * Label kampanye diambil dari `batchLabel` yang sama dengan isi daftarnya,
+   * jadi keduanya tidak bisa berbeda.
+   */
+  const batchSelectItems = React.useMemo(
+    () => [
+      { value: NO_BATCH_VALUE, label: NO_BATCH_LABEL },
+      ...(hasArchivedBatch ? [{ value: batchId, label: ARCHIVED_BATCH_LABEL }] : []),
+      ...batchOptions.map((batch) => ({ value: batch.id, label: batchLabel(batch) })),
+      { value: NEW_BATCH_VALUE, label: NEW_BATCH_LABEL },
+    ],
+    [batchOptions, batchId, hasArchivedBatch]
+  )
 
   const [imageUrl, setImageUrl] = React.useState(banner?.imageUrl ?? "")
   const [uploading, setUploading] = React.useState(false)
@@ -349,6 +377,7 @@ export function BannerForm({ banner, action, batches }: BannerFormProps) {
             </CardHeader>
             <CardContent className="space-y-2">
               <Select
+                items={batchSelectItems}
                 value={batchId || NO_BATCH_VALUE}
                 onValueChange={(value: string | null) => {
                   if (!value) return
@@ -362,7 +391,7 @@ export function BannerForm({ banner, action, batches }: BannerFormProps) {
                 }}
               >
                 <SelectTrigger className="w-full" aria-label="Kampanye">
-                  <SelectValue placeholder="Tanpa kampanye" />
+                  <SelectValue placeholder={NO_BATCH_LABEL} />
                 </SelectTrigger>
                 <SelectContent
                   side="bottom"
@@ -370,23 +399,22 @@ export function BannerForm({ banner, action, batches }: BannerFormProps) {
                   sideOffset={4}
                   alignItemWithTrigger={false}
                 >
-                  <SelectItem value={NO_BATCH_VALUE}>Tanpa kampanye</SelectItem>
+                  <SelectItem value={NO_BATCH_VALUE}>{NO_BATCH_LABEL}</SelectItem>
 
                   {hasArchivedBatch && (
-                    <SelectItem value={batchId}>Kampanye yang sudah dihapus</SelectItem>
+                    <SelectItem value={batchId}>{ARCHIVED_BATCH_LABEL}</SelectItem>
                   )}
 
                   {batchOptions.map((batch) => (
                     <SelectItem key={batch.id} value={batch.id}>
-                      {batch.name}
-                      {!batch.isActive && " · nonaktif"}
+                      {batchLabel(batch)}
                     </SelectItem>
                   ))}
 
                   <SelectSeparator />
                   <SelectItem value={NEW_BATCH_VALUE}>
                     <Plus className="h-3.5 w-3.5" />
-                    Buat kampanye baru…
+                    {NEW_BATCH_LABEL}
                   </SelectItem>
                 </SelectContent>
               </Select>
