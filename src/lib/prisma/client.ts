@@ -50,9 +50,17 @@ function createPrismaClient(): PrismaClient {
    * Tiga sudah lapang untuk panel yang dipakai segelintir orang dan storefront
    * yang sebagian besar halamannya statis. Kalau suatu saat terasa sempit,
    * naikkan batas paketnya di Hostinger — jangan naikkan angka ini tanpa itu.
+   *
+   * Dev memakai angka yang sama. Dulu dev dibatasi 1, dan itu terlalu sempit:
+   * satu render halaman produk sudah menjalankan beberapa query sekaligus
+   * (produk, variasi, produk terkait dengan seluruh relasinya) ke server yang
+   * jauh, sehingga query yang antre di belakang satu koneksi itu habis waktu
+   * ("pool timeout ... active=1 idle=0 limit=1"). Koneksi di kolam dipakai
+   * ulang dan instance-nya disimpan di `globalThis`, jadi jumlah koneksi yang
+   * DIBUKA — yang dihitung Hostinger — tetap kecil.
    */
   const sep = url.includes("?") ? "&" : "?"
-  const connectionLimit = process.env.NODE_ENV === "production" ? 3 : 1
+  const connectionLimit = 3
   url = `${url}${sep}connectionLimit=${connectionLimit}&acquireTimeout=30000`
 
   const adapter = new PrismaMariaDb(url, {

@@ -8,14 +8,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { formatRupiah } from "@/lib/utils"
+import { buildProductShareUrl } from "@/lib/utils/product"
 import type { Product } from "@/components/ui/product-card"
 import { Rating } from "@/components/ui/rating"
 import { ShoppingCart, ArrowRight } from "lucide-react"
 import { useCartStore } from "@/store/cart"
 import { useFlyToCart } from "@/components/providers/fly-to-cart-provider"
 import * as React from "react"
+import Link from "next/link"
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import WhatsappIcon from "@/components/icons/whatsapp-icon"
 import type { ProductVariation } from "@/types/woocommerce"
@@ -124,6 +126,26 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
     onClose()
   }
 
+  const pathname = usePathname()
+  const productPath = `/product/${product.slug}`
+
+  /**
+   * Modal ditutup setelah rute baru terpasang, bukan saat tombol ditekan.
+   * `Dialog` memanggil `history.back()` ketika ditutup (lihat `useBackToClose`),
+   * dan kalau itu terjadi sebelum navigasi selesai, navigasinya ikut batal.
+   */
+  const handledPathnameRef = React.useRef(pathname)
+
+  React.useEffect(() => {
+    if (handledPathnameRef.current === pathname) return
+    handledPathnameRef.current = pathname
+    if (!isOpen) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    handleClose()
+    // Sengaja hanya bereaksi pada rute.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname])
+
   /**
    * Menekan pilihan yang sedang aktif membatalkannya — harga kembali "mulai
    * dari" dan tombol beli mengunci lagi.
@@ -154,8 +176,7 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
     // sini: tanpa data varian, tidak ada harga maupun SKU yang benar untuk
     // dimasukkan ke keranjang. Pembeli diarahkan ke halaman produk.
     if (!isSimpleProduct && !hasVariants) {
-      handleClose()
-      router.push(`/product/${product.slug}`)
+      router.push(productPath)
       return
     }
 
@@ -185,7 +206,11 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
     }, 800)
   }
 
-  const productUrl = typeof window !== 'undefined' ? `${window.location.origin}/product/${product.slug}` : `https://hnsitcenter.id/product/${product.slug}`
+  // Origin produksi dipakai saat `window` tidak ada; modal ini baru dirender
+  // setelah pembeli menekan Quick View, jadi praktis selalu di klien.
+  const origin = typeof window !== 'undefined' ? window.location.origin : "https://hnsitcenter.id"
+
+  const productUrl = buildProductShareUrl(origin, product)
 
   const waMessage = `${productUrl}
 
@@ -342,15 +367,12 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
              
              {/* 7. Button Lihat Detail with hover effect */}
              <div className="flex justify-center">
-                <button
-                  onClick={() => {
-                    handleClose();
-                    router.push(`/product/${product.slug}`);
-                  }}
+                <Link
+                  href={productPath}
                   className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4 cursor-pointer"
                 >
                   Lihat detail lengkap produk
-                </button>
+                </Link>
              </div>
           </div>
         </div>

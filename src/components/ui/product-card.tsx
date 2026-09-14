@@ -9,6 +9,7 @@ import EyeIcon from "@/components/icons/eye-icon"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 
 import { formatRupiah } from "@/lib/utils"
+import { buildProductShareUrl } from "@/lib/utils/product"
 import { FoldedBadge } from "@/components/ui/folded-badge"
 import { useCartStore } from "@/store/cart"
 import { Rating } from "@/components/ui/rating"
@@ -86,7 +87,7 @@ export function ProductCard({ product, priority = false }: ProductCardProps) {
   const isHydrated = useIsHydrated()
   const origin = isHydrated ? window.location.origin : "https://hnsitcenter.id"
 
-  const productUrl = `${origin}/product/${product.slug}`
+  const productUrl = buildProductShareUrl(origin, product)
 
   const waMessage = `${productUrl}
 

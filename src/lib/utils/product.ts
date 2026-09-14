@@ -119,3 +119,29 @@ export function getVideoEmbed(url: string): VideoEmbed | null {
     return null;
   }
 }
+
+/**
+ * Tautan produk yang dikirim KELUAR aplikasi — pesan WhatsApp dari kartu
+ * produk dan Quick View.
+ *
+ * Bentuknya `/p/{id}`, sama persis dengan tombol bagikan di halaman produk
+ * (lihat `app/product/[slug]/page.tsx`), supaya pembeli tidak menerima dua
+ * bentuk tautan berbeda untuk barang yang sama. `/p/{id}` dialihkan permanen
+ * ke slug kanonik oleh `app/p/[id]/route.ts`, jadi ia aman dibagikan sekaligus
+ * jauh lebih pendek daripada URL slug penuh yang sering memakan dua baris di
+ * gelembung chat.
+ *
+ * Fallback ke URL slug kalau id-nya bukan angka: route `/p/[id]` menolak id
+ * non-numerik dengan mengalihkan ke `/shop`, dan tautan WhatsApp yang mendarat
+ * di daftar katalog kosong lebih buruk daripada tautan panjang yang benar.
+ */
+export function buildProductShareUrl(
+  origin: string,
+  product: { id: string | number; slug: string }
+): string {
+  const numericId = Number(product.id);
+
+  return Number.isInteger(numericId) && numericId > 0
+    ? `${origin}/p/${numericId}`
+    : `${origin}/product/${product.slug}`;
+}
