@@ -69,7 +69,7 @@ export const POLICY_PAGES: PolicyPageContent[] = [
 <li>Voucher atau kode promo yang sudah dipakai tidak dapat dikonversi menjadi uang tunai.</li>
 </ul>
 <h2>Metode Refund</h2>
-<p>Karena pemesanan diproses secara manual melalui WhatsApp (belum ada pembayaran kartu/online), dana dikembalikan lewat <strong>transfer bank</strong> ke rekening atas nama pembeli - rekening yang sama dengan yang digunakan untuk pembayaran, kecuali pembeli menyampaikan rekening pengganti atas nama yang sama.</p>
+<p>Karena pemesanan diproses secara manual melalui WhatsApp (belum ada pembayaran kartu/online), dana dikembalikan lewat <strong>transfer bank</strong> ke rekening atas nama pembeli. Rekening tujuan adalah rekening yang sama dengan yang dipakai saat pembayaran, kecuali pembeli menyampaikan rekening pengganti atas nama yang sama.</p>
 <h2>Waktu Proses</h2>
 <ul>
 <li>Verifikasi dan persetujuan: maksimal <strong>2×24 jam kerja</strong> setelah dokumen/bukti lengkap kami terima.</li>
@@ -124,7 +124,7 @@ export const POLICY_PAGES: PolicyPageContent[] = [
 <h2>Biaya Pengiriman</h2>
 <p>Biaya pengiriman dihitung berdasarkan tujuan pengiriman, dikonfirmasi oleh CS kami sebelum pesanan diproses.</p>
 <h2>Gratis Ongkir</h2>
-<p>Untuk minimal belanja <strong>Rp3.000.000</strong>, pengantaran gratis. Titik pengantaran dikonfirmasi bersama CS mengikuti titik lokasi Grab/alamat tujuan pembeli - termasuk untuk produk furnitur seperti kursi dan meja.</p>
+<p>Belanja di atas <strong>Rp3.000.000</strong> gratis ongkos kirim ke seluruh Batam, termasuk untuk produk furnitur seperti kursi dan meja. Titik pengantaran dikonfirmasi bersama CS mengikuti titik lokasi Grab atau alamat tujuan pembeli.</p>
 <h2>Ambil di Toko (Self Pickup)</h2>
 <p>Pesanan juga dapat diambil langsung di salah satu toko kami tanpa biaya pengiriman. Lihat lokasi toko di halaman <a href="/stores">Toko Fisik</a>.</p>
 <p>Untuk pertanyaan lebih lanjut, silakan hubungi kami melalui halaman <a href="/contact">Kontak Kami</a>.</p>
