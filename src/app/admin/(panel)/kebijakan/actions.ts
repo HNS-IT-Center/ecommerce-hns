@@ -21,6 +21,23 @@ export async function updatePolicyPage(formData: FormData) {
   const title = String(formData.get("title") ?? "").trim()
   const content = String(formData.get("content") ?? "").trim()
 
+  /*
+   * Penjaga isi kosong ada DI SINI, bukan lagi `required` pada textarea.
+   * Isinya sekarang datang dari editor Tiptap lewat input tersembunyi, dan
+   * `required` pada input tersembunyi diabaikan peramban — jadi penjaga lama
+   * tidak akan pernah menyala lagi.
+   *
+   * Editor yang kosong menghasilkan "<p></p>", bukan string kosong, sehingga
+   * `trim()` saja tidak cukup: tag-nya dilepas dulu sebelum diperiksa.
+   *
+   * Yang dijaga bukan kerapian data, melainkan halaman publik — kebijakan
+   * kosong yang tersimpan langsung tayang ke pengunjung, dan tidak ada yang
+   * memberi tahu staf bahwa itu terjadi.
+   */
+  if (!content.replace(/<[^>]*>/g, "").trim()) {
+    throw new Error("Isi kebijakan tidak boleh kosong.")
+  }
+
   const prisma = getPrisma()
   await prisma.policyPage.upsert({
     where: { slug },

@@ -31,7 +31,7 @@ import { CategoryPicker } from "./category-picker"
 import { AttributeRow } from "./attribute-row"
 import { ImageUploader, type ProductImageItem } from "./image-uploader"
 import { VideoUploader } from "./video-uploader"
-import { SpecEditor } from "./spec-editor"
+import { RichTextEditor } from "@/components/admin/rich-text-editor"
 import { VariationEditor } from "./variation-editor"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -660,10 +660,11 @@ export function ProdukForm({
                       Rapikan dengan AI
                     </Button>
                   </div>
-                  <SpecEditor
+                  <RichTextEditor
                     value={description}
                     onChange={(html) => setValue("description", html, { shouldDirty: true })}
                     placeholder="Tulis atau tempel spesifikasi produk di sini…"
+                    emptyPreviewHtml="<p>Belum ada spesifikasi.</p>"
                   />
                 </div>
               </CardContent>

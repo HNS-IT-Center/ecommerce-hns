@@ -26,10 +26,18 @@ import {
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
-type SpecEditorProps = {
+type RichTextEditorProps = {
   value: string
   onChange: (html: string) => void
   placeholder?: string
+  /**
+   * Kelas tinggi untuk area tulis DAN pratinjau, supaya keduanya tidak
+   * berganti tinggi saat ditukar. Default pas untuk spesifikasi produk;
+   * halaman kebijakan jauh lebih panjang, jadi ia mengoper nilainya sendiri.
+   */
+  heightClass?: string
+  /** Tampil di pratinjau saat isinya masih kosong. */
+  emptyPreviewHtml?: string
 }
 
 function ToolbarButton({
@@ -138,13 +146,28 @@ function Toolbar({ editor }: { editor: Editor }) {
 }
 
 /**
- * Editor Spesifikasi produk: Tiptap dengan dukungan tabel (output "Rapikan
- * dengan AI" berupa <table> HTML, jadi editor ini wajib bisa menyunting
- * tabel, bukan cuma teks). Preview memakai class `prose prose-sm max-w-none`
- * yang sama persis dengan yang dipakai halaman produk di storefront, supaya
- * pratinjau di sini benar-benar mencerminkan tampilan aslinya.
+ * Editor teks kaya untuk panel admin: Tiptap dengan dukungan tabel.
+ *
+ * Dipakai bersama oleh Spesifikasi produk (`admin/produk`) dan halaman
+ * Kebijakan (`admin/kebijakan`). Dulu tinggal di `produk/spec-editor.tsx`;
+ * dipindah ke sini saat kebijakan membutuhkan editor yang sama, daripada
+ * menyalin 200 baris yang akan berbeda perilakunya suatu hari.
+ *
+ * Tabel wajib didukung, bukan sekadar bonus: output "Rapikan dengan AI" di
+ * halaman produk berupa `<table>` HTML, dan editor yang tidak bisa
+ * menyuntingnya akan merusak isi yang sudah ada.
+ *
+ * Pratinjau memakai `prose prose-sm max-w-none` — kelas yang sama dengan
+ * storefront, supaya yang terlihat di sini benar-benar mencerminkan
+ * tampilan aslinya.
  */
-export function SpecEditor({ value, onChange, placeholder }: SpecEditorProps) {
+export function RichTextEditor({
+  value,
+  onChange,
+  placeholder,
+  heightClass = "min-h-48 max-h-[22rem]",
+  emptyPreviewHtml = "<p>Belum ada isi.</p>",
+}: RichTextEditorProps) {
   const [mode, setMode] = React.useState<"edit" | "preview">("edit")
 
   const editor = useEditor({
@@ -165,8 +188,10 @@ export function SpecEditor({ value, onChange, placeholder }: SpecEditorProps) {
         // Tinggi dibatasi & digulir di dalam: spesifikasi produk IT sering
         // puluhan baris, dan tanpa batas ini editornya memanjang terus sampai
         // tombol simpan terdorong jauh di bawah layar.
-        class:
-          "prose prose-sm max-w-none min-h-48 max-h-[22rem] overflow-y-auto px-3 py-2.5 text-xs focus:outline-none",
+        class: cn(
+          "prose prose-sm max-w-none overflow-y-auto px-3 py-2.5 text-xs focus:outline-none",
+          heightClass
+        ),
       },
     },
   })
@@ -213,10 +238,11 @@ export function SpecEditor({ value, onChange, placeholder }: SpecEditorProps) {
       ) : (
         <div
           className={cn(
-            "prose prose-sm max-w-none min-h-48 max-h-[22rem] overflow-y-auto px-3 py-2.5 text-xs",
+            "prose prose-sm max-w-none overflow-y-auto px-3 py-2.5 text-xs",
+            heightClass,
             !value && "text-muted-foreground"
           )}
-          dangerouslySetInnerHTML={{ __html: value || "<p>Belum ada spesifikasi.</p>" }}
+          dangerouslySetInnerHTML={{ __html: value || emptyPreviewHtml }}
         />
       )}
     </div>
