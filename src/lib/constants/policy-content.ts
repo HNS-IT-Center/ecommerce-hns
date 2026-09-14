@@ -31,12 +31,12 @@ export const POLICY_PAGES: PolicyPageContent[] = [
 <ul>
 <li>Produk yang sudah dirakit khusus sesuai pesanan (Custom PC Builder) — kecuali cacat sejak awal.</li>
 <li>Lisensi software/aktivasi digital dan kode voucher yang sudah diaktifkan.</li>
-<li>Produk consumable yang kemasannya sudah dibuka (mis. tinta/toner printer, thermal paste, pelindung layar).</li>
+<li>Produk consumable yang kemasannya sudah dibuka (mis. tinta/toner printer, thermal paste).</li>
 <li>Komponen yang sudah dipasang atau dimodifikasi (mis. prosesor dengan pin bengkok).</li>
 <li>Produk promo, clearance, atau yang ditandai sebagai final sale.</li>
 </ul>
-<h2>Custom PC Builder</h2>
-<p>Untuk PC rakitan yang sudah mulai dikerjakan, pengembalian non-cacat dikenakan biaya restocking sebesar <strong>10% dari nilai transaksi</strong> (menutup biaya perakitan dan pemeriksaan komponen). Penggantian komponen mengikuti ketersediaan stok saat itu.</p>
+<h2>Pengetesan Printer</h2>
+<p>Pengetesan printer dilakukan langsung di toko sebelum pembelian, sehingga kondisi dan hasil cetak dapat diperiksa terlebih dahulu oleh pembeli.</p>
 <h2>Cara Mengajukan Pengembalian</h2>
 <ol>
 <li>Hubungi CS kami via WhatsApp dengan menyertakan nomor invoice, kronologi singkat, dan foto/video barang.</li>
@@ -60,12 +60,12 @@ export const POLICY_PAGES: PolicyPageContent[] = [
 <ul>
 <li>Pembatalan pesanan sebelum barang diproses/dikirim.</li>
 <li>Pengajuan pengembalian barang yang sudah disetujui (cacat sejak awal, salah kirim, kurang kirim, atau non-cacat sesuai ketentuan).</li>
-<li>Pembayaran ganda atau transfer yang sudah masuk namun pesanan gagal diproses.</li>
+<li>Pembayaran ganda atau kelebihan transfer akan diproses sesuai dengan Kebijakan Pengembalian Dana.</li>
 </ul>
 <h2>Nilai Pengembalian</h2>
 <ul>
 <li><strong>Kesalahan dari kami</strong> (cacat sejak awal, salah kirim, kurang kirim): nilai barang <em>dan</em> ongkos kirim dikembalikan penuh.</li>
-<li><strong>Pengembalian non-cacat</strong>: hanya nilai barang yang dikembalikan (ongkos kirim tidak termasuk), dan dapat dikenakan biaya restocking untuk Custom PC Builder sesuai Kebijakan Pengembalian Barang.</li>
+<li><strong>Pengembalian non-cacat</strong>: hanya nilai barang yang dikembalikan (ongkos kirim tidak termasuk).</li>
 <li>Voucher atau kode promo yang sudah dipakai tidak dapat dikonversi menjadi uang tunai.</li>
 </ul>
 <h2>Metode Refund</h2>
@@ -93,12 +93,9 @@ export const POLICY_PAGES: PolicyPageContent[] = [
 <ul>
 <li><strong>Belum dibayar:</strong> pesanan otomatis dianggap batal jika tidak ada konfirmasi pembayaran setelah dihubungi CS.</li>
 <li><strong>Sudah dibayar, belum diproses/dirakit:</strong> dapat dibatalkan penuh.</li>
-<li><strong>Sudah mulai diproses/dirakit (khusus Custom PC Builder):</strong> lihat bagian di bawah.</li>
 <li><strong>Barang jadi (bukan rakitan) yang sudah dikemas tapi belum dikirim:</strong> masih dapat dibatalkan tanpa biaya tambahan.</li>
-<li><strong>Sudah dikirim:</strong> pesanan tidak dapat dibatalkan — ajukan <a href="/kebijakan/pengembalian-barang">pengembalian barang</a> setelah barang diterima.</li>
+<li><strong>Sudah dikirim:</strong> pesanan tidak dapat dibatalkan setelah barang sudah dikirim — ajukan <a href="/kebijakan/pengembalian-barang">pengembalian barang</a> setelah barang diterima.</li>
 </ul>
-<h2>Pesanan Custom PC Builder</h2>
-<p>Untuk pesanan rakitan PC custom yang sudah mulai dirakit, pembatalan tetap bisa dilakukan namun dikenakan <strong>biaya restocking 10% dari nilai transaksi</strong> untuk menutup biaya komponen yang sudah dipesan/dirakit dan waktu perakitan — konsisten dengan <a href="/kebijakan/pengembalian-barang">Kebijakan Pengembalian Barang</a>.</p>
 <h2>Pembatalan oleh Kami</h2>
 <p>Kami dapat membatalkan pesanan bila stok ternyata tidak tersedia, komponen gagal pemeriksaan kualitas, atau ada kesalahan harga/informasi produk. Dalam kondisi ini, pembeli akan dihubungi untuk memilih refund penuh atau penggantian produk setara.</p>
 <h2>Cara Membatalkan Pesanan</h2>
@@ -116,19 +113,18 @@ export const POLICY_PAGES: PolicyPageContent[] = [
     title: "Kebijakan Pengiriman",
     content: `
 <h2>Area Pengiriman</h2>
-<p>Kami melayani pengiriman ke seluruh Batam dan seluruh Indonesia.</p>
+<p>Kami melayani pengiriman ke seluruh Batam.</p>
 <h2>Estimasi Waktu</h2>
 <ul>
 <li>Dalam kota Batam: <strong>1–2 hari kerja</strong>.</li>
-<li>Luar kota/pulau: <strong>2–7 hari kerja</strong>, tergantung tujuan dan layanan ekspedisi yang dipilih.</li>
 </ul>
 <p>Pesanan yang dikonfirmasi setelah jam operasional toko akan diproses pada hari kerja berikutnya.</p>
 <h2>Ekspedisi</h2>
-<p>Dalam kota Batam menggunakan kurir kami sendiri. Untuk luar kota/pulau, kami bekerja sama dengan jasa ekspedisi seperti JNE, J&amp;T, dan sejenisnya — pilihan ekspedisi dikonfirmasi bersama CS saat pemesanan.</p>
+<p>Pengiriman dalam kota Batam menggunakan kurir kami sendiri dan juga jasa pengiriman lainnya.</p>
 <h2>Biaya Pengiriman</h2>
-<p>Biaya pengiriman dihitung berdasarkan berat/dimensi barang dan tujuan pengiriman, dikonfirmasi oleh CS kami sebelum pesanan diproses.</p>
-<h2>Kendala Pelacakan Pengiriman</h2>
-<p>Jika nomor resi belum bisa dilacak, ini bisa terjadi karena sistem kurir belum memperbarui data, kesalahan input nomor resi, atau kendala pengiriman ke area tertentu. Jika sudah dipastikan data benar namun resi tetap tidak terlacak, silakan hubungi CS kami.</p>
+<p>Biaya pengiriman dihitung berdasarkan tujuan pengiriman, dikonfirmasi oleh CS kami sebelum pesanan diproses.</p>
+<h2>Gratis Ongkir</h2>
+<p>Untuk minimal belanja <strong>Rp3.000.000</strong>, pengantaran gratis. Titik pengantaran dikonfirmasi bersama CS mengikuti titik lokasi Grab/alamat tujuan pembeli — termasuk untuk produk furnitur seperti kursi dan meja.</p>
 <h2>Ambil di Toko (Self Pickup)</h2>
 <p>Pesanan juga dapat diambil langsung di salah satu toko kami tanpa biaya pengiriman. Lihat lokasi toko di halaman <a href="/stores">Toko Fisik</a>.</p>
 <p>Untuk pertanyaan lebih lanjut, silakan hubungi kami melalui halaman <a href="/contact">Kontak Kami</a>.</p>
