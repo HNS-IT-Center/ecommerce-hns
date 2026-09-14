@@ -7,6 +7,7 @@ import { CameraOff, Loader2, RotateCcw, ScanLine, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { useCameraGestures } from "@/features/search/hooks/use-camera-gestures"
 import { useCodeScanner, type ScannerFailure } from "@/features/search/hooks/use-code-scanner"
 import { parseScannedCode } from "@/features/search/lib/parse-scanned-code"
 import { resolveScannedProduct } from "@/features/search/services/search-service"
@@ -33,6 +34,16 @@ const FEEDBACK_MS = 700
 
 /** Pilihan perbesaran. 1x = bidang pandang penuh kamera, tanpa perbesaran. */
 const ZOOM_STEPS = [1, 2, 3]
+
+/**
+ * Batas pinch zoom. Di atas 4x, zoom digital di iPhone tinggal memperbesar
+ * piksel yang sama — gambarnya makin kabur, bukan makin terbaca.
+ */
+const MIN_ZOOM = 1
+const MAX_ZOOM = 4
+
+/** Lama cincin fokus tampil setelah layar diketuk. */
+const FOCUS_RING_MS = 900
 
 /**
  * Pesan kegagalan kamera. Tiap sebab dapat kalimatnya sendiri — satu kalimat
@@ -93,6 +104,9 @@ export function ScannerOverlay({ open, onOpenChange }: ScannerOverlayProps) {
   const router = useRouter()
   const [message, setMessage] = useState<string | null>(null)
   const [zoom, setZoom] = useState(1)
+
+  /** Cincin penanda titik fokus. `id` membuat animasinya mulai ulang tiap ketukan. */
+  const [focusRing, setFocusRing] = useState<{ x: number; y: number; id: number } | null>(null)
 
   /**
    * Layar tunggu setelah kode terbaca. `null` berarti masih memindai.
@@ -173,11 +187,25 @@ export function ScannerOverlay({ open, onOpenChange }: ScannerOverlayProps) {
     document.body.style.overflow = "hidden"
     document.documentElement.style.overflow = "hidden"
 
+    // Safari di iOS tetap memperbesar halaman saat di-pinch meski elemennya
+    // ber-`touch-action: none`, lewat event `gesturestart` miliknya sendiri.
+    // Tanpa ini pinch zoom kamera ikut memperbesar seluruh halaman.
+    const preventPageZoom = (event: Event) => event.preventDefault()
+    document.addEventListener("gesturestart", preventPageZoom)
+
     return () => {
       document.body.style.overflow = ""
       document.documentElement.style.overflow = ""
+      document.removeEventListener("gesturestart", preventPageZoom)
     }
   }, [open])
+
+  /** Cincin fokus hilang sendiri. */
+  useEffect(() => {
+    if (!focusRing) return
+    const timer = setTimeout(() => setFocusRing(null), FOCUS_RING_MS)
+    return () => clearTimeout(timer)
+  }, [focusRing])
 
   /** Escape menutup pemindai di desktop. */
   useEffect(() => {
@@ -290,12 +318,41 @@ export function ScannerOverlay({ open, onOpenChange }: ScannerOverlayProps) {
     [handleDetect]
   )
 
-  const { videoRef, state, retry, cssZoom } = useCodeScanner({
+  const { videoRef, state, retry, cssZoom, canTapFocus, focusAt } = useCodeScanner({
     active: open,
     onDetect,
     frameRef,
     zoom,
   })
+
+  const handleTap = useCallback(
+    async (clientX: number, clientY: number) => {
+      // Cincin hanya muncul kalau kamera benar-benar menerima perintah fokus —
+      // di iPhone ketukan tidak berbuat apa-apa, dan cincin di sana akan bohong.
+      if (await focusAt(clientX, clientY)) {
+        setFocusRing({ x: clientX, y: clientY, id: performance.now() })
+      }
+    },
+    [focusAt]
+  )
+
+  const onTap = useCallback(
+    (clientX: number, clientY: number) => {
+      void handleTap(clientX, clientY)
+    },
+    [handleTap]
+  )
+
+  const gestureHandlers = useCameraGestures({
+    zoom,
+    minZoom: MIN_ZOOM,
+    maxZoom: MAX_ZOOM,
+    onZoomChange: setZoom,
+    onTap,
+  })
+
+  /** Tombol yang cocok dengan zoom saat ini; `undefined` kalau hasil pinch jatuh di antaranya. */
+  const activeStep = ZOOM_STEPS.find((step) => Math.abs(zoom - step) < 0.05)
 
   const handleRetry = () => {
     setMessage(null)
@@ -310,7 +367,7 @@ export function ScannerOverlay({ open, onOpenChange }: ScannerOverlayProps) {
       role="dialog"
       aria-modal="true"
       aria-label="Pindai QR atau barcode produk"
-      className="fixed inset-0 z-[110] flex h-[100dvh] w-full items-center justify-center overflow-hidden bg-black text-white"
+      className="fixed inset-0 z-[110] flex h-[100dvh] w-full touch-none items-center justify-center overflow-hidden bg-black text-white select-none"
     >
       <button
         type="button"
@@ -342,17 +399,39 @@ export function ScannerOverlay({ open, onOpenChange }: ScannerOverlayProps) {
 
               `cssZoom` hanya terpakai di perangkat yang kameranya tidak bisa
               zoom sendiri (semua iPhone) — di perangkat lain nilainya 1 dan
-              perbesarannya dikerjakan lensa. Perhitungan potongan di
-              `computeSourceRect` memakai faktor yang sama, jadi yang terbaca
-              selalu sama dengan yang terlihat di dalam kotak. */}
-          <video
-            ref={videoRef}
-            playsInline
-            muted
-            autoPlay
-            style={cssZoom !== 1 ? { transform: `scale(${cssZoom})` } : undefined}
-            className="h-full w-full object-cover"
-          />
+              perbesarannya dikerjakan lensa. `computeSourceRect` membaca posisi
+              video yang sudah ter-`scale`, jadi yang terbaca selalu sama dengan
+              yang terlihat di dalam kotak.
+
+              `object-contain`, BUKAN `object-cover`. Kamera ponsel mengirim
+              gambar 4:3 sedangkan layarnya jauh lebih jangkung; `object-cover`
+              memotong kira-kira 40% sisi kiri-kanan supaya layar penuh, dan
+              hasilnya terlihat seperti sudah di-zoom 2x padahal tombolnya 1x.
+              Rumus di `getDisplayedFrame` mengikuti kelas ini — ganti keduanya
+              bersamaan.
+
+              Pembungkusnya yang menerima gesture: pinch untuk zoom, ketuk untuk
+              fokus. Kotak bidik di atasnya `pointer-events-none`, jadi sentuhan
+              di mana pun di atas kamera sampai ke sini. */}
+          <div className="absolute inset-0 overflow-hidden" {...gestureHandlers}>
+            <video
+              ref={videoRef}
+              playsInline
+              muted
+              autoPlay
+              style={cssZoom !== 1 ? { transform: `scale(${cssZoom})` } : undefined}
+              className="h-full w-full object-contain"
+            />
+          </div>
+
+          {focusRing && (
+            <div
+              key={focusRing.id}
+              aria-hidden="true"
+              style={{ left: focusRing.x, top: focusRing.y }}
+              className="pointer-events-none absolute z-10 h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-yellow-300 animate-in fade-in zoom-in-150 duration-200"
+            />
+          )}
 
           {/* Bingkai bidik. `pointer-events-none` supaya tidak menghalangi
               tombol tutup dan kontrol zoom di atasnya. */}
@@ -370,22 +449,36 @@ export function ScannerOverlay({ open, onOpenChange }: ScannerOverlayProps) {
                   ? "Menyalakan kamera…"
                   : "Posisikan kode di dalam kotak — hanya isi kotak yang dibaca."}
               </p>
+              {state.status === "scanning" && (
+                <p className="mt-1 text-xs text-white/60">
+                  {canTapFocus
+                    ? "Cubit layar untuk zoom · ketuk untuk fokus"
+                    : "Cubit layar untuk zoom"}
+                </p>
+              )}
             </div>
           </div>
 
           {/* Kontrol perbesaran. Sengaja di luar wadah ber-`pointer-events-none`
               di atas supaya tetap bisa ditekan. */}
-          <div className="absolute inset-x-0 bottom-8 z-20 flex justify-center">
+          <div className="absolute inset-x-0 bottom-8 z-20 flex flex-col items-center gap-2">
+            {/* Angka zoom hasil pinch yang jatuh di antara tombol — tanpa ini
+                tidak ada tombol yang menyala dan orang tidak tahu posisinya. */}
+            {!activeStep && (
+              <span className="rounded-full bg-black/55 px-2.5 py-0.5 text-xs font-semibold tabular-nums backdrop-blur-sm">
+                {zoom.toFixed(1)}x
+              </span>
+            )}
             <div className="flex items-center gap-1 rounded-full bg-black/55 p-1 backdrop-blur-sm">
               {ZOOM_STEPS.map((step) => (
                 <button
                   key={step}
                   type="button"
                   onClick={() => setZoom(step)}
-                  aria-pressed={zoom === step}
+                  aria-pressed={activeStep === step}
                   className={cn(
                     "h-9 w-12 rounded-full text-sm font-semibold transition-colors",
-                    zoom === step
+                    activeStep === step
                       ? "bg-white text-black"
                       : "text-white/80 hover:bg-white/15 hover:text-white"
                   )}

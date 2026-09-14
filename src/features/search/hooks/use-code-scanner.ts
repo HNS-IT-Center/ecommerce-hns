@@ -38,6 +38,9 @@ type BarcodeDetectorConstructor = {
  */
 type ZoomCapability = { min: number; max: number; step?: number }
 
+/** Sama halnya dengan `focusMode` — Chrome di Android mendukung, tipenya belum ada. */
+type FocusCapabilities = { focusMode?: string[] }
+
 /**
  * Format yang diminta ke `BarcodeDetector`.
  *
@@ -66,6 +69,14 @@ const SCAN_INTERVAL_MS = 140
  * kelas menengah. 640px masih jauh di atas yang dibutuhkan untuk membaca stiker.
  */
 const ANALYSIS_WIDTH = 640
+
+/**
+ * Lama fokus dikunci di titik yang diketuk sebelum kembali ke fokus otomatis.
+ *
+ * Tanpa pengembalian, fokus tertahan di jarak saat mengetuk; begitu HP digeser
+ * sedikit maju-mundur gambarnya kabur dan tidak pernah tajam lagi.
+ */
+const TAP_FOCUS_HOLD_MS = 3000
 
 type Decoder = (image: ImageData) => string | null
 
@@ -214,6 +225,84 @@ async function applyNativeZoom(track: MediaStreamTrack, factor: number): Promise
   }
 }
 
+/**
+ * Minta kamera terus menyesuaikan fokus sendiri, kalau perangkatnya bisa.
+ *
+ * Sebagian HP Android membuka kamera web dengan fokus tetap atau sekali-jepret,
+ * jadi stiker yang didekatkan setelah kamera menyala tidak pernah ikut tajam.
+ * Safari di iOS tidak menyediakan kontrol fokus apa pun — di sana ini diam saja,
+ * dan iOS sudah fokus otomatis dengan sendirinya.
+ */
+async function applyContinuousFocus(track: MediaStreamTrack): Promise<void> {
+  const capabilities = track.getCapabilities?.() as FocusCapabilities | undefined
+  if (!capabilities?.focusMode?.includes("continuous")) return
+
+  try {
+    await track.applyConstraints({
+      advanced: [{ focusMode: "continuous" } as unknown as MediaTrackConstraintSet],
+    })
+  } catch {
+    // Ditolak perangkat — biarkan fokus bawaannya.
+  }
+}
+
+/**
+ * Tap-to-focus butuh dua hal sekaligus: browser mengenal `pointsOfInterest`,
+ * DAN kamera melaporkan mode fokus. Browser saja tidak cukup — Chrome desktop
+ * mengenal constraint-nya, tapi webcam laptop berfokus tetap akan menerima
+ * permintaan itu tanpa berbuat apa pun.
+ */
+function supportsTapFocus(track: MediaStreamTrack): boolean {
+  const supported = navigator.mediaDevices.getSupportedConstraints?.() as
+    | Record<string, boolean | undefined>
+    | undefined
+  if (!supported?.pointsOfInterest) return false
+
+  const capabilities = track.getCapabilities?.() as FocusCapabilities | undefined
+  return (capabilities?.focusMode?.length ?? 0) > 0
+}
+
+/** Posisi dan skala bingkai kamera sebagaimana tampil di layar. */
+type DisplayedFrame = {
+  left: number
+  top: number
+  scale: number
+  intrinsicWidth: number
+  intrinsicHeight: number
+}
+
+/**
+ * Di mana persisnya bingkai kamera tergambar di layar.
+ *
+ * Mengikuti `object-contain` pada elemen video: bingkai diperkecil sampai muat
+ * utuh, lalu diletakkan di tengah dengan sisa ruang jadi pita hitam. Kalau kelas
+ * itu diganti di `scanner-overlay.tsx`, rumus ini WAJIB ikut diganti.
+ *
+ * `getBoundingClientRect()` sudah memperhitungkan `transform: scale()` dari zoom
+ * digital, jadi faktor zoom TIDAK boleh dikalikan lagi di sini. Versi lama
+ * mengalikannya sekali lagi, dan akibatnya di iPhone pada zoom 2x yang dibaca
+ * hanya separuh tengah kotak bidik.
+ */
+function getDisplayedFrame(video: HTMLVideoElement): DisplayedFrame | null {
+  const intrinsicWidth = video.videoWidth
+  const intrinsicHeight = video.videoHeight
+  const box = video.getBoundingClientRect()
+
+  if (!intrinsicWidth || !intrinsicHeight || !box.width || !box.height) {
+    return null
+  }
+
+  const scale = Math.min(box.width / intrinsicWidth, box.height / intrinsicHeight)
+
+  return {
+    left: box.left + (box.width - intrinsicWidth * scale) / 2,
+    top: box.top + (box.height - intrinsicHeight * scale) / 2,
+    scale,
+    intrinsicWidth,
+    intrinsicHeight,
+  }
+}
+
 /** Potongan bingkai kamera yang benar-benar dianalisis. */
 type SourceRect = { x: number; y: number; width: number; height: number }
 
@@ -224,34 +313,16 @@ type SourceRect = { x: number; y: number; width: number; height: number }
  * jadi kode apa pun yang kebetulan masuk kamera — stiker di rak sebelah, layar
  * orang lain — ikut terbaca meski jelas-jelas di luar kotak. Staff mengarahkan
  * ke satu barang lalu mendarat di produk yang lain.
- *
- * Perhitungannya harus mengikuti `object-cover` pada elemen video: video
- * diperbesar sampai menutupi elemen, lalu kelebihannya dipotong rata di kedua
- * sisi. `cssZoom` ikut dikalikan untuk perangkat yang tidak punya zoom kamera
- * dan karena itu diperbesar lewat CSS.
  */
-function computeSourceRect(
-  video: HTMLVideoElement,
-  frame: HTMLElement,
-  cssZoom: number
-): SourceRect | null {
-  const intrinsicWidth = video.videoWidth
-  const intrinsicHeight = video.videoHeight
-  const videoBox = video.getBoundingClientRect()
+function computeSourceRect(video: HTMLVideoElement, frame: HTMLElement): SourceRect | null {
+  const displayed = getDisplayedFrame(video)
+  if (!displayed) return null
+
+  const { left, top, scale, intrinsicWidth, intrinsicHeight } = displayed
   const frameBox = frame.getBoundingClientRect()
 
-  if (!intrinsicWidth || !intrinsicHeight || !videoBox.width || !videoBox.height) {
-    return null
-  }
-
-  const scale =
-    Math.max(videoBox.width / intrinsicWidth, videoBox.height / intrinsicHeight) * cssZoom
-
-  const overflowX = (intrinsicWidth * scale - videoBox.width) / 2
-  const overflowY = (intrinsicHeight * scale - videoBox.height) / 2
-
-  const rawX = (frameBox.left - videoBox.left + overflowX) / scale
-  const rawY = (frameBox.top - videoBox.top + overflowY) / scale
+  const rawX = (frameBox.left - left) / scale
+  const rawY = (frameBox.top - top) / scale
   const rawWidth = frameBox.width / scale
   const rawHeight = frameBox.height / scale
 
@@ -266,6 +337,28 @@ function computeSourceRect(
   return { x, y, width, height }
 }
 
+/**
+ * Titik ketukan di layar → koordinat ternormalisasi (0–1) di dalam bingkai
+ * kamera, bentuk yang diminta `pointsOfInterest`.
+ *
+ * `null` kalau ketukannya jatuh di pita hitam di luar gambar kamera.
+ */
+function clientPointToFrame(
+  video: HTMLVideoElement,
+  clientX: number,
+  clientY: number
+): { x: number; y: number } | null {
+  const displayed = getDisplayedFrame(video)
+  if (!displayed) return null
+
+  const { left, top, scale, intrinsicWidth, intrinsicHeight } = displayed
+  const x = (clientX - left) / (intrinsicWidth * scale)
+  const y = (clientY - top) / (intrinsicHeight * scale)
+
+  if (x < 0 || x > 1 || y < 0 || y > 1) return null
+  return { x, y }
+}
+
 type UseCodeScannerOptions = {
   /** Kamera hanya menyala saat true. */
   active: boolean
@@ -276,7 +369,10 @@ type UseCodeScannerOptions = {
    * `computeSourceRect`.
    */
   frameRef: RefObject<HTMLElement | null>
-  /** Faktor perbesaran yang diminta pengguna. 1 = tanpa perbesaran. */
+  /**
+   * Faktor perbesaran yang diminta pengguna. 1 = tanpa perbesaran. Boleh
+   * pecahan — pinch zoom mengirim nilai berkelanjutan, bukan hanya 1/2/3.
+   */
   zoom: number
 }
 
@@ -340,21 +436,89 @@ export function useCodeScanner({ active, onDetect, frameRef, zoom }: UseCodeScan
    */
   const trackRef = useRef<MediaStreamTrack | null>(null)
   const zoomRef = useRef(zoom)
-  const cssZoomRef = useRef(1)
+
+  /**
+   * Penjaga antrean zoom.
+   *
+   * Pinch zoom mengirim nilai baru di setiap gerakan jari — puluhan kali per
+   * detik — sementara `applyConstraints` butuh waktu untuk selesai. Kalau semua
+   * permintaan dilepas bersamaan, urutan selesainya tidak dijamin dan zoom bisa
+   * berakhir di nilai lama. Di sini hanya satu permintaan yang berjalan; nilai
+   * yang datang di tengahnya cukup menandai "kotor", lalu nilai TERAKHIR yang
+   * diterapkan begitu permintaan sebelumnya selesai.
+   */
+  const zoomBusyRef = useRef(false)
+  const zoomDirtyRef = useRef(false)
 
   const applyZoom = useCallback(async (factor: number) => {
     zoomRef.current = factor
+    zoomDirtyRef.current = true
+    if (zoomBusyRef.current) return
 
+    zoomBusyRef.current = true
+    try {
+      while (zoomDirtyRef.current) {
+        zoomDirtyRef.current = false
+        const requested = zoomRef.current
+
+        const track = trackRef.current
+        const achieved = track ? await applyNativeZoom(track, requested) : 1
+
+        // Sisa yang tidak sanggup dicapai lensa ditambal secara digital lewat
+        // CSS. Perangkat tanpa zoom kamera sama sekali (semua iPhone, sebagian
+        // Android) berarti seluruhnya digital. Potongan yang dianalisis membaca
+        // posisi video yang sudah ter-`scale`, jadi yang terbaca selalu
+        // konsisten dengan yang terlihat di kotak.
+        setCssZoom(Math.max(1, requested / achieved))
+      }
+    } finally {
+      zoomBusyRef.current = false
+    }
+  }, [])
+
+  /** Bisakah perangkat ini diarahkan fokusnya lewat ketukan. */
+  const [canTapFocus, setCanTapFocus] = useState(false)
+  const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  /**
+   * Arahkan fokus ke titik yang diketuk.
+   *
+   * Hanya Chrome di Android yang menyediakan `pointsOfInterest`; Safari di iOS
+   * tidak punya kontrol fokus sama sekali. Mengembalikan `true` hanya kalau
+   * permintaannya benar-benar dikirim ke kamera, supaya antarmuka tidak
+   * menampilkan cincin fokus untuk ketukan yang tidak berbuat apa-apa.
+   */
+  const focusAt = useCallback(async (clientX: number, clientY: number): Promise<boolean> => {
     const track = trackRef.current
-    const achieved = track ? await applyNativeZoom(track, factor) : 1
+    const video = videoRef.current
+    if (!track || !video || !supportsTapFocus(track)) return false
 
-    // Sisa yang tidak sanggup dicapai lensa ditambal secara digital lewat CSS.
-    // Perangkat tanpa zoom kamera sama sekali (semua iPhone, sebagian Android)
-    // berarti seluruhnya digital. Potongan yang dianalisis memakai faktor yang
-    // sama, jadi yang terbaca selalu konsisten dengan yang terlihat di kotak.
-    const next = Math.max(1, factor / achieved)
-    cssZoomRef.current = next
-    setCssZoom(next)
+    const point = clientPointToFrame(video, clientX, clientY)
+    if (!point) return false
+
+    const capabilities = track.getCapabilities?.() as FocusCapabilities | undefined
+    const constraint: Record<string, unknown> = { pointsOfInterest: [point] }
+    // "single-shot" membuat kamera benar-benar mencari fokus ulang di titik
+    // itu; tanpa itu sebagian perangkat hanya memindah titik ukur cahaya.
+    if (capabilities?.focusMode?.includes("single-shot")) {
+      constraint.focusMode = "single-shot"
+    }
+
+    try {
+      await track.applyConstraints({
+        advanced: [constraint as unknown as MediaTrackConstraintSet],
+      })
+    } catch {
+      return false
+    }
+
+    if (focusTimerRef.current) clearTimeout(focusTimerRef.current)
+    focusTimerRef.current = setTimeout(() => {
+      focusTimerRef.current = null
+      if (trackRef.current === track) void applyContinuousFocus(track)
+    }, TAP_FOCUS_HOLD_MS)
+
+    return true
   }, [])
 
   useEffect(() => {
@@ -377,20 +541,27 @@ export function useCodeScanner({ active, onDetect, frameRef, zoom }: UseCodeScan
 
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          // Resolusi sengaja TIDAK dipatok.
-          //
-          // Sebelumnya di sini ada `width/height: { ideal: 1280/720 }`, dan
-          // itulah sebab gambarnya terlihat "zoom banget": meminta bingkai
-          // 16:9 dari sensor yang rasionya lain membuat browser memotong
-          // bingkainya, lalu `object-cover` memotongnya sekali lagi supaya
-          // menutupi layar ponsel yang jangkung. Dua pemotongan bertumpuk itu
-          // menyisakan bagian tengah saja. Dibiarkan memilih sendiri, kamera
-          // memberi bidang pandang penuhnya — tampilan "1x" yang diharapkan.
           video: {
             // `ideal`, bukan `exact`: di laptop tanpa kamera belakang `exact`
             // melempar OverconstrainedError dan pemindainya mati total, padahal
             // webcam depan sebenarnya masih bisa dipakai.
             facingMode: { ideal: "environment" },
+            // Resolusi 4:3, dan hanya `ideal` — permintaan, bukan syarat.
+            //
+            // Dua kesalahan yang pernah terjadi di sini:
+            // - Dipatok 1280×720 (16:9). Sensor ponsel umumnya 4:3, jadi browser
+            //   memotong bingkainya supaya jadi 16:9 dan bidang pandangnya
+            //   menyempit.
+            // - Tidak diminta sama sekali. Browser lalu memberi 640×480, yang
+            //   setelah diperbesar ke layar ponsel pecah dan terlihat seperti
+            //   di-zoom — stiker kecil kabur walau lensanya sudah fokus.
+            //
+            // 1920×1440 sama rasionya dengan sensor, jadi tidak ada yang
+            // dipotong. Perangkat yang tidak sanggup cukup memberi yang terdekat.
+            // Beban analisis tidak ikut naik: potongan yang dibaca tetap
+            // diperkecil ke `ANALYSIS_WIDTH`.
+            width: { ideal: 1920 },
+            height: { ideal: 1440 },
           },
           audio: false,
         })
@@ -430,7 +601,15 @@ export function useCodeScanner({ active, onDetect, frameRef, zoom }: UseCodeScan
 
       if (cancelled) return
 
-      trackRef.current = stream.getVideoTracks()[0] ?? null
+      const track = stream.getVideoTracks()[0] ?? null
+      trackRef.current = track
+
+      if (track) {
+        await applyContinuousFocus(track)
+        if (cancelled) return
+        setCanTapFocus(supportsTapFocus(track))
+      }
+
       // Perbesaran yang sedang diminta dipasang sekarang: efek zoom di atas
       // bisa saja sudah berjalan sebelum kameranya hidup, dan saat itu belum
       // ada track untuk diberi tahu.
@@ -478,7 +657,7 @@ export function useCodeScanner({ active, onDetect, frameRef, zoom }: UseCodeScan
         const frame = frameRef.current
 
         if (current && frame && current.readyState >= current.HAVE_CURRENT_DATA) {
-          const rect = computeSourceRect(current, frame, cssZoomRef.current)
+          const rect = computeSourceRect(current, frame)
 
           if (rect) {
             // Bingkai dipotong SEKARANG, sebelum dibaca. Baik jalur native
@@ -540,6 +719,11 @@ export function useCodeScanner({ active, onDetect, frameRef, zoom }: UseCodeScan
       stream?.getTracks().forEach((track) => track.stop())
       trackRef.current = null
 
+      if (focusTimerRef.current) {
+        clearTimeout(focusTimerRef.current)
+        focusTimerRef.current = null
+      }
+
       if (attachedVideo) {
         attachedVideo.pause()
         attachedVideo.srcObject = null
@@ -547,5 +731,5 @@ export function useCodeScanner({ active, onDetect, frameRef, zoom }: UseCodeScan
     }
   }, [active, attempt, applyZoom, frameRef])
 
-  return { videoRef, state, retry, cssZoom }
+  return { videoRef, state, retry, cssZoom, canTapFocus, focusAt }
 }

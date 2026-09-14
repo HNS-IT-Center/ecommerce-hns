@@ -299,9 +299,21 @@ export function PresetEditor({ initialPreset, isNew, steps, games, initialCatalo
                 {/* Dua kolom di layar lebar. Satu kolom membuat kartu langkah
                     membentang selebar 96rem untuk isi yang cuma satu baris
                     produk — ruang terbuang, dan langkah ke-8 jadi jauh di bawah
-                    lipatan. `items-start` supaya kartu pendek tidak ikut
-                    meninggi mengikuti tetangganya. */}
-                <div className="grid items-start gap-4 xl:grid-cols-2">
+                    lipatan.
+
+                    Kartu sebaris SENGAJA dibiarkan sama tinggi (bawaan grid,
+                    tanpa `items-start`). Versi sebelumnya memakai `items-start`,
+                    dan hasilnya tepi bawah bergerigi setiap kali satu kartu
+                    punya baris varian atau pilihan tukar yang terbuka — ruang
+                    kosongnya tetap ada, hanya pindah ke luar kartu. Isi kartu
+                    tetap rata atas, jadi kartu yang ikut meninggi tidak
+                    menggeser apa pun.
+
+                    Jangan diganti masonry (`columns-2`): kartu akan melompat
+                    kolom saat tingginya berubah di tengah pengeditan, dan urutan
+                    langkah — yang saling menyaring, misal Prosesor → Motherboard
+                    — tidak lagi terbaca kiri ke kanan. */}
+                <div className="grid gap-4 xl:grid-cols-2">
                   {steps.map((step) => (
                     <SlotBoard
                       key={step.id}
