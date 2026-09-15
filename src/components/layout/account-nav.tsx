@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { LogIn, LogOut, User, Wrench } from "lucide-react"
+import { LayoutDashboard, LogIn, LogOut, User } from "lucide-react"
 
 import {
   DropdownMenu,
@@ -24,8 +24,11 @@ type AccountNavProps = {
  * yang sudah login melihat avatar inisial (BUKAN foto — Sprint 1 sengaja
  * tidak menyimpan foto profil Google) yang membuka dropdown.
  *
- * Dropdown-nya sengaja HANYA berisi "Rakitan Tersimpan" dan "Keluar" — tidak
- * ada aksi hapus akun di sini. Keputusan 2026-08-11: penghapusan akun
+ * Admin ikut dikenali di sini (Satu Login Fase B): ia melihat avatarnya
+ * sendiri, bukan "Masuk", dan dropdown-nya menambah "Panel Admin" di samping
+ * "Profil Saya" — dua wajah akun yang sama, toko dan panel.
+ *
+ * Dropdown-nya sengaja TIDAK berisi aksi hapus akun. Keputusan 2026-08-11: penghapusan akun
  * pelanggan bukan alur self-service, hanya lewat staff via admin/WhatsApp
  * (lihat baris "Ingin menghapus akun?" di halaman /profile). Menaruh aksi
  * destruktif permanen satu klik dari dropdown yang sering dibuka bukan
@@ -128,9 +131,17 @@ export function AccountNav({ logoutAction }: AccountNavProps) {
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => router.push("/profile")}>
-          <Wrench className="h-4 w-4" />
-          Rakitan Tersimpan
+          <User className="h-4 w-4" />
+          Profil Saya
         </DropdownMenuItem>
+        {/* Hanya navigasi. Menyembunyikan butir ini bukan pengamanan panel —
+            itu tugas `requirePageView` di sana. */}
+        {customer.isAdmin && (
+          <DropdownMenuItem onClick={() => router.push("/admin")}>
+            <LayoutDashboard className="h-4 w-4" />
+            Panel Admin
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           variant="destructive"

@@ -1,11 +1,17 @@
 import Link from "next/link"
 import { SearchX } from "lucide-react"
 
-import { getPrisma } from "@/lib/prisma/client"
-import { getQuoteByCode, type QuoteLineItem } from "@/lib/api/pc-build-quotes"
+import { requirePageView } from "@/lib/auth"
+import {
+  getQuoteByCode,
+  getQuoteProductsCurrentInfo,
+  type QuoteLineItem,
+} from "@/lib/api/pc-build-quotes"
 import { formatRupiah } from "@/lib/utils"
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
+import { ProductImage } from "@/components/ui/product-image"
+import { QUOTE_CODE_PATTERN } from "../format"
 
 export const dynamic = "force-dynamic"
 
@@ -14,9 +20,6 @@ export const metadata = {
   // Halaman ini berisi data transaksi pelanggan; jangan sampai terindeks.
   robots: { index: false, follow: false },
 }
-
-/** Sama dengan yang dipakai form pencarian di /verify. */
-const QUOTE_CODE_PATTERN = /^HNSPC-\d{6}-[A-Z0-9]{4}$/
 
 /**
  * Kode tidak ketemu BUKAN `notFound()`.
@@ -93,6 +96,9 @@ export default async function VerifyQuotePage({
 }: {
   params: Promise<{ code: string }>
 }) {
+  // Khusus kasir & admin (izin `verify`). Tanpa akses → beranda; lihat src/proxy.ts.
+  await requirePageView("verify", { deniedRedirect: "/" })
+
   const { code } = await params
   const requestedCode = decodeURIComponent(code).trim().toUpperCase()
 
@@ -107,25 +113,19 @@ export default async function VerifyQuotePage({
 
   const items = quote.items as unknown as QuoteLineItem[]
 
-  // Harga terkini untuk dibandingkan dengan snapshot saat quotation dibuat.
-  const prisma = getPrisma()
-  const current = await prisma.product.findMany({
-    where: { id: { in: items.map((i) => i.productId) } },
-    select: { id: true, regularPrice: true, salePrice: true },
-  })
-
-  const currentPriceById = new Map(
-    current.map((p) => {
-      const sale = p.salePrice ? Number(p.salePrice) : 0
-      const regular = p.regularPrice ? Number(p.regularPrice) : 0
-      return [p.id, sale > 0 ? sale : regular]
-    })
-  )
+  // Harga terkini untuk dibandingkan dengan snapshot saat quotation dibuat,
+  // sekaligus gambar cadangan untuk quotation lama yang belum menyimpannya.
+  const currentById = await getQuoteProductsCurrentInfo(items.map((i) => i.productId))
 
   const rows = items.map((item) => {
-    const currentPrice = currentPriceById.get(item.productId) ?? null
+    const current = currentById.get(item.productId)
+    const currentPrice = current?.price ?? null
     return {
       ...item,
+      // Gambar di snapshot didahulukan: itulah yang tercetak di dokumen yang
+      // dipegang pelanggan. Gambar produk terkini hanya mengisi yang kosong
+      // (varian, lalu induknya).
+      image: item.image || current?.image || null,
       currentPrice,
       changed: currentPrice !== null && currentPrice !== item.price,
     }
@@ -186,6 +186,17 @@ export default async function VerifyQuotePage({
                   <span className="w-5 shrink-0 pt-0.5 text-right font-mono text-xs text-muted-foreground">
                     {idx + 1}
                   </span>
+                  <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-border bg-white">
+                    <ProductImage
+                      src={row.image}
+                      // Kosong dengan sengaja: nama produknya tertulis tepat di
+                      // sebelah kotak ini (lihat catatan di ProductImage).
+                      alt=""
+                      fill
+                      sizes="48px"
+                      className="object-contain p-0.5"
+                    />
+                  </div>
                   <div className="min-w-0 flex-1">
                     {row.stepName && (
                       <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
@@ -202,7 +213,7 @@ export default async function VerifyQuotePage({
                         {row.variationLabel}
                       </p>
                     )}
-                    <p className="mt-0.5 text-xs text-muted-foreground">
+                    <p className="mt-0.5 text-xs font-semibold tabular-nums text-sale-red">
                       {formatRupiah(row.price)} &times; {row.quantity}
                     </p>
                     {row.changed && row.currentPrice !== null && (
@@ -212,7 +223,7 @@ export default async function VerifyQuotePage({
                     )}
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-sm font-bold tabular-nums">
+                    <p className="text-sm font-bold tabular-nums text-sale-red">
                       {formatRupiah(row.price * row.quantity)}
                     </p>
                   </div>

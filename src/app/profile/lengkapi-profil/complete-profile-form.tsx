@@ -9,7 +9,19 @@ import { localizedValidation } from "@/lib/utils/form-validation"
 const inputClass =
   "w-full rounded-xl border border-input bg-muted/50 px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:bg-background"
 
-export function CompleteProfileForm({ nextPath }: { nextPath: string }) {
+/**
+ * `existingUsername` terisi untuk akun yang sudah punya username tapi belum
+ * punya nomor HP — umumnya akun admin. Username-nya ditampilkan read-only:
+ * ia juga nama masuk panel, dan halaman ini bukan tempat menggantinya.
+ * Penjaga sebenarnya ada di `completeProfileAction`.
+ */
+export function CompleteProfileForm({
+  nextPath,
+  existingUsername,
+}: {
+  nextPath: string
+  existingUsername: string | null
+}) {
   const [state, action, pending] = useActionState(completeProfileAction, EMPTY_COMPLETE_PROFILE_STATE)
 
   return (
@@ -27,23 +39,35 @@ export function CompleteProfileForm({ nextPath }: { nextPath: string }) {
         <label className="mb-1 block text-sm font-semibold" htmlFor="username">
           Username
         </label>
-        <input
-          id="username"
-          name="username"
-          type="text"
-          autoComplete="username"
-          required
-          minLength={3}
-          maxLength={32}
-          pattern="[a-z0-9._\-]+"
-          title="Huruf kecil, angka, titik, garis bawah, dan tanda hubung saja."
-          autoFocus
-          {...localizedValidation}
-          className={inputClass}
-        />
-        <p className="mt-1 text-xs text-muted-foreground">
-          Huruf kecil, angka, titik, garis bawah, dan tanda hubung. Dipakai untuk masuk juga.
-        </p>
+        {existingUsername ? (
+          <input
+            id="username"
+            type="text"
+            value={existingUsername}
+            readOnly
+            className={`${inputClass} cursor-not-allowed text-muted-foreground`}
+          />
+        ) : (
+          <>
+            <input
+              id="username"
+              name="username"
+              type="text"
+              autoComplete="username"
+              required
+              minLength={3}
+              maxLength={32}
+              pattern="[a-z0-9._\-]+"
+              title="Huruf kecil, angka, titik, garis bawah, dan tanda hubung saja."
+              autoFocus
+              {...localizedValidation}
+              className={inputClass}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Huruf kecil, angka, titik, garis bawah, dan tanda hubung. Dipakai untuk masuk juga.
+            </p>
+          </>
+        )}
       </div>
 
       <div>
@@ -57,6 +81,7 @@ export function CompleteProfileForm({ nextPath }: { nextPath: string }) {
           autoComplete="tel"
           required
           placeholder="08xxxxxxxxxx"
+          autoFocus={Boolean(existingUsername)}
           {...localizedValidation}
           className={inputClass}
         />

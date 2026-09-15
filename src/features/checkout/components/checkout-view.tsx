@@ -13,9 +13,9 @@ import {
 } from "@/lib/cart/grouping"
 import { formatRupiah } from "@/lib/utils"
 import { MessageCircle, PackageOpen, ShoppingBag, TriangleAlert } from "lucide-react"
-import Image from "next/image"
 import Link from "next/link"
 import { buttonVariants } from "@/components/ui/button"
+import { ProductImage } from "@/components/ui/product-image"
 import { WhatsAppOrderButton } from "./whatsapp-order-button"
 
 export function CheckoutView() {
@@ -217,20 +217,15 @@ function ItemSummary({
   return (
     <div className="flex gap-4 p-6 sm:gap-6">
       <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-muted sm:h-24 sm:w-24">
-        {item.image ? (
-          <Image
-            src={item.image}
-            alt={item.name}
-            fill
-            // 80px (h-20) di bawah breakpoint sm, 96px (sm:h-24) di atasnya.
-            sizes="(min-width: 640px) 96px, 80px"
-            className="object-cover"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-muted">
-            <ShoppingBag className="h-6 w-6 text-muted-foreground/30" />
-          </div>
-        )}
+        <ProductImage
+          src={item.image}
+          alt={item.name}
+          fill
+          // 80px (h-20) di bawah breakpoint sm, 96px (sm:h-24) di atasnya.
+          sizes="(min-width: 640px) 96px, 80px"
+          className="object-cover"
+          fallback={<ShoppingBag className="h-6 w-6 opacity-30" aria-hidden="true" />}
+        />
       </div>
 
       <div className="flex flex-1 flex-col justify-center">

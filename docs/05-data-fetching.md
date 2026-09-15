@@ -1199,7 +1199,162 @@ untuk daftar yang isinya sama.
 
 ---
 
-## 18. PC Builder: kompatibilitas, urutan harga & masa berlaku obral (15 September 2026)
+## 18. Dashboard admin (`/admin`) & penyaring kondisi produk (14 September 2026)
+
+Halaman Overview admin dulu seluruhnya placeholder (angka penjualan karangan,
+grafik, "Pesanan Terbaru"). Sekarang ia berisi lima kartu dari data Prisma asli:
+
+| Kartu | Sumber (`lib/api/admin-dashboard.ts`) | Penyaring | Izin |
+|---|---|---|---|
+| Total produk (semua / simple / bervariasi + jumlah varian) | `getProductTypeTotals` | kategori induk | `produk` |
+| Produk tanpa SKU — kelompok simple & varian | `getProductFlagSummary("missing-sku")` | kategori induk | `produk` |
+| Stok kosong — kelompok simple & varian | `getProductFlagSummary("empty-stock")` | kategori induk | `produk` |
+| Belum ada foto utama — kelompok produk (simple + induk bervariasi) & varian *(ditambahkan 15 Sep 2026)* | `getProductFlagSummary("missing-image")` | kategori induk | `produk` |
+| 10 produk terbaru (`importedAt`) | `getLatestProducts` | — | `produk` |
+| 20 log produk terakhir | `getRecentProductLogs` | harga (bawaan) / semua / per aksi | `logs` |
+
+- **Tanpa cache**, sengaja: staff memakai dashboard untuk memeriksa apakah SKU
+  atau stok yang baru diisi sudah keluar dari daftar.
+- **Semua hitungan produk hanya terbit + draft** (`ACTIVE_PRODUCT_STATUSES`).
+  Varian dihitung hanya kalau varian DAN induknya aktif.
+- **Mengganti penyaring memanggil server action** (`app/admin/(panel)/_overview/actions.ts`),
+  bukan mengubah URL: tiap kartu berdiri sendiri, dan mengganti kategori di satu
+  kartu tidak merender ulang kartu lain. Data awal tetap dirender server. Action
+  memeriksa izin ulang — menyembunyikan kartu di halaman bukan pengamanan.
+- `/admin` **tidak** memakai `requirePageView`: ia tujuan pengalihan halaman yang
+  ditolak. Kartu disaring per izin; user tanpa izin `produk` maupun `logs`
+  melihat pesan kosong.
+
+### Satu definisi "bermasalah", dua pemakai
+
+`lib/api/woocommerce/product-health.ts` adalah satu-satunya tempat yang
+mendefinisikan SKU kosong (`sku` NULL atau `""`) dan stok kosong
+(`OUTOFSTOCK` **atau** `stockQty <= 0`). Dashboard menghitung darinya, dan
+`buildPrismaWhere` menyaring daftar produk darinya lewat parameter baru
+`flag`. Diverifikasi 14 Sep 2026: angka kartu = jumlah baris daftar untuk semua
+kategori, AKSESSORIES KOMPUTER, dan LAPTOP & PC — mis. SKU kosong 1.617 simple /
+656 induk bervariasi.
+
+Jangan menyusun ulang kondisi ini di tempat lain. Kalau definisinya berubah,
+ubah di berkas itu supaya kartu dan daftar tetap bernilai sama.
+
+**Produk bervariasi ditandai lewat variannya.** Induk memang lazim tanpa SKU dan
+stok sendiri. Daftar admin hanya berisi induk, jadi "Lihat semua" untuk varian
+membuka daftar INDUK yang punya minimal satu varian aktif bermasalah, dan tabel
+menampilkan keterangan "N varian tanpa SKU / stok kosong"
+(`countFlaggedVariationsByParent`). Varian tidak punya baris
+`product_categories` sendiri (0 baris per 14 Sep 2026), jadi cakupan kategorinya
+dibaca dari induk.
+
+**Pengecualian: foto utama kosong (`missing-image`, 15 Sep 2026).** Kondisinya
+`images: { none: { url: { not: "" } } }` — tidak ada satu pun baris
+`product_images` ber-URL. Berbeda dari SKU dan stok, induk bervariasi juga
+diperiksa lewat barisnya SENDIRI (`flagAppliesToParent`), karena foto induk
+itulah yang tampil di kartu toko. Akibatnya:
+
+- Kelompok pertama di kartu berlabel "Produk" (simple + induk bervariasi), bukan
+  "Produk simple", dan baris induk diberi lencana "Bervariasi".
+- Daftar `flag_filter=missing-image` memuat induk yang bermasalah karena dirinya
+  sendiri MAUPUN karena variannya, jadi tidak ada satu angka kartu yang sama
+  dengan jumlah barisnya. Tautan kartu untuk flag ini sengaja tanpa angka.
+- Varian yang "meminjam" foto induk sebenarnya menyimpan URL itu sebagai baris
+  miliknya sendiri, jadi tidak terhitung kosong.
+- URL yang terisi tapi menjawab 404 **tidak** terdeteksi — memeriksa ribuan URL
+  dari server terlalu mahal. Storefront menanganinya lewat `ProductImage`
+  (lihat di bawah).
+
+### Foto produk kosong/rusak di storefront (15 Sep 2026)
+
+`mapWooProductToUI` kini mengisi `image_url: null` untuk produk tanpa foto,
+bukan lagi `/images/placeholder.svg`. URL placeholder yang terisi membuat
+`components/ui/product-image.tsx` mengira ada foto, sehingga pelanggan melihat
+kotak "No Image" berbahasa Inggris yang tidak ikut tema gelap. Builder juga
+tidak lagi memakai `/placeholder.jpg` (berkasnya memang tidak pernah ada).
+
+Setiap foto produk di storefront dirender lewat `ProductImage`, yang menangani
+dua kasus sekaligus: `src` kosong (keputusan server) dan URL yang gagal dimuat
+(`onError`, hanya bisa diketahui peramban). Prop `fallback` mengganti ikon
+bawaan saat kotak kosong perlu tetap informatif — mis. nama opsi di strip varian.
+Pengecualian: halaman cetak `/build-pc/print` masih memakai `<img>` biasa di
+Server Component.
+
+### Parameter baru di `/admin/produk`
+
+| Parameter | Nilai | Catatan |
+|---|---|---|
+| `status_filter` | + `active` | Terbit + draft. Dipakai semua tautan dari dashboard. |
+| `flag_filter` | `missing-sku`, `empty-stock`, `missing-image` | Menggantikan `status_filter=empty_stock` lama, yang masih diterima. Stok kosong kini juga menjaring varian dan `stockQty <= 0`. |
+| `category_filter` | id kategori | Kategori beserta seluruh keturunannya (`resolveCategoryScope`). Id tak dikenal = hasil kosong, bukan semua produk. |
+
+`PRICE_ACTIONS`, label aksi, warna lencana, dan `formatLogValue` dipindah dari
+halaman/tabel Logs ke `lib/logs/actions.ts` supaya kartu log dan halaman Logs
+tidak bisa tampil berbeda.
+
+## 19. `/verify` — alat cek quotation untuk kasir (15 September 2026)
+
+Sampai 15 Sep 2026 `/verify` dan `/verify/[code]` terbuka untuk siapa pun.
+Sekarang keduanya hanya untuk akun admin yang perannya punya izin **`verify`**
+("Verifikasi Rakitan (/verify)" di Manajemen User → Peran). Halamannya sengaja
+tetap di luar `/admin`: kasir hanya berurusan dengan verifikasi, jadi panel
+admin (sidebar, dashboard) tidak ada gunanya bagi mereka.
+
+### Tiga lapis penjaga
+
+| Lapis | Yang diperiksa | Tanpa akses |
+|---|---|---|
+| `src/proxy.ts` (matcher `/verify`, `/verify/:path*`) | cookie sesi admin saja (Edge, tanpa Prisma) | redirect ke `/` |
+| `page.tsx` keduanya: `requirePageView("verify", { deniedRedirect: "/" })` | izin peran dari DB | redirect ke `/` |
+| `GET /api/admin/pc-build-quotes/search` | `requirePermission("verify", "view")` | 401 / 403 JSON |
+
+Yang tanpa akses dikirim ke **beranda**, bukan halaman login — pengunjung tanpa
+sesi yang paling sering sampai ke sini adalah pelanggan yang mengklik kode di
+PDF quotation-nya sendiri. Kasir yang belum masuk cukup login lalu membuka
+tautannya lagi.
+
+Staff lama tanpa `roleId` ikut mendapat akses lewat fallback `muatIzinUser`
+(staff = edit semua kecuali `pelanggan` & `harga-modal`). Peran dinamis harus
+diberi izin `verify` secara eksplisit.
+
+### Kode di PDF adalah tautan
+
+`/build-pc/print` membungkus nomor quotation dengan
+`<a href="${resolveSiteUrl()}/verify/KODE">`. Alamatnya mutlak karena PDF dibuka
+di luar browser, dan lewat `resolveSiteUrl()` supaya tidak menjadi
+`0.0.0.0:3000` di balik proxy atau host palsu dari header `Host`.
+
+### Fungsi data baru (`lib/api/pc-build-quotes.ts`)
+
+| Fungsi | Dipakai | Catatan |
+|---|---|---|
+| `listRecentQuotes(sort, 15)` | grid `/verify` | `sort`: `dicetak` (`updatedAt`, bawaan) atau `dibuat` (`createdAt`), dari `?urut=` |
+| `searchQuotesByCode(term, 8)` | route pencarian | `code LIKE %term%` — kasir boleh mengetik akhiran, tanggal, atau awalan |
+| `normalizeQuoteSearchTerm(raw)` | route pencarian | huruf besar, hanya `A-Z0-9-`, minimal 2 karakter |
+| `getQuoteProductsCurrentInfo(ids)` | `/verify/[code]` | harga katalog terkini + gambar cadangan (varian → induk) |
+
+`QuoteSummary` tidak membawa `items` — daftar hanya butuh `itemCount`.
+
+Urutan bawaan `dicetak` karena mencetak ulang rakitan yang sama persis tidak
+menerbitkan kode baru — hanya `updatedAt` yang maju. Kalau diurutkan menurut
+tanggal dibuat, quotation yang baru saja dicetak pelanggan bisa terkubur.
+
+### Gambar di rincian
+
+Snapshot `items[].image` (disimpan saat cetak: gambar varian, kalau kosong
+gambar induk) didahulukan, karena itu yang tercetak di dokumen. Quotation lama
+yang belum menyimpannya memakai gambar produk terkini dengan aturan yang sama,
+lalu placeholder `ProductImage`.
+
+### PDF: fitur OpenType dimatikan di `.print-sheet`
+
+Di sebagian viewer PDF (viewer bawaan HP, pratinjau WhatsApp), angka
+`tabular-nums` dan tanda `+`/`-` hasil contextual alternates Inter tampil
+sebagai kotak kosong. `globals.css` mematikan `calt`, `tnum`, dan `liga` untuk
+`.print-sheet` dan seluruh isinya. Jangan menambahkan `tabular-nums` lagi di
+halaman print.
+
+---
+
+## 20. PC Builder: kompatibilitas, urutan harga & masa berlaku obral (15 September 2026)
 
 ### `requiredAttributeValueIds` → `requiredAttributeValueGroups`
 

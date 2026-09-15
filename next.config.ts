@@ -25,6 +25,17 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "hnsitcenter.id",
       },
+      // WordPress setelah cutover domain: `hnsitcenter.id` dilayani Next.js,
+      // WordPress pindah ke subdomain ini dan tinggal melayani blog. Gambar
+      // featured artikel (`source_url` dari /wp-json/wp/v2) ikut berpindah host,
+      // jadi tanpa entri ini `next/image` menolaknya dengan 400. Entri
+      // `hnsitcenter.id` di atas dipertahankan sampai cutover selesai, karena
+      // blog di staging masih membaca dari sana.
+      {
+        protocol: "https",
+        hostname: "wp.hnsitcenter.id",
+        pathname: "/wp-content/uploads/**",
+      },
       // Bucket R2. Dipasang lebih dulu supaya gambar bisa tampil begitu URL-nya
       // dipindahkan; host WordPress lama sengaja dipertahankan karena seluruh
       // 12.827 gambar masih berada di sana sampai pemindahan selesai.

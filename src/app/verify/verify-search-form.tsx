@@ -2,96 +2,228 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { Loader2, Search, AlertTriangle } from "lucide-react"
+import { AlertTriangle, Loader2, Search } from "lucide-react"
 
 import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
+import { cn, formatRupiah } from "@/lib/utils"
+import type { QuoteSummary } from "@/lib/api/pc-build-quotes"
+import { QUOTE_CODE_PATTERN, formatQuoteDateTime } from "./format"
 
-/** Sama dengan yang dipakai server saat memvalidasi kode. */
-const QUOTE_CODE_PATTERN = /^HNSPC-\d{6}-[A-Z0-9]{4}$/
+const MIN_CHARS = 2
+const DEBOUNCE_MS = 250
+const LISTBOX_ID = "verify-quote-suggestions"
 
 /**
- * Form pencarian quotation. Hasilnya TIDAK dirender di sini — begitu kodenya
- * valid, pengguna diarahkan ke `/verify/[code]`.
+ * Jawaban server TERAKHIR, beserta ketikan yang ditanyakan. "Sedang memuat"
+ * tidak disimpan sebagai state — ia diturunkan: kalau jawaban yang ada bukan
+ * untuk ketikan saat ini, berarti jawaban yang benar belum datang.
+ */
+type SearchResponse =
+  | { term: string; results: QuoteSummary[] }
+  | { term: string; error: string }
+
+/** Tebalkan bagian kode yang cocok dengan ketikan, supaya kasir langsung melihat kenapa baris itu muncul. */
+function HighlightedCode({ code, term }: { code: string; term: string }) {
+  const index = term ? code.indexOf(term) : -1
+  if (index < 0) return <>{code}</>
+  return (
+    <>
+      {code.slice(0, index)}
+      <mark className="rounded-sm bg-primary/15 px-0.5 text-foreground">
+        {code.slice(index, index + term.length)}
+      </mark>
+      {code.slice(index + term.length)}
+    </>
+  )
+}
+
+/**
+ * Pencarian quotation dengan saran. Kasir cukup mengetik sebagian kode — mis.
+ * `VVGT` atau `260804` — lalu memilih dari dropdown.
  *
- * Alasannya: hasil verifikasi perlu punya URL sendiri supaya bisa disalin,
- * dibagikan ke CS, di-bookmark, dan dibuka ulang lewat tombol Back. Kalau
- * hasilnya cuma state di halaman ini, URL-nya tidak pernah berubah dan semua
- * itu hilang. Halaman `/verify/[code]` juga sudah menangani perbandingan harga,
- * jadi merendernya di dua tempat berarti dua salinan logika yang sama.
+ * Hasilnya TIDAK dirender di sini: memilih saran mengarahkan ke
+ * `/verify/[code]`, supaya rincian quotation punya URL sendiri (bisa dibuka
+ * ulang, dibagikan ke sesama staff, dan dituju langsung dari tautan di PDF).
  *
- * Format kode diperiksa di sini hanya supaya salah ketik langsung dapat umpan
- * balik tanpa perlu memuat halaman. Keberadaan kodenya tetap divalidasi server.
+ * Tidak memakai `components/ui/combobox.tsx`: opsi di sana hanya berupa label
+ * teks, sedangkan baris di sini perlu kode, total, dan tanggal sekaligus —
+ * dan memilih di sini berarti navigasi, bukan mengisi nilai input.
+ *
+ * Saran diambil dari server (bukan menyaring 15 kartu di halaman), supaya
+ * quotation lama yang sudah tidak ada di grid tetap bisa ditemukan.
  */
 export function VerifySearchForm() {
   const router = useRouter()
-  const [code, setCode] = React.useState("")
-  const [isPending, setIsPending] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
+  const [query, setQuery] = React.useState("")
+  const [response, setResponse] = React.useState<SearchResponse | null>(null)
+  const [open, setOpen] = React.useState(false)
+  const [activeIndex, setActiveIndex] = React.useState(-1)
+  const [navigatingTo, setNavigatingTo] = React.useState<string | null>(null)
+
+  const term = query.replace(/[^A-Z0-9-]/g, "")
+  const searchable = term.length >= MIN_CHARS
+  const current = response?.term === term ? response : null
+  const results = current && "results" in current ? current.results : []
+  const errorMessage = current && "error" in current ? current.error : null
+  const isLoading = searchable && !current
+
+  React.useEffect(() => {
+    if (term.length < MIN_CHARS) return
+
+    // Permintaan lama dibatalkan saat kasir terus mengetik — tanpa ini, jawaban
+    // untuk "VV" yang datang terlambat bisa menimpa jawaban untuk "VVGT".
+    const controller = new AbortController()
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/admin/pc-build-quotes/search?q=${encodeURIComponent(term)}`,
+          { signal: controller.signal }
+        )
+        const data: unknown = await res.json()
+        if (!res.ok) {
+          const message =
+            typeof data === "object" && data !== null && "error" in data && typeof data.error === "string"
+              ? data.error
+              : "Gagal mencari quotation."
+          setResponse({ term, error: message })
+          return
+        }
+        const list =
+          typeof data === "object" && data !== null && "results" in data && Array.isArray(data.results)
+            ? (data.results as QuoteSummary[])
+            : []
+        setResponse({ term, results: list })
+        setActiveIndex(list.length > 0 ? 0 : -1)
+      } catch (error) {
+        if (controller.signal.aborted) return
+        console.error("[verify] pencarian gagal:", error)
+        setResponse({ term, error: "Gagal mencari quotation. Periksa koneksi Anda." })
+      }
+    }, DEBOUNCE_MS)
+
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [term])
+
+  const goTo = (code: string) => {
+    setOpen(false)
+    setNavigatingTo(code)
+    router.push(`/verify/${code}`)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault()
+      setOpen(true)
+      if (results.length > 0) setActiveIndex((i) => (i + 1) % results.length)
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault()
+      if (results.length > 0) setActiveIndex((i) => (i <= 0 ? results.length - 1 : i - 1))
+    } else if (e.key === "Escape") {
+      setOpen(false)
+    }
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    const trimmed = code.trim().toUpperCase()
-
-    if (!trimmed) {
-      setError("Masukkan kode quotation terlebih dahulu.")
+    const active = open ? results[activeIndex] : undefined
+    if (active) {
+      goTo(active.code)
       return
     }
-
-    if (!QUOTE_CODE_PATTERN.test(trimmed)) {
-      setError("Format kode tidak sesuai. Contoh yang benar: HNSPC-260804-VVGT")
+    // Kode lengkap boleh langsung dituju tanpa menunggu saran — mis. kasir
+    // yang menempel kode dari chat WhatsApp lalu langsung menekan Enter.
+    if (QUOTE_CODE_PATTERN.test(term)) {
+      goTo(term)
       return
     }
-
-    setError(null)
-    // Dibiarkan menyala sampai navigasinya selesai — halaman tujuan yang akan
-    // menggantikan tampilan ini.
-    setIsPending(true)
-    router.push(`/verify/${trimmed}`)
+    setOpen(true)
   }
 
+  const showDropdown = open && searchable
+  const activeId = showDropdown && results[activeIndex] ? `${LISTBOX_ID}-${activeIndex}` : undefined
+
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8 md:px-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-extrabold tracking-tight md:text-3xl">
-          Cek Rincian Rakitan PC
-        </h1>
-        <p className="mt-1.5 text-sm text-muted-foreground">
-          Masukkan kode quotation yang tertera pada dokumen untuk melihat rincian harga
-          per komponen saat dokumen itu dicetak.
-        </p>
+    <form onSubmit={handleSubmit} className="relative max-w-2xl">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value.toUpperCase())
+            setOpen(true)
+          }}
+          onFocus={() => setOpen(true)}
+          onBlur={() => setOpen(false)}
+          onKeyDown={handleKeyDown}
+          placeholder="Ketik kode, mis. VVGT atau 260804"
+          className="h-12 bg-background pl-9 pr-10 font-mono text-base uppercase md:text-base"
+          autoComplete="off"
+          spellCheck={false}
+          role="combobox"
+          aria-expanded={showDropdown}
+          aria-controls={LISTBOX_ID}
+          aria-autocomplete="list"
+          aria-activedescendant={activeId}
+          aria-label="Kode quotation"
+        />
+        {(isLoading || navigatingTo) && (
+          <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+        )}
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-2 sm:flex-row">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-          <Input
-            value={code}
-            onChange={(e) => {
-              setCode(e.target.value.toUpperCase())
-              if (error) setError(null)
-            }}
-            placeholder="Masukkan kode yang berawalan HNSPC-..."
-            className="h-11 pl-9 font-mono uppercase"
-            autoComplete="off"
-            spellCheck={false}
-          />
-        </div>
-        <Button
-          type="submit"
-          disabled={isPending}
-          className="h-11 cursor-pointer px-6 font-bold sm:w-auto"
+      {showDropdown && (
+        <div
+          // `preventDefault` di mousedown menjaga fokus tetap di input, jadi
+          // `onBlur` tidak menutup dropdown sebelum klik pada saran terjadi.
+          onMouseDown={(e) => e.preventDefault()}
+          className="absolute inset-x-0 top-full z-20 mt-1.5 overflow-hidden rounded-xl border border-border bg-popover shadow-lg"
         >
-          {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Cek"}
-        </Button>
-      </form>
-
-      {error && (
-        <div className="mt-5 flex items-start gap-2.5 rounded-xl border border-destructive/30 bg-destructive/5 p-4">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-          <p className="text-sm text-destructive">{error}</p>
+          {errorMessage ? (
+            <div className="flex items-start gap-2 p-3 text-sm text-destructive">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              {errorMessage}
+            </div>
+          ) : isLoading ? (
+            <p className="p-3 text-sm text-muted-foreground">Mencari…</p>
+          ) : results.length === 0 ? (
+            <p className="p-3 text-sm text-muted-foreground">
+              Tidak ada kode yang mengandung{" "}
+              <span className="font-mono font-semibold text-foreground">{term}</span>. Huruf O dan
+              angka 0 mudah tertukar.
+            </p>
+          ) : (
+            <ul id={LISTBOX_ID} role="listbox" className="max-h-80 overflow-y-auto py-1">
+              {results.map((quote, index) => (
+                <li
+                  key={quote.code}
+                  id={`${LISTBOX_ID}-${index}`}
+                  role="option"
+                  aria-selected={index === activeIndex}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  onClick={() => goTo(quote.code)}
+                  className={cn(
+                    "flex cursor-pointer flex-col gap-0.5 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4",
+                    index === activeIndex && "bg-muted"
+                  )}
+                >
+                  <span className="font-mono text-sm font-bold">
+                    <HighlightedCode code={quote.code} term={term} />
+                  </span>
+                  <span className="flex items-center gap-3 text-xs">
+                    <span className="font-bold tabular-nums text-sale-red">
+                      {formatRupiah(quote.total)}
+                    </span>
+                    <span className="text-muted-foreground">{formatQuoteDateTime(quote.updatedAt)}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
-    </div>
+    </form>
   )
 }

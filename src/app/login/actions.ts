@@ -197,7 +197,10 @@ export async function resetPasswordAction(
   // membuat token yang terbit pada detik yang sama terbaca "lebih tua".
   const changedAt = new Date(Math.floor(Date.now() / 1000) * 1000)
 
-  await getPrisma().customer.update({
+  // `users`, bukan `customers` — tabel yang dibaca login. Sampai Fase B baris
+  // ini menulis ke `customers`, sehingga password baru tidak pernah berlaku:
+  // login tetap mencocokkan hash lama di `users`.
+  await getPrisma().user.update({
     where: { id: result.customerId },
     // Password baru berarti sesi lama (termasuk yang mungkin sudah dibajak
     // lewat password lama) harus mati — sama alasannya dengan

@@ -32,9 +32,9 @@ import { Button } from "@/components/ui/button"
 import { useToastManager } from "@/components/ui/toast"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { motion, AnimatePresence } from "framer-motion"
-import Image from "next/image"
 import Stack3Icon from "@/components/icons/stack-icon"
 import SaveIcon from "@/components/icons/save-icon"
+import { ProductImage } from "@/components/ui/product-image"
 
 type DynamicBuilderViewProps = {
   stepsConfig: PcBuilderStepConfig[]
@@ -908,11 +908,14 @@ export function DynamicBuilderView({
               className="group relative flex gap-2.5 rounded-lg border border-border/50 bg-muted/40 dark:bg-muted/20 p-2 transition-colors hover:border-border"
             >
               <div className="h-12 w-12 shrink-0 overflow-hidden rounded-md bg-background flex items-center justify-center">
-                {sel.product.image ? (
-                  <Image src={sel.product.image} alt={sel.product.name} width={48} height={48} className="object-cover w-full h-full" />
-                ) : (
-                  <div className="text-[8px] font-semibold text-muted-foreground">N/A</div>
-                )}
+                <ProductImage
+                  src={sel.product.image}
+                  alt={sel.product.name}
+                  width={48}
+                  height={48}
+                  className="object-cover w-full h-full"
+                  fallbackClassName="bg-background"
+                />
               </div>
 
               <div className="min-w-0 flex-1">

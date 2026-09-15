@@ -277,6 +277,8 @@ export async function prepareCheckoutWhatsApp(
         productId: priceBearingId(l),
         quantity: l.quantity,
       })),
+      // Keranjang menyimpan `wooId` — lihat `CatalogIdColumn`.
+      "wooId",
     ),
     getActiveStores(),
   ]);

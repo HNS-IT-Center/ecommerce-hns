@@ -25,26 +25,43 @@ export async function completeProfileAction(
   const customer = await getCurrentCustomer()
   if (!customer) redirect("/login")
 
-  const username = String(formData.get("username") ?? "").trim()
+  /**
+   * Username yang SUDAH ada tidak bisa diganti lewat form ini.
+   *
+   * Akun admin selalu punya username (dipakai masuk ke panel), tapi umumnya
+   * belum punya nomor HP — jadi admin juga mampir ke sini. Kalau isian
+   * username dari form diterima begitu saja, halaman "lengkapi profil" diam-diam
+   * mengganti nama masuk panel mereka. Form menampilkannya read-only; baris ini
+   * yang benar-benar menjaganya, karena server action bisa dipanggil langsung.
+   */
+  const existingUsername = customer.username
+  const username = existingUsername ?? String(formData.get("username") ?? "").trim()
   const phoneNumber = String(formData.get("phoneNumber") ?? "").trim()
   const nextPath = sanitizeNextPath(String(formData.get("next") ?? ""))
 
   if (!username || !phoneNumber) {
     return { error: "Username dan nomor HP wajib diisi.", ok: false }
   }
-  const usernameError = validateUsername(username)
-  if (usernameError) {
-    return { error: usernameError, ok: false }
-  }
   const phoneError = validatePhoneNumber(phoneNumber)
   if (phoneError) {
     return { error: phoneError, ok: false }
   }
 
-  const normalizedUsername = normalizeIdentifier(username)
   const prisma = getPrisma()
 
-  const usernameTaken = await prisma.customer.findUnique({
+  if (existingUsername) {
+    await prisma.user.update({ where: { id: customer.id }, data: { phoneNumber } })
+    redirect(nextPath)
+  }
+
+  const usernameError = validateUsername(username)
+  if (usernameError) {
+    return { error: usernameError, ok: false }
+  }
+
+  const normalizedUsername = normalizeIdentifier(username)
+
+  const usernameTaken = await prisma.user.findUnique({
     where: { username: normalizedUsername },
     select: { id: true },
   })
@@ -53,7 +70,7 @@ export async function completeProfileAction(
   }
 
   try {
-    await prisma.customer.update({
+    await prisma.user.update({
       where: { id: customer.id },
       data: { username: normalizedUsername, phoneNumber },
     })

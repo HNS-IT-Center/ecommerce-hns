@@ -42,7 +42,7 @@ export default async function Page({
             </p>
           </div>
 
-          <CompleteProfileForm nextPath={nextPath} />
+          <CompleteProfileForm nextPath={nextPath} existingUsername={customer.username} />
         </div>
       </main>
       <Footer />

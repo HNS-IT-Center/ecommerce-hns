@@ -172,7 +172,8 @@ export function BuilderQuickViewDialog({
     push(product.image)
     for (const variation of product.variations ?? []) push(variation.image, variation.label)
 
-    return images.length > 0 ? images : [{ src: "/placeholder.jpg", alt: product.name }]
+    // Daftar kosong dibiarkan kosong — galeri menggambar placeholder-nya sendiri.
+    return images
   })()
 
   /**

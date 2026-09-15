@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import Image, { type ImageProps } from "next/image"
 import { ImageOff } from "lucide-react"
 
@@ -40,6 +40,12 @@ type ProductImageProps = Omit<ImageProps, "onError" | "src"> & {
    * latarnya sudah putih.
    */
   fallbackClassName?: string
+  /**
+   * Isi kotak placeholder, pengganti ikon bawaan. Dipakai saat kotak kosong
+   * perlu tetap informatif — mis. strip varian yang menuliskan nama opsinya,
+   * supaya dua varian tanpa foto masih bisa dibedakan.
+   */
+  fallback?: ReactNode
 }
 
 export function ProductImage({
@@ -47,6 +53,7 @@ export function ProductImage({
   alt,
   className,
   fallbackClassName,
+  fallback,
   fill,
   width,
   height,
@@ -80,10 +87,12 @@ export function ProductImage({
         aria-label={alt ? `${alt} — foto tidak tersedia` : undefined}
         aria-hidden={alt ? undefined : true}
       >
-        <ImageOff
-          className="h-1/4 max-h-10 w-1/4 max-w-10 opacity-40"
-          aria-hidden="true"
-        />
+        {fallback ?? (
+          <ImageOff
+            className="h-1/4 max-h-10 w-1/4 max-w-10 opacity-40"
+            aria-hidden="true"
+          />
+        )}
       </div>
     )
   }

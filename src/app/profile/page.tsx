@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { LogOut, Wrench } from "lucide-react";
+import { LayoutDashboard, LogOut, Wrench } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
@@ -19,7 +19,7 @@ export const metadata = {
 /**
  * `proxy.ts` sudah menyaring permintaan tanpa cookie sesi sebelum sampai ke
  * sini, tapi itu gerbang, bukan otoritas — ia hanya memeriksa tanda tangan
- * token, bukan apakah baris `customers`-nya masih ada. Redirect di bawah
+ * token, bukan apakah baris `users`-nya masih ada. Redirect di bawah
  * menutup celah itu untuk kasus akun dihapus di antara request.
  */
 export default async function Page() {
@@ -51,15 +51,29 @@ export default async function Page() {
               <p className="text-sm text-muted-foreground">{customer.email}</p>
             </div>
 
-            <form action={customerLogoutAction}>
-              <button
-                type="submit"
-                className="flex items-center justify-center gap-2 rounded-xl border border-input px-4 py-3 text-sm font-semibold transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
-              >
-                <LogOut className="h-4 w-4" />
-                Keluar
-              </button>
-            </form>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              {/* Di mobile tidak ada dropdown akun — dock "Profil" mendarat di
+                  sini, jadi jalan ke panel untuk admin harus ada di halaman
+                  ini juga, bukan hanya di header desktop. */}
+              {customer.isAdmin && (
+                <Link
+                  href="/admin"
+                  className="flex items-center justify-center gap-2 rounded-xl border border-input px-4 py-3 text-sm font-semibold transition-colors hover:bg-muted"
+                >
+                  <LayoutDashboard className="h-4 w-4" />
+                  Panel Admin
+                </Link>
+              )}
+              <form action={customerLogoutAction}>
+                <button
+                  type="submit"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-input px-4 py-3 text-sm font-semibold transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Keluar
+                </button>
+              </form>
+            </div>
           </div>
 
           <div>

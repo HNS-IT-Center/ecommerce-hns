@@ -1,12 +1,12 @@
 "use client"
 
-import Image from "next/image"
 import { Minus, Plus, Repeat2 } from "lucide-react"
 import { formatRupiah } from "@/lib/utils"
 import { BuilderProduct } from "@/store/new-builder"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import EyeIcon from "@/components/icons/eye-icon"
+import { ProductImage } from "@/components/ui/product-image"
 
 /** Satu varian produk ini yang sudah masuk rakitan pada langkah yang sedang aktif. */
 export type SelectedVariationLine = {
@@ -97,8 +97,8 @@ export function ProductCardBuilder({
           aria-label={`Pilih ${product.name}`}
           disabled={product.stock === 0}
         >
-          <Image
-            src={product.image || "/placeholder.jpg"}
+          <ProductImage
+            src={product.image}
             alt={product.name}
             fill
             sizes="(max-width: 768px) 50vw, 25vw"

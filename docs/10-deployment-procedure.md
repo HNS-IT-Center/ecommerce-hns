@@ -82,6 +82,45 @@ npx prisma migrate status
 
 ---
 
+### Jalur deploy: auto-deploy hPanel dari `development` (15 September 2026)
+
+**Hanya ada satu jalur deploy:** auto-deploy GitHub di hPanel Hostinger, menarik
+branch **`development`**. Setiap push ke sana membuat Hostinger menjalankan
+`npm install` → `npm run build` (`prisma migrate deploy && next build`) lalu
+memasang hasilnya ke `hnsitcenter.id`.
+
+Konsekuensinya, yang wajib disadari setiap orang yang punya akses push:
+
+- **Push ke `development` = deploy ke produksi**, termasuk migrasi ke database
+  produksi. Tidak ada staging sejak `store.hnsitcenter.id` diambil alih pada
+  cutover 14 September 2026.
+- **SQL migrasi dibaca SEBELUM di-push** (langkah 3 `docs/08`), bukan sesudahnya.
+  Begitu ter-push, migrasinya sudah berjalan.
+- **Env hanya diatur di hPanel** (Node.js app → Environment variables), termasuk
+  `NEXT_PUBLIC_*` yang dibakar saat build. Mengubah `NEXT_PUBLIC_*` butuh
+  build ulang, bukan sekadar restart.
+- Branch yang ditarik hPanel adalah satu-satunya penentu apa yang tayang. Kalau
+  suatu hari pindah ke `main`, ubah di hPanel — tidak ada yang perlu disamakan
+  di GitHub.
+
+**GitHub Actions (`.github/workflows/check.yml`) hanya pemeriksa:** `typecheck`
+dan `lint` di setiap push dan pull request. Ia tidak men-deploy, tidak butuh
+secret, dan tidak menyentuh database.
+
+Sebelumnya (sampai 15 September 2026) Actions juga men-deploy: build di runner,
+kirim lewat SCP/SSH. Alasannya dulu build di server RAM 1 GB selalu mati
+kehabisan memori. Log deploy hPanel 15 September menunjukkan build lengkap lolos
+di sana, sehingga setiap push memicu **dua** deploy ke aplikasi yang sama, dan
+env build tersebar di GitHub Secrets dan hPanel. Keduanya sempat berselisih:
+sesudah cutover, JSON-LD produksi masih menyebut `store.hnsitcenter.id` karena
+secret GitHub belum diperbarui. Satu jalur, satu tempat env.
+
+Secret `SSH_HOST`, `SSH_PORT`, `SSH_USER`, `SSH_PASSWORD`, `APP_PATH`, dan secret
+build lain di GitHub tidak dipakai lagi dan sebaiknya **dihapus** — terutama
+`SSH_PASSWORD`, yang memberi akses shell ke server.
+
+---
+
 ### Migrasi ikut berjalan saat build (31 Agustus 2026)
 
 `npm run build` sekarang berbunyi **`prisma migrate deploy && next build`**.

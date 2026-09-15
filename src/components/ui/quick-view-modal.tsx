@@ -184,7 +184,7 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
     event.stopPropagation()
     setIsAdding(true)
 
-    const image = resolvedVariation?.image?.src ?? product.image_url
+    const image = resolvedVariation?.image?.src ?? product.image_url ?? undefined
     flyToCart(event.clientX, event.clientY, image)
 
     setTimeout(() => {
@@ -216,9 +216,13 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
 
 Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRupiah(hasDiscount ? product.regular_price! : product.price)}${hasDiscount ? ` dengan harga discount ${formatRupiah(product.price)}` : ""}`
 
-  const galleryImages = product.images && product.images.length > 0 
-    ? product.images 
-    : [{ src: product.image_url, alt: product.name }]
+  // Tanpa foto sama sekali, galeri menerima daftar kosong dan menggambar
+  // placeholder-nya sendiri.
+  const galleryImages = product.images && product.images.length > 0
+    ? product.images
+    : product.image_url
+      ? [{ src: product.image_url, alt: product.name }]
+      : []
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>

@@ -65,10 +65,12 @@ function redirectToLogin(
 }
 
 /**
- * Penjaga pertama untuk /admin dan /profile — dua sesi yang TIDAK BOLEH saling
- * menyentuh (lihat docs/09-google-oauth-setup.md §1). Ditulis dalam satu
- * fungsi karena Next hanya memuat satu file proxy per project, bukan tanda
- * keduanya berbagi logika.
+ * Penjaga pertama untuk /admin dan /profile. Ditulis dalam satu fungsi karena
+ * Next hanya memuat satu file proxy per project.
+ *
+ * Arahnya satu jalan: sesi admin boleh membuka /profile (admin juga pemakai
+ * storefront — Satu Login Fase B), tapi sesi pelanggan TIDAK PERNAH membuka
+ * /admin.
  *
  * Berkas ini bernama `proxy.ts`, bukan `middleware.ts`. Next 16 menandai
  * konvensi `middleware` sebagai deprecated dan mengarahkan ke `proxy`;
@@ -95,6 +97,20 @@ function redirectToLogin(
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl
 
+  // /verify — alat cek quotation untuk kasir & admin. Tanpa sesi admin,
+  // pengunjung dikembalikan ke beranda, BUKAN ke halaman masuk: yang paling
+  // sering sampai ke sini tanpa sesi adalah pelanggan yang mengklik kode di PDF
+  // quotation-nya, dan halaman login admin hanya membingungkan mereka. Kasir
+  // yang belum masuk cukup login dulu lalu membuka tautannya lagi.
+  //
+  // Di sini hanya cookie yang diperiksa (Edge runtime, tanpa Prisma). Izin
+  // `verify` per peran diputuskan di halaman lewat `requirePageView`.
+  if (pathname === "/verify" || pathname.startsWith("/verify/")) {
+    const session = await verifySession(request.cookies.get(SESSION_COOKIE)?.value)
+    if (session) return NextResponse.next()
+    return NextResponse.redirect(`${requestOrigin(request)}/`, 307)
+  }
+
   if (pathname.startsWith("/admin")) {
     // `/admin/login` dibiarkan lewat: sejak Satu Login (Fase A) ia hanya
     // mengalihkan ke `/login`, dan harus bisa dijangkau untuk melakukannya.
@@ -109,13 +125,18 @@ export async function proxy(request: NextRequest) {
     return redirectToLogin(request, "/login", "next", `${pathname}${search}`)
   }
 
-  // /profile/:path*
-  const session = await verifyCustomerSession(request.cookies.get(CUSTOMER_SESSION_COOKIE)?.value)
-  if (session) return NextResponse.next()
+  // /profile/:path* — cookie pelanggan ATAU admin. Keduanya menunjuk baris
+  // `users` yang sama jenisnya; `getCurrentCustomer()` di halaman yang
+  // memutuskan apakah akunnya masih sah.
+  const [customerSession, adminSession] = await Promise.all([
+    verifyCustomerSession(request.cookies.get(CUSTOMER_SESSION_COOKIE)?.value),
+    verifySession(request.cookies.get(SESSION_COOKIE)?.value),
+  ])
+  if (customerSession || adminSession) return NextResponse.next()
 
   return redirectToLogin(request, "/login", "next", `${pathname}${search}`)
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/profile/:path*"],
+  matcher: ["/admin/:path*", "/profile/:path*", "/verify", "/verify/:path*"],
 }

@@ -1,10 +1,10 @@
 "use client"
 
-import Image from "next/image"
 import { Check } from "lucide-react"
 
 import { formatRupiah } from "@/lib/utils"
 import type { BuilderVariation } from "@/store/new-builder"
+import { ProductImage } from "@/components/ui/product-image"
 
 type VariationListProps = {
   variations: BuilderVariation[]
@@ -74,8 +74,8 @@ export function VariationList({
             }`}
           >
             <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-secondary/50">
-              <Image
-                src={variation.image || fallbackImage || "/placeholder.jpg"}
+              <ProductImage
+                src={variation.image || fallbackImage}
                 alt={variation.label}
                 fill
                 // Wadahnya tetap 48px di semua ukuran layar.

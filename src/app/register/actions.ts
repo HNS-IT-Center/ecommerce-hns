@@ -242,7 +242,8 @@ export async function verifyEmailAction(token: string): Promise<VerifyEmailResul
   const result = await consumeVerificationToken(token, "verify_email")
   if (!result.ok) return result
 
-  await getPrisma().customer.update({
+  // `users` — tabel yang dibaca login terpadu untuk memeriksa verifikasi.
+  await getPrisma().user.update({
     where: { id: result.customerId },
     data: { emailVerifiedAt: new Date() },
   })

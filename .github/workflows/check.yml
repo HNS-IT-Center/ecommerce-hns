@@ -1,0 +1,71 @@
+# Pemeriksa kode — BUKAN jalur deploy.
+#
+# SIAPA YANG DEPLOY: auto-deploy GitHub di hPanel Hostinger, dari branch
+# `development`. Setiap push ke sana membuat Hostinger menjalankan `npm install`
+# lalu `npm run build` (= `prisma migrate deploy && next build`) dan memasang
+# hasilnya ke hnsitcenter.id. Lihat docs/10-deployment-procedure.md.
+#
+# RIWAYAT: sampai 15 September 2026 berkas ini bernama `deploy.yml` dan ikut
+# men-deploy — build di runner GitHub, kirim tar lewat SCP, pasang lewat SSH.
+# Alasannya dulu build di server Hostinger (RAM 1 GB) selalu mati kehabisan
+# memori. Log deploy hPanel 15 September menunjukkan itu sudah tidak berlaku:
+# build lengkap lolos di sana. Akibatnya setiap push memicu DUA deploy ke
+# aplikasi yang sama, dan env build tersebar di dua tempat (GitHub Secrets dan
+# hPanel) — salah satu penyebab JSON-LD produksi masih menyebut
+# store.hnsitcenter.id sesudah cutover domain. Jalurnya disatukan ke hPanel.
+#
+# Karena itu workflow ini tidak butuh secret apa pun, dan tidak menyentuh
+# database maupun server.
+name: Pemeriksaan kode
+
+on:
+  push:
+    branches: [development, main]
+  pull_request:
+  workflow_dispatch:
+
+# Push beruntun ke branch yang sama: yang lama sudah tidak relevan.
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Disamakan dengan Node di server Hostinger (22.x), bukan versi
+          # terbaru — selisih versi cuma muncul saat runtime.
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        # `postinstall` ikut menjalankan `prisma generate`, jadi tipe Prisma
+        # Client sudah tersedia untuk typecheck. Tidak butuh DATABASE_URL:
+        # prisma.config.ts memakai placeholder, dan generate tidak konek ke DB.
+        run: npm ci
+
+      - name: Generate tipe route Next.js
+        # `next-env.d.ts` dan `.next/types` tidak ikut git. Tanpa langkah ini
+        # typecheck di sini melewatkan pemeriksaan tipe route yang dijalankan
+        # `next build` di Hostinger — CI hijau, deploy merah.
+        run: npx next typegen
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        # SEMENTARA TIDAK MEMBLOKIR. Ada 7 error lama di tiga berkas yang
+        # tercatat di docs/12-kendala-terbuka.md §4 (setState di dalam effect di
+        # dynamic-builder-view.tsx menyentuh perilaku, jadi tidak dibereskan
+        # sambil lalu). Kalau langkah ini memblokir, setiap push merah sejak hari
+        # pertama, dan tanda merah yang selalu ada berhenti dibaca orang.
+        #
+        # Hasilnya tetap tampil sebagai langkah gagal di tab Actions. Hapus
+        # `continue-on-error` begitu ketujuh error itu beres.
+        run: npm run lint
+        continue-on-error: true

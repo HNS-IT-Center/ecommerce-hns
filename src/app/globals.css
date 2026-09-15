@@ -676,6 +676,27 @@ input[type="number"] {
   margin: 0;
 }
 
+/* Glyph alternatif OpenType DIMATIKAN di seluruh dokumen quotation.
+
+   PDF ini dibuat oleh browser pelanggan sendiri, lalu dibuka di aplikasi apa
+   saja — viewer bawaan HP, pratinjau WhatsApp, dll. Di sebagian viewer itu,
+   glyph hasil substitusi fitur font tampil sebagai kotak kosong: angka
+   `tabular-nums` (tnum) di kolom Qty/Harga/Total, serta `+` dan `-` di nomor
+   WhatsApp yang oleh contextual alternates (calt) Inter ditukar ke versi yang
+   dinaikkan karena menempel ke angka. Huruf dan angka biasa tidak terdampak —
+   yang rusak hanya glyph yang tidak punya kode Unicode sendiri.
+
+   Sengaja di luar `@media print` supaya pratinjau di layar sama dengan yang
+   tercetak, dan sengaja tidak di dalam `@layer`: CSS tanpa layer selalu menang
+   atas utilitas Tailwind, termasuk `font-mono` yang menyetel ulang
+   `font-feature-settings` ke nilai bawaan font. Jangan tambahkan
+   `tabular-nums` lagi di halaman print. */
+.print-sheet,
+.print-sheet * {
+  font-feature-settings: "calt" 0, "tnum" 0, "liga" 0;
+  font-variant-numeric: normal;
+}
+
 @media print {
   /* Elemen mengambang global (MobileDock, tombol WhatsApp, toast, drawer)
      tidak boleh ikut tercetak. */

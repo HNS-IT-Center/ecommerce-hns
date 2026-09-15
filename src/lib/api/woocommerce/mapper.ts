@@ -20,7 +20,11 @@ export function mapWooProductToUI(
   woo: WooProduct,
   stockDisplayMode: StockDisplayMode = DEFAULT_STOCK_DISPLAY_MODE
 ): UIProduct {
-  const imageUrl = woo.images?.[0]?.src ?? "/images/placeholder.svg";
+  // `null`, bukan URL placeholder: `ProductImage` hanya menggambar placeholder
+  // bertema saat `src`-nya kosong. URL placeholder yang terisi membuatnya
+  // mengira ada foto, dan pelanggan melihat kotak "No Image" berbahasa Inggris
+  // yang tidak ikut tema gelap.
+  const imageUrl = woo.images?.[0]?.src || null;
 
   const brandName = woo.brands?.[0]?.name ?? "";
 

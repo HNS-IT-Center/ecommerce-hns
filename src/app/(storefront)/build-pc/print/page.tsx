@@ -7,6 +7,7 @@ import { formatRupiah } from "@/lib/utils"
 import { recordPcBuildQuote } from "@/lib/api/pc-build-quotes"
 import { buildVariationLabel } from "@/lib/utils/variation"
 import { env } from "@/config/env"
+import { resolveSiteUrl } from "@/lib/utils/site-url"
 import { PrintClientComponent } from "./print-client-component"
 
 /**
@@ -228,6 +229,11 @@ export default async function PrintPcBuilderPage({
   // gagal tidak boleh menggagalkan pencetakan — pelanggan tetap harus dapat
   // dokumennya, cuma tanpa kode verifikasi.
   let quoteRef: string | null = null
+  // Alamat mutlak: tautan di dalam PDF dibuka di luar browser (viewer HP,
+  // WhatsApp), jadi path relatif tidak punya host untuk dituju. Lewat
+  // `resolveSiteUrl()` supaya tidak jadi `0.0.0.0:3000` di balik proxy dan
+  // tidak bisa diarahkan ke host palsu lewat header `Host`.
+  const siteUrl = await resolveSiteUrl()
   try {
     const recorded = await recordPcBuildQuote(
       lineItems.map((item) => ({
@@ -288,7 +294,19 @@ export default async function PrintPcBuilderPage({
               {quoteRef && (
                 <div className="flex items-baseline justify-end gap-2">
                   <dt className="text-white/60">No.</dt>
-                  <dd className="font-mono font-semibold tracking-tight">{quoteRef}</dd>
+                  <dd className="font-mono font-semibold tracking-tight">
+                    {/* Tautan ke halaman verifikasi kasir. Kasir yang
+                        berizin langsung melihat rinciannya; pengunjung lain
+                        (termasuk pelanggan pemilik PDF ini) diantar ke beranda
+                        oleh src/proxy.ts. Gayanya sengaja tidak seperti tautan
+                        — dokumen resmi, bukan halaman web. */}
+                    <a
+                      href={`${siteUrl}/verify/${quoteRef}`}
+                      style={{ color: "inherit", textDecoration: "none" }}
+                    >
+                      {quoteRef}
+                    </a>
+                  </dd>
                 </div>
               )}
               <div className="flex items-baseline justify-end gap-2">
@@ -402,7 +420,7 @@ export default async function PrintPcBuilderPage({
                     </td>
 
                     <td
-                      className="py-2 text-center align-middle text-[11.5px] font-bold tabular-nums"
+                      className="py-2 text-center align-middle text-[11.5px] font-bold"
                       style={{ color: INK_BLACK }}
                     >
                       {item.quantity}
@@ -410,7 +428,7 @@ export default async function PrintPcBuilderPage({
 
                     {showItemPrices && (
                       <td
-                        className="py-2 text-right align-middle text-[11px] font-semibold tabular-nums"
+                        className="py-2 text-right align-middle text-[11px] font-semibold"
                         style={{ color: INK_RED }}
                       >
                         {formatRupiah(item.price)}
@@ -419,7 +437,7 @@ export default async function PrintPcBuilderPage({
 
                     {showItemPrices && (
                       <td
-                        className="py-2 text-right align-middle text-[11.5px] font-black tabular-nums"
+                        className="py-2 text-right align-middle text-[11.5px] font-black"
                         style={{ color: INK_RED }}
                       >
                         {formatRupiah(item.subtotal)}
@@ -447,7 +465,7 @@ export default async function PrintPcBuilderPage({
                   style={{ borderColor: INK_HAIRLINE }}
                 >
                   <span style={{ color: INK_GRAY }}>Subtotal komponen</span>
-                  <span className="font-semibold tabular-nums">{formatRupiah(subtotal)}</span>
+                  <span className="font-semibold">{formatRupiah(subtotal)}</span>
                 </div>
               )}
               <div
@@ -455,7 +473,7 @@ export default async function PrintPcBuilderPage({
                 style={{ backgroundColor: INK_NAVY }}
               >
                 <span className="text-[10px] font-black uppercase tracking-[0.15em]">Total</span>
-                <span className="text-lg font-black tabular-nums">{formatRupiah(total)}</span>
+                <span className="text-lg font-black">{formatRupiah(total)}</span>
               </div>
             </div>
           </div>

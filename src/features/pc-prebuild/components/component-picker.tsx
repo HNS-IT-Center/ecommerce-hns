@@ -1,11 +1,11 @@
 "use client"
 
-import Image from "next/image"
 import { Check, TriangleAlert } from "lucide-react"
 
 import { COMPONENT_ROLE_ICONS } from "../lib/component-icons"
 import { chosenOption, type PrebuildSelection } from "../lib/selection"
 import type { PrebuildComponent } from "../lib/types"
+import { ProductImage } from "@/components/ui/product-image"
 
 /**
  * Satu komponen di daftar isi paket.
@@ -66,19 +66,15 @@ export function ComponentPicker({ component, selection, onSelect }: Props) {
     <div className="flex flex-col rounded-xl border bg-card p-3.5">
       <div className="flex items-start gap-3">
         <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border bg-background p-1">
-          {terpilih.image ? (
-            <Image
-              src={terpilih.image}
-              alt=""
-              fill
-              sizes="64px"
-              className="object-contain p-1"
-            />
-          ) : (
-            <span className="flex h-full w-full items-center justify-center text-muted-foreground">
-              <Ikon className="h-6 w-6" strokeWidth={1.5} />
-            </span>
-          )}
+          <ProductImage
+            src={terpilih.image}
+            alt=""
+            fill
+            sizes="64px"
+            className="object-contain p-1"
+            fallbackClassName="bg-transparent"
+            fallback={<Ikon className="h-6 w-6" strokeWidth={1.5} />}
+          />
         </div>
 
         <div className="min-w-0 flex-1">

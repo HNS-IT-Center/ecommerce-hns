@@ -28,7 +28,8 @@ export interface Product {
   price: number
   regular_price?: number
   on_sale?: boolean
-  image_url: string
+  /** `null` = produk belum punya foto; `ProductImage` menggambar placeholder-nya. */
+  image_url: string | null
   sold: number
   badge?: "Hot" | "Deal" | "New" | null
   stock: number
@@ -112,7 +113,7 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
     event.stopPropagation();
     setIsAdding(true);
 
-    flyToCart(event.clientX, event.clientY, product.image_url);
+    flyToCart(event.clientX, event.clientY, product.image_url ?? undefined);
 
     setTimeout(() => {
       addItem({
@@ -121,7 +122,7 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
         name: product.name,
         price: product.price,
         quantity: 1,
-        image: product.image_url,
+        image: product.image_url ?? undefined,
       });
       setIsAdding(false);
       showCartToast();

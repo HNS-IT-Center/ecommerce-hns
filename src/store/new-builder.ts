@@ -101,6 +101,36 @@ export function sumBuilderSelections(
   }, 0)
 }
 
+/**
+ * Apakah pilihan pada step `dependent` cocok dengan pilihan pada step yang ia
+ * andalkan (`parent`), menurut `dependAttributes` milik step `dependent`.
+ *
+ * Aturannya SAMA PERSIS dengan query grid di `fetchBuilderProducts` karena
+ * keduanya memanggil `lib/pc-builder/compatibility.ts` — IRISAN: cukup ada
+ * SATU nilai yang sama per atribut.
+ *
+ * Bukan himpunan bagian. Menuntut kandidat memiliki SELURUH nilai induk tetap
+ * salah untuk kasus yang paling sering muncul: casing ATX tercatat sebagai
+ * tiga baris "Motherboard Size" (Mini-ITX, Micro-ATX, ATX) karena ketiganya
+ * memang muat, sedangkan motherboard Micro-ATX hanya punya satu. Dengan aturan
+ * himpunan bagian, motherboard yang justru cocok dinyatakan tidak cocok dan
+ * dibuang diam-diam. Irisan juga simetris — "casing dulu" dan "motherboard
+ * dulu" memberi jawaban yang sama.
+ *
+ * Induk yang tidak punya nilai untuk suatu atribut tidak memberi syarat apa
+ * pun — sama seperti grid, yang tidak mengirim kelompok apa pun untuknya.
+ *
+ * Dibiarkan sebagai pembungkus tipis: store bekerja dengan `BuilderProduct`,
+ * dan pemanggilnya tidak perlu tahu bentuk minimum yang diminta lapisan aturan.
+ */
+export function isSelectionCompatible(
+  dependent: BuilderProduct,
+  parent: BuilderProduct,
+  dependAttributes: number[] | undefined
+): boolean {
+  return isAttributeCompatible(dependent, parent, dependAttributes)
+}
+
 interface NewBuilderState {
   steps: PcBuilderStepConfig[]
   selections: Record<string, BuilderSelection[]> // stepId -> array of selected products
