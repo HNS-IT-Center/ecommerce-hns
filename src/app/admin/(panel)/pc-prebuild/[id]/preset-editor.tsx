@@ -6,6 +6,10 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { ArrowLeft, Check, Loader2, Save, TriangleAlert } from "lucide-react"
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  buildAttributeRequirementGroups,
+  type AttributeRequirementGroup,
+} from "@/lib/pc-builder/compatibility"
 import type { PcBuilderStepConfig } from "@/lib/pc-builder/config"
 import type { PcPrebuildItem, PcPrebuildPreset } from "@/lib/pc-prebuild/config"
 import type { PrebuildGame } from "@/lib/pc-prebuild/games"
@@ -126,23 +130,23 @@ export function PresetEditor({ initialPreset, isNew, steps, games, initialCatalo
    * tidak bisa dipasang bersama — dan itu baru ketahuan di meja teknisi.
    */
   const syaratAtribut = useMemo(() => {
-    const hasil = new Map<string, number[]>()
+    const hasil = new Map<string, AttributeRequirementGroup[]>()
 
     for (const step of steps) {
-      const nilai: number[] = []
-
-      for (const depStepId of step.dependSteps ?? []) {
+      const induk = (step.dependSteps ?? []).flatMap((depStepId) => {
         const items = slots.find((s) => s.stepId === depStepId)?.items ?? []
-        for (const item of items) {
-          const produk = katalog.get(item.productId)
-          if (!produk) continue
-          for (const attr of produk.attributes) {
-            if (step.dependAttributes?.includes(attr.attributeId)) nilai.push(attr.valueId)
-          }
-        }
-      }
+        return items
+          .map((item) => katalog.get(item.productId))
+          .filter((p): p is NonNullable<typeof p> => p !== undefined)
+      })
 
-      hasil.set(step.id, nilai)
+      // Dikelompokkan per atribut per komponen induk lewat aturan bersama —
+      // sama persis dengan yang dipakai wizard. Dulu disusun di sini sebagai
+      // daftar valueId datar yang semuanya wajib dimiliki kandidat, dan itu
+      // mengosongkan daftar produk setiap kali komponen induknya punya lebih
+      // dari satu nilai untuk satu atribut (casing ATX menampung tiga ukuran
+      // motherboard sekaligus). Lihat `lib/pc-builder/compatibility.ts`.
+      hasil.set(step.id, buildAttributeRequirementGroups(induk, step.dependAttributes))
     }
 
     return hasil
@@ -323,7 +327,7 @@ export function PresetEditor({ initialPreset, isNew, steps, games, initialCatalo
                       katalog={katalog}
                       onLearn={pelajariProduk}
                       branchingLeft={Math.max(0, MAX_BRANCHING_ITEMS - bercabang)}
-                      requiredAttributeValueIds={syaratAtribut.get(step.id) ?? []}
+                      requiredAttributeValueGroups={syaratAtribut.get(step.id) ?? []}
                     />
                   ))}
                 </div>

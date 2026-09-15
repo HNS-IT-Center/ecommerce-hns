@@ -1196,3 +1196,101 @@ yang diperbaiki di sini. Paginasi dan urutan sengaja TIDAK ikut masuk
 `AvailableBrandsParams`: keduanya tidak memengaruhi merek mana yang tersedia,
 dan kalau ikut jadi kunci cache, setiap pindah halaman membuat entri cache baru
 untuk daftar yang isinya sama.
+
+---
+
+## 18. PC Builder: kompatibilitas, urutan harga & masa berlaku obral (15 September 2026)
+
+### `requiredAttributeValueIds` → `requiredAttributeValueGroups`
+
+`fetchBuilderProducts` (`features/builder/actions.ts`) dan
+`searchPrebuildProducts` (`lib/pc-prebuild/products.ts`) tidak lagi menerima
+daftar `valueId` datar yang **semuanya** wajib dimiliki kandidat. Keduanya kini
+menerima `AttributeRequirementGroup[]` — satu kelompok per atribut per komponen
+induk:
+
+```ts
+// SEMUA kelompok wajib terpenuhi, SALAH SATU nilai di dalam tiap kelompok cukup
+where.AND = groups.map((group) => ({
+  attributes: { some: { valueId: { in: group } } },
+}))
+```
+
+Kelompoknya disusun `buildAttributeRequirementGroups()` di
+[`lib/pc-builder/compatibility.ts`](../src/lib/pc-builder/compatibility.ts) —
+berkas yang sama juga memuat `isAttributeCompatible()` yang dipakai
+`useNewBuilderStore.selectProduct` saat memangkas pilihan langkah lain. Grid dan
+pemangkasan WAJIB memakai aturan yang sama; kalau tidak, kartu yang lolos grid
+akan dibuang begitu diklik.
+
+**Kenapa berubah.** Satu atribut bisa punya banyak nilai pada satu produk:
+casing ATX tercatat sebagai tiga baris "Motherboard Size" sekaligus (Mini-ITX,
+Micro-ATX, ATX) karena ketiganya memang muat. Pemeriksaan lama di store memakai
+`.find()` + `!==` — hanya melihat nilai **pertama**, sehingga nilai mana yang
+terambil bergantung urutan baris atribut di database, dan motherboard yang sudah
+dipilih terbuang diam-diam saat casing dipilih. Aturan barunya irisan (cukup
+satu nilai sama per atribut), yang juga membuat hasilnya **simetris**: tidak
+lagi bergantung pada komponen mana yang dipilih lebih dulu.
+
+Pengelompokan per komponen induk itu penting: dua induk berbeda tidak boleh
+saling melonggarkan syarat. Kalau prosesor mensyaratkan DDR5 dan motherboard
+menerima DDR4 atau DDR5, RAM DDR4 tetap harus gugur.
+
+### Urutan harga tidak lagi lewat `ORDER BY regularPrice`
+
+`sort: "price_asc" | "price_desc"` di `fetchBuilderProducts` kini diperingkat di
+lapisan aplikasi, bukan di database:
+
+1. Satu kueri ringan atas **seluruh** kandidat yang lolos filter — hanya `id`,
+   kolom harga, dan harga/stok variannya.
+2. Harga kartu dihitung `hargaKartu()`, fungsi yang sama yang dipakai pemetaan
+   kartu, lalu diurutkan dengan `id` sebagai pemecah seri.
+3. Halamannya diiris dari urutan itu, dan baris lengkapnya diambil lewat
+   `id: { in: [...] }` lalu dirangkai ulang mengikuti peringkat.
+
+`ORDER BY regularPrice` salah karena dua hal: yang tampil di kartu adalah
+`salePrice` kalau ada, dan induk VARIABLE hampir selalu ber-`regularPrice` nol
+(harganya ada di variannya) sehingga seluruh produk bervarian menumpuk di ujung
+daftar. Gejalanya bagi pelanggan: urutan "Harga: rendah ke tinggi" terlihat
+acak. Mengurutkan hanya 20 baris per halaman juga tidak cukup — yang termurah
+bisa berada di halaman mana pun.
+
+**Beban yang perlu diawasi:** kueri peringkat menarik `variations` untuk setiap
+kandidat, jadi pada kategori yang padat varian jumlah barisnya berlipat dari
+jumlah produknya. Kalau suatu langkah menunjuk kategori sangat lebar dan tombol
+Harga terasa lambat, di situlah tempat mencarinya.
+
+### `saleEndDate` wajib dibaca di seluruh jalur PC Builder
+
+Kolom `saleEndDate` **tidak** dibersihkan otomatis saat tanggalnya lewat, jadi
+setiap lapisan baca harus mengabaikan obral kedaluwarsa sendiri:
+
+```
+obral = salePrice > 0 && (saleEndDate === null || saleEndDate > sekarang)
+price = obral ? salePrice : regularPrice
+```
+
+Etalase sudah melakukannya (`applySaleExpiry` di
+`lib/api/woocommerce/products.ts`) dan jalur uang juga (`harga` di
+`lib/api/woocommerce/cart-pricing.ts`), tapi PC Builder dulu tidak pernah
+membaca kolom itu — bahkan tidak menyertakannya di `select`. Akibatnya kartu
+komponen di `/build-pc` menampilkan harga obral kedaluwarsa sementara total
+panel "My Build" dan pesan WhatsApp memakai harga normal yang lebih mahal: dua
+angka berbeda untuk barang yang sama di satu layar, melanggar CLAUDE.md §2.7.
+
+Aturannya kini seragam di empat salinan: `features/builder/actions.ts`,
+`lib/pc-prebuild/products.ts`, `lib/pc-prebuild/resolve.ts`, dan
+`lib/pc-prebuild/analysis-input.ts`. `salePrice` ikut dinolkan saat obralnya
+lewat, bukan hanya `price`, supaya kartu tidak menampilkan harga coret untuk
+potongan yang sudah tidak berlaku. `cart-pricing.ts` sengaja tidak disentuh — ia
+sudah benar, dan dialah yang menentukan angka yang dikirim ke CS.
+
+### `revalidatePath` setelah rakitan disimpan
+
+`saveBuildAction`, `deleteSavedBuildAction`, dan `refreshBuildPricesAction`
+(`features/builder/actions-save.ts`) kini memanggil `revalidatePath("/profile")`
+dan `revalidatePath("/profile/rakitan/[id]", "page")` setelah perubahan yang
+berhasil; `SaveBuildDialog` melengkapinya dengan `router.refresh()` di sisi
+klien. Tanpa itu, rakitan yang baru disimpan tidak muncul di "Rakitan
+Tersimpan" — daftarnya dirender di server dan masih dilayani dari salinan lama,
+yang dari sisi pelanggan tidak bisa dibedakan dari "simpannya gagal".

@@ -25,6 +25,7 @@ import {
 import type { PrebuildPickerProduct } from "@/lib/pc-prebuild/products"
 import { formatRupiah } from "@/lib/utils"
 
+import type { AttributeRequirementGroup } from "@/lib/pc-builder/compatibility"
 import { searchPrebuildProductsAction } from "../actions"
 
 /**
@@ -68,7 +69,7 @@ type Props = {
    * `preset-editor.tsx`. Kosong = langkah ini tidak bergantung pada langkah mana
    * pun, atau langkah yang digantunginya belum diisi.
    */
-  requiredAttributeValueIds: number[]
+  requiredAttributeValueGroups: AttributeRequirementGroup[]
 }
 
 export function SlotBoard({
@@ -78,7 +79,7 @@ export function SlotBoard({
   katalog,
   onLearn,
   branchingLeft,
-  requiredAttributeValueIds,
+  requiredAttributeValueGroups,
 }: Props) {
   const bolehTambah =
     items.length < MAX_ITEMS_PER_SLOT && (step.allowMultiple === true || items.length === 0)
@@ -140,7 +141,7 @@ export function SlotBoard({
               katalog={katalog}
               onLearn={onLearn}
               branchingLeft={branchingLeft}
-              requiredAttributeValueIds={requiredAttributeValueIds}
+              requiredAttributeValueGroups={requiredAttributeValueGroups}
               onChange={(patch) => ubahItem(index, patch)}
               onRemove={() => onChange(items.filter((_, i) => i !== index))}
             />
@@ -158,7 +159,7 @@ function ItemRow({
   katalog,
   onLearn,
   branchingLeft,
-  requiredAttributeValueIds,
+  requiredAttributeValueGroups,
   onChange,
   onRemove,
 }: {
@@ -167,7 +168,7 @@ function ItemRow({
   katalog: Map<number, PrebuildPickerProduct>
   onLearn: (products: PrebuildPickerProduct[]) => void
   branchingLeft: number
-  requiredAttributeValueIds: number[]
+  requiredAttributeValueGroups: AttributeRequirementGroup[]
   onChange: (patch: Partial<PcPrebuildItem>) => void
   onRemove: () => void
 }) {
@@ -205,7 +206,7 @@ function ItemRow({
             selected={produk}
             onSelect={pilihProduk}
             onLearn={onLearn}
-            requiredAttributeValueIds={requiredAttributeValueIds}
+            requiredAttributeValueGroups={requiredAttributeValueGroups}
             missingId={item.productId > 0 && !produk ? item.productId : null}
           />
         </div>
@@ -343,7 +344,7 @@ function ItemRow({
                   alt={alt}
                   katalog={katalog}
                   onLearn={onLearn}
-                  requiredAttributeValueIds={requiredAttributeValueIds}
+                  requiredAttributeValueGroups={requiredAttributeValueGroups}
                   onChange={(patch) =>
                     onChange({
                       alternatives: item.alternatives.map((a, j) =>
@@ -389,7 +390,7 @@ function AlternativeRow({
   alt,
   katalog,
   onLearn,
-  requiredAttributeValueIds,
+  requiredAttributeValueGroups,
   onChange,
   onRemove,
 }: {
@@ -397,7 +398,7 @@ function AlternativeRow({
   alt: PcPrebuildAlternative
   katalog: Map<number, PrebuildPickerProduct>
   onLearn: (products: PrebuildPickerProduct[]) => void
-  requiredAttributeValueIds: number[]
+  requiredAttributeValueGroups: AttributeRequirementGroup[]
   onChange: (patch: Partial<PcPrebuildAlternative>) => void
   onRemove: () => void
 }) {
@@ -412,7 +413,7 @@ function AlternativeRow({
           compact
           onSelect={(p) => onChange({ productId: p.id, variationId: p.variations[0]?.id })}
           onLearn={onLearn}
-          requiredAttributeValueIds={requiredAttributeValueIds}
+          requiredAttributeValueGroups={requiredAttributeValueGroups}
           missingId={alt.productId > 0 && !produk ? alt.productId : null}
         />
       </div>
@@ -448,7 +449,7 @@ function AlternativeRow({
  *
  * ## Aturan atribut PC Builder ikut ditegakkan
  *
- * `requiredAttributeValueIds` datang dari `dependSteps`/`dependAttributes`
+ * `requiredAttributeValueGroups` datang dari `dependSteps`/`dependAttributes`
  * langkah ini. Begitu prosesor AM4 dipilih, langkah Motherboard hanya
  * menampilkan mainboard AM4 — sama persis seperti yang dialami pelanggan di
  * wizard. Perubahannya ikut memicu pencarian ulang, jadi mengganti prosesor
@@ -459,7 +460,7 @@ function ProductPicker({
   selected,
   onSelect,
   onLearn,
-  requiredAttributeValueIds,
+  requiredAttributeValueGroups,
   missingId,
   compact = false,
 }: {
@@ -467,7 +468,7 @@ function ProductPicker({
   selected: PrebuildPickerProduct | null
   onSelect: (product: PrebuildPickerProduct) => void
   onLearn: (products: PrebuildPickerProduct[]) => void
-  requiredAttributeValueIds: number[]
+  requiredAttributeValueGroups: AttributeRequirementGroup[]
   /** Id yang tersimpan tapi tidak ada di katalog — produknya sudah dihapus. */
   missingId: number | null
   compact?: boolean
@@ -482,8 +483,9 @@ function ProductPicker({
 
   // Dibandingkan sebagai STRING: array-nya dibuat ulang tiap render di
   // pemanggil walau isinya sama, dan memasukkannya langsung ke daftar
-  // ketergantungan membuat pencarian berjalan tanpa henti.
-  const syaratKunci = requiredAttributeValueIds.join(",")
+  // ketergantungan membuat pencarian berjalan tanpa henti. `|` memisahkan
+  // kelompok supaya dua susunan berbeda tidak menghasilkan kunci yang sama.
+  const syaratKunci = requiredAttributeValueGroups.map((g) => g.join(",")).join("|")
 
   /**
    * Pencarian ditunda 300 ms setelah ketikan berhenti.
@@ -502,7 +504,9 @@ function ProductPicker({
       try {
         const { products } = await searchPrebuildProductsAction({
           categoryIds: step.categoryIds ?? [],
-          requiredAttributeValueIds: syaratKunci ? syaratKunci.split(",").map(Number) : [],
+          requiredAttributeValueGroups: syaratKunci
+            ? syaratKunci.split("|").map((g) => g.split(",").map(Number))
+            : [],
           searchQuery: query,
           limit: 12,
         })
@@ -600,7 +604,7 @@ function ProductPicker({
             {memuat && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />}
           </div>
 
-          {requiredAttributeValueIds.length > 0 && (
+          {requiredAttributeValueGroups.length > 0 && (
             <p className="border-b bg-muted/50 px-3 py-1.5 text-[11px] text-muted-foreground">
               Disaring mengikuti aturan PC Builder — hanya produk yang cocok dengan komponen di
               langkah sebelumnya.
@@ -610,7 +614,7 @@ function ProductPicker({
           <div className="max-h-64 overflow-y-auto">
             {hasil.length === 0 && !memuat ? (
               <p className="px-3 py-4 text-center text-xs text-muted-foreground">
-                {requiredAttributeValueIds.length > 0
+                {requiredAttributeValueGroups.length > 0
                   ? "Tidak ada produk yang cocok dengan komponen yang sudah dipilih."
                   : query
                     ? "Tidak ada produk yang cocok."

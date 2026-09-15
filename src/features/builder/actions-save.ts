@@ -1,5 +1,7 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+
 import { getCurrentCustomer } from "@/lib/auth/customer";
 import {
   createSavedBuild,
@@ -56,7 +58,35 @@ export async function saveBuildAction(name: string, items: SaveBuildInput[]): Pr
     quantity: item.quantity,
   }));
 
-  return createSavedBuild(customer.id, finalName, refs);
+  const hasil = await createSavedBuild(customer.id, finalName, refs);
+
+  if (hasil.ok) invalidasiHalamanRakitan();
+
+  return hasil;
+}
+
+/**
+ * Buang salinan `/profile` (dan halaman detail rakitan) dari cache Next.
+ *
+ * Tanpa ini, rakitan yang BARU SAJA tersimpan tidak muncul di "Rakitan
+ * Tersimpan": daftarnya dirender di server, dan hasil render itu masih
+ * tersimpan di Router Cache milik peramban dari kunjungan sebelumnya. Tombol
+ * "Lihat Rakitan Saya" lalu mengantar pelanggan ke daftar versi lama —
+ * rakitannya sudah ada di database, hanya tidak terlihat oleh yang menyimpannya.
+ * Dari sisi pelanggan itu tidak bisa dibedakan dari "simpannya gagal", dan
+ * satu-satunya jalan keluar adalah memuat ulang halaman secara manual.
+ *
+ * Dipanggil dari SELURUH aksi yang mengubah daftar rakitan (simpan, hapus,
+ * perbarui harga acuan), bukan hanya simpan: ketiganya mengubah apa yang
+ * seharusnya tampil di halaman yang sama.
+ *
+ * `revalidatePath` di sini melengkapi `router.refresh()` di sisi klien, tidak
+ * menggantikannya — yang satu menyegarkan sesi yang sedang berjalan, yang lain
+ * menjamin permintaan berikutnya tidak dilayani dari cache server.
+ */
+function invalidasiHalamanRakitan() {
+  revalidatePath("/profile");
+  revalidatePath("/profile/rakitan/[id]", "page");
 }
 
 export async function deleteSavedBuildAction(id: string): Promise<{ ok: boolean }> {
@@ -64,6 +94,8 @@ export async function deleteSavedBuildAction(id: string): Promise<{ ok: boolean 
   if (!customer) return { ok: false };
 
   const deleted = await deleteSavedBuild(id, customer.id);
+  if (deleted) invalidasiHalamanRakitan();
+
   return { ok: deleted };
 }
 
@@ -81,5 +113,7 @@ export async function refreshBuildPricesAction(id: string): Promise<{ ok: boolea
   if (!customer) return { ok: false };
 
   const ok = await refreshBuildPrices(id, customer.id);
+  if (ok) invalidasiHalamanRakitan();
+
   return { ok };
 }

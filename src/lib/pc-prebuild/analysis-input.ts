@@ -40,6 +40,7 @@ export async function getAnalysisProducts(
       name: true,
       regularPrice: true,
       salePrice: true,
+      saleEndDate: true,
       categories: {
         select: {
           isPrimary: true,
@@ -51,8 +52,11 @@ export async function getAnalysisProducts(
 
   return new Map(
     rows.map((p) => {
-      const sale = p.salePrice ? Number(p.salePrice) : 0
+      const saleMentah = p.salePrice ? Number(p.salePrice) : 0
       const regular = p.regularPrice ? Number(p.regularPrice) : 0
+      const obralBerlaku =
+        saleMentah > 0 && (p.saleEndDate === null || p.saleEndDate.getTime() > Date.now())
+      const sale = obralBerlaku ? saleMentah : 0
 
       // Kategori utama lebih dulu — itu yang paling menolong model mengenali
       // komponen ketika nama langkah yang ditulis staff kabur ("Bagian 3").
@@ -66,9 +70,13 @@ export async function getAnalysisProducts(
           id: p.id,
           name: p.name,
           // Aturan harga yang sama persis dengan `resolve.ts` dan
-          // `fetchBuilderProducts`: salePrice kalau ada, kalau tidak
-          // regularPrice. Tidak ada perkalian, tidak ada persentase
-          // (CLAUDE.md §2.7).
+          // `fetchBuilderProducts`: salePrice kalau obralnya masih berlaku,
+          // kalau tidak regularPrice. Tidak ada perkalian, tidak ada
+          // persentase (CLAUDE.md §2.7).
+          //
+          // `saleEndDate` ikut dibaca supaya analisis paket tidak menilai
+          // performa harga dari obral yang sudah kedaluwarsa — angka yang
+          // tidak akan diberikan keranjang kepada siapa pun.
           price: sale > 0 ? sale : regular,
           categories: kategori.map((c) => c.category.name),
         },

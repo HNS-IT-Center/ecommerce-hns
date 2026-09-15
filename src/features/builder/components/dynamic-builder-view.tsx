@@ -9,6 +9,7 @@ import {
   type BuilderVariation,
 } from "@/store/new-builder"
 import { PcBuilderStepConfig } from "@/lib/pc-builder/config"
+import { buildAttributeRequirementGroups } from "@/lib/pc-builder/compatibility"
 import { formatRupiah } from "@/lib/utils"
 import { fetchBuilderProducts } from "../actions"
 import { saveBuildAction } from "../actions-save"
@@ -29,6 +30,7 @@ import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Edit2, Messag
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useToastManager } from "@/components/ui/toast"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { motion, AnimatePresence } from "framer-motion"
 import Image from "next/image"
 import Stack3Icon from "@/components/icons/stack-icon"
@@ -79,6 +81,9 @@ export function DynamicBuilderView({
   // setelah simpan sukses. Direset begitu SaveBuildDialog ditutup.
   const [saveDialogIsForNewBuild, setSaveDialogIsForNewBuild] = useState(false)
   const [isStartNewDialogOpen, setIsStartNewDialogOpen] = useState(false)
+  // Konfirmasi tombol Reset. Menggantikan `window.confirm` — lihat
+  // `handleRequestReset` di bawah.
+  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false)
   // Ajakan masuk untuk pengunjung tanpa akun yang menekan Simpan. Menggantikan
   // lompatan langsung ke /login — lihat `handleOpenSaveDialog`.
   const [isLoginPromptOpen, setIsLoginPromptOpen] = useState(false)
@@ -306,26 +311,31 @@ export function DynamicBuilderView({
   const activeStep = steps.find(s => s.id === activeStepId)
   const activeStepIndex = steps.findIndex(s => s.id === activeStepId)
 
-  // Determine dependencies (forward only)
-  const requiredAttributeValueIds = useMemo(() => {
-    const req: number[] = []
-    if (activeStep) {
-      // Only filter based on parent steps that THIS step depends on
-      activeStep.dependSteps?.forEach(depStepId => {
-        const stepSels = Array.isArray(selections[depStepId]) ? selections[depStepId] : []
-        stepSels.forEach(sel => {
-          sel.product.attributes.forEach(attr => {
-            if (activeStep.dependAttributes?.includes(attr.attributeId)) {
-              req.push(attr.valueId)
-            }
-          })
-        })
-      })
-    }
-    return req
+  /**
+   * Syarat kompatibilitas untuk langkah yang sedang dibuka, disusun dari
+   * komponen yang sudah dipilih di langkah-langkah yang ia andalkan.
+   *
+   * Dikelompokkan per atribut per komponen induk — BUKAN daftar valueId datar
+   * yang semuanya wajib dimiliki. Casing ATX tercatat sebagai tiga nilai
+   * "Motherboard Size" sekaligus, dan menuntut motherboard memiliki ketiganya
+   * membuang justru yang cocok. Aturan lengkapnya (dan alasannya) ada di
+   * `lib/pc-builder/compatibility.ts`, yang juga dipakai store saat memangkas
+   * pilihan langkah lain — keduanya WAJIB sepakat.
+   */
+  const requiredAttributeValueGroups = useMemo(() => {
+    if (!activeStep) return []
+
+    const parents = (activeStep.dependSteps ?? []).flatMap(depStepId => {
+      const stepSels = Array.isArray(selections[depStepId]) ? selections[depStepId] : []
+      return stepSels.map(sel => sel.product)
+    })
+
+    return buildAttributeRequirementGroups(parents, activeStep.dependAttributes)
   }, [activeStep, selections])
 
-  const reqAttrIdsStr = requiredAttributeValueIds.join(",");
+  // Kunci efek pemuatan: bentuk datar dari kelompoknya, dengan `|` memisahkan
+  // kelompok supaya dua susunan berbeda tidak menghasilkan kunci yang sama.
+  const reqAttrIdsStr = requiredAttributeValueGroups.map(g => g.join(",")).join("|");
 
   const configuredAttributeIds = useMemo(() => {
     const ids = new Set<number>()
@@ -345,7 +355,7 @@ export function DynamicBuilderView({
 
     fetchBuilderProducts({
       categoryIds: activeStep.categoryIds || [],
-      requiredAttributeValueIds,
+      requiredAttributeValueGroups,
       configuredAttributeIds,
       searchQuery: debouncedSearch,
       limit: 20,
@@ -484,6 +494,40 @@ export function DynamicBuilderView({
       }))
     })
 
+  /**
+   * Menutup KEDUA laci mobile. WAJIB dipanggil sebelum membuka dialog apa pun
+   * dari dalam laci.
+   *
+   * Laci duduk di `z-[55]`, sedangkan seluruh dialog project ini (Dialog dan
+   * AlertDialog, lihat `components/ui/dialog.tsx`) di-portal ke body dengan
+   * `z-50`. Artinya dialog yang dibuka selagi laci terbuka memang muncul di
+   * DOM, tapi seluruhnya tertutup laci: pelanggan menekan "Simpan" di panel My
+   * Build versi mobile, tidak melihat apa-apa, dan rakitannya tidak pernah
+   * tersimpan karena formulirnya tidak bisa disentuh.
+   *
+   * Menutup lacinya — bukan menaikkan z-index dialog — karena lacinya memang
+   * sudah selesai tugasnya begitu aksi di dalamnya ditekan, dan menaikkan
+   * z-index satu dialog berarti mengubah tumpukan untuk seluruh halaman lain
+   * yang memakai dialog yang sama.
+   */
+  const closeMobileDrawers = () => {
+    setIsMobileMyBuildOpen(false)
+    setIsMobileStepsOpen(false)
+  }
+
+  /**
+   * Tombol Reset. Dulu memanggil `window.confirm` langsung, dan itu
+   * memunculkan kotak peringatan bawaan peramban di tengah alur yang seluruh
+   * dialog lainnya sudah memakai komponen sendiri — di sebagian peramban
+   * mobile kotak itu bahkan menyebut nama domain dan menawarkan "cegah halaman
+   * ini membuat dialog lagi", yang kalau ditekan membuat tombol Reset diam
+   * seterusnya.
+   */
+  const handleRequestReset = () => {
+    closeMobileDrawers()
+    setIsResetConfirmOpen(true)
+  }
+
   const handleOpenSaveDialog = () => {
     if (buildLineItems().length === 0) {
       toastManager.add({
@@ -492,6 +536,10 @@ export function DynamicBuilderView({
       })
       return
     }
+
+    // Dua dialog bisa lahir dari sini, dan dua-duanya akan tertimbun laci
+    // mobile kalau lacinya dibiarkan terbuka.
+    closeMobileDrawers()
 
     /*
      * Dialog, BUKAN `window.location.href = "/login..."` seperti sebelumnya.
@@ -622,6 +670,7 @@ export function DynamicBuilderView({
    * bawah) karena niat awalnya memang "mulai baru", bukan sekadar menyimpan.
    */
   const handleSaveFirst = () => {
+    closeMobileDrawers()
     setSaveDialogIsForNewBuild(true)
     setIsSaveDialogOpen(true)
   }
@@ -783,11 +832,7 @@ export function DynamicBuilderView({
       <div className="flex items-center justify-between mb-4 shrink-0">
         <h2 className="font-bold text-lg">Build Progress</h2>
         <button
-          onClick={() => {
-            if (window.confirm("Apakah Anda yakin ingin mereset semua pilihan komponen rakitan PC ini?")) {
-              clearSelections();
-            }
-          }}
+          onClick={handleRequestReset}
           className="text-xs text-muted-foreground hover:text-red-500 bg-background hover:bg-red-50 dark:hover:bg-red-950/30 px-2 py-1 rounded-md transition-colors cursor-pointer flex items-center gap-1 shadow-sm border border-border/50"
         >
           <RotateCcw className="w-3 h-3" />
@@ -1704,6 +1749,22 @@ export function DynamicBuilderView({
         }}
         onPickVariation={(variation) => {
           if (quickViewProduct) handlePickVariation(quickViewProduct, variation)
+        }}
+      />
+
+      {/* Konfirmasi Reset. Rakitan baru dikosongkan setelah pelanggan menekan
+          tombol merahnya — `clearSelections` tidak pernah dipanggil dari
+          tempat lain selain di sini dan `handleDiscardAndStartNew`. */}
+      <ConfirmDialog
+        open={isResetConfirmOpen}
+        onOpenChange={setIsResetConfirmOpen}
+        title="Reset semua pilihan?"
+        description="Seluruh komponen yang sudah Anda pilih akan dikeluarkan dari rakitan ini. Tindakan ini tidak bisa dibatalkan."
+        confirmLabel="Reset Rakitan"
+        destructive
+        onConfirm={() => {
+          clearSelections()
+          setShowPreviousBuildBanner(false)
         }}
       />
 

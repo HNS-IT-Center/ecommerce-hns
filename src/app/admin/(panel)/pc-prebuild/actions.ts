@@ -13,6 +13,7 @@ import {
 } from "@/lib/pc-prebuild/config"
 import { parsePrebuildGames } from "@/lib/pc-prebuild/games"
 import { searchPrebuildProducts } from "@/lib/pc-prebuild/products"
+import type { AttributeRequirementGroup } from "@/lib/pc-builder/compatibility"
 
 /**
  * Tipe SENGAJA tidak di-re-export dari sini.
@@ -149,7 +150,7 @@ export async function setPcPrebuildEnabled(enabled: boolean) {
 export async function searchPrebuildProductsAction(input: {
   categoryIds: number[]
   /** Aturan `dependSteps`/`dependAttributes` PC Builder — lihat `products.ts`. */
-  requiredAttributeValueIds?: number[]
+  requiredAttributeValueGroups?: AttributeRequirementGroup[]
   searchQuery?: string
   limit?: number
   page?: number

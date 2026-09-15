@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client"
 
 import { getPrisma } from "@/lib/prisma/client"
 import { buildVariationLabel } from "@/lib/utils/variation"
+import type { AttributeRequirementGroup } from "@/lib/pc-builder/compatibility"
 
 /**
  * Pencarian produk untuk panel PC Prebuild.
@@ -29,8 +30,14 @@ import { buildVariationLabel } from "@/lib/utils/variation"
  *
  * ## Aturan harga & stok SAMA PERSIS
  *
- *     price = salePrice > 0 ? salePrice : regularPrice
+ *     obral = salePrice > 0 && (saleEndDate === null || saleEndDate > sekarang)
+ *     price = obral ? salePrice : regularPrice
  *     stock = stockStatus === "OUTOFSTOCK" ? 0 : (stockQty ?? 10)
+ *
+ * `saleEndDate` ikut dibaca karena kolomnya tidak dibersihkan otomatis saat
+ * tanggalnya lewat — lihat penjelasan lengkapnya di `hargaBerlaku`
+ * (`features/builder/actions.ts`). Tanpa itu, panel admin menampilkan obral
+ * kedaluwarsa yang tidak akan pernah diberikan keranjang maupun CS.
  *
  * Kalau salah satunya diubah, ubah juga di `fetchBuilderProducts`,
  * `fetchBuilderProductsByIds`, dan `resolve.ts`. Angka di panel admin harus
@@ -75,10 +82,16 @@ export type PrebuildPickerProduct = {
   attributes: PrebuildAttribute[]
 }
 
-function hargaBerlaku(regular: Prisma.Decimal | null, sale: Prisma.Decimal | null): number {
+function hargaBerlaku(
+  regular: Prisma.Decimal | null,
+  sale: Prisma.Decimal | null,
+  saleEndDate: Date | null
+): number {
   const salePrice = sale ? Number(sale) : 0
   const regularPrice = regular ? Number(regular) : 0
-  return salePrice > 0 ? salePrice : regularPrice
+  const obralBerlaku =
+    salePrice > 0 && (saleEndDate === null || saleEndDate.getTime() > Date.now())
+  return obralBerlaku ? salePrice : regularPrice
 }
 
 function stokBerlaku(status: string | null, qty: number | null): number {
@@ -93,6 +106,7 @@ const PILIH_PRODUK = {
   type: true,
   regularPrice: true,
   salePrice: true,
+  saleEndDate: true,
   stockQty: true,
   stockStatus: true,
   images: { orderBy: { position: "asc" }, take: 1, select: { url: true } },
@@ -110,6 +124,7 @@ const PILIH_PRODUK = {
       name: true,
       regularPrice: true,
       salePrice: true,
+      saleEndDate: true,
       stockQty: true,
       stockStatus: true,
       attributes: {
@@ -136,13 +151,13 @@ function petakan(p: BarisProduk): PrebuildPickerProduct {
     name: p.name,
     slug: p.slug,
     type: p.type,
-    price: hargaBerlaku(p.regularPrice, p.salePrice),
+    price: hargaBerlaku(p.regularPrice, p.salePrice, p.saleEndDate),
     stock: stokBerlaku(p.stockStatus, p.stockQty),
     image: p.images[0]?.url ?? null,
     variations: p.variations.map((v) => ({
       id: v.id,
       label: labelVarian(v),
-      price: hargaBerlaku(v.regularPrice, v.salePrice),
+      price: hargaBerlaku(v.regularPrice, v.salePrice, v.saleEndDate),
       stock: stokBerlaku(v.stockStatus, v.stockQty),
     })),
     attributes: p.attributes.map((a) => ({
@@ -163,23 +178,29 @@ function petakan(p: BarisProduk): PrebuildPickerProduct {
  */
 export async function searchPrebuildProducts({
   categoryIds,
-  requiredAttributeValueIds = [],
+  requiredAttributeValueGroups = [],
   searchQuery = "",
   limit = 20,
   page = 1,
 }: {
   categoryIds: number[]
   /**
-   * Nilai atribut yang WAJIB dimiliki produk — aturan `dependSteps` /
-   * `dependAttributes` milik PC Builder, ditegakkan sama persis seperti di
-   * wizard: produk harus mencocokkan SEMUANYA, bukan salah satu.
+   * Syarat atribut dari `dependSteps`/`dependAttributes` milik PC Builder,
+   * ditegakkan sama persis seperti di wizard — lewat fungsi yang sama,
+   * `buildAttributeRequirementGroups` di `lib/pc-builder/compatibility.ts`.
    *
    * Ini yang membuat langkah "Motherboard" hanya menampilkan mainboard dengan
    * socket yang sama dengan prosesor yang sudah dipilih. Tanpa ini, panel admin
    * membiarkan staff menyusun paket yang komponennya tidak bisa dipasang
    * bersama — dan paket itu baru ketahuan salah di meja teknisi.
+   *
+   * Berkelompok, bukan daftar valueId datar: kandidat harus memenuhi SEMUA
+   * kelompok tapi cukup salah satu nilai di dalam tiap kelompok. Aturan lama
+   * menuntut kandidat memiliki SELURUH nilai milik induk, dan itu mengosongkan
+   * daftar setiap kali induknya bernilai jamak — casing ATX yang menampung tiga
+   * ukuran motherboard adalah kasus yang paling sering muncul.
    */
-  requiredAttributeValueIds?: number[]
+  requiredAttributeValueGroups?: AttributeRequirementGroup[]
   searchQuery?: string
   limit?: number
   page?: number
@@ -219,12 +240,13 @@ export async function searchPrebuildProducts({
 
   const syarat: Prisma.ProductWhereInput[] = []
 
-  // Produk harus mencocokkan SEMUA nilai atribut yang diminta, bukan salah
-  // satu — satu `some` per nilai, persis seperti `fetchBuilderProducts`.
-  // Menggabungnya jadi satu `some: { valueId: { in: [...] } }` akan meloloskan
+  // SEMUA kelompok wajib terpenuhi, SALAH SATU nilai di dalam tiap kelompok
+  // sudah cukup — persis seperti `fetchBuilderProducts`. Menggabung seluruh
+  // kelompok jadi satu `some: { valueId: { in: [...] } }` akan meloloskan
   // produk yang cuma cocok pada satu atribut.
-  for (const valueId of [...new Set(requiredAttributeValueIds)]) {
-    syarat.push({ attributes: { some: { valueId } } })
+  for (const group of requiredAttributeValueGroups) {
+    if (group.length === 0) continue
+    syarat.push({ attributes: { some: { valueId: { in: [...new Set(group)] } } } })
   }
 
   const kata = searchQuery.trim().split(/\s+/).filter(Boolean)

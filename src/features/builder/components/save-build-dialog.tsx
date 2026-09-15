@@ -59,7 +59,21 @@ export function SaveBuildDialog({ open, onOpenChange, onConfirm, onSaved }: Save
     setSaving(true)
     setError(null)
 
-    const result = await onConfirm(name)
+    /*
+     * `onConfirm` memanggil server action, dan server action bisa MELEMPAR —
+     * bukan cuma mengembalikan `{ ok: false }`. Tanpa try/catch, lemparan itu
+     * meninggalkan dialog pada keadaan "Menyimpan…" selamanya: tombolnya
+     * terkunci, tidak ada pesan, dan tidak ada cara mencoba lagi selain memuat
+     * ulang halaman.
+     */
+    let result: { ok: boolean; error?: string }
+    try {
+      result = await onConfirm(name)
+    } catch {
+      setSaving(false)
+      setError("Gagal menghubungi server. Periksa koneksi Anda lalu coba lagi.")
+      return
+    }
 
     setSaving(false)
     if (!result.ok) {
@@ -68,6 +82,20 @@ export function SaveBuildDialog({ open, onOpenChange, onConfirm, onSaved }: Save
     }
 
     setSavedName(name.trim() || "Rakitan Anda")
+
+    /*
+     * Rakitan sudah ada di database, tapi `/profile` yang akan dibuka
+     * berikutnya masih bisa dilayani dari Router Cache peramban — salinan lama
+     * yang belum memuat rakitan ini. Gejalanya: pelanggan menekan "Lihat
+     * Rakitan Saya" dan mendarat di daftar yang tampak tidak berubah, seolah
+     * simpannya gagal.
+     *
+     * `router.refresh()` dipanggil di sini, BUKAN setelah `router.push` di
+     * bawah: penyegarannya sudah selesai sebelum halaman tujuan diminta,
+     * sehingga daftarnya sudah baru pada saat pertama terlihat. Sisi server
+     * menutup celah yang sama lewat `revalidatePath` di `actions-save.ts`.
+     */
+    router.refresh()
     onSaved?.()
   }
 

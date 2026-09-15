@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import { PcBuilderStepConfig } from "@/lib/pc-builder/config"
+import { isAttributeCompatible } from "@/lib/pc-builder/compatibility"
 
 /**
  * Satu pilihan varian pada produk bervarian.
@@ -169,26 +170,38 @@ export const useNewBuilderStore = create<NewBuilderState>()(
         
         if (!otherDependsOnCurrent && !currentDependsOnOther) return;
 
+        /**
+         * Aturannya SAMA PERSIS dengan query grid di `fetchBuilderProducts`
+         * karena keduanya memanggil `lib/pc-builder/compatibility.ts` — cukup
+         * ada SATU nilai yang sama per atribut (irisan). Kalau grid dan
+         * pemangkasan ini berbeda aturan, pelanggan melihat kartu yang lolos
+         * grid lalu dibuang begitu diklik.
+         *
+         * Dulu pemeriksaan ini memakai `.find()` + `!==`, yang hanya melihat
+         * nilai PERTAMA milik tiap atribut. Satu atribut bisa punya banyak
+         * nilai — casing ATX tercatat sebagai tiga baris "Motherboard Size"
+         * (Mini-ITX, Micro-ATX, ATX) — sehingga nilai mana yang terambil
+         * bergantung urutan baris di database, dan casing yang justru
+         * dirancang memuat motherboard Micro-ATX bisa dinyatakan tidak cocok.
+         * Akibatnya motherboard yang sudah dipilih terbuang diam-diam tanpa
+         * satu pun pesan. Jangan kembalikan ke perbandingan satu nilai.
+         */
         const validOtherSelections = otherStepSelections.filter(otherSel => {
-          let isCompatible = true;
-          
-          if (otherDependsOnCurrent) {
-            otherStep.dependAttributes?.forEach(attrId => {
-              const valA = otherSel.product.attributes.find(a => a.attributeId === attrId)?.valueId;
-              const valB = product.attributes.find(a => a.attributeId === attrId)?.valueId;
-              if (valA !== valB) isCompatible = false;
-            })
+          if (
+            otherDependsOnCurrent &&
+            !isAttributeCompatible(otherSel.product, product, otherStep.dependAttributes)
+          ) {
+            return false;
           }
-          
-          if (currentDependsOnOther) {
-            currentStep.dependAttributes?.forEach(attrId => {
-              const valA = product.attributes.find(a => a.attributeId === attrId)?.valueId;
-              const valB = otherSel.product.attributes.find(a => a.attributeId === attrId)?.valueId;
-              if (valA !== valB) isCompatible = false;
-            })
+
+          if (
+            currentDependsOnOther &&
+            !isAttributeCompatible(product, otherSel.product, currentStep.dependAttributes)
+          ) {
+            return false;
           }
-          
-          return isCompatible;
+
+          return true;
         });
 
         if (validOtherSelections.length === 0) {

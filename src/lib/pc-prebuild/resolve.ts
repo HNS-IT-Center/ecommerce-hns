@@ -149,11 +149,22 @@ export type ResolvedPrebuildPreset = {
  * `fetchBuilderProducts`, supaya angka di kartu paket tidak pernah berbeda dari
  * angka yang muncul begitu rakitannya dimuat ke wizard:
  *
- *   price = salePrice > 0 ? salePrice : regularPrice
+ *   obral = salePrice > 0 && (saleEndDate === null || saleEndDate > sekarang)
+ *   price = obral ? salePrice : regularPrice
  *   stock = stockStatus === "OUTOFSTOCK" ? 0 : (stockQty ?? 10)
  *
  * `salePrice` adalah satu-satunya potongan yang sah menurut CLAUDE.md §2.7, dan
  * ia dibaca apa adanya di sini — tidak ada perkalian, tidak ada persentase.
+ *
+ * `saleEndDate` ikut dibaca karena kolomnya tidak dibersihkan otomatis saat
+ * tanggalnya lewat; alasan lengkapnya ada di `hargaBerlaku`
+ * (`features/builder/actions.ts`).
+ *
+ * CATATAN CACHE: hasil di bawah melewati `unstable_cache`, jadi obral yang
+ * kedaluwarsa DI TENGAH umur cache masih bisa tersaji sampai entrinya
+ * disegarkan. Jendelanya sempit dan sama untuk seluruh halaman paket, tapi
+ * jalur keranjang (`priceCartFromCatalog`) sengaja tanpa cache — dialah yang
+ * menentukan angka yang benar-benar dikirim ke CS.
  */
 export async function getPrebuildProducts(
   ids: number[],
@@ -177,6 +188,7 @@ export async function getPrebuildProducts(
           slug: true,
           regularPrice: true,
           salePrice: true,
+          saleEndDate: true,
           stockStatus: true,
           stockQty: true,
           images: { orderBy: { position: "asc" }, take: 1, select: { url: true } },
@@ -193,8 +205,12 @@ export async function getPrebuildProducts(
       })
 
       return rows.map((p) => {
-        const sale = p.salePrice ? Number(p.salePrice) : 0
+        const saleMentah = p.salePrice ? Number(p.salePrice) : 0
         const regular = p.regularPrice ? Number(p.regularPrice) : 0
+        const obralBerlaku =
+          saleMentah > 0 &&
+          (p.saleEndDate === null || p.saleEndDate.getTime() > Date.now())
+        const sale = obralBerlaku ? saleMentah : 0
         const labelAtribut = buildVariationLabel(p.attributes.map((a) => a.value.value))
 
         return {
