@@ -180,7 +180,14 @@ export function ProductDetail({
   }
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 md:gap-12">
+    // `grid-cols-1` wajib ada meski di mobile hanya satu kolom. Tanpanya kolom
+    // implisitnya bertipe `auto`, yang melebar mengikuti isi terlebar — strip
+    // foto varian yang tidak wrap. Produk dengan belasan varian membuat kolom
+    // ini lebih lebar dari layar, wadah `overflow-x-auto` di strip ikut melebar
+    // sehingga tidak ada yang bisa digeser, dan sisanya terpotong
+    // `overflow-x-clip` milik body. Di Tailwind v4 `grid-cols-1` berarti
+    // `minmax(0, 1fr)`, jadi kolomnya terkunci selebar layar.
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-12">
       {/* Galeri dan strip varian menempel jadi satu blok di mobile: strip
           berdiri tepat di bawah foto, seperti di aplikasi marketplace. `gap-8`
           milik grid akan menyisipkan celah di antara keduanya, jadi keduanya
