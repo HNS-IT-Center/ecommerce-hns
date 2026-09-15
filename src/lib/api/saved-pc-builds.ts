@@ -113,16 +113,16 @@ async function resolveBuild(id: string, name: string, itemsJson: unknown, create
   const products = productIds.length
     ? await getPrisma().product.findMany({
         /*
-         * `wooId`, BUKAN `id` — `productId` di sini berasal dari rakitan yang
-         * disimpan pelanggan, dan builder menyimpan id yang dilihat storefront,
-         * yaitu `wooId` (lihat `db-mapper.ts`: `id: prismaProduct.wooId`).
-         * Mencocokkannya dengan kolom `id` membuat komponen yang sehat dilaporkan
-         * "sudah tidak tersedia". Sama sebabnya dengan `cart-pricing.ts`.
+         * `id` internal, BUKAN `wooId` — `productId` di sini berasal dari PC
+         * Builder, dan builder menyimpan `id` (`fetchBuilderProducts` → `id: p.id`).
+         * Pada 14 September 2026 kueri ini sempat dipindah ke `wooId` dengan
+         * anggapan builder memakai id storefront; akibatnya komponen yang sehat
+         * dilaporkan "sudah tidak tersedia". Lihat `CatalogIdColumn` di
+         * `cart-pricing.ts`.
          */
-        where: { wooId: { in: productIds }, status: "PUBLISHED" },
+        where: { id: { in: productIds }, status: "PUBLISHED" },
         select: {
           id: true,
-          wooId: true,
           name: true,
           slug: true,
           regularPrice: true,
@@ -141,7 +141,7 @@ async function resolveBuild(id: string, name: string, itemsJson: unknown, create
         },
       })
     : []
-  const byId = new Map(products.map((p) => [p.wooId, p]))
+  const byId = new Map(products.map((p) => [p.id, p]))
 
   let subtotal = 0
   let savedSubtotal = 0
@@ -166,9 +166,7 @@ async function resolveBuild(id: string, name: string, itemsJson: unknown, create
       ...ref,
       savedPrice: ref.price,
       product: {
-        // `wooId`: inilah "id produk" yang dikenal seluruh storefront, dan
-        // yang dipakai tautan ke halaman produk.
-        id: product.wooId,
+        id: product.id,
         name: product.parent?.name ?? product.name,
         slug: product.parent?.slug ?? product.slug,
         currentPrice,
@@ -253,16 +251,17 @@ export async function createSavedBuild(
   const productIds = [...new Set(items.map((i) => i.productId))]
   const products = await prisma.product.findMany({
       /*
-       * `wooId`, BUKAN `id` — `productId` di sini berasal dari rakitan yang
-       * disimpan pelanggan, dan builder menyimpan id yang dilihat storefront,
-       * yaitu `wooId` (lihat `db-mapper.ts`: `id: prismaProduct.wooId`).
-       * Mencocokkannya dengan kolom `id` membuat komponen yang sehat dilaporkan
-       * "sudah tidak tersedia". Sama sebabnya dengan `cart-pricing.ts`.
+       * `id` internal, BUKAN `wooId` — `productId` di sini berasal dari PC
+       * Builder, dan builder menyimpan `id` (`fetchBuilderProducts` → `id: p.id`).
+       * Pada 14 September 2026 kueri ini sempat dipindah ke `wooId` dengan
+       * anggapan builder memakai id storefront; akibatnya komponen yang sehat
+       * dilaporkan "sudah tidak tersedia". Lihat `CatalogIdColumn` di
+       * `cart-pricing.ts`.
        */
-    where: { wooId: { in: productIds } },
-    select: { wooId: true, regularPrice: true, salePrice: true },
+    where: { id: { in: productIds } },
+    select: { id: true, regularPrice: true, salePrice: true },
   })
-  const priceById = new Map(products.map((p) => [p.wooId, currentPriceOf(p)]))
+  const priceById = new Map(products.map((p) => [p.id, currentPriceOf(p)]))
 
   const refs: SavedBuildItemRef[] = items.map((item) => ({
     stepId: item.stepId,
@@ -309,16 +308,17 @@ export async function refreshBuildPrices(id: string, customerId: string): Promis
   const productIds = [...new Set(refs.map((r) => r.productId))]
   const products = await prisma.product.findMany({
       /*
-       * `wooId`, BUKAN `id` — `productId` di sini berasal dari rakitan yang
-       * disimpan pelanggan, dan builder menyimpan id yang dilihat storefront,
-       * yaitu `wooId` (lihat `db-mapper.ts`: `id: prismaProduct.wooId`).
-       * Mencocokkannya dengan kolom `id` membuat komponen yang sehat dilaporkan
-       * "sudah tidak tersedia". Sama sebabnya dengan `cart-pricing.ts`.
+       * `id` internal, BUKAN `wooId` — `productId` di sini berasal dari PC
+       * Builder, dan builder menyimpan `id` (`fetchBuilderProducts` → `id: p.id`).
+       * Pada 14 September 2026 kueri ini sempat dipindah ke `wooId` dengan
+       * anggapan builder memakai id storefront; akibatnya komponen yang sehat
+       * dilaporkan "sudah tidak tersedia". Lihat `CatalogIdColumn` di
+       * `cart-pricing.ts`.
        */
-    where: { wooId: { in: productIds }, status: "PUBLISHED" },
-    select: { wooId: true, regularPrice: true, salePrice: true },
+    where: { id: { in: productIds }, status: "PUBLISHED" },
+    select: { id: true, regularPrice: true, salePrice: true },
   })
-  const priceById = new Map(products.map((p) => [p.wooId, currentPriceOf(p)]))
+  const priceById = new Map(products.map((p) => [p.id, currentPriceOf(p)]))
 
   const refreshed: SavedBuildItemRef[] = refs.map((ref) => ({
     ...ref,
@@ -385,16 +385,16 @@ export async function getSavedBuildForBuilder(
   const products = productIds.length
     ? await getPrisma().product.findMany({
         /*
-         * `wooId`, BUKAN `id` — `productId` di sini berasal dari rakitan yang
-         * disimpan pelanggan, dan builder menyimpan id yang dilihat storefront,
-         * yaitu `wooId` (lihat `db-mapper.ts`: `id: prismaProduct.wooId`).
-         * Mencocokkannya dengan kolom `id` membuat komponen yang sehat dilaporkan
-         * "sudah tidak tersedia". Sama sebabnya dengan `cart-pricing.ts`.
+         * `id` internal, BUKAN `wooId` — `productId` di sini berasal dari PC
+         * Builder, dan builder menyimpan `id` (`fetchBuilderProducts` → `id: p.id`).
+         * Pada 14 September 2026 kueri ini sempat dipindah ke `wooId` dengan
+         * anggapan builder memakai id storefront; akibatnya komponen yang sehat
+         * dilaporkan "sudah tidak tersedia". Lihat `CatalogIdColumn` di
+         * `cart-pricing.ts`.
          */
-        where: { wooId: { in: productIds }, status: "PUBLISHED" },
+        where: { id: { in: productIds }, status: "PUBLISHED" },
         select: {
           id: true,
-          wooId: true,
           name: true,
           slug: true,
           type: true,
@@ -420,12 +420,11 @@ export async function getSavedBuildForBuilder(
            */
           parent: {
             select: {
-              // `wooId` ikut: `parentId` dan id tiap varian yang dikirim ke
-              // builder harus memakai ruang id yang sama dengan katalog
-              // (`products.ts` memakai `wooId` di mana-mana), supaya rakitan
-              // yang dimuat ulang cocok dengan produk yang dipilih dari grid.
+              // `parentId` dan id tiap varian yang dikirim ke builder harus
+              // memakai ruang id yang sama dengan katalog builder (`id`
+              // internal), supaya rakitan yang dimuat ulang cocok dengan produk
+              // yang dipilih dari grid.
               id: true,
-              wooId: true,
               name: true,
               slug: true,
               images: { orderBy: { position: "asc" }, take: 1, select: { url: true } },
@@ -440,7 +439,6 @@ export async function getSavedBuildForBuilder(
                 orderBy: { id: "asc" },
                 select: {
                   id: true,
-                  wooId: true,
                   name: true,
                   regularPrice: true,
                   salePrice: true,
@@ -455,9 +453,9 @@ export async function getSavedBuildForBuilder(
         },
       })
     : []
-  // Dikunci `wooId`, sama dengan id yang tersimpan di rakitan — lihat catatan
+  // Dikunci `id`, sama dengan id yang tersimpan di rakitan — lihat catatan
   // pada kueri di atas.
-  const byId = new Map(products.map((p) => [p.wooId, p]))
+  const byId = new Map(products.map((p) => [p.id, p]))
 
   // Rakitan tersimpan dibuka kembali di PC Builder, jadi ketersediaannya harus
   // dibaca dengan sakelar yang sama seperti katalog.
@@ -475,9 +473,9 @@ export async function getSavedBuildForBuilder(
     const induk = product.parent
 
     const builderProduct: BuilderReadyProduct = {
-      // `wooId` — id yang sama seperti yang dipakai katalog builder, supaya
+      // `id` internal — sama seperti yang dipakai katalog builder, supaya
       // rakitan yang dimuat ulang cocok dengan produk yang dipilih dari grid.
-      id: product.wooId,
+      id: product.id,
       // Nama induk untuk baris varian: varian warisan impor WooCommerce sering
       // bernama sama persis dengan induknya, jadi pembedanya HARUS
       // `variationLabel`, bukan `name`.
@@ -502,7 +500,7 @@ export async function getSavedBuildForBuilder(
       })),
       ...(induk
         ? {
-            parentId: induk.wooId,
+            parentId: induk.id,
             parentName: induk.name,
             variationLabel:
               buildVariationLabel(product.attributes.map((a) => a.value.value)) ?? undefined,
@@ -510,7 +508,7 @@ export async function getSavedBuildForBuilder(
               const vRegular = v.regularPrice ? Number(v.regularPrice) : 0
               const vSale = v.salePrice ? Number(v.salePrice) : 0
               return {
-                id: v.wooId,
+                id: v.id,
                 label: buildVariationLabel(v.attributes.map((a) => a.value.value)) ?? v.name,
                 price: vSale > 0 ? vSale : vRegular,
                 regularPrice: vRegular,

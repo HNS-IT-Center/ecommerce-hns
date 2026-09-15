@@ -56,6 +56,9 @@ export async function prepareBuildWhatsApp(
   const [priced, stores] = await Promise.all([
     priceCartFromCatalog(
       input.map((l) => ({ productId: l.productId, quantity: l.quantity })),
+      // Builder menyimpan `id` internal (`fetchBuilderProducts` → `id: p.id`),
+      // BUKAN `wooId` seperti keranjang. Lihat `CatalogIdColumn`.
+      "id",
     ),
     getActiveStores(),
   ]);
