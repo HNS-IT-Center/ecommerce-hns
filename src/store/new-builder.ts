@@ -100,6 +100,39 @@ export function sumBuilderSelections(
   }, 0)
 }
 
+/**
+ * Apakah pilihan pada step `dependent` cocok dengan pilihan pada step yang ia
+ * andalkan (`parent`), menurut `dependAttributes` milik step `dependent`.
+ *
+ * Aturannya SAMA PERSIS dengan query grid di `fetchBuilderProducts`: produk
+ * dependen harus memiliki SEMUA nilai atribut induk. Satu atribut bisa punya
+ * banyak nilai — casing ATX tercatat sebagai tiga baris "Motherboard Size"
+ * (Mini-ITX, Micro-ATX, ATX) — jadi yang dibandingkan adalah himpunan nilai,
+ * bukan nilai pertama.
+ *
+ * Dulu pemeriksaan ini memakai `.find()` + `!==`, yang hanya melihat nilai
+ * pertama. Akibatnya casing ATX yang lolos grid untuk motherboard Micro-ATX
+ * langsung dianggap tidak cocok begitu diklik, dan motherboard-nya dibuang
+ * diam-diam. Jangan kembalikan ke perbandingan satu nilai.
+ *
+ * Induk yang tidak punya nilai untuk suatu atribut tidak memberi syarat apa
+ * pun — sama seperti grid, yang tidak mengirim valueId apa pun untuknya.
+ */
+export function isSelectionCompatible(
+  dependent: BuilderProduct,
+  parent: BuilderProduct,
+  dependAttributes: number[] | undefined
+): boolean {
+  return (dependAttributes ?? []).every(attrId => {
+    const dependentValueIds = new Set(
+      dependent.attributes.filter(a => a.attributeId === attrId).map(a => a.valueId)
+    )
+    return parent.attributes
+      .filter(a => a.attributeId === attrId)
+      .every(a => dependentValueIds.has(a.valueId))
+  })
+}
+
 interface NewBuilderState {
   steps: PcBuilderStepConfig[]
   selections: Record<string, BuilderSelection[]> // stepId -> array of selected products
@@ -169,27 +202,12 @@ export const useNewBuilderStore = create<NewBuilderState>()(
         
         if (!otherDependsOnCurrent && !currentDependsOnOther) return;
 
-        const validOtherSelections = otherStepSelections.filter(otherSel => {
-          let isCompatible = true;
-          
-          if (otherDependsOnCurrent) {
-            otherStep.dependAttributes?.forEach(attrId => {
-              const valA = otherSel.product.attributes.find(a => a.attributeId === attrId)?.valueId;
-              const valB = product.attributes.find(a => a.attributeId === attrId)?.valueId;
-              if (valA !== valB) isCompatible = false;
-            })
-          }
-          
-          if (currentDependsOnOther) {
-            currentStep.dependAttributes?.forEach(attrId => {
-              const valA = product.attributes.find(a => a.attributeId === attrId)?.valueId;
-              const valB = otherSel.product.attributes.find(a => a.attributeId === attrId)?.valueId;
-              if (valA !== valB) isCompatible = false;
-            })
-          }
-          
-          return isCompatible;
-        });
+        const validOtherSelections = otherStepSelections.filter(otherSel =>
+          (!otherDependsOnCurrent ||
+            isSelectionCompatible(otherSel.product, product, otherStep.dependAttributes)) &&
+          (!currentDependsOnOther ||
+            isSelectionCompatible(product, otherSel.product, currentStep.dependAttributes))
+        );
 
         if (validOtherSelections.length === 0) {
           delete newSelections[otherStep.id];
