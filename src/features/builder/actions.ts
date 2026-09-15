@@ -8,33 +8,6 @@ import { buildVariationLabel, cheapestAvailableVariation } from "@/lib/utils/var
 import type { AttributeRequirementGroup } from "@/lib/pc-builder/compatibility"
 
 /**
- * ID PRODUK YANG KELUAR DARI BERKAS INI ADALAH `wooId`, BUKAN `id`.
- *
- * Tabel `products` punya DUA ruang id, dan keduanya angka: `id` (kunci primer
- * Prisma) dan `wooId` (id warisan WooCommerce). Seluruh storefront mengekspos
- * `wooId` sebagai "id produk" — lihat `db-mapper.ts` (`id: prismaProduct.wooId`)
- * yang dipakai setiap kartu produk, dan `cart-pricing.ts` yang mencari
- * `where: { wooId: { in: ids } }`.
- *
- * Dulu grid ini mengirim `id: p.id`. Akibatnya SETIAP id yang keluar dari
- * wizard tidak pernah cocok di jalur mana pun yang menerimanya:
- *
- *   - `priceCartFromCatalog` menemukan NOL baris, sehingga tombol Konsultasi
- *     WhatsApp menjawab "all-unavailable" untuk rakitan yang komponennya jelas
- *     ada di katalog.
- *   - `createSavedBuild` menyimpan id yang tidak bisa dicari ulang, sehingga
- *     setiap rakitan tersimpan tampil "Rp 0" dengan seluruh komponennya
- *     bertanda "Sudah tidak tersedia".
- *
- * Kedua ruang id tidak pernah bertabrakan (diperiksa: nol produk yang `id`-nya
- * juga `wooId` milik produk lain), jadi kesalahannya tidak pernah salah
- * mencocokkan barang — ia selalu gagal total, diam-diam.
- *
- * CATATAN: `fetchBuilderProductsByIds` di bawah adalah PENGECUALIAN pada sisi
- * MASUKNYA — ia menerima `id` Prisma karena preset PC Prebuild menyimpan id
- * dalam ruang itu (`lib/pc-prebuild/products.ts` mengirim `p.id` ke panel
- * admin). Yang ia KEMBALIKAN tetap `wooId`, sama seperti seluruh berkas ini.
- *
  * ATURAN HARGA & STOK — satu-satunya yang berlaku di seluruh PC Builder:
  *
  *     obral  = salePrice > 0 && (saleEndDate === null || saleEndDate > sekarang)
@@ -88,7 +61,6 @@ function stokBerlaku(status: string | null, qty: number | null, mode: StockDispl
 /** Baris VARIATION: yang dibutuhkan untuk menampilkan & memilih satu varian. */
 const PILIH_VARIAN = {
   id: true,
-  wooId: true,
   name: true,
   regularPrice: true,
   salePrice: true,
@@ -109,11 +81,7 @@ type BarisVarian = Prisma.ProductGetPayload<{ select: typeof PILIH_VARIAN }>
 function petakanVarian(v: BarisVarian, mode: StockDisplayMode): BuilderVariation {
   const harga = hargaBerlaku(v.regularPrice, v.salePrice, v.saleEndDate)
   return {
-    // `wooId`, BUKAN `id` — lihat catatan ID PRODUK di atas. Varian yang
-    // dipilih menjadi `BuilderProduct.id`, dan id itulah yang dikirim ke
-    // `priceCartFromCatalog` dan `createSavedBuild`, yang keduanya mencari
-    // lewat `wooId`.
-    id: v.wooId,
+    id: v.id,
     // Label dari NILAI ATRIBUT, bukan dari `name` — lihat `lib/utils/variation.ts`.
     label: buildVariationLabel(v.attributes.map((a) => a.value.value)) ?? v.name,
     price: harga.price,
@@ -310,7 +278,6 @@ export async function fetchBuilderProducts({
 
   const PILIH_KARTU = {
     id: true,
-    wooId: true,
     name: true,
     slug: true,
     type: true,
@@ -434,8 +401,7 @@ export async function fetchBuilderProducts({
     const termurah = variations.length > 0 && harga.price <= 0 ? cheapestAvailableVariation(variations) : null
 
     return {
-      // `wooId` — lihat catatan ID PRODUK di kepala berkas.
-      id: p.wooId,
+      id: p.id,
       name: p.name,
       slug: p.slug,
       type: p.type,
@@ -482,18 +448,6 @@ export async function fetchBuilderProducts({
  *
  * Urutan hasilnya TIDAK dijamin sama dengan urutan `ids` — pemanggil
  * memetakannya sendiri lewat id.
- *
- * ## `ids` MASUK sebagai `id` Prisma, hasilnya KELUAR sebagai `wooId`
- *
- * Satu-satunya tempat di berkas ini yang menerima ruang id yang berbeda dari
- * yang dikembalikannya, dan itu disengaja: preset PC Prebuild menyimpan
- * `productId`/`variationId` dalam ruang `id` Prisma, karena panel admin yang
- * menyusunnya membaca dari `lib/pc-prebuild/products.ts` yang mengirim `p.id`.
- * Mengubah sisi masuknya berarti memigrasi seluruh preset yang sudah tersimpan.
- *
- * Sisi KELUARNYA tetap `wooId` seperti sisa berkas ini — begitu paket mendarat
- * di wizard, ia harus tidak bisa dibedakan dari komponen yang dipilih sendiri
- * oleh pelanggan, termasuk saat disimpan atau dikirim ke WhatsApp.
  */
 export async function fetchBuilderProductsByIds(ids: number[]): Promise<BuilderProduct[]> {
   const unik = [...new Set(ids)].filter((id) => Number.isFinite(id))
@@ -505,7 +459,6 @@ export async function fetchBuilderProductsByIds(ids: number[]): Promise<BuilderP
     where: { id: { in: unik } },
     select: {
       id: true,
-      wooId: true,
       name: true,
       slug: true,
       type: true,
@@ -531,7 +484,6 @@ export async function fetchBuilderProductsByIds(ids: number[]): Promise<BuilderP
       parent: {
         select: {
           id: true,
-          wooId: true,
           name: true,
           slug: true,
           images: { orderBy: { position: "asc" }, take: 1, select: { url: true } },
@@ -562,10 +514,7 @@ export async function fetchBuilderProductsByIds(ids: number[]): Promise<BuilderP
       const saudara = p.parent.variations.map((v) => petakanVarian(v, stockDisplayMode))
 
       return {
-        // `wooId` — lihat catatan ID PRODUK di kepala berkas.
-        id: p.wooId,
-        // Kunci pemetaan kembali ke preset, yang menyimpan id Prisma.
-        prismaId: p.id,
+        id: p.id,
         // Nama induk, bukan nama barisnya sendiri: varian warisan impor
         // WooCommerce sering bernama sama persis dengan induknya, jadi
         // pembedanya HARUS `variationLabel`, bukan `name`.
@@ -579,9 +528,7 @@ export async function fetchBuilderProductsByIds(ids: number[]): Promise<BuilderP
         stock: stokBerlaku(p.stockStatus, p.stockQty, stockDisplayMode),
         image: p.images[0]?.url ?? p.parent.images[0]?.url,
         attributes: atributInduk,
-        // `wooId` juga — `saved-pc-builds.ts` menulis `parentId: induk.wooId`
-        // untuk kolom yang sama, dan keduanya harus sepakat.
-        parentId: p.parent.wooId,
+        parentId: p.parent.id,
         parentName: p.parent.name,
         variationLabel:
           buildVariationLabel(p.attributes.map((a) => a.value.value)) ?? undefined,
@@ -593,10 +540,7 @@ export async function fetchBuilderProductsByIds(ids: number[]): Promise<BuilderP
     const termurah = variations.length > 0 && harga.price <= 0 ? cheapestAvailableVariation(variations) : null
 
     return {
-      // `wooId` — lihat catatan ID PRODUK di kepala berkas.
-      id: p.wooId,
-      // Kunci pemetaan kembali ke preset, yang menyimpan id Prisma.
-      prismaId: p.id,
+      id: p.id,
       name: p.name,
       slug: p.slug,
       type: p.type,
