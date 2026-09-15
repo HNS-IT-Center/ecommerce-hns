@@ -3,7 +3,7 @@ import "server-only"
 import { Prisma } from "@prisma/client"
 import { getPrisma } from "@/lib/prisma/client"
 import { hashPassword } from "@/lib/auth/password"
-import { normalizeIdentifier, isEmail } from "@/lib/auth/identity"
+import { normalizeIdentifier } from "@/lib/auth/identity"
 
 /** Sama seperti admin (lib/auth/password.ts) — satu ambang, satu tempat. */
 export { MIN_PASSWORD_LENGTH, hashPassword, verifyPassword } from "@/lib/auth/password"
@@ -21,33 +21,21 @@ export type CustomerIdentityLookup = {
 /**
  * Cari akun pelanggan by email — dipakai jalur yang memang butuh email
  * spesifik (lupa password, kirim ulang verifikasi), bukan saat masuk.
+ *
+ * Membaca `users` dengan syarat `role = "pelanggan"`. Syarat itu bukan hiasan:
+ * sejak Satu Login akun admin juga hidup di tabel ini, dan tanpa syarat itu
+ * "Lupa password" di storefront bisa dipakai mengganti password akun panel
+ * lewat email. Admin mengganti passwordnya di /admin/akun.
+ *
+ * (`findCustomerByEmailOrUsername` pernah ada di sini — tidak dipakai lagi
+ * sejak login terpadu memakai `findUserByIdentifier`, dihapus di Fase B.)
  */
 export async function findCustomerByEmail(raw: string): Promise<CustomerIdentityLookup | null> {
   const email = normalizeIdentifier(raw)
   if (!email) return null
 
-  return getPrisma().customer.findUnique({
-    where: { email },
-    select: { id: true, email: true, passwordHash: true, googleSub: true, emailVerifiedAt: true },
-  })
-}
-
-/**
- * Cari akun pelanggan dari email ATAU username — dipakai saat masuk.
- *
- * Beda dengan `findUserByIdentifier` versi admin (`identity.ts`): username
- * pelanggan NULLABLE (akun Google yang belum lengkapi profil belum
- * punya), jadi memakai `findFirst` dengan kondisi `isEmail` yang sama tetap
- * aman — baris dengan `username: null` tidak akan pernah cocok dengan
- * pencarian `{ username: identifier }` karena `identifier` tidak pernah
- * kosong (dicek di awal).
- */
-export async function findCustomerByEmailOrUsername(raw: string): Promise<CustomerIdentityLookup | null> {
-  const identifier = normalizeIdentifier(raw)
-  if (!identifier) return null
-
-  return getPrisma().customer.findFirst({
-    where: isEmail(identifier) ? { email: identifier } : { username: identifier },
+  return getPrisma().user.findFirst({
+    where: { email, role: "pelanggan" },
     select: { id: true, email: true, passwordHash: true, googleSub: true, emailVerifiedAt: true },
   })
 }
@@ -85,7 +73,10 @@ export async function registerCustomer(
   const normalizedUsername = normalizeIdentifier(username)
   const prisma = getPrisma()
 
-  const existing = await prisma.customer.findUnique({
+  // Dicek terhadap SEMUA akun di `users`, termasuk admin: satu email satu
+  // akun, apa pun perannya — login terpadu mencari lewat email tanpa
+  // membedakan peran.
+  const existing = await prisma.user.findUnique({
     where: { email: normalizedEmail },
     select: { googleSub: true },
   })
@@ -93,7 +84,7 @@ export async function registerCustomer(
     return { ok: false, reason: existing.googleSub ? "email_taken_google" : "email_taken_password" }
   }
 
-  const usernameTaken = await prisma.customer.findUnique({
+  const usernameTaken = await prisma.user.findUnique({
     where: { username: normalizedUsername },
     select: { id: true },
   })
@@ -104,8 +95,12 @@ export async function registerCustomer(
   const passwordHash = await hashPassword(password)
 
   try {
-    const customer = await prisma.customer.create({
+    const customer = await prisma.user.create({
       data: {
+        // WAJIB eksplisit. Default kolom `users.role` adalah "owner" —
+        // warisan masa tabel ini khusus admin. Lupa baris ini berarti setiap
+        // pendaftar dari storefront menjadi pemilik panel.
+        role: "pelanggan",
         email: normalizedEmail,
         name: name.trim(),
         passwordHash,

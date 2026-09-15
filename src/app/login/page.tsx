@@ -15,15 +15,25 @@ export const metadata = {
 
 /**
  * Dua jalur masuk: Google (docs/09-google-oauth-setup.md) dan email+password
- * (2026-08-12, di samping Google — bukan pengganti). Keduanya menghasilkan
- * baris `Customer` yang sama, tapi tidak pernah tergabung: satu akun cuma
- * pernah punya SATU jalur identitas, lihat catatan di schema.prisma pada
- * model Customer.
+ * (2026-08-12, di samping Google — bukan pengganti). Keduanya berakhir di
+ * baris `users` yang sama; perannya yang menentukan tujuan setelah masuk
+ * (lihat `loginAction`).
  *
  * Akun hanya menambah kemampuan menyimpan rakitan — browsing, PC builder,
  * keranjang, dan checkout WhatsApp tetap terbuka tanpa akun, jadi halaman
  * ini tidak menutup jalan pemesanan langsung.
  */
+function isPanelPath(path: string): boolean {
+  return (
+    path === "/admin" ||
+    path.startsWith("/admin/") ||
+    path.startsWith("/admin?") ||
+    path === "/verify" ||
+    path.startsWith("/verify/") ||
+    path.startsWith("/verify?")
+  );
+}
+
 export default async function Page({
   searchParams,
 }: {
@@ -41,11 +51,19 @@ export default async function Page({
    * tujuan yang tadi diminta. `sanitizeNextPath` sudah menjamin isinya path
    * internal, jadi nilai ini aman dioper ke `redirect()`.
    *
-   * Tidak berputar dengan proxy: proxy hanya melempar KE sini saat cookie
-   * sesi tidak ada, sementara cabang ini hanya jalan saat sesinya ada.
+   * Sejak Fase B, `getCurrentCustomer` juga mengenali sesi admin — jadi admin
+   * yang menekan "Masuk" di toko tidak lagi melihat formulir ini, melainkan
+   * langsung diteruskan.
+   *
+   * SATU pengecualian untuk mencegah putaran: tujuan di panel (/admin,
+   * /verify) sementara yang dipegang hanya sesi PELANGGAN. Proxy melempar ke
+   * sini karena cookie ADMIN tidak ada; meneruskan balik ke tujuan itu hanya
+   * memantul lagi ke sini tanpa henti. Orang itu memang perlu masuk sebagai
+   * admin, jadi formulirnya ditampilkan.
    */
   const customer = await getCurrentCustomer();
-  if (customer) redirect(nextPath);
+  const wantsPanel = isPanelPath(nextPath);
+  if (customer && (!wantsPanel || customer.isAdmin)) redirect(nextPath);
 
   const googleUrl = `/api/auth/google?next=${encodeURIComponent(nextPath)}`;
 

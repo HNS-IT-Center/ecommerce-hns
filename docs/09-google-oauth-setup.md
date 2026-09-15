@@ -14,6 +14,14 @@ sini.
 
 ## 1. Apa yang sudah ada, dan apa yang TIDAK boleh disentuh
 
+> **Bagian ini dan tabel di §8 ditulis sebelum Satu Login.** Pemisahan tabel
+> `users`/`customers` sudah digantikan — lihat [§10](#10-satu-login-fase-a--b).
+> Kekhawatiran intinya tetap berlaku dan justru dijaga lewat cara lain: akun
+> Google yang cocok dengan email staf masuk ke akun staf itu, yang hanya bisa
+> terjadi karena Google sudah membuktikan kepemilikan emailnya
+> (`email_verified`), dan peran pendaftar baru selalu ditulis eksplisit
+> `"pelanggan"`.
+
 Repo ini sudah punya autentikasi — tapi itu **akun admin**, dan Google OAuth
 tidak boleh mencampurinya.
 
@@ -290,6 +298,48 @@ mencegah CSRF), bukan di query string terpisah yang bisa diubah siapa saja.
 Tanpa validasi ini, tautan `?next=https://situs-penipu.example` menjadikan
 domain HNS sebagai batu loncatan phishing yang tampak tepercaya — pelanggan
 melihat alamat hnsitcenter.id, lalu mendarat di tempat lain.
+
+---
+
+## 10. Satu Login (Fase A & B)
+
+**Fase A — 5 Sep 2026.** Semua akun (admin & pelanggan) pindah ke `users`;
+`role = "pelanggan"` membedakan pelanggan. `/login` jadi satu pintu, dan peran
+yang menentukan tujuan setelah masuk. Migrasi:
+`prisma/migrations/20260905041727_satu_login_merge_customers`.
+
+**Fase B — 15 Sep 2026.** Sisa pembaca & penulis `customers` dipindah ke
+`users`: `getCurrentCustomer`, reset password, verifikasi email, daftar manual,
+lengkapi profil, callback Google, serta daftar & hapus pelanggan di panel.
+Selama celah Fase A→B jalur-jalur itu menulis ke tabel yang tidak dibaca login
+(reset password tidak pernah berlaku, misalnya) — datanya disalin sekali lewat
+`scripts/satu-login-fase-b-sync.sql`.
+
+Yang berubah bagi pemakai:
+
+| | Sebelum | Sesudah Fase B |
+|---|---|---|
+| Admin membuka toko | Terlihat "Masuk"; menekan "Masuk" memantul ke panel | Terlihat login; dropdown berisi "Profil Saya" + "Panel Admin" |
+| Admin menyimpan rakitan / buka `/profile` | Tidak bisa | Bisa — rakitannya menempel ke baris `users` miliknya |
+| "Keluar" (toko maupun panel) | Hanya satu sesi | Kedua sesi |
+| Hapus pelanggan di panel | Hanya baris `customers`; baris `users` + rakitan tertinggal | Baris `users` (cascade) + sisa salinan di `customers` |
+
+Yang **tidak** berubah:
+
+- Cookie tetap dua: `hns_customer_session` (30 hari) dan `hns_admin_session`
+  (7 hari). `getCurrentCustomer` menerima keduanya; `proxy.ts` untuk `/profile`
+  juga. Arahnya satu jalan — sesi pelanggan tidak pernah membuka `/admin`.
+- `CurrentCustomer.isAdmin` hanya untuk navigasi, bukan izin, dan tidak pernah
+  masuk jalur harga (CLAUDE.md §2.7).
+- Semua query pelanggan di panel memakai syarat `role = "pelanggan"` —
+  penghapusan di sana hard delete, dan syarat itu yang mencegah akun admin ikut
+  terhapus.
+- "Lupa password" di toko hanya berlaku untuk peran pelanggan; admin mengganti
+  passwordnya di `/admin/akun`.
+
+**Sisa pekerjaan:** drop tabel `customers` lewat migrasi (setelah sinkronisasi
+dijalankan dan diverifikasi), lalu hapus `tx.customer.deleteMany` di
+`lib/api/customers.ts`.
 
 ---
 

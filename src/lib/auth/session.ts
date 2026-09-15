@@ -138,6 +138,20 @@ export async function verifySession(token: string | undefined): Promise<SessionP
   }
 }
 
+/**
+ * Apakah token yang terbit pada `iat` (epoch detik) sudah dicabut oleh
+ * penanda `revokedAt` — `users.password_changed_at` untuk sesi admin,
+ * `users.sessions_revoked_at` untuk sesi pelanggan.
+ *
+ * Satu fungsi untuk kedua sesi supaya aturan pembandingnya tidak ditulis dua
+ * kali: `<`, bukan `<=`, karena keduanya berpresisi detik dan token yang terbit
+ * pada detik yang sama dengan pencabutan adalah sesi baru milik si pencabut
+ * sendiri — lihat komentar di `getCurrentUser`.
+ */
+export function isIssuedBeforeRevocation(iat: number, revokedAt: Date | null): boolean {
+  return revokedAt !== null && iat * 1000 < revokedAt.getTime()
+}
+
 /** Atribut cookie sesi. `secure` menyala di produksi, mati di localhost http. */
 export function sessionCookieOptions(maxAgeSeconds: number = SESSION_MAX_AGE_SECONDS) {
   return {

@@ -85,40 +85,25 @@ export async function GET(request: NextRequest) {
 
   if (!account) {
     /**
-     * Pendaftar Google baru. Barisnya ditulis ke `users` DAN `customers`
-     * dengan id yang sama.
+     * Pendaftar Google baru — ditulis ke `users` saja.
      *
-     * Dua tabel karena Satu Login baru merampungkan separuh: `users` sudah jadi
-     * sumber kebenaran identitas, tapi sesi pelanggan masih dibaca dari
-     * `customers` (`getCurrentCustomer`). Selama itu belum disatukan (Fase B),
-     * pendaftar yang cuma masuk ke salah satunya akan pincang — ada di satu
-     * tabel, hilang di tabel lain.
+     * Sampai Satu Login Fase B (15 Sep 2026) barisnya ditulis ganda ke
+     * `customers` juga, karena `getCurrentCustomer` masih membaca tabel itu.
+     * Sekarang tidak ada lagi yang membacanya.
      *
+     * `role: "pelanggan"` WAJIB eksplisit — default kolomnya "owner".
      * `emailVerifiedAt` langsung diisi: Google sudah membuktikan kepemilikan
      * email itu, tidak ada verifikasi kedua yang masuk akal.
      */
-    const now = new Date()
-    const created = await prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: {
-          googleSub: identity.googleSub,
-          email,
-          name: identity.name,
-          role: "pelanggan",
-          emailVerifiedAt: now,
-        },
-        select: { id: true, role: true, username: true, phoneNumber: true },
-      })
-      await tx.customer.create({
-        data: {
-          id: user.id,
-          googleSub: identity.googleSub,
-          email,
-          name: identity.name,
-          emailVerifiedAt: now,
-        },
-      })
-      return user
+    const created = await prisma.user.create({
+      data: {
+        googleSub: identity.googleSub,
+        email,
+        name: identity.name,
+        role: "pelanggan",
+        emailVerifiedAt: new Date(),
+      },
+      select: { id: true, role: true, username: true, phoneNumber: true },
     })
     userId = created.id
     role = created.role
@@ -147,18 +132,9 @@ export async function GET(request: NextRequest) {
      * hilang tanpa ada yang merasa mengubahnya.
      */
     if (!account.googleSub) {
-      await prisma.$transaction(async (tx) => {
-        await tx.user.update({
-          where: { id: account.id },
-          data: { googleSub: identity.googleSub },
-        })
-        // Baris `customers` tidak selalu ada — akun admin murni hanya hidup di
-        // `users` (mis. akun owner yang dibuat lewat skrip, bukan lewat
-        // pendaftaran). `updateMany` tidak melempar saat tak ada yang cocok.
-        await tx.customer.updateMany({
-          where: { id: account.id },
-          data: { googleSub: identity.googleSub },
-        })
+      await prisma.user.update({
+        where: { id: account.id },
+        data: { googleSub: identity.googleSub },
       })
     }
     userId = account.id

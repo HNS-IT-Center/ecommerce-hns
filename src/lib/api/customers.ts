@@ -10,6 +10,15 @@
 import { getPrisma } from "@/lib/prisma/client"
 
 /**
+ * Semua query di berkas ini membaca `users` dengan syarat peran pelanggan.
+ *
+ * Sejak Satu Login akun admin juga hidup di `users`, dan penghapusan di sini
+ * adalah HARD DELETE. Syarat ini yang mencegah halaman "Pelanggan" menampilkan
+ * — apalagi menghapus permanen — akun panel. Jangan dilepas dari query mana pun.
+ */
+const CUSTOMER_ROLE = { role: "pelanggan" } as const
+
+/**
  * Data pelanggan yang tampil di panel.
  *
  * Sengaja SEMPIT. Staff butuh email dan nama untuk mencocokkan permintaan yang
@@ -57,18 +66,19 @@ export async function listCustomers(options: {
 
   const where = q
     ? {
+        ...CUSTOMER_ROLE,
         OR: [
           { email: { contains: q } },
           { name: { contains: q } },
           { username: { contains: q } },
         ],
       }
-    : {}
+    : CUSTOMER_ROLE
 
   const prisma = getPrisma()
   const [total, rows] = await Promise.all([
-    prisma.customer.count({ where }),
-    prisma.customer.findMany({
+    prisma.user.count({ where }),
+    prisma.user.findMany({
       where,
       select: {
         id: true,
@@ -85,10 +95,8 @@ export async function listCustomers(options: {
     }),
   ])
 
-  // Jumlah rakitan tersimpan dihitung terpisah: sejak Satu Login relasi
-  // `savedBuilds` pindah ke model `User`, jadi tak bisa lagi lewat `_count` di
-  // `customer`. `saved_pc_builds.customer_id` tetap menyimpan id yang sama
-  // (id pelanggan = id user), jadi groupBy by customerId tetap benar.
+  // Jumlah rakitan tersimpan dihitung terpisah lewat groupBy, satu query untuk
+  // satu halaman — `saved_pc_builds.customer_id` menunjuk `users.id`.
   const ids = rows.map((r) => r.id)
   const counts = ids.length
     ? await prisma.savedPcBuild.groupBy({
@@ -109,8 +117,8 @@ export async function listCustomers(options: {
 
 export async function getCustomerForDeletion(id: string): Promise<CustomerRow | null> {
   const prisma = getPrisma()
-  const row = await prisma.customer.findUnique({
-    where: { id },
+  const row = await prisma.user.findFirst({
+    where: { id, ...CUSTOMER_ROLE },
     select: {
       id: true,
       email: true,
@@ -122,7 +130,6 @@ export async function getCustomerForDeletion(id: string): Promise<CustomerRow | 
     },
   })
   if (!row) return null
-  // savedBuilds pindah ke User sejak Satu Login — hitung dari tabelnya.
   const savedBuildCount = await prisma.savedPcBuild.count({ where: { customerId: id } })
   return { ...row, savedBuildCount }
 }
@@ -150,8 +157,11 @@ export class CustomerNotFoundError extends Error {
  *   2. Log audit ditulis, memakai hitungan rakitan yang diambil SEBELUM
  *      penghapusan. Sesudahnya angka itu tidak bisa direkonstruksi dari mana
  *      pun, karena barisnya sudah lenyap lewat cascade.
- *   3. Barisnya dihapus. `saved_pc_builds` dan `customer_verification_tokens`
- *      ikut lewat `onDelete: Cascade`.
+ *   3. Baris `users`-nya dihapus. `saved_pc_builds` dan
+ *      `customer_verification_tokens` ikut lewat `onDelete: Cascade`. Salinan
+ *      lama di tabel `customers` (sisa masa sebelum Satu Login) ikut dihapus
+ *      juga — ia memuat email, nama, dan nomor HP yang sama, dan membiarkannya
+ *      berarti permintaan hapus hanya terpenuhi separuh.
  *
  * Satu transaksi supaya tidak pernah ada keadaan setengah jadi: akun terhapus
  * tanpa log (tidak bisa dipertanggungjawabkan) atau log tertulis tanpa akun
@@ -165,18 +175,17 @@ export async function deleteCustomerPermanently(params: {
   const prisma = getPrisma()
 
   return prisma.$transaction(async (tx) => {
-    const target = await tx.customer.findUnique({
-      where: { id: params.customerId },
+    const target = await tx.user.findFirst({
+      where: { id: params.customerId, ...CUSTOMER_ROLE },
       select: { id: true },
     })
     if (!target) throw new CustomerNotFoundError()
 
-    // savedBuilds pindah ke User sejak Satu Login; dihitung dari tabelnya.
     const savedBuildCount = await tx.savedPcBuild.count({
       where: { customerId: params.customerId },
     })
 
-    await tx.customer.update({
+    await tx.user.update({
       where: { id: params.customerId },
       data: { sessionsRevokedAt: new Date() },
     })
@@ -190,12 +199,11 @@ export async function deleteCustomerPermanently(params: {
       },
     })
 
-    await tx.customer.delete({ where: { id: params.customerId } })
+    await tx.user.delete({ where: { id: params.customerId } })
+    // `deleteMany`, bukan `delete`: pelanggan yang mendaftar sesudah Fase B
+    // tidak pernah punya baris di `customers`.
+    await tx.customer.deleteMany({ where: { id: params.customerId } })
 
-    // TODO Satu Login (Fase B): pelanggan kini juga baris di `users`. Menghapus
-    // dari `customers` saja menyisakan baris `users` yatim + rakitannya. Saat
-    // konsolidasi sesi selesai, penghapusan pelanggan harus menghapus baris
-    // `users` (cascade ke saved_pc_builds) — bukan tabel `customers`.
     return { savedBuildCount }
   })
 }

@@ -1,8 +1,18 @@
 /**
  * Helper autentikasi pelanggan — satu-satunya pintu yang boleh dipakai modul
- * lain untuk sesi akun pelanggan. Paralel dengan `lib/auth/index.ts` (sesi
- * admin), sengaja berkas terpisah karena keduanya tidak boleh saling
- * menyentuh — lihat docs/09-google-oauth-setup.md §1.
+ * lain untuk menanyakan "siapa yang sedang masuk di storefront".
+ *
+ * Satu Login Fase B (15 Sep 2026): identitasnya dibaca dari tabel `users`,
+ * BUKAN lagi `customers`. Sejak Fase A (5 Sep) login sudah mencari di `users`,
+ * tapi berkas ini dan beberapa jalur tulis masih memakai `customers` — kedua
+ * tabel lalu berjalan sendiri-sendiri (reset password tertulis ke tabel yang
+ * tidak dibaca login, dst). Sekarang `customers` tidak dibaca maupun ditulis
+ * siapa pun; tabelnya tinggal menunggu dihapus lewat migrasi.
+ *
+ * Cookie-nya TETAP dua (`hns_customer_session` & `hns_admin_session`) — yang
+ * disatukan hanya identitasnya. Menyatukan cookie berarti menyamakan masa
+ * berlaku dan penjagaan `proxy.ts`, pekerjaan terpisah yang tidak menambah apa
+ * pun yang terlihat pengguna.
  */
 import { cookies } from "next/headers"
 import { getPrisma } from "@/lib/prisma/client"
@@ -14,6 +24,7 @@ import {
   verifyCustomerSession,
   type CustomerSessionPayload,
 } from "./customer-session"
+import { SESSION_COOKIE, isIssuedBeforeRevocation, verifySession } from "./session"
 
 export {
   CUSTOMER_SESSION_COOKIE,
@@ -28,6 +39,13 @@ export type CurrentCustomer = {
   name: string
   username: string | null
   phoneNumber: string | null
+  /**
+   * Browser ini juga memegang sesi admin yang sah. HANYA untuk navigasi
+   * (tautan "Panel Admin") — bukan izin. Akses panel tetap diputuskan
+   * `requirePageView`/`requirePermission`, dan status ini TIDAK BOLEH masuk
+   * ke jalur harga (CLAUDE.md §2.7).
+   */
+  isAdmin: boolean
 }
 
 /** Payload sesi dari cookie, atau null. Tidak menyentuh database. */
@@ -36,35 +54,77 @@ export async function getCustomerSession(): Promise<CustomerSessionPayload | nul
   return verifyCustomerSession(store.get(CUSTOMER_SESSION_COOKIE)?.value)
 }
 
+const ACCOUNT_SELECT = {
+  id: true,
+  email: true,
+  name: true,
+  username: true,
+  phoneNumber: true,
+  role: true,
+  sessionsRevokedAt: true,
+  passwordChangedAt: true,
+} as const
+
 /**
- * Pelanggan yang sedang masuk, dibaca ULANG dari database setiap kali.
+ * Akun storefront yang sedang masuk, dibaca ULANG dari `users` setiap kali.
  *
- * Sama seperti `getCurrentUser()` versi admin: cookie hanya membuktikan
- * "seseorang pernah berhasil login sebagai id ini", bukan sumber data.
+ * Diterima dari DUA cookie:
+ *   - sesi pelanggan → dicabut oleh `sessionsRevokedAt` (reset password,
+ *     hapus akun);
+ *   - sesi admin → dicabut oleh `passwordChangedAt`, aturan yang sama persis
+ *     dengan `getCurrentUser()`. Admin adalah pemakai storefront juga: tanpa
+ *     ini ia terlihat "belum masuk" di toko, dan menekan "Masuk" hanya
+ *     memantulkannya kembali ke panel.
+ *
+ * Kalau dua-duanya ada untuk akun BERBEDA (admin sedang menguji akun pelanggan
+ * di browser yang sama), sesi pelanggan yang menang — ini halaman toko — dan
+ * `isAdmin` tetap menyala supaya jalan ke panel tidak hilang.
+ *
+ * Pengunjung tanpa cookie sama sekali tidak memicu query apa pun.
  */
 export async function getCurrentCustomer(): Promise<CurrentCustomer | null> {
-  const session = await getCustomerSession()
-  if (!session) return null
+  const store = await cookies()
+  const [customerSession, adminSession] = await Promise.all([
+    verifyCustomerSession(store.get(CUSTOMER_SESSION_COOKIE)?.value),
+    verifySession(store.get(SESSION_COOKIE)?.value),
+  ])
+  if (!customerSession && !adminSession) return null
 
-  const customer = await getPrisma().customer.findUnique({
-    where: { id: session.sub },
-    select: { id: true, email: true, name: true, username: true, phoneNumber: true, sessionsRevokedAt: true },
-  })
-  if (!customer) return null
+  const ids = [...new Set([customerSession?.sub, adminSession?.sub])].filter(
+    (id): id is string => typeof id === "string"
+  )
+  const rows = await getPrisma().user.findMany({ where: { id: { in: ids } }, select: ACCOUNT_SELECT })
+  const byId = new Map(rows.map((row) => [row.id, row]))
 
-  // Pencabutan sesi — pola sama seperti `passwordChangedAt` di sesi admin,
-  // dipakai juga saat akun dihapus (CLAUDE.md §2.8: sessionsRevokedAt diisi
-  // sesaat sebelum baris `customers` dihapus).
-  if (customer.sessionsRevokedAt && session.iat * 1000 < customer.sessionsRevokedAt.getTime()) {
-    return null
-  }
+  // Cookie admin milik akun yang sudah diturunkan jadi "pelanggan" tidak lagi
+  // dihitung sebagai admin — panel memang tidak akan menerimanya.
+  const admin = adminSession ? byId.get(adminSession.sub) : undefined
+  const adminAccount =
+    adminSession &&
+    admin &&
+    admin.role !== "pelanggan" &&
+    !isIssuedBeforeRevocation(adminSession.iat, admin.passwordChangedAt)
+      ? admin
+      : null
 
+  const customer = customerSession ? byId.get(customerSession.sub) : undefined
+  const customerAccount =
+    customerSession && customer && !isIssuedBeforeRevocation(customerSession.iat, customer.sessionsRevokedAt)
+      ? customer
+      : null
+
+  const account = customerAccount ?? adminAccount
+  if (!account) return null
+
+  // Dibentuk ulang secara eksplisit — `role` dan penanda pencabutan tidak ada
+  // urusannya di luar berkas ini, dan objek ini ikut dikirim `/api/auth/me`.
   return {
-    id: customer.id,
-    email: customer.email,
-    name: customer.name,
-    username: customer.username,
-    phoneNumber: customer.phoneNumber,
+    id: account.id,
+    email: account.email,
+    name: account.name,
+    username: account.username,
+    phoneNumber: account.phoneNumber,
+    isAdmin: adminAccount !== null,
   }
 }
 

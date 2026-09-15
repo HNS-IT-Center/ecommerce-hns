@@ -1030,8 +1030,10 @@ model Customer {
 
   /// Relasi savedBuilds & verificationTokens DIPINDAH ke model `User` saat Satu
   /// Login (5 Sep 2026): FK fisiknya kini menunjuk `users`, bukan `customers`.
-  /// Model ini tetap ada sementara — dibaca `getCurrentCustomer` sampai
-  /// konsolidasi sesi (Fase B) merampungkan penyatuan.
+  /// Sejak Fase B (15 Sep 2026) model ini TIDAK dibaca maupun ditulis lagi —
+  /// satu-satunya sentuhan adalah `deleteMany` saat hapus pelanggan, supaya
+  /// salinan data pribadinya ikut hilang. Menunggu di-drop lewat migrasi setelah
+  /// `scripts/satu-login-fase-b-sync.sql` dijalankan. Lihat docs/09 §10.
 
   @@map("customers")
 }

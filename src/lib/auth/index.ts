@@ -13,6 +13,7 @@ import { getPrisma } from "@/lib/prisma/client"
 import {
   SESSION_COOKIE,
   SESSION_MAX_AGE_SECONDS,
+  isIssuedBeforeRevocation,
   sessionCookieOptions,
   signSession,
   verifySession,
@@ -100,7 +101,7 @@ export async function getCurrentUser(): Promise<AdminUser | null> {
    * si pengganti password diterbitkan tepat pada detik itu dan tidak boleh
    * membunuh dirinya sendiri.
    */
-  if (user.passwordChangedAt && session.iat * 1000 < user.passwordChangedAt.getTime()) {
+  if (isIssuedBeforeRevocation(session.iat, user.passwordChangedAt)) {
     return null
   }
 

@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation"
 import { createSession, destroySession } from "@/lib/auth"
+import { destroyCustomerSession } from "@/lib/auth/customer"
 import { findUserByIdentifier } from "@/lib/auth/identity"
 import { verifyPassword } from "@/lib/auth/password"
 import type { LoginState } from "./state"
@@ -51,7 +52,10 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
 }
 
 export async function logoutAction(): Promise<void> {
-  await destroySession()
+  // Kedua sesi, sama seperti "Keluar" di storefront (`customerLogoutAction`):
+  // satu tombol keluar yang menyisakan sesi lain membuat orang mengira dirinya
+  // sudah keluar padahal belum.
+  await Promise.all([destroySession(), destroyCustomerSession()])
   // Satu Login: keluar mengantar ke pintu tunggal `/login`, bukan lagi halaman
   // login admin terpisah (yang kini cuma meneruskan ke sana).
   redirect("/login")
