@@ -146,10 +146,155 @@ const upsertQuoteByHash = cache(async function upsertQuoteByHash(
   return { code: quote.code }
 })
 
-/** Dipakai halaman verifikasi publik /verify/[code]. */
+/**
+ * Dipakai halaman verifikasi /verify/[code] — halaman kasir yang dijaga izin
+ * `verify`. Tetap JANGAN meng-`include` relasi `submissions` di sini: kasir
+ * cukup melihat isi quotation, bukan nama & nomor WhatsApp pengirimnya.
+ */
 export async function getQuoteByCode(code: string) {
   const prisma = getPrisma()
   return prisma.pcBuildQuote.findUnique({
     where: { code: code.toUpperCase() },
   })
+}
+
+/**
+ * Ringkasan satu quotation untuk daftar & hasil pencarian di /verify.
+ *
+ * Tanggal berupa string ISO, bukan `Date`: bentuk yang sama dipakai halaman
+ * server DAN dikirim sebagai JSON dari route pencarian, jadi pemanggil di kedua
+ * sisi tidak perlu dua tipe. `items` sengaja tidak ikut — kolom Json itu bisa
+ * berisi puluhan baris, dan daftar hanya butuh jumlahnya.
+ */
+export type QuoteSummary = {
+  code: string
+  total: number
+  itemCount: number
+  createdAt: string
+  /** Terakhir dicetak — maju setiap kali rakitan yang sama persis dicetak ulang. */
+  updatedAt: string
+}
+
+/**
+ * `dicetak` = `updatedAt` (terakhir dicetak), `dibuat` = `createdAt`.
+ *
+ * Bawaannya `dicetak` karena itulah yang dicari kasir: pelanggan yang datang
+ * membawa cetakan baru dari rakitan yang pernah dicetak sebelumnya TIDAK
+ * mendapat kode baru, jadi kalau diurutkan menurut tanggal dibuat, quotation
+ * yang baru saja ia cetak bisa terkubur jauh di bawah.
+ */
+export type QuoteSort = "dicetak" | "dibuat"
+
+export function parseQuoteSort(value: unknown): QuoteSort {
+  return value === "dibuat" ? "dibuat" : "dicetak"
+}
+
+const QUOTE_SUMMARY_SELECT = {
+  code: true,
+  total: true,
+  itemCount: true,
+  createdAt: true,
+  updatedAt: true,
+} as const
+
+function toQuoteSummary(row: {
+  code: string
+  total: { toString(): string }
+  itemCount: number
+  createdAt: Date
+  updatedAt: Date
+}): QuoteSummary {
+  return {
+    code: row.code,
+    total: Number(row.total),
+    itemCount: row.itemCount,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  }
+}
+
+/** Quotation terakhir untuk grid di /verify. */
+export async function listRecentQuotes(sort: QuoteSort, limit = 15): Promise<QuoteSummary[]> {
+  const rows = await getPrisma().pcBuildQuote.findMany({
+    select: QUOTE_SUMMARY_SELECT,
+    orderBy: sort === "dibuat" ? { createdAt: "desc" } : { updatedAt: "desc" },
+    take: limit,
+  })
+  return rows.map(toQuoteSummary)
+}
+
+/**
+ * Normalisasi teks pencarian kode: huruf besar, tanpa spasi, hanya karakter
+ * yang memang bisa ada di kode (`A-Z`, `0-9`, `-`). Null kalau terlalu pendek
+ * untuk dicari — dua karakter sudah cukup menyempitkan, satu karakter hampir
+ * mencocokkan semua baris.
+ */
+export function normalizeQuoteSearchTerm(raw: string): string | null {
+  const term = raw.toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 32)
+  return term.length >= 2 ? term : null
+}
+
+/**
+ * Cari quotation yang kodenya MENGANDUNG `term` — kasir boleh mengetik bagian
+ * mana saja: akhiran `VVGT`, tanggal `260804`, atau awalan `HNSPC-2608`.
+ *
+ * `contains` berarti `LIKE '%term%'` yang tidak memakai indeks. Diterima dengan
+ * sadar: satu baris per rakitan yang dicetak, dan kolomnya pendek. Kalau suatu
+ * hari terasa lambat, jalan pertama adalah mencari awalan saja.
+ */
+export async function searchQuotesByCode(term: string, limit = 8): Promise<QuoteSummary[]> {
+  const rows = await getPrisma().pcBuildQuote.findMany({
+    where: { code: { contains: term } },
+    select: QUOTE_SUMMARY_SELECT,
+    orderBy: { updatedAt: "desc" },
+    take: limit,
+  })
+  return rows.map(toQuoteSummary)
+}
+
+/**
+ * Harga & gambar TERKINI untuk produk-produk di sebuah quotation.
+ *
+ * - `price`: harga katalog saat ini (salePrice kalau ada, selain itu
+ *   regularPrice) — untuk menandai baris yang harganya sudah berubah.
+ * - `image`: cadangan untuk quotation lama yang snapshot-nya belum menyimpan
+ *   gambar. Aturannya sama dengan halaman cetak: gambar varian, kalau kosong
+ *   gambar induknya.
+ *
+ * Produk yang sudah dihapus tidak ada di peta; pemanggil memperlakukannya
+ * sebagai "tidak diketahui".
+ */
+export async function getQuoteProductsCurrentInfo(
+  productIds: number[]
+): Promise<Map<number, { price: number; image: string | null }>> {
+  if (productIds.length === 0) return new Map()
+
+  const products = await getPrisma().product.findMany({
+    where: { id: { in: productIds } },
+    select: {
+      id: true,
+      regularPrice: true,
+      salePrice: true,
+      images: { orderBy: { position: "asc" }, take: 1, select: { url: true } },
+      parent: {
+        select: {
+          images: { orderBy: { position: "asc" }, take: 1, select: { url: true } },
+        },
+      },
+    },
+  })
+
+  return new Map(
+    products.map((p) => {
+      const sale = p.salePrice ? Number(p.salePrice) : 0
+      const regular = p.regularPrice ? Number(p.regularPrice) : 0
+      return [
+        p.id,
+        {
+          price: sale > 0 ? sale : regular,
+          image: p.images[0]?.url ?? p.parent?.images[0]?.url ?? null,
+        },
+      ]
+    })
+  )
 }

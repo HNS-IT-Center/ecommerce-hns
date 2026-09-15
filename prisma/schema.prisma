@@ -855,11 +855,12 @@ model PcBuildQuote {
   /// Sisi balik relasi ke `PcBuildSubmission`. WAJIB ada karena Prisma menolak
   /// relasi satu arah — tapi ia TIDAK menghasilkan kolom apa pun di database.
   ///
-  /// JANGAN PERNAH meng-`include` field ini pada jalur yang bisa diakses publik.
+  /// JANGAN PERNAH meng-`include` field ini pada jalur baca quotation.
   /// `pc_build_submissions` berisi nama dan nomor WhatsApp pelanggan, sedangkan
-  /// `/verify/[code]` adalah halaman terbuka tanpa autentikasi. Yang menjaga
-  /// keduanya terpisah adalah `getQuoteByCode()` yang tidak menyertakan relasi
-  /// ini — bukan ketiadaan field-nya.
+  /// `/verify/[code]` bisa dibuka setiap akun yang punya izin `verify` (kasir),
+  /// dan sampai 15 Sep 2026 malah terbuka tanpa autentikasi. Kasir cukup melihat
+  /// isi quotation. Yang menjaga keduanya terpisah adalah `getQuoteByCode()` yang
+  /// tidak menyertakan relasi ini — bukan ketiadaan field-nya.
   submissions PcBuildSubmission[]
 
   @@index([createdAt])
@@ -913,10 +914,11 @@ model PcBuildSubmission {
   /// berkala), bukan otomatis oleh database — supaya terlihat dan bisa
   /// dihentikan kalau suatu saat aturannya berubah.
   ///
-  /// Tabel ini TIDAK BOLEH terjangkau dari endpoint publik mana pun. Halaman
-  /// verifikasi /verify/[code] membaca `pc_build_quotes` saja, dan relasinya
-  /// sengaja satu arah — `PcBuildQuote` tidak punya balikan ke sini, sehingga
-  /// identitas pelanggan tidak punya jalan sampai ke halaman publik itu.
+  /// Tabel ini TIDAK BOLEH terjangkau dari endpoint publik mana pun, dan juga
+  /// tidak dari alat kasir. Halaman verifikasi /verify/[code] (dijaga izin
+  /// `verify`) membaca `pc_build_quotes` saja — `getQuoteByCode()` tidak
+  /// menyertakan relasi `submissions`, sehingga identitas pelanggan tidak punya
+  /// jalan sampai ke halaman itu.
   @@index([status, createdAt])
   @@index([createdAt])
   @@map("pc_build_submissions")

@@ -1256,3 +1256,65 @@ dibaca dari induk.
 `PRICE_ACTIONS`, label aksi, warna lencana, dan `formatLogValue` dipindah dari
 halaman/tabel Logs ke `lib/logs/actions.ts` supaya kartu log dan halaman Logs
 tidak bisa tampil berbeda.
+
+## 19. `/verify` — alat cek quotation untuk kasir (15 September 2026)
+
+Sampai 15 Sep 2026 `/verify` dan `/verify/[code]` terbuka untuk siapa pun.
+Sekarang keduanya hanya untuk akun admin yang perannya punya izin **`verify`**
+("Verifikasi Rakitan (/verify)" di Manajemen User → Peran). Halamannya sengaja
+tetap di luar `/admin`: kasir hanya berurusan dengan verifikasi, jadi panel
+admin (sidebar, dashboard) tidak ada gunanya bagi mereka.
+
+### Tiga lapis penjaga
+
+| Lapis | Yang diperiksa | Tanpa akses |
+|---|---|---|
+| `src/proxy.ts` (matcher `/verify`, `/verify/:path*`) | cookie sesi admin saja (Edge, tanpa Prisma) | redirect ke `/` |
+| `page.tsx` keduanya: `requirePageView("verify", { deniedRedirect: "/" })` | izin peran dari DB | redirect ke `/` |
+| `GET /api/admin/pc-build-quotes/search` | `requirePermission("verify", "view")` | 401 / 403 JSON |
+
+Yang tanpa akses dikirim ke **beranda**, bukan halaman login — pengunjung tanpa
+sesi yang paling sering sampai ke sini adalah pelanggan yang mengklik kode di
+PDF quotation-nya sendiri. Kasir yang belum masuk cukup login lalu membuka
+tautannya lagi.
+
+Staff lama tanpa `roleId` ikut mendapat akses lewat fallback `muatIzinUser`
+(staff = edit semua kecuali `pelanggan` & `harga-modal`). Peran dinamis harus
+diberi izin `verify` secara eksplisit.
+
+### Kode di PDF adalah tautan
+
+`/build-pc/print` membungkus nomor quotation dengan
+`<a href="${resolveSiteUrl()}/verify/KODE">`. Alamatnya mutlak karena PDF dibuka
+di luar browser, dan lewat `resolveSiteUrl()` supaya tidak menjadi
+`0.0.0.0:3000` di balik proxy atau host palsu dari header `Host`.
+
+### Fungsi data baru (`lib/api/pc-build-quotes.ts`)
+
+| Fungsi | Dipakai | Catatan |
+|---|---|---|
+| `listRecentQuotes(sort, 15)` | grid `/verify` | `sort`: `dicetak` (`updatedAt`, bawaan) atau `dibuat` (`createdAt`), dari `?urut=` |
+| `searchQuotesByCode(term, 8)` | route pencarian | `code LIKE %term%` — kasir boleh mengetik akhiran, tanggal, atau awalan |
+| `normalizeQuoteSearchTerm(raw)` | route pencarian | huruf besar, hanya `A-Z0-9-`, minimal 2 karakter |
+| `getQuoteProductsCurrentInfo(ids)` | `/verify/[code]` | harga katalog terkini + gambar cadangan (varian → induk) |
+
+`QuoteSummary` tidak membawa `items` — daftar hanya butuh `itemCount`.
+
+Urutan bawaan `dicetak` karena mencetak ulang rakitan yang sama persis tidak
+menerbitkan kode baru — hanya `updatedAt` yang maju. Kalau diurutkan menurut
+tanggal dibuat, quotation yang baru saja dicetak pelanggan bisa terkubur.
+
+### Gambar di rincian
+
+Snapshot `items[].image` (disimpan saat cetak: gambar varian, kalau kosong
+gambar induk) didahulukan, karena itu yang tercetak di dokumen. Quotation lama
+yang belum menyimpannya memakai gambar produk terkini dengan aturan yang sama,
+lalu placeholder `ProductImage`.
+
+### PDF: fitur OpenType dimatikan di `.print-sheet`
+
+Di sebagian viewer PDF (viewer bawaan HP, pratinjau WhatsApp), angka
+`tabular-nums` dan tanda `+`/`-` hasil contextual alternates Inter tampil
+sebagai kotak kosong. `globals.css` mematikan `calt`, `tnum`, dan `liga` untuk
+`.print-sheet` dan seluruh isinya. Jangan menambahkan `tabular-nums` lagi di
+halaman print.

@@ -182,15 +182,23 @@ export async function requirePermission(
  * lagi (mis. menentukan apakah menampilkan tombol edit) tanpa query kedua.
  * Tidak menggantikan penjaga di server action — ia melindungi HALAMAN; action
  * tetap butuh `requirePermission`-nya sendiri.
+ *
+ * `deniedRedirect` untuk halaman ber-izin yang tinggal di LUAR panel (`/verify`).
+ * Tujuan bawaannya hanya masuk akal untuk halaman di dalam panel; pengunjung
+ * `/verify` tanpa akses — umumnya pelanggan yang mengklik kode di PDF — harus
+ * mendarat di toko, bukan di halaman masuk admin. Kalau diisi, ia berlaku
+ * untuk dua kasus sekaligus (belum masuk DAN tidak berizin), karena dari luar
+ * keduanya memang tidak perlu dibedakan.
  */
 export async function requirePageView(
   page: import("./permissions").AdminPage,
+  options: { deniedRedirect?: string } = {},
 ): Promise<{ user: AdminUser; izin: import("./permissions").PermissionSet }> {
   const user = await getCurrentUser()
-  if (!user) redirect("/admin/login")
+  if (!user) redirect(options.deniedRedirect ?? "/admin/login")
   const { muatIzinUser, bisaAkses } = await import("./permissions")
   const izin = await muatIzinUser(user)
-  if (!bisaAkses(izin, page, "view")) redirect("/admin")
+  if (!bisaAkses(izin, page, "view")) redirect(options.deniedRedirect ?? "/admin")
   return { user, izin }
 }
 

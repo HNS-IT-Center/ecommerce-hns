@@ -59,6 +59,18 @@ export const ADMIN_PAGES = {
   colors: "Warna",
   kebijakan: "Kebijakan",
   logs: "Logs",
+  /**
+   * BUKAN halaman di bawah `/admin` — izin untuk `/verify` dan `/verify/[code]`,
+   * alat cek quotation untuk kasir.
+   *
+   * Halamannya sengaja tinggal di luar panel: kasir hanya berurusan dengan
+   * verifikasi, dan panel admin (sidebar, dashboard) tidak ada gunanya bagi
+   * mereka. Kuncinya tetap didaftarkan di sini supaya aksesnya diatur di tempat
+   * yang sama dengan halaman lain (Manajemen User → Peran). `pageFromPathname`
+   * tidak akan pernah mengembalikannya karena path-nya bukan `/admin/verify`;
+   * penjagaannya ada di halaman `/verify` sendiri dan di `src/proxy.ts`.
+   */
+  verify: "Verifikasi Rakitan (/verify)",
   akun: "Akun",
 } as const
 
