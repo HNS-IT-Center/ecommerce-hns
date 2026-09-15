@@ -24,7 +24,20 @@ export type BuilderVariation = {
 }
 
 export type BuilderProduct = {
+  /**
+   * `wooId` — id produk yang dikenal SELURUH storefront, dan satu-satunya yang
+   * sah dikirim ke `priceCartFromCatalog` maupun `createSavedBuild`. Lihat
+   * catatan ID PRODUK di `features/builder/actions.ts`.
+   */
   id: number
+  /**
+   * Kunci primer Prisma, TERISI HANYA pada hasil `fetchBuilderProductsByIds`.
+   *
+   * Semata-mata untuk memetakan kembali ke preset PC Prebuild, yang menyimpan
+   * komponennya dalam ruang id itu. BUKAN id produk: jangan pernah
+   * mengirimkannya ke penetapan harga, penyimpanan rakitan, atau URL.
+   */
+  prismaId?: number
   name: string
   price: number
   regularPrice?: number

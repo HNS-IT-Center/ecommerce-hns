@@ -1294,3 +1294,37 @@ berhasil; `SaveBuildDialog` melengkapinya dengan `router.refresh()` di sisi
 klien. Tanpa itu, rakitan yang baru disimpan tidak muncul di "Rakitan
 Tersimpan" — daftarnya dirender di server dan masih dilayani dari salinan lama,
 yang dari sisi pelanggan tidak bisa dibedakan dari "simpannya gagal".
+
+### ID produk yang keluar dari PC Builder adalah `wooId` (16 September 2026)
+
+Tabel `products` punya DUA ruang id yang sama-sama angka: `id` (kunci primer
+Prisma) dan `wooId` (id warisan WooCommerce). Seluruh storefront memakai
+`wooId` sebagai "id produk" — `db-mapper.ts` (`id: prismaProduct.wooId`) untuk
+setiap kartu, dan `cart-pricing.ts` yang mencari `where: { wooId: { in: ids } }`.
+
+`fetchBuilderProducts` dulu mengirim `id: p.id`. Akibatnya setiap id yang keluar
+dari wizard tidak pernah cocok di jalur mana pun yang menerimanya:
+
+- `priceCartFromCatalog` menemukan **nol** baris, sehingga tombol Konsultasi
+  WhatsApp menjawab `"all-unavailable"` untuk rakitan yang komponennya jelas ada.
+- `createSavedBuild` menyimpan id yang tidak bisa dicari ulang, sehingga setiap
+  rakitan tersimpan tampil **"Rp 0"** dengan seluruh komponen bertanda "Sudah
+  tidak tersedia".
+
+Kedua ruang id tidak pernah bertabrakan (diperiksa terhadap katalog produksi:
+nol produk yang `id`-nya juga `wooId` milik produk lain), jadi kesalahannya
+tidak pernah salah mencocokkan barang — ia selalu gagal total, diam-diam.
+
+Yang diubah: `id` yang dikembalikan `fetchBuilderProducts`,
+`fetchBuilderProductsByIds`, `petakanVarian`, dan `parentId` semuanya menjadi
+`wooId`.
+
+**Pengecualian yang disengaja:** `fetchBuilderProductsByIds` tetap MENERIMA `id`
+Prisma, karena preset PC Prebuild menyimpan komponennya dalam ruang itu
+(`lib/pc-prebuild/products.ts` mengirim `p.id` ke panel admin). Supaya
+`build-pc/page.tsx` tetap bisa memetakan hasilnya kembali ke preset, hasilnya
+membawa `prismaId` di samping `id`. `prismaId` BUKAN id produk — jangan pernah
+mengirimkannya ke penetapan harga, penyimpanan rakitan, atau URL.
+
+Rakitan yang tersimpan SEBELUM perbaikan ini tetap berisi id Prisma dan masih
+tampil "Rp 0"; memulihkannya butuh migrasi `items[].productId` satu kali.

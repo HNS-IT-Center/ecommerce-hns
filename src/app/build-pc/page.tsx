@@ -53,7 +53,17 @@ export default async function BuildPcPage({
           ])
         )
       )
-      const byId = new Map(products.map((product) => [product.id, product]))
+      /*
+       * Dikunci `prismaId`, BUKAN `id`.
+       *
+       * Preset menyimpan komponennya sebagai id Prisma (panel admin membacanya
+       * dari `lib/pc-prebuild/products.ts`, yang mengirim `p.id`), sementara
+       * `product.id` yang dikembalikan wizard adalah `wooId` — id yang dikenal
+       * seluruh storefront. Mengunci peta ini dengan `id` membuat setiap
+       * pencarian di bawah meleset, dan paket prebuild termuat KOSONG tanpa
+       * satu pun pesan. Lihat catatan ID PRODUK di `features/builder/actions.ts`.
+       */
+      const byId = new Map(products.map((product) => [product.prismaId, product]))
       const stepAda = new Set(stepsConfig.map((step) => step.id))
       const selections: Record<string, BuilderSelection[]> = {}
 
