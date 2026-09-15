@@ -9,7 +9,7 @@ import {
   type ProductFlagSummary,
   type ProductTypeTotals,
 } from "@/lib/api/admin-dashboard"
-import type { ProductFlag } from "@/lib/api/woocommerce/product-health"
+import { isProductFlag, type ProductFlag } from "@/lib/api/woocommerce/product-health"
 
 /**
  * Pemuat ulang kartu dashboard saat penyaringnya diganti.
@@ -24,8 +24,6 @@ import type { ProductFlag } from "@/lib/api/woocommerce/product-health"
  */
 
 export type DashboardResult<T> = { ok: true; data: T } | { ok: false; error: string }
-
-const FLAGS: ReadonlySet<string> = new Set<ProductFlag>(["missing-sku", "empty-stock"])
 
 /** Id kategori datang dari klien — hanya bilangan bulat positif atau null. */
 function parseCategoryId(value: unknown): number | null | undefined {
@@ -45,7 +43,7 @@ export async function loadProductFlagSummary(
   rootCategoryId: number | null
 ): Promise<DashboardResult<ProductFlagSummary>> {
   const categoryId = parseCategoryId(rootCategoryId)
-  if (!FLAGS.has(flag) || categoryId === undefined) {
+  if (!isProductFlag(flag) || categoryId === undefined) {
     return { ok: false, error: "Penyaring tidak valid." }
   }
 

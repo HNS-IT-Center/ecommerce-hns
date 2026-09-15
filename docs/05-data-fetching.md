@@ -1209,6 +1209,7 @@ grafik, "Pesanan Terbaru"). Sekarang ia berisi lima kartu dari data Prisma asli:
 | Total produk (semua / simple / bervariasi + jumlah varian) | `getProductTypeTotals` | kategori induk | `produk` |
 | Produk tanpa SKU — kelompok simple & varian | `getProductFlagSummary("missing-sku")` | kategori induk | `produk` |
 | Stok kosong — kelompok simple & varian | `getProductFlagSummary("empty-stock")` | kategori induk | `produk` |
+| Belum ada foto utama — kelompok produk (simple + induk bervariasi) & varian *(ditambahkan 15 Sep 2026)* | `getProductFlagSummary("missing-image")` | kategori induk | `produk` |
 | 10 produk terbaru (`importedAt`) | `getLatestProducts` | — | `produk` |
 | 20 log produk terakhir | `getRecentProductLogs` | harga (bawaan) / semua / per aksi | `logs` |
 
@@ -1245,12 +1246,44 @@ menampilkan keterangan "N varian tanpa SKU / stok kosong"
 `product_categories` sendiri (0 baris per 14 Sep 2026), jadi cakupan kategorinya
 dibaca dari induk.
 
+**Pengecualian: foto utama kosong (`missing-image`, 15 Sep 2026).** Kondisinya
+`images: { none: { url: { not: "" } } }` — tidak ada satu pun baris
+`product_images` ber-URL. Berbeda dari SKU dan stok, induk bervariasi juga
+diperiksa lewat barisnya SENDIRI (`flagAppliesToParent`), karena foto induk
+itulah yang tampil di kartu toko. Akibatnya:
+
+- Kelompok pertama di kartu berlabel "Produk" (simple + induk bervariasi), bukan
+  "Produk simple", dan baris induk diberi lencana "Bervariasi".
+- Daftar `flag_filter=missing-image` memuat induk yang bermasalah karena dirinya
+  sendiri MAUPUN karena variannya, jadi tidak ada satu angka kartu yang sama
+  dengan jumlah barisnya. Tautan kartu untuk flag ini sengaja tanpa angka.
+- Varian yang "meminjam" foto induk sebenarnya menyimpan URL itu sebagai baris
+  miliknya sendiri, jadi tidak terhitung kosong.
+- URL yang terisi tapi menjawab 404 **tidak** terdeteksi — memeriksa ribuan URL
+  dari server terlalu mahal. Storefront menanganinya lewat `ProductImage`
+  (lihat di bawah).
+
+### Foto produk kosong/rusak di storefront (15 Sep 2026)
+
+`mapWooProductToUI` kini mengisi `image_url: null` untuk produk tanpa foto,
+bukan lagi `/images/placeholder.svg`. URL placeholder yang terisi membuat
+`components/ui/product-image.tsx` mengira ada foto, sehingga pelanggan melihat
+kotak "No Image" berbahasa Inggris yang tidak ikut tema gelap. Builder juga
+tidak lagi memakai `/placeholder.jpg` (berkasnya memang tidak pernah ada).
+
+Setiap foto produk di storefront dirender lewat `ProductImage`, yang menangani
+dua kasus sekaligus: `src` kosong (keputusan server) dan URL yang gagal dimuat
+(`onError`, hanya bisa diketahui peramban). Prop `fallback` mengganti ikon
+bawaan saat kotak kosong perlu tetap informatif — mis. nama opsi di strip varian.
+Pengecualian: halaman cetak `/build-pc/print` masih memakai `<img>` biasa di
+Server Component.
+
 ### Parameter baru di `/admin/produk`
 
 | Parameter | Nilai | Catatan |
 |---|---|---|
 | `status_filter` | + `active` | Terbit + draft. Dipakai semua tautan dari dashboard. |
-| `flag_filter` | `missing-sku`, `empty-stock` | Menggantikan `status_filter=empty_stock` lama, yang masih diterima. Stok kosong kini juga menjaring varian dan `stockQty <= 0`. |
+| `flag_filter` | `missing-sku`, `empty-stock`, `missing-image` | Menggantikan `status_filter=empty_stock` lama, yang masih diterima. Stok kosong kini juga menjaring varian dan `stockQty <= 0`. |
 | `category_filter` | id kategori | Kategori beserta seluruh keturunannya (`resolveCategoryScope`). Id tak dikenal = hasil kosong, bukan semua produk. |
 
 `PRICE_ACTIONS`, label aksi, warna lencana, dan `formatLogValue` dipindah dari

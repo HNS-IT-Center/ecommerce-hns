@@ -1,10 +1,10 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
 import { ArrowLeft, TriangleAlert } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
+import { ProductImage } from "@/components/ui/product-image";
 import { formatRupiah } from "@/lib/utils";
 import { getCurrentCustomer } from "@/lib/auth/customer";
 import { getSavedBuild } from "@/lib/api/saved-pc-builds";
@@ -73,8 +73,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 className="flex items-center gap-4 rounded-2xl border bg-card p-4 shadow-sm"
               >
                 <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-muted">
-                  {item.product?.image ? (
-                    <Image
+                  {item.product ? (
+                    <ProductImage
                       src={item.product.image}
                       alt={item.product.name}
                       width={64}

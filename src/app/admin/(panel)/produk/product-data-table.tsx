@@ -2,7 +2,6 @@
 
 import { useState, useTransition, useEffect, useCallback } from "react"
 import Link from "next/link"
-import Image from "next/image"
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import { ChevronDown, ChevronUp, ChevronsUpDown, Edit, Layers, Pencil, Search, Trash2, Loader2 } from "lucide-react"
 
@@ -13,6 +12,7 @@ import { QuickEditModal } from "./quick-edit-modal"
 import type { Product, ProductCategory, ProductAttributeTaxonomy } from "@/types/woocommerce"
 import type { RootCategoryOption } from "@/lib/api/woocommerce/categories"
 import type { FlaggedVariationCounts } from "@/lib/api/woocommerce/product-health"
+import { ProductImage } from "@/components/ui/product-image"
 
 // Shadcn UI Tooltips
 import {
@@ -379,6 +379,7 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
           <option value="">Semua Kondisi</option>
           <option value="missing-sku">SKU Kosong</option>
           <option value="empty-stock">Stok Kosong</option>
+          <option value="missing-image">Foto Utama Kosong</option>
         </select>
 
         <div className="flex-1 flex items-center gap-2 rounded-xl border border-input bg-background px-3 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary overflow-hidden">
@@ -515,7 +516,7 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
                 <td className="px-4 py-3 align-middle">
                   <div className="h-10 w-10 shrink-0 overflow-hidden rounded-md bg-muted border border-border relative">
                     {product.image ? (
-                      <Image src={product.image} alt={product.name} fill sizes="40px" className="object-cover" />
+                      <ProductImage src={product.image} alt={product.name} fill sizes="40px" className="object-cover" />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-xs text-muted-foreground">No img</div>
                     )}
@@ -538,6 +539,7 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
                   }`}>
                     {product.status}
                   </span>
+                  <FlaggedVariationNote count={product.flaggedVariations["missing-image"]} label="tanpa foto" />
                 </td>
                 <td className="px-4 py-3 align-middle text-muted-foreground">
                   {product.sku || "-"}
@@ -703,7 +705,7 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
             <div className="flex gap-3">
               <div className="h-16 w-16 shrink-0 overflow-hidden rounded-md bg-muted border border-border relative">
                 {product.image ? (
-                  <Image src={product.image} alt={product.name} fill sizes="64px" className="object-cover" />
+                  <ProductImage src={product.image} alt={product.name} fill sizes="64px" className="object-cover" />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">No img</div>
                 )}
@@ -733,6 +735,7 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
                 </div>
                 <FlaggedVariationNote count={product.flaggedVariations["missing-sku"]} label="tanpa SKU" />
                 <FlaggedVariationNote count={product.flaggedVariations["empty-stock"]} label="stok kosong" />
+                <FlaggedVariationNote count={product.flaggedVariations["missing-image"]} label="tanpa foto" />
               </div>
             </div>
 

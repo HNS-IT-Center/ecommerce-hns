@@ -115,7 +115,7 @@ export type GetProductsParams = {
    * Hanya produk yang datanya belum beres — lihat `product-health.ts`. Untuk
    * produk bervariasi, yang diperiksa adalah variannya, bukan induknya.
    */
-  flag?: "missing-sku" | "empty-stock";
+  flag?: "missing-sku" | "empty-stock" | "missing-image";
   /**
    * Menyaring daftar berdasarkan jenis produk. Dipakai admin untuk memisahkan
    * produk bervariasi — harga & stoknya ditentukan per varian, jadi keduanya

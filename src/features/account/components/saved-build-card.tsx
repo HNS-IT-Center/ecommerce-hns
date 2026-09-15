@@ -1,9 +1,9 @@
 import Link from "next/link";
-import Image from "next/image";
 import { TriangleAlert, TrendingUp } from "lucide-react";
 
 import { formatRupiah } from "@/lib/utils";
 import type { ResolvedSavedBuild } from "@/lib/api/saved-pc-builds";
+import { ProductImage } from "@/components/ui/product-image";
 
 /** Sampai 3 thumbnail komponen ditumpuk, sisanya cukup dihitung. */
 const MAX_THUMBNAILS = 3;
@@ -27,7 +27,7 @@ export function SavedBuildCard({ build }: { build: ResolvedSavedBuild }) {
               className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border bg-background"
               style={{ marginLeft: i > 0 ? "-0.5rem" : 0, zIndex: MAX_THUMBNAILS - i }}
             >
-              <Image src={src} alt="" width={56} height={56} className="h-full w-full object-cover" />
+              <ProductImage src={src} alt="" width={56} height={56} className="h-full w-full object-cover" />
             </div>
           ))
         ) : (

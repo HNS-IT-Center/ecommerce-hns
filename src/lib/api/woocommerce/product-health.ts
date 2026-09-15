@@ -1,6 +1,13 @@
 import { ProductStatus, ProductType, StockStatus, type Prisma } from "@prisma/client";
 import { getPrisma } from "@/lib/prisma/client";
 import { collectDescendantIds } from "@/lib/utils/category-move";
+import { PRODUCT_FLAGS, flagAppliesToParent, type ProductFlag } from "./product-flags";
+
+// Diekspor ulang supaya pemakai di sisi server cukup mengimpor satu berkas.
+// Client Component WAJIB mengimpor dari `product-flags.ts` langsung — berkas
+// ini membawa Prisma, dan mengimpor nilai darinya ikut menyeret driver
+// database ke bundle peramban.
+export { PRODUCT_FLAGS, flagAppliesToParent, isProductFlag, type ProductFlag } from "./product-flags";
 
 /**
  * Definisi "produk yang datanya belum beres" — satu tempat, dua pemakai.
@@ -41,10 +48,30 @@ export const emptyStockWhere: Prisma.ProductWhereInput = {
   OR: [{ stockStatus: StockStatus.OUTOFSTOCK }, { stockQty: { lte: 0 } }],
 };
 
-export type ProductFlag = "missing-sku" | "empty-stock";
+/**
+ * Tanpa gambar utama: tidak ada satu pun baris `product_images` yang URL-nya
+ * terisi. Gambar utama adalah baris teratas menurut `position`, jadi "tidak
+ * punya baris ber-URL" sama artinya dengan "tidak punya gambar utama".
+ *
+ * URL kosong ikut dijaring karena alasan yang sama dengan SKU: baris berisi
+ * `""` tetap tampil sebagai kotak kosong di toko.
+ *
+ * Yang TIDAK tertangkap: URL yang terisi tapi menjawab 404. Itu hanya ketahuan
+ * di peramban — storefront menanganinya lewat `ProductImage`.
+ */
+export const missingImageWhere: Prisma.ProductWhereInput = {
+  images: { none: { url: { not: "" } } },
+};
 
 export function flagWhere(flag: ProductFlag): Prisma.ProductWhereInput {
-  return flag === "missing-sku" ? missingSkuWhere : emptyStockWhere;
+  switch (flag) {
+    case "missing-sku":
+      return missingSkuWhere;
+    case "empty-stock":
+      return emptyStockWhere;
+    case "missing-image":
+      return missingImageWhere;
+  }
 }
 
 /**
@@ -54,11 +81,18 @@ export function flagWhere(flag: ProductFlag): Prisma.ProductWhereInput {
  * VARIANNYA: induk memang lazim tanpa SKU dan tanpa stok sendiri, jadi yang
  * membuat induk masuk daftar adalah minimal satu varian aktif yang bermasalah.
  * Varian private (varian yang dimatikan di WooCommerce) tidak dihitung.
+ *
+ * Pengecualiannya flag yang `flagAppliesToParent` — induk juga masuk daftar
+ * karena barisnya sendiri.
  */
 export function parentFlagWhere(flag: ProductFlag): Prisma.ProductWhereInput {
+  const ownRowTypes = flagAppliesToParent(flag)
+    ? [ProductType.SIMPLE, ProductType.VARIABLE]
+    : [ProductType.SIMPLE];
+
   return {
     OR: [
-      { AND: [{ type: ProductType.SIMPLE }, flagWhere(flag)] },
+      { AND: [{ type: { in: ownRowTypes } }, flagWhere(flag)] },
       {
         type: ProductType.VARIABLE,
         variations: {
@@ -70,6 +104,10 @@ export function parentFlagWhere(flag: ProductFlag): Prisma.ProductWhereInput {
 }
 
 export type FlaggedVariationCounts = Record<ProductFlag, number>;
+
+export function emptyFlagCounts(): FlaggedVariationCounts {
+  return { "missing-sku": 0, "empty-stock": 0, "missing-image": 0 };
+}
 
 /**
  * Jumlah varian aktif yang bermasalah, dikelompokkan per induk.
@@ -89,9 +127,8 @@ export async function countFlaggedVariationsByParent(
   const counts = new Map<number, FlaggedVariationCounts>();
   if (parentWooIds.length === 0) return counts;
 
-  const flags: ProductFlag[] = ["missing-sku", "empty-stock"];
   const results = await Promise.all(
-    flags.map((flag) =>
+    PRODUCT_FLAGS.map((flag) =>
       getPrisma().product.findMany({
         where: {
           AND: [
@@ -108,10 +145,10 @@ export async function countFlaggedVariationsByParent(
     )
   );
 
-  flags.forEach((flag, index) => {
+  PRODUCT_FLAGS.forEach((flag, index) => {
     for (const row of results[index]) {
       if (!row.parent) continue;
-      const entry = counts.get(row.parent.wooId) ?? { "missing-sku": 0, "empty-stock": 0 };
+      const entry = counts.get(row.parent.wooId) ?? emptyFlagCounts();
       entry[flag] += 1;
       counts.set(row.parent.wooId, entry);
     }

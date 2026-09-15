@@ -23,7 +23,7 @@ export const metadata: Metadata = {
 }
 
 // Angka di dashboard harus mencerminkan keadaan saat dibuka — staff memeriksa
-// di sini apakah SKU atau stok yang baru mereka isi sudah keluar dari daftar.
+// di sini apakah SKU, stok, atau foto yang baru mereka isi sudah keluar dari daftar.
 export const dynamic = "force-dynamic"
 
 export default async function DashboardPage() {
@@ -49,6 +49,7 @@ export default async function DashboardPage() {
           getProductFlagSummary("missing-sku", null),
           getProductFlagSummary("empty-stock", null),
           getLatestProducts(),
+          getProductFlagSummary("missing-image", null),
         ])
       : null,
     canViewLogs ? Promise.all([getRecentProductLogs("price"), getProductLogActions()]) : null,
@@ -76,6 +77,14 @@ export default async function DashboardPage() {
           <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-2">
             <ProductFlagCard flag="missing-sku" categories={productData[0]} initial={productData[2]} />
             <ProductFlagCard flag="empty-stock" categories={productData[0]} initial={productData[3]} />
+            {/* Satu-satunya flag yang langsung terlihat pelanggan (kartu toko
+                tanpa foto), jadi dibentangkan penuh supaya tidak tenggelam. */}
+            <ProductFlagCard
+              flag="missing-image"
+              categories={productData[0]}
+              initial={productData[5]}
+              className="lg:col-span-2"
+            />
           </div>
         </>
       )}

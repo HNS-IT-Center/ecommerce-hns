@@ -1,6 +1,5 @@
 "use client"
 
-import Image from "next/image"
 import { ProductImage } from "@/components/ui/product-image"
 import { useState, useRef, useEffect } from "react"
 import { motion, AnimatePresence, type PanInfo } from "framer-motion"
@@ -133,8 +132,8 @@ export function ProductGallery({
 
   if (images.length === 0) {
     return (
-      <div className="aspect-square w-full rounded-2xl bg-background flex items-center justify-center drop-shadow-sm">
-        <span className="text-muted-foreground">No Image</span>
+      <div className="relative aspect-square w-full overflow-hidden rounded-2xl drop-shadow-sm">
+        <ProductImage src={null} alt="Foto produk" fill fallbackClassName="bg-background" />
       </div>
     )
   }
@@ -329,11 +328,12 @@ export function ProductGallery({
             className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-black cursor-pointer group/video"
             aria-label="Putar video produk"
           >
-            <Image
+            <ProductImage
               src={videoPoster ?? images[0].src}
               alt=""
               fill
               sizes="(max-width: 768px) 100vw, 50vw"
+              fallbackClassName="bg-transparent text-white"
               className={cn(
                 "pointer-events-none",
                 videoPoster ? "object-cover opacity-80" : "object-contain opacity-40",
@@ -528,11 +528,12 @@ export function ProductGallery({
                 <>
                   {/* Thumbnail video sengaja gelap dan bertanda play supaya
                       terbaca sebagai "bisa diputar", bukan sekadar foto lain. */}
-                  <Image
+                  <ProductImage
                     src={videoPoster ?? images[0].src}
                     alt=""
                     fill
                     sizes="96px"
+                    fallbackClassName="bg-transparent text-white"
                     className={cn(
                       "pointer-events-none",
                       videoPoster ? "object-cover opacity-70" : "object-contain p-2 opacity-30",

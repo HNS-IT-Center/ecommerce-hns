@@ -1,6 +1,5 @@
 "use client"
 
-import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useRef, useState } from "react"
@@ -16,6 +15,7 @@ import {
   type PrebuildFpsResolution,
 } from "@/lib/pc-prebuild/performance"
 import { formatRupiah } from "@/lib/utils"
+import { ProductImage } from "@/components/ui/product-image"
 
 import { COMPONENT_ROLE_ICONS } from "../lib/component-icons"
 import { fpsTone } from "../lib/fps-tone"
@@ -204,22 +204,23 @@ function SisiKomponen({ view, onOpen }: { view: PrebuildView; onOpen: () => void
   return (
     <div onClick={onOpen} className="flex h-full w-full shrink-0 cursor-pointer flex-col">
       <div className="relative aspect-16/10 w-full shrink-0 overflow-hidden bg-muted">
-        {view.cover ? (
-          <Image
-            src={view.cover}
-            alt=""
-            fill
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-            className="object-contain transition-transform duration-300 group-hover:scale-[1.03]"
-          />
-        ) : (
-          // Paket tanpa foto tetap tampil dengan daftar komponen berikon —
-          // fiturnya tidak menunggu aset (docs/11-pc-prebuild.md §6).
-          <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
-            <ImageOff className="h-7 w-7" strokeWidth={1.5} />
-            <span className="text-xs">Belum ada foto</span>
-          </div>
-        )}
+        {/* Paket tanpa foto — atau yang fotonya gagal dimuat — tetap tampil
+            dengan daftar komponen berikon; fiturnya tidak menunggu aset
+            (docs/11-pc-prebuild.md §6). */}
+        <ProductImage
+          src={view.cover}
+          alt=""
+          fill
+          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+          className="object-contain transition-transform duration-300 group-hover:scale-[1.03]"
+          fallbackClassName="flex-col gap-2"
+          fallback={
+            <>
+              <ImageOff className="h-7 w-7" strokeWidth={1.5} aria-hidden="true" />
+              <span className="text-xs">Belum ada foto</span>
+            </>
+          }
+        />
       </div>
 
       <div className="shrink-0 px-4 pb-2 pt-3">

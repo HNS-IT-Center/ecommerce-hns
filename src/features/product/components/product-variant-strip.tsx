@@ -1,11 +1,11 @@
 "use client"
 
-import Image from "next/image"
 
 import { cn } from "@/lib/utils"
 import { optionKey } from "@/features/product/lib/get-unavailable-options"
 import type { VariantAttribute } from "./product-variant-selector"
 import type { ProductVariation } from "@/types/woocommerce"
+import { ProductImage } from "@/components/ui/product-image"
 
 /** Sasaran gulungan dari tombol keranjang di bar aksi mengambang (mobile). */
 export const VARIANT_STRIP_ID = "product-variant-strip"
@@ -150,21 +150,20 @@ export function ProductVariantStrip({
                       : "opacity-80 ring-1 ring-border",
                 )}
               >
-                {src ? (
-                  <Image
-                    src={src}
-                    alt=""
-                    fill
-                    sizes="64px"
-                    className="pointer-events-none object-cover p-1"
-                  />
-                ) : (
-                  // Varian tanpa foto DAN tanpa gambar induk untuk dipinjam.
-                  // Namanya ditulis di kotak supaya tetap bisa dibedakan.
-                  <span className="flex h-full w-full items-center justify-center px-1 text-center text-[10px] font-semibold leading-tight text-muted-foreground">
-                    {option}
-                  </span>
-                )}
+                {/* Varian tanpa foto DAN tanpa gambar induk untuk dipinjam — atau
+                    yang fotonya gagal dimuat. Namanya ditulis di kotak supaya
+                    tetap bisa dibedakan. */}
+                <ProductImage
+                  src={src}
+                  alt=""
+                  fill
+                  sizes="64px"
+                  className="pointer-events-none object-cover p-1"
+                  fallbackClassName="bg-transparent px-1"
+                  fallback={
+                    <span className="text-center text-[10px] font-semibold leading-tight">{option}</span>
+                  }
+                />
 
                 {/* Garis miring dari pojok ke pojok, digambar dengan gradien
                     supaya tidak perlu elemen SVG tambahan per kotak.

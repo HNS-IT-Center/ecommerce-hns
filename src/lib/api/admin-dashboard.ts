@@ -6,6 +6,7 @@ import { decodeHtmlEntities } from "@/lib/utils/html"
 import { PRICE_ACTIONS } from "@/lib/logs/actions"
 import {
   ACTIVE_PRODUCT_STATUSES,
+  flagAppliesToParent,
   flagWhere,
   resolveCategoryScope,
   type ProductFlag,
@@ -37,6 +38,7 @@ export type DashboardProductItem = {
    */
   editId: number
   name: string
+  type: ProductType
   /** Kategori utama — untuk varian, kategori induknya (varian tak berkategori). */
   category: string | null
   status: ProductStatus
@@ -45,7 +47,12 @@ export type DashboardProductItem = {
 }
 
 export type ProductFlagSummary = {
-  simple: { count: number; items: DashboardProductItem[] }
+  /**
+   * Baris produk induk yang bermasalah karena dirinya sendiri. Umumnya hanya
+   * produk simple; untuk flag yang `flagAppliesToParent`, induk bervariasi
+   * ikut di sini.
+   */
+  products: { count: number; items: DashboardProductItem[] }
   variation: {
     count: number
     /** Jumlah induk yang terdampak — itulah yang tampil di daftar produk. */
@@ -61,7 +68,6 @@ export type ProductTypeTotals = {
 }
 
 export type LatestProductItem = DashboardProductItem & {
-  type: ProductType
   variationCount: number
   importedAt: Date
 }
@@ -93,6 +99,7 @@ const itemSelect = {
   id: true,
   wooId: true,
   name: true,
+  type: true,
   status: true,
   stockStatus: true,
   stockQty: true,
@@ -110,6 +117,7 @@ function toItem(row: ItemRow): DashboardProductItem {
     id: row.id,
     editId: row.parent?.wooId ?? row.wooId,
     name: decodeHtmlEntities(row.name),
+    type: row.type,
     category: categoryName ? decodeHtmlEntities(categoryName) : null,
     status: row.status,
     isOutOfStock: row.stockStatus === "OUTOFSTOCK",
@@ -135,6 +143,20 @@ function simpleWhere(scope: number[] | null): Prisma.ProductWhereInput {
   return {
     AND: [
       { parentId: null, type: ProductType.SIMPLE, status: { in: ACTIVE_PRODUCT_STATUSES } },
+      ownCategoryWhere(scope),
+    ],
+  }
+}
+
+/** Produk induk aktif dengan jenis mana pun (simple maupun bervariasi). */
+function parentWhere(scope: number[] | null): Prisma.ProductWhereInput {
+  return {
+    AND: [
+      {
+        parentId: null,
+        type: { in: [ProductType.SIMPLE, ProductType.VARIABLE] },
+        status: { in: ACTIVE_PRODUCT_STATUSES },
+      },
       ownCategoryWhere(scope),
     ],
   }
@@ -171,7 +193,9 @@ export async function getProductFlagSummary(
   const prisma = getPrisma()
   const condition = flagWhere(flag)
 
-  const simple: Prisma.ProductWhereInput = { AND: [simpleWhere(scope), condition] }
+  const products: Prisma.ProductWhereInput = {
+    AND: [flagAppliesToParent(flag) ? parentWhere(scope) : simpleWhere(scope), condition],
+  }
   const variation: Prisma.ProductWhereInput = { AND: [variationWhere(scope), condition] }
   const affectedParents: Prisma.ProductWhereInput = {
     AND: [
@@ -184,24 +208,25 @@ export async function getProductFlagSummary(
     ],
   }
 
-  // SKU kosong diurutkan dari produk terbaru — yang baru ditambahkan paling
-  // mungkin masih bisa dilacak SKU-nya. Stok kosong diurutkan dari perubahan
-  // terakhir, supaya barang yang baru saja habis ada di atas.
+  // SKU dan gambar kosong diurutkan dari produk terbaru — yang baru ditambahkan
+  // paling mungkin masih bisa dilacak SKU-nya dan paling mungkin fotonya memang
+  // belum sempat diunggah. Stok kosong diurutkan dari perubahan terakhir,
+  // supaya barang yang baru saja habis ada di atas.
   const orderBy: Prisma.ProductOrderByWithRelationInput[] =
-    flag === "missing-sku"
-      ? [{ importedAt: "desc" }, { id: "desc" }]
-      : [{ updatedAt: "desc" }, { id: "desc" }]
+    flag === "empty-stock"
+      ? [{ updatedAt: "desc" }, { id: "desc" }]
+      : [{ importedAt: "desc" }, { id: "desc" }]
 
-  const [simpleCount, simpleRows, variationCount, variationRows, parentCount] = await Promise.all([
-    prisma.product.count({ where: simple }),
-    prisma.product.findMany({ where: simple, select: itemSelect, orderBy, take: LIST_LIMIT }),
+  const [productCount, productRows, variationCount, variationRows, parentCount] = await Promise.all([
+    prisma.product.count({ where: products }),
+    prisma.product.findMany({ where: products, select: itemSelect, orderBy, take: LIST_LIMIT }),
     prisma.product.count({ where: variation }),
     prisma.product.findMany({ where: variation, select: itemSelect, orderBy, take: LIST_LIMIT }),
     prisma.product.count({ where: affectedParents }),
   ])
 
   return {
-    simple: { count: simpleCount, items: simpleRows.map(toItem) },
+    products: { count: productCount, items: productRows.map(toItem) },
     variation: { count: variationCount, parentCount, items: variationRows.map(toItem) },
   }
 }
@@ -238,7 +263,6 @@ export async function getLatestProducts(): Promise<LatestProductItem[]> {
 
   return rows.map((row) => ({
     ...toItem(row),
-    type: row.type,
     variationCount: row._count.variations,
     importedAt: row.importedAt,
   }))

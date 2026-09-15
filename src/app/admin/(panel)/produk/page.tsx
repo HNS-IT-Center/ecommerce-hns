@@ -2,7 +2,12 @@ import Link from "next/link"
 import { Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react"
 import { getProductsPaginated, getProductAttributes } from "@/lib/api/woocommerce/products"
 import { getCategoriesForAdmin, getRootCategoriesForAdmin } from "@/lib/api/woocommerce/categories"
-import { countFlaggedVariationsByParent, resolveCategoryScope } from "@/lib/api/woocommerce/product-health"
+import {
+  countFlaggedVariationsByParent,
+  emptyFlagCounts,
+  isProductFlag,
+  resolveCategoryScope,
+} from "@/lib/api/woocommerce/product-health"
 import { getStockDisplayMode } from "@/lib/api/stock-display"
 import { requirePageView } from "@/lib/auth"
 import { ProductDataTable } from "./product-data-table"
@@ -46,7 +51,7 @@ export default async function AdminProdukPage({ searchParams }: Props) {
   // masih menumpang di dropdown status. Tetap diterima supaya tautan yang
   // terlanjur tersimpan tidak diam-diam kehilangan penyaringnya.
   const apiFlag =
-    flag_filter === "missing-sku" || flag_filter === "empty-stock"
+    isProductFlag(flag_filter)
       ? flag_filter
       : status_filter === "empty_stock"
         ? "empty-stock"
@@ -95,7 +100,7 @@ export default async function AdminProdukPage({ searchParams }: Props) {
     // Induk bervariasi masuk daftar "SKU/stok kosong" karena VARIANNYA, sementara
     // kolom induknya sendiri memang kosong — tanpa angka ini barisnya tak bisa
     // dibedakan dari induk yang sudah beres.
-    flaggedVariations: flaggedVariations.get(product.id) ?? { "missing-sku": 0, "empty-stock": 0 },
+    flaggedVariations: flaggedVariations.get(product.id) ?? emptyFlagCounts(),
     price: Number(product.price || 0),
     image: product.images?.[0]?.src ?? null,
     stockStatus: product.stock_status,
