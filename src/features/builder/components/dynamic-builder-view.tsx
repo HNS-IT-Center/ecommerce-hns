@@ -225,9 +225,12 @@ export function DynamicBuilderView({
    *
    * Yang BELUM terverifikasi tetap ikut dijumlahkan memakai harga localStorage,
    * karena membuangnya justru menampilkan total yang lebih kecil dari isi
-   * rakitan. Sebagai gantinya `priceUnverified` menyala dan penandanya tampil
-   * tepat di bawah angka ini. Angka final ke CS tetap dibaca ulang di server
-   * saat tombol Konsultasi ditekan.
+   * rakitan. Penandanya tampil tepat di bawah angka ini SELAMA keadaannya
+   * `loading` atau `error` saja — keadaan `pending` sengaja tidak ditandai,
+   * lihat alasannya di ringkasan panel. Yang menjaga angkanya bukan penanda
+   * itu melainkan pembacaan ulang di server: total ke CS dibaca ulang saat
+   * tombol Konsultasi ditekan, dan PDF quotation menyusun harganya sendiri di
+   * `/build-pc/print` dari katalog.
    */
   /**
    * Keadaan penanda "belum diverifikasi", dipakai baris komponen maupun
@@ -396,19 +399,65 @@ export function DynamicBuilderView({
     )
   }
 
+  /**
+   * Penjaga terakhir sebelum rakitan KELUAR dari halaman ini — ke PDF quotation
+   * (`handlePrint`) atau ke CS (`handleCheckoutWA`).
+   *
+   * MEMBLOKIR, berbeda dengan `handleAdvanceStep` yang hanya mengingatkan saat
+   * orang berpindah langkah. Bedanya disengaja: berpindah langkah masih bagian
+   * dari proses merakit, sedangkan dua aksi di atas menghasilkan dokumen yang
+   * dibawa pelanggan dan pesan yang sudah sampai ke CS. Rakitan tanpa komponen
+   * wajib di situ berakhir jadi penawaran yang tidak bisa dipenuhi.
+   *
+   * Selain menolak, ia MENGANTAR: langkah wajib pertama yang kosong langsung
+   * dibuka. Daftar nama di toast saja tidak cukup — sidebar bisa berisi belasan
+   * langkah, dan menyuruh orang mencari sendiri langkah yang dimaksud adalah
+   * pekerjaan yang tidak perlu ada.
+   *
+   * `closeMobileDrawers()` bukan pemanis. Di mobile tombol ini ditekan DARI
+   * DALAM laci My Build yang duduk di `z-[55]`; tanpa menutupnya, langkah yang
+   * baru dibuka tertutup laci dan toast-nya pun tidak terlihat, sehingga yang
+   * terasa oleh pelanggan cuma "tombolnya tidak berfungsi".
+   *
+   * Tombol "Simpan" sengaja TIDAK memakai penjaga ini: menyimpan rakitan yang
+   * belum selesai untuk dilanjutkan nanti justru itulah gunanya fitur tersebut.
+   */
   const validateRequiredSteps = () => {
     const missingSteps = steps.filter(s => s.isRequired && (!Array.isArray(selections[s.id]) || selections[s.id].length === 0))
-    if (missingSteps.length > 0) {
-      toastManager.add({ 
-        title: "Lengkapi Komponen", 
-        description: `Silakan pilih komponen untuk: ${missingSteps.map(s => s.name).join(", ")}` 
-      })
-      return false
-    }
-    return true
+    if (missingSteps.length === 0) return true
+
+    const [firstMissing, ...restMissing] = missingSteps
+
+    toastManager.add({
+      title: `${firstMissing.name} belum dipilih`,
+      description:
+        restMissing.length > 0
+          ? `Komponen wajib ini harus diisi dulu. Setelah itu masih ada: ${restMissing.map(s => s.name).join(", ")}.`
+          : "Komponen ini wajib diisi sebelum rakitan bisa dicetak atau dikirim ke CS.",
+      // Merah menandai satu hal saja di halaman ini: aksi yang baru ditekan
+      // DIBATALKAN. Itu sebabnya "Build Kosong" dan "Gagal menyiapkan pesan"
+      // ikut merah, sedangkan "Sebagian komponen tidak tersedia" tetap netral
+      // — yang terakhir itu mengabarkan sesuatu sambil pesannya tetap terkirim.
+      // Tanpa batas itu, merah cuma jadi warna untuk "kabar penting" dan
+      // pelanggan berhenti bisa menebak apakah tombolnya jadi atau tidak.
+      data: { variant: "danger" },
+    })
+
+    // Laci ditutup DULU, baru langkahnya dipindah — supaya langkah tujuan tidak
+    // sempat terlukis di balik laci yang masih terbuka.
+    closeMobileDrawers()
+    setActiveStep(firstMissing.id)
+
+    return false
   }
 
   const handlePrint = () => {
+    // Langkah wajib dijaga di SINI, bukan cuma di `handleCheckoutWA`. PDF
+    // quotation ini dicetak dan dibawa pelanggan; kalau ia boleh terbit tanpa
+    // komponen wajib, tanda `*` di daftar langkah tidak berarti apa-apa dan CS
+    // menerima pertanyaan atas dokumen yang rakitannya tidak bisa dirakit.
+    if (!validateRequiredSteps()) return
+
     // Hanya id & kuantitas yang dikirim — nama, harga, dan gambar dibaca ulang
     // dari database di halaman /build-pc/print, jadi harga yang tampil di PDF
     // tidak bisa dipalsukan lewat inspect element di halaman ini.
@@ -423,7 +472,8 @@ export function DynamicBuilderView({
     if (itemsParam.length === 0) {
       toastManager.add({
         title: "Build Kosong",
-        description: "Belum ada komponen yang dipilih."
+        description: "Belum ada komponen yang dipilih.",
+        data: { variant: "danger" },
       })
       return
     }
@@ -458,6 +508,7 @@ export function DynamicBuilderView({
         toastManager.add({
           title: "Gagal menyiapkan pesan",
           description: pricingError ?? "Coba lagi sebentar lagi.",
+          data: { variant: "danger" },
         })
         return
       }
@@ -712,7 +763,8 @@ export function DynamicBuilderView({
    * mengunci mereka di sana membuat builder terasa rusak padahal tidak ada yang
    * salah. Yang belum diisi tidak hilang dari pandangan — ia tetap tercatat di
    * Build Progress dan di hitungan "3/8", dan `validateRequiredSteps` tetap
-   * menjaga pintu terakhir sebelum rakitan dikirim ke CS.
+   * menjaga pintu terakhir — baik saat rakitan dicetak jadi PDF quotation
+   * maupun saat ia dikirim ke CS.
    */
   const handleAdvanceStep = () => {
     if (!nextStep) return
@@ -955,7 +1007,16 @@ export function DynamicBuilderView({
                   if (isUnavailable(sel.product)) {
                     return <UnavailableNotice name={sel.product.name} density="compact" />
                   }
-                  if (priceUnverifiedFor(sel.product)) {
+                  // Keadaan `pending` TIDAK ditandai di sini. Ia keadaan yang
+                  // paling sering terjadi — setiap komponen yang ditambahkan
+                  // setelah katalog dibaca sekali di awal kunjungan masuk ke
+                  // sana — sehingga penandanya muncul di hampir semua baris
+                  // sekaligus dan terbaca seolah seluruh rakitan bermasalah,
+                  // padahal tidak ada satu pun harga yang diketahui salah.
+                  //
+                  // `loading` dan `error` tetap ditandai: yang satu menerangkan
+                  // jeda yang sedang terjadi, yang satu lagi kegagalan nyata.
+                  if (priceUnverifiedFor(sel.product) && unverifiedState !== "pending") {
                     return (
                       <UnverifiedPriceNotice
                         state={unverifiedState}
@@ -1028,7 +1089,13 @@ export function DynamicBuilderView({
           {/* Kegagalan verifikasi TIDAK memblokir tombol Konsultasi di bawah:
               harga yang dikirim ke CS dibaca ulang di server, jadi pemesanan
               tetap aman walau panel gagal memastikan angkanya di sini. */}
-          {priceUnverified && (
+          {/* `unverifiedState !== "pending"` — alasannya sama dengan penanda
+              per-baris di atas: kalimat panjang yang selalu tampil berhenti
+              dibaca, dan yang tersisa hanyalah kesan bahwa angka di panel ini
+              tidak bisa dipegang. Yang menjaga harga bukan kalimat ini,
+              melainkan pembacaan ulang di server saat Print dan Konsultasi
+              ditekan (lihat `handlePrint` dan `handleCheckoutWA`). */}
+          {priceUnverified && unverifiedState !== "pending" && (
             <p
               className={`flex items-center gap-1.5 pt-0.5 text-[10px] leading-tight ${
                 pricingError ? "text-sale-red" : "text-muted-foreground"
