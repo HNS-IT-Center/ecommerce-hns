@@ -144,8 +144,9 @@ export function AnalysisPanel({
         <p className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/5 px-3 py-2.5 text-sm">
           <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
           <span>
-            Komponen paket berubah sejak analisis ini dibuat, jadi ia{" "}
-            <strong>sudah disembunyikan dari pelanggan</strong> sampai dihitung ulang.
+            Komponen yang memengaruhi performa berubah sejak analisis ini dibuat. Angkanya{" "}
+            <strong>masih tayang untuk pelanggan</strong> — jadi ia menjelaskan susunan yang lama
+            sampai Anda menghitung ulang.
           </span>
         </p>
       )}

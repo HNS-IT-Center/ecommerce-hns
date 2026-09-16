@@ -6,6 +6,7 @@ import { motion, AnimatePresence, type PanInfo } from "framer-motion"
 import { ChevronLeft, ChevronRight, X, Play } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getVideoEmbed, getVideoPosterUrl } from "@/lib/utils/product"
+import { ImageActions } from "./image-actions"
 
 export type GalleryImage = {
   src: string
@@ -310,6 +311,28 @@ export function ProductGallery({
           </span>
         )}
 
+        {/* Tombol salin & unduh untuk foto yang sedang tampil.
+
+            Duduk di kiri-ATAS: satu-satunya sudut kanvas yang tidak dipakai
+            penanda varian (kanan-atas di `sm`, kiri-bawah di mobile) maupun
+            penghitung "3/7" (kanan-bawah).
+
+            `z-50` seperti tombol panah, karena lapisan penangkap geseran di
+            `z-[41]` akan menelan kliknya kalau lebih rendah.
+
+            Selalu terlihat, tidak menunggu hover — di mobile hover tidak ada
+            sama sekali, dan di desktop tombol yang baru muncul setelah kursor
+            masuk hanya ditemukan orang yang sudah tahu ia ada. Tidak dilukis di
+            slide video: yang tampil di sana milik YouTube/Vimeo, bukan foto
+            produk yang kita layani. */}
+        {activeSlide?.kind === "image" && (
+          <ImageActions
+            src={activeSlide.image.src}
+            fileBaseName={activeSlide.image.alt}
+            className="absolute left-3 top-3 z-50"
+          />
+        )}
+
         {/* Poster slide video: pembeli melihat sampul dan menekan play dulu,
             video tidak pernah berjalan sendiri saat digeser ke sini. Posternya
             memakai thumbnail resmi YouTube bila ada; Vimeo dan file R2 tidak
@@ -576,7 +599,19 @@ export function ProductGallery({
               <X className="h-6 w-6" />
             </button>
             
-            <div 
+            {/* Tombol yang sama di lightbox, di kiri-atas — tombol tutup ada di
+                kanan-atas. Selalu terlihat: lightbox paling sering dibuka di
+                ponsel, dan di sana tidak ada hover. */}
+            {activeSlide?.kind === "image" && (
+              <ImageActions
+                src={activeSlide.image.src}
+                fileBaseName={activeSlide.image.alt}
+                tone="dark"
+                className="absolute left-4 top-4 z-[110]"
+              />
+            )}
+
+            <div
               className="relative h-full w-full max-w-5xl"
               onClick={(e) => e.stopPropagation()}
             >

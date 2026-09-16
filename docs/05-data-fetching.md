@@ -1449,3 +1449,83 @@ berhasil; `SaveBuildDialog` melengkapinya dengan `router.refresh()` di sisi
 klien. Tanpa itu, rakitan yang baru disimpan tidak muncul di "Rakitan
 Tersimpan" — daftarnya dirender di server dan masih dilayani dari salinan lama,
 yang dari sisi pelanggan tidak bisa dibedakan dari "simpannya gagal".
+
+---
+
+## 21. `GET /api/media/download` — unduh & salin foto produk (16 September 2026)
+
+Galeri produk punya tombol **salin** dan **unduh** untuk foto yang sedang tampil
+di kanvas utama (`features/product/components/image-actions.tsx`). Keduanya
+menembak satu endpoint:
+
+| Endpoint | Query | Balasan |
+|---|---|---|
+| `GET /api/media/download` | `src` (URL gambar, wajib), `name` (nama berkas tanpa ekstensi, opsional) | Isi berkas apa adanya + `Content-Disposition: attachment` |
+
+Tanpa autentikasi — fotonya memang sudah publik di halaman produk.
+
+### Kenapa lewat server, bukan langsung ke host gambar
+
+Tiga alasan, dan ketiganya membuat tautan langsung ke `media.hnsitcenter.com`
+tidak cukup:
+
+1. `<a download>` hanya dipatuhi peramban untuk alamat **same-origin**. Menunjuk
+   langsung ke host media cuma membuka gambarnya di tab baru.
+2. Penyalinan ke clipboard perlu `fetch` isi berkasnya, dan itu menuntut header
+   CORS yang tidak dijamin ada di host media.
+3. Nama berkasnya bisa dibuat terbaca (`asus-vivobook-14-a1407qa.webp`) alih-alih
+   nama acak hasil unggahan — atau, kalau menempuh `/_next/image`, seluruh query
+   optimizer sebagai nama berkas berformat WebP.
+
+### Pemeriksaan di `lib/api/media-file.ts`
+
+Seluruh penjagaannya ada di satu berkas, bukan tersebar ke route handler:
+
+- **Daftar izin host.** `isAllowedImageHost()` di `lib/utils/media-download.ts` —
+  domain HNS (lewat `isTrustedHnsHostname`) plus `images.unsplash.com` untuk data
+  contoh saat pengembangan. Tanpa ini endpointnya jadi open proxy: siapa pun bisa
+  menyuruh server kita menembak alamat mana pun, termasuk alamat internal yang
+  tidak terjangkau dari luar (SSRF).
+- **`redirect: "manual"`.** Redirect ke host lain akan melewati daftar izin di
+  atas, jadi ia tidak diikuti sama sekali.
+- **Wajib `image/*`.** Host yang diizinkan pun tidak bisa dipakai menyalurkan
+  HTML atau berkas lain.
+- **Batas 25MB dan batas waktu 15 detik.**
+- **Nama berkas di-slug ulang di server.** Nilai dari klien masuk ke header
+  `Content-Disposition`; nama yang memuat kutip atau baris baru bisa menyisipkan
+  header lain.
+
+Berkasnya **tidak** disimpan di data cache Next (`cache: "no-store"`): cache itu
+menolak isi di atas 2MB — yang sering dilewati foto beresolusi penuh — dan untuk
+mencobanya Next harus menampung seluruh berkas di memori dulu, sehingga alirannya
+ke pembeli tidak lagi mengalir. Cache-nya ditangani header `Cache-Control` di
+jawaban kita (`max-age=3600, s-maxage=86400`).
+
+### Clipboard: PNG, dan promise-nya dibangun sebelum `await`
+
+`lib/services/image-clipboard.ts` mengubah apa pun yang bukan PNG lewat kanvas
+sebelum menulis ke clipboard — WebP dan AVIF (format yang justru paling banyak
+dipakai katalog) ditolak diam-diam oleh sebagian peramban.
+
+`ClipboardItem` sengaja dibangun dari promise yang **belum** selesai, sebelum
+`await` mana pun. Safari hanya mengizinkan penulisan clipboard selama gestur
+pengguna yang sama; menunggu gambarnya selesai diunduh dulu membuat gesturnya
+kedaluwarsa dan penulisannya ditolak.
+
+### Bilah `NextTopLoader` harus dimatikan sendiri oleh tombol unduh
+
+`NextTopLoader` (`app/layout.tsx`) memasang satu pendengar klik di `document`
+dan menyalakan bilah biru untuk **setiap** tautan same-origin yang ditekan; yang
+mematikannya adalah perpindahan rute yang menyusul. Tautan unduhan tidak pernah
+memindahkan rute — peramban menyimpan berkasnya, halaman tetap di tempatnya —
+jadi bilahnya merayap terus seolah ada proses yang tidak selesai.
+
+Daftar pengecualian pustakanya hanya melihat protokol (`tel:`, `mailto:`,
+`sms:`, `blob:`), bukan atribut `download`, jadi tautannya tidak bisa
+dikecualikan di sana. `ImageActions` memanggil `useTopLoader().done()` sendiri —
+di dalam `setTimeout`, karena pendengar kita dan pendengar pustaka itu sama-sama
+duduk di `document` dan yang kita pasang berjalan lebih dulu: tanpa penundaan,
+bilahnya dimatikan sebelum dinyalakan dan tetap merayap.
+
+Berlaku untuk tautan unduhan mana pun yang ditambahkan nanti, bukan cuma yang
+ini.
