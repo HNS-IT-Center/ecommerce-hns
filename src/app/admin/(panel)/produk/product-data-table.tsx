@@ -7,12 +7,7 @@ import { ChevronDown, ChevronUp, ChevronsUpDown, Edit, Layers, Pencil, Search, T
 
 import { formatRupiah } from "@/lib/utils"
 import { parseRupiah } from "@/lib/utils"
-import {
-  deleteProductAction,
-  updateProductPriceAction,
-  bulkUpdateProductStatusAction,
-  tautkanKodeAccurateAction,
-} from "./actions"
+import { deleteProductAction, updateProductPriceAction, bulkUpdateProductStatusAction } from "./actions"
 import { QuickEditModal } from "./quick-edit-modal"
 import type { Product, ProductCategory, ProductAttributeTaxonomy } from "@/types/woocommerce"
 import type { RootCategoryOption } from "@/lib/api/woocommerce/categories"
@@ -164,81 +159,6 @@ function SortIcon({ field, currentSort, currentOrder }: { field: string, current
   if (currentSort !== field) return <ChevronsUpDown className="h-4 w-4 text-slate-400" />
   if (currentOrder === "asc") return <ChevronUp className="h-4 w-4 text-green-500" />
   return <ChevronDown className="h-4 w-4 text-red-500" />
-}
-
-/**
- * Sel Kode Accurate yang bisa disunting langsung di tabel.
- *
- * Disunting di tempat, bukan lewat modal, karena pekerjaannya beruntun: PIC
- * menautkan banyak produk berturut-turut dengan kode yang sudah ia pegang.
- * Membuka dan menutup modal untuk satu kolom akan jadi beban tersendiri.
- *
- * Yang disimpan hanya dikirim saat staff menekan Enter atau meninggalkan
- * kolomnya, dan hanya kalau nilainya benar-benar berubah — mengetik saja tidak
- * pernah menulis apa pun.
- *
- * Pemanggilnya memberi `key` berisi kode tersimpan, sehingga nilai baru dari
- * server me-remount sel ini alih-alih disalin lewat useEffect. Tanpa itu,
- * isian yang ditolak server akan tetap menempel di kolom dan staff mengira
- * kodenya sudah tertaut.
- */
-function AccurateCodeCell({ wooId, kode }: { wooId: number; kode: string | null }) {
-  const [nilai, setNilai] = useState(kode ?? "")
-  const [menyimpan, setMenyimpan] = useState(false)
-  const [galat, setGalat] = useState<string | null>(null)
-  const router = useRouter()
-
-  const simpan = useCallback(async () => {
-    const bersih = nilai.trim()
-    const semula = kode ?? ""
-    if (bersih === semula) {
-      setGalat(null)
-      return
-    }
-
-    setMenyimpan(true)
-    setGalat(null)
-    const hasil = await tautkanKodeAccurateAction({ wooId, kode: bersih === "" ? null : bersih })
-    setMenyimpan(false)
-
-    if (hasil.error) {
-      // Isian dikembalikan ke nilai yang tersimpan. Membiarkan teks yang
-      // ditolak tetap di kolom membuatnya tampak seperti sudah tersimpan.
-      setGalat(hasil.error)
-      setNilai(semula)
-      return
-    }
-    router.refresh()
-  }, [nilai, kode, wooId, router])
-
-  return (
-    <div className="min-w-0">
-      <div className="flex items-center gap-1.5">
-        <input
-          value={nilai}
-          onChange={(e) => setNilai(e.target.value)}
-          onBlur={simpan}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault()
-              e.currentTarget.blur()
-            }
-            if (e.key === "Escape") {
-              setNilai(kode ?? "")
-              setGalat(null)
-              e.currentTarget.blur()
-            }
-          }}
-          disabled={menyimpan}
-          placeholder="—"
-          aria-label="Kode Accurate"
-          className="w-full min-w-0 rounded-md border border-transparent bg-transparent px-2 py-1 text-xs tabular-nums transition-colors hover:border-input focus:border-input focus:bg-background focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
-        />
-        {menyimpan && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-muted-foreground" />}
-      </div>
-      {galat && <p className="mt-1 px-2 text-[11px] leading-tight text-destructive">{galat}</p>}
-    </div>
-  )
 }
 
 // `categories` sengaja TIDAK ikut di-destructure walau ada di `Props`: komponen
@@ -566,23 +486,19 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
                   <SortIcon field="title" currentSort={currentSort} currentOrder={currentOrder} />
                 </div>
               </th>
-              <th 
+              {/* Kolom Kode Accurate sengaja TIDAK ditampilkan di daftar ini.
+                  Berdampingan dengan SKU, keduanya sama-sama tampak seperti
+                  "kode barang" dan staff bisa mengisi yang satu mengira sedang
+                  mengisi yang lain. Penyuntingannya ada di Quick Edit.
+                  Kolomnya tetap hidup di database dan tetap menambat harga
+                  kasir ke produk web (docs/13 §3.5) — hanya tidak dipajang. */}
+              <th
                 className="px-4 py-3 font-semibold cursor-pointer hover:bg-muted/50 transition-colors w-[100px]"
                 onClick={() => handleSort("sku")}
               >
                 <div className="flex items-center justify-between gap-1 group">
                   <span>SKU</span>
                   <SortIcon field="sku" currentSort={currentSort} currentOrder={currentOrder} />
-                </div>
-              </th>
-              <th
-                className="px-4 py-3 font-semibold cursor-pointer hover:bg-muted/50 transition-colors w-[120px]"
-                onClick={() => handleSort("accurate_code")}
-                title="Kode barang di Accurate — penambat harga antara web dan kasir"
-              >
-                <div className="flex items-center justify-between gap-1 group">
-                  <span>Kode Accurate</span>
-                  <SortIcon field="accurate_code" currentSort={currentSort} currentOrder={currentOrder} />
                 </div>
               </th>
               <th className="px-4 py-3 font-semibold w-[90px]">Stok</th>
@@ -658,13 +574,6 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
                 <td className="px-4 py-3 align-middle text-muted-foreground">
                   {product.sku || "-"}
                   <FlaggedVariationNote count={product.flaggedVariations["missing-sku"]} label="tanpa SKU" />
-                </td>
-                <td className="px-4 py-3 align-middle">
-                  <AccurateCodeCell
-                    key={product.accurateCode ?? ""}
-                    wooId={product.id}
-                    kode={product.accurateCode}
-                  />
                 </td>
                 <td className="px-4 py-3 align-middle">
                   <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -853,13 +762,6 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
                 </div>
                 <div className="text-xs text-muted-foreground truncate">
                   SKU: {product.sku || "-"}
-                </div>
-                {/* Di layar sempit kolomnya ditampilkan, bukan disunting:
-                    mengetik kode di sela-sela kartu mudah meleset, dan
-                    penautan yang salah mengirim harga ke produk lain.
-                    Penyuntingannya lewat tabel di layar lebar. */}
-                <div className="text-xs text-muted-foreground truncate">
-                  Kode Accurate: {product.accurateCode || "-"}
                 </div>
                 <FlaggedVariationNote count={product.flaggedVariations["missing-sku"]} label="tanpa SKU" />
                 <FlaggedVariationNote count={product.flaggedVariations["empty-stock"]} label="stok kosong" />

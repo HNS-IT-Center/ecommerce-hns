@@ -28,6 +28,7 @@ import { CategoryPicker } from "./category-picker"
 import { AttributeRow } from "./attribute-row"
 import { VariationEditor } from "./variation-editor"
 import { type BulkProductRow } from "./product-data-table"
+import { tautkanKodeAccurateAction } from "./actions"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
@@ -49,6 +50,90 @@ type QuickEditModalProps = {
   categories: ProductCategory[]
   attributeOptions: ProductAttributeTaxonomy[]
   onClose: () => void
+}
+
+/**
+ * Isian Kode Accurate — penambat produk web ke barang di kasir Accurate.
+ *
+ * Berdiri di luar react-hook-form milik modal ini dengan sengaja. Kolomnya
+ * tidak ditulis `updateProduct` melainkan `tautkanKode`, yang memeriksa dua
+ * hal sebelum menyimpan: kodenya benar-benar ada di Accurate, dan belum
+ * menambat produk lain. Menyatukannya ke payload produk melewati keduanya —
+ * dan kode yang salah pasang mengirim harga ke produk yang keliru (docs/13).
+ *
+ * Karena itu pula ia menyimpan sendiri saat ditinggalkan, tidak menunggu
+ * tombol Simpan modal: yang tersimpan di sini bukan bagian dari produk,
+ * melainkan tautannya.
+ */
+function AccurateCodeField({ wooId, kode }: { wooId: number; kode: string | null }) {
+  const [nilai, setNilai] = useState(kode ?? "")
+  const [menyimpan, setMenyimpan] = useState(false)
+  const [galat, setGalat] = useState<string | null>(null)
+  const [tersimpan, setTersimpan] = useState(false)
+
+  const simpan = async () => {
+    const bersih = nilai.trim()
+    const semula = kode ?? ""
+    if (bersih === semula) {
+      setGalat(null)
+      return
+    }
+
+    setMenyimpan(true)
+    setGalat(null)
+    setTersimpan(false)
+    const hasil = await tautkanKodeAccurateAction({ wooId, kode: bersih === "" ? null : bersih })
+    setMenyimpan(false)
+
+    if (hasil.error) {
+      // Isian dikembalikan ke nilai tersimpan. Teks yang ditolak kalau
+      // dibiarkan menempel akan tampak seperti sudah tertaut.
+      setGalat(hasil.error)
+      setNilai(semula)
+      return
+    }
+    setTersimpan(true)
+  }
+
+  return (
+    <div>
+      <Label htmlFor="qe-accurate-code" className="mb-1.5">
+        Kode Accurate <span className="font-normal text-muted-foreground">(opsional)</span>
+      </Label>
+      <div className="relative">
+        <Input
+          id="qe-accurate-code"
+          className={FIELD_TEXT}
+          placeholder="Kosongkan kalau belum ditautkan"
+          value={nilai}
+          disabled={menyimpan}
+          onChange={(e) => {
+            setNilai(e.target.value)
+            setTersimpan(false)
+          }}
+          onBlur={simpan}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault()
+              e.currentTarget.blur()
+            }
+          }}
+        />
+        {menyimpan && (
+          <Loader2 className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-muted-foreground" />
+        )}
+      </div>
+      {galat ? (
+        <p className="mt-1 text-[11px] text-destructive">{galat}</p>
+      ) : tersimpan ? (
+        <p className="mt-1 text-[11px] text-success">Tautan tersimpan.</p>
+      ) : (
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Penambat harga ke Accurate. Tersimpan sendiri, di luar tombol Simpan.
+        </p>
+      )}
+    </div>
+  )
 }
 
 function SectionHeading({
@@ -436,6 +521,13 @@ export function QuickEditModal({
                         </p>
                       </div>
                     )}
+
+                    {/* Kode Accurate berdiri sendiri, tidak ikut `register()`
+                        formulir ini: ia tidak lewat `updateProduct` melainkan
+                        `tautkanKode`, yang memeriksa kodenya ada di Accurate
+                        dan belum menambat produk lain. Menyatukannya ke payload
+                        produk akan melewati kedua pemeriksaan itu. */}
+                    <AccurateCodeField wooId={product.id} kode={product.accurateCode} />
 
                     <div>
                       <Label className="mb-2">Status</Label>
