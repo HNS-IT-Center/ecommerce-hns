@@ -84,6 +84,10 @@ export default async function AdminProdukEditPage({ params }: Props) {
           defaultImages={existingImages}
           defaultValues={{
             name: product.name,
+            // WAJIB ikut: form selalu mengirim `sku` kembali saat menyimpan,
+            // jadi kalau nilai tersimpan tidak dimuat ke sini, menyunting hal
+            // lain akan mengosongkan SKU produk yang sudah terisi.
+            sku: product.sku,
             type: isVariable ? "variable" : "simple",
             variationAttributes,
             variations: variations.map((variation) => ({

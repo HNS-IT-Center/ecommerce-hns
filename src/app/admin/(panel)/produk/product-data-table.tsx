@@ -7,7 +7,12 @@ import { ChevronDown, ChevronUp, ChevronsUpDown, Edit, Layers, Pencil, Search, T
 
 import { formatRupiah } from "@/lib/utils"
 import { parseRupiah } from "@/lib/utils"
-import { deleteProductAction, updateProductPriceAction, bulkUpdateProductStatusAction } from "./actions"
+import {
+  deleteProductAction,
+  updateProductPriceAction,
+  bulkUpdateProductStatusAction,
+  tautkanKodeAccurateAction,
+} from "./actions"
 import { QuickEditModal } from "./quick-edit-modal"
 import type { Product, ProductCategory, ProductAttributeTaxonomy } from "@/types/woocommerce"
 import type { RootCategoryOption } from "@/lib/api/woocommerce/categories"
@@ -38,6 +43,14 @@ export type BulkProductRow = {
   id: number
   name: string
   sku: string
+  /**
+   * Kode barang di Accurate. `null` = belum ditautkan, dan itu wajar untuk
+   * mayoritas produk.
+   *
+   * Berbeda dari `sku` di atas dan tidak boleh dipertukarkan: seluruh join
+   * harga Accurate memakai kolom ini, bukan `sku` (docs/13).
+   */
+  accurateCode: string | null
   status: string
   price: number
   image: string | null
@@ -153,6 +166,81 @@ function SortIcon({ field, currentSort, currentOrder }: { field: string, current
   return <ChevronDown className="h-4 w-4 text-red-500" />
 }
 
+/**
+ * Sel Kode Accurate yang bisa disunting langsung di tabel.
+ *
+ * Disunting di tempat, bukan lewat modal, karena pekerjaannya beruntun: PIC
+ * menautkan banyak produk berturut-turut dengan kode yang sudah ia pegang.
+ * Membuka dan menutup modal untuk satu kolom akan jadi beban tersendiri.
+ *
+ * Yang disimpan hanya dikirim saat staff menekan Enter atau meninggalkan
+ * kolomnya, dan hanya kalau nilainya benar-benar berubah — mengetik saja tidak
+ * pernah menulis apa pun.
+ *
+ * Pemanggilnya memberi `key` berisi kode tersimpan, sehingga nilai baru dari
+ * server me-remount sel ini alih-alih disalin lewat useEffect. Tanpa itu,
+ * isian yang ditolak server akan tetap menempel di kolom dan staff mengira
+ * kodenya sudah tertaut.
+ */
+function AccurateCodeCell({ wooId, kode }: { wooId: number; kode: string | null }) {
+  const [nilai, setNilai] = useState(kode ?? "")
+  const [menyimpan, setMenyimpan] = useState(false)
+  const [galat, setGalat] = useState<string | null>(null)
+  const router = useRouter()
+
+  const simpan = useCallback(async () => {
+    const bersih = nilai.trim()
+    const semula = kode ?? ""
+    if (bersih === semula) {
+      setGalat(null)
+      return
+    }
+
+    setMenyimpan(true)
+    setGalat(null)
+    const hasil = await tautkanKodeAccurateAction({ wooId, kode: bersih === "" ? null : bersih })
+    setMenyimpan(false)
+
+    if (hasil.error) {
+      // Isian dikembalikan ke nilai yang tersimpan. Membiarkan teks yang
+      // ditolak tetap di kolom membuatnya tampak seperti sudah tersimpan.
+      setGalat(hasil.error)
+      setNilai(semula)
+      return
+    }
+    router.refresh()
+  }, [nilai, kode, wooId, router])
+
+  return (
+    <div className="min-w-0">
+      <div className="flex items-center gap-1.5">
+        <input
+          value={nilai}
+          onChange={(e) => setNilai(e.target.value)}
+          onBlur={simpan}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault()
+              e.currentTarget.blur()
+            }
+            if (e.key === "Escape") {
+              setNilai(kode ?? "")
+              setGalat(null)
+              e.currentTarget.blur()
+            }
+          }}
+          disabled={menyimpan}
+          placeholder="—"
+          aria-label="Kode Accurate"
+          className="w-full min-w-0 rounded-md border border-transparent bg-transparent px-2 py-1 text-xs tabular-nums transition-colors hover:border-input focus:border-input focus:bg-background focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+        />
+        {menyimpan && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-muted-foreground" />}
+      </div>
+      {galat && <p className="mt-1 px-2 text-[11px] leading-tight text-destructive">{galat}</p>}
+    </div>
+  )
+}
+
 // `categories` sengaja TIDAK ikut di-destructure walau ada di `Props`: komponen
 // ini memakai `rawCategories` (bentuk berpath) untuk seluruh keperluannya.
 // Prop-nya dipertahankan di tipe karena pemanggil masih mengirimnya.
@@ -174,6 +262,7 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
   const flagFilter =
     searchParams.get("flag_filter") || (statusFilter === "empty_stock" ? "empty-stock" : "")
   const categoryFilter = searchParams.get("category_filter") || ""
+  const accurateFilter = searchParams.get("accurate_filter") || ""
   const currentSort = searchParams.get("sort") || "date"
   const currentOrder = searchParams.get("order") || "desc"
 
@@ -382,6 +471,21 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
           <option value="missing-image">Foto Utama Kosong</option>
         </select>
 
+        {/* Terpisah dari dropdown kondisi di atas dengan sengaja: belum
+            tertaut Accurate bukan cacat data, melainkan sisa pekerjaan
+            penautan. Menaruhnya di "Kondisi" akan membuat ribuan produk
+            normal tampak bermasalah. */}
+        <select
+          value={accurateFilter}
+          onChange={(e) => handleFilterChange("accurate_filter", e.target.value)}
+          aria-label="Filter penautan kode Accurate"
+          className="rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+        >
+          <option value="">Semua Tautan</option>
+          <option value="unlinked">Belum Ada Kode Accurate</option>
+          <option value="linked">Sudah Tertaut</option>
+        </select>
+
         <div className="flex-1 flex items-center gap-2 rounded-xl border border-input bg-background px-3 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary overflow-hidden">
           <Search className="h-4 w-4 text-muted-foreground" />
           <input
@@ -471,6 +575,16 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
                   <SortIcon field="sku" currentSort={currentSort} currentOrder={currentOrder} />
                 </div>
               </th>
+              <th
+                className="px-4 py-3 font-semibold cursor-pointer hover:bg-muted/50 transition-colors w-[120px]"
+                onClick={() => handleSort("accurate_code")}
+                title="Kode barang di Accurate — penambat harga antara web dan kasir"
+              >
+                <div className="flex items-center justify-between gap-1 group">
+                  <span>Kode Accurate</span>
+                  <SortIcon field="accurate_code" currentSort={currentSort} currentOrder={currentOrder} />
+                </div>
+              </th>
               <th className="px-4 py-3 font-semibold w-[90px]">Stok</th>
               <th 
                 className="px-4 py-3 font-semibold cursor-pointer hover:bg-muted/50 transition-colors w-[130px]"
@@ -544,6 +658,13 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
                 <td className="px-4 py-3 align-middle text-muted-foreground">
                   {product.sku || "-"}
                   <FlaggedVariationNote count={product.flaggedVariations["missing-sku"]} label="tanpa SKU" />
+                </td>
+                <td className="px-4 py-3 align-middle">
+                  <AccurateCodeCell
+                    key={product.accurateCode ?? ""}
+                    wooId={product.id}
+                    kode={product.accurateCode}
+                  />
                 </td>
                 <td className="px-4 py-3 align-middle">
                   <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -732,6 +853,13 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
                 </div>
                 <div className="text-xs text-muted-foreground truncate">
                   SKU: {product.sku || "-"}
+                </div>
+                {/* Di layar sempit kolomnya ditampilkan, bukan disunting:
+                    mengetik kode di sela-sela kartu mudah meleset, dan
+                    penautan yang salah mengirim harga ke produk lain.
+                    Penyuntingannya lewat tabel di layar lebar. */}
+                <div className="text-xs text-muted-foreground truncate">
+                  Kode Accurate: {product.accurateCode || "-"}
                 </div>
                 <FlaggedVariationNote count={product.flaggedVariations["missing-sku"]} label="tanpa SKU" />
                 <FlaggedVariationNote count={product.flaggedVariations["empty-stock"]} label="stok kosong" />

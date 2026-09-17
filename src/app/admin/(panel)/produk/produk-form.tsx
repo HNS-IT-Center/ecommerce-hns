@@ -132,6 +132,7 @@ export function ProdukForm({
     resolver: zodResolver(productFormSchema),
     defaultValues: {
       name: "",
+      sku: "",
       type: "simple",
       description: "",
       shortDescription: "",
@@ -317,6 +318,11 @@ export function ProdukForm({
         // rusak diam-diam tanpa pesan error. Sekarang tipenya ikut pilihan form.
         type: values.type,
         status: values.status,
+        // Selalu dikirim, termasuk untuk produk bervariasi yang kolomnya tidak
+        // ditampilkan: nilainya datang dari defaultValues, jadi mengirimkannya
+        // kembali apa adanya membuat SKU induk yang sudah tersimpan tidak
+        // terhapus hanya karena kolomnya tidak tampil.
+        sku: values.sku ?? "",
         description: values.description || "",
         short_description: values.shortDescription || "",
         regular_price: values.regularPrice,
@@ -574,6 +580,39 @@ export function ProdukForm({
                     <p className="mt-1 text-[11px] text-destructive">{errors.name.message}</p>
                   )}
                 </div>
+
+                {/* SKU induk hanya ditawarkan untuk produk simple. Pada produk
+                    bervariasi, yang benar-benar dijual adalah variannya dan
+                    SKU-nya diisi per baris di tabel varian di bawah — kolom di
+                    sini cuma akan jadi kode tambahan yang tidak menunjuk barang
+                    mana pun. Nilai yang sudah tersimpan tetap ikut terkirim
+                    saat menyimpan, jadi mengubah tipe produk tidak
+                    menghapusnya. */}
+                {isVariableProduct ? (
+                  <div className="rounded-xl border border-dashed border-input px-3 py-2.5 text-[11px] text-muted-foreground">
+                    <span className="font-medium text-foreground">SKU</span> diisi per varian —
+                    lihat kolom SKU di tabel varian di bawah.
+                  </div>
+                ) : (
+                  <div>
+                    <Label htmlFor="sku" className="mb-1.5">
+                      SKU <span className="font-normal text-muted-foreground">(opsional)</span>
+                    </Label>
+                    <Input
+                      id="sku"
+                      className={FIELD_TEXT}
+                      placeholder="Kosongkan kalau produk ini belum punya SKU"
+                      {...register("sku")}
+                    />
+                    {errors.sku && (
+                      <p className="mt-1 text-[11px] text-destructive">{errors.sku.message}</p>
+                    )}
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Harus unik — tidak boleh sama dengan SKU produk atau varian lain. Bukan
+                      Kode Accurate; kode itu kolom terpisah untuk penautan harga.
+                    </p>
+                  </div>
+                )}
 
                 <div>
                   <Label className="mb-2">Status</Label>

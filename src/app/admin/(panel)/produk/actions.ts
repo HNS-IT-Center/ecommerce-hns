@@ -7,9 +7,11 @@ import {
   bulkAssignCategory,
   previewBulkAssignCategory,
   deleteProduct,
+  invalidateProductCaches,
   updateProduct,
   type BulkCategoryMode,
 } from "@/lib/api/woocommerce/products"
+import { tautkanKode } from "@/lib/api/accurate/price-table"
 import type { BulkApplyState, BulkPreviewState } from "./state"
 import { getPrisma } from "@/lib/prisma/client"
 import { buildProductLogEntries, diffProductChanges } from "@/lib/logs/product-log"
@@ -346,5 +348,68 @@ export async function updateStockDisplayModeAction(mode: StockDisplayMode) {
       return { error: error.message }
     }
     return { error: "Gagal menyimpan pengaturan tampilan stok." }
+  }
+}
+
+/**
+ * Tautkan (atau lepas) kode Accurate pada satu produk, dari halaman Produk.
+ *
+ * Kenapa tidak memakai `tautkanKodeAction` di `harga-accurate/actions.ts` yang
+ * sudah ada: action itu mensyaratkan izin halaman **harga-accurate**. PIC yang
+ * bekerja di halaman Produk belum tentu memegangnya, dan kalau dipaksa memakai
+ * action itu, ia akan ditolak tanpa sebab yang jelas baginya. Izin di sini
+ * mengikuti halaman tempat tombolnya berada — `produk`, level `edit`.
+ *
+ * Logika penautannya sendiri TIDAK disalin: ia tetap satu-satunya milik
+ * `tautkanKode()` di `lib/api/accurate/price-table.ts`, termasuk dua
+ * penjagaannya (kode harus ada di Accurate; kode tidak boleh sudah menambat
+ * produk lain). Menyalinnya berarti dua aturan penautan yang bisa berbeda
+ * pendapat, dan yang satu akan tertinggal saat yang lain diperbaiki.
+ *
+ * @param wooId  `wooId` produk — BUKAN `Product.id` internal. Tabel produk
+ *               admin memang menyajikan `wooId` sebagai `id` (lihat
+ *               `db-mapper.ts`), dan `tautkanKode` mencocokkan `WHERE woo_id`.
+ *               Keduanya sepakat; jangan salah satu diubah sendirian.
+ */
+export async function tautkanKodeAccurateAction(input: {
+  wooId: number
+  kode: string | null
+}): Promise<{ error: string | null }> {
+  try {
+    await requirePermission("produk", "edit")
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return { error: error.message }
+    }
+    return { error: "Anda tidak punya izin menautkan kode Accurate." }
+  }
+
+  if (!Number.isInteger(input.wooId) || input.wooId <= 0) {
+    return { error: "Produk tidak dikenali." }
+  }
+
+  // Kosong berarti "lepaskan tautan", dan harus jadi NULL — bukan string
+  // kosong. Kolomnya unik, jadi "" hanya muat untuk satu baris; produk kedua
+  // yang dilepas tautannya akan gagal simpan kalau dikirim apa adanya.
+  const kode = input.kode === null || input.kode.trim() === "" ? null : input.kode.trim()
+
+  try {
+    const hasil = await tautkanKode(input.wooId, kode)
+    if (!hasil.ok) return { error: hasil.alasan }
+
+    // Daftar produk dilayani `unstable_cache` dengan revalidate 300 detik.
+    // Tanpa pembersihan ini, kolom Kode Accurate yang baru diisi tetap tampak
+    // kosong sampai lima menit — dan PIC yang tidak melihat isiannya muncul
+    // akan mengisinya lagi.
+    invalidateProductCaches({ wooId: input.wooId })
+    revalidatePath("/admin/produk")
+    // Tabel harga di halaman sebelah mem-join lewat kolom yang baru saja
+    // berubah, jadi ia ikut disegarkan — tautan yang dibuat di sini harus
+    // terlihat di sana.
+    revalidatePath("/admin/harga-accurate")
+
+    return { error: null }
+  } catch {
+    return { error: "Gagal menautkan kode Accurate." }
   }
 }

@@ -111,6 +111,10 @@ export function QuickEditModal({
     resolver: zodResolver(quickEditFormSchema),
     defaultValues: {
       name: product.name,
+      // Dimuat dari baris tabel kalau `raw` belum memuatnya. Alasannya sama
+      // seperti di halaman edit: payload selalu menyertakan `sku`, jadi nilai
+      // yang tidak dimuat akan ikut terhapus saat staff menyimpan.
+      sku: raw?.sku || product.sku || "",
       // Tipe asli ikut dibawa supaya validasi memakai aturan yang benar —
       // produk bervariasi tidak diwajibkan punya harga sendiri. Varian tidak
       // disunting di sini, jadi daftarnya dibiarkan apa adanya dan tidak ikut
@@ -257,6 +261,9 @@ export function QuickEditModal({
       id: product.id,
       name: values.name,
       status: values.status,
+      // Ikut dikirim juga untuk produk bervariasi yang kolomnya tidak tampil —
+      // nilainya apa adanya dari defaultValues, jadi tidak ada yang berubah.
+      sku: values.sku ?? "",
       regular_price: values.regularPrice,
       sale_price: values.salePrice || "",
       // Diakhiri pada penghujung hari yang dipilih supaya obral masih berlaku
@@ -401,6 +408,34 @@ export function QuickEditModal({
                         <p className="mt-1 text-[11px] text-destructive">{errors.name.message}</p>
                       )}
                     </div>
+
+                    {/* Sama seperti formulir penuh: kolom SKU induk hanya untuk
+                        produk simple. Produk bervariasi mengisinya per varian
+                        di editor varian di bawah. */}
+                    {isVariable ? (
+                      <div className="rounded-lg border border-dashed border-input px-2.5 py-2 text-[11px] text-muted-foreground">
+                        <span className="font-medium text-foreground">SKU</span> diisi per varian
+                        — lihat kolom SKU di tabel varian di bawah.
+                      </div>
+                    ) : (
+                      <div>
+                        <Label htmlFor="qe-sku" className="mb-1.5">
+                          SKU <span className="font-normal text-muted-foreground">(opsional)</span>
+                        </Label>
+                        <Input
+                          id="qe-sku"
+                          className={FIELD_TEXT}
+                          placeholder="Kosongkan kalau belum punya SKU"
+                          {...register("sku")}
+                        />
+                        {errors.sku && (
+                          <p className="mt-1 text-[11px] text-destructive">{errors.sku.message}</p>
+                        )}
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Harus unik antar produk & varian. Bukan Kode Accurate.
+                        </p>
+                      </div>
+                    )}
 
                     <div>
                       <Label className="mb-2">Status</Label>
