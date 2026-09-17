@@ -52,6 +52,14 @@ export type BarisTabelHarga = {
    * yang belum tertaut sekaligus menjadi antrean kerja penautan.
    */
   produkWeb: { wooId: number; nama: string } | null
+  /**
+   * Terisi kalau barang ini sengaja dinyatakan tidak dijual lewat web.
+   *
+   * Berbeda dari `status` di atas: `status` datang dari Accurate dan menjawab
+   * "barangnya masih dijual di toko?", sedangkan ini keputusan HNS soal kanal
+   * web. Barang bisa aktif di Accurate tapi tetap diabaikan di sini.
+   */
+  diabaikan: { alasan: string | null; oleh: string; pada: string } | null
 }
 
 /**
@@ -99,8 +107,14 @@ export function isKolomUrut(v: string): v is KolomUrut {
   return v in KOLOM_URUT
 }
 
-/** Penyaring keterkaitan dengan katalog web. Kosong = semua. */
-export type FilterTautan = "tertaut" | "belum"
+/**
+ * Penyaring keterkaitan dengan katalog web. Kosong = semua.
+ *
+ * `belum-aktif` adalah daftar kerja yang sebenarnya: belum tertaut DAN belum
+ * ditandai diabaikan. Dipisah dari `belum` supaya keduanya tetap bisa dilihat —
+ * "semua yang belum tertaut" berguna untuk memeriksa apa yang pernah diabaikan.
+ */
+export type FilterTautan = "tertaut" | "belum" | "belum-aktif" | "diabaikan"
 
 export type FilterTabelHarga = {
   q?: string
@@ -141,6 +155,10 @@ type RawRow = {
   stok: string | number | null
   wooId: number | bigint | null
   namaProdukWeb: string | null
+  diabaikanKode: string | null
+  diabaikanAlasan: string | null
+  diabaikanOleh: string | null
+  diabaikanAt: Date | string | null
 }
 
 /**
@@ -206,6 +224,14 @@ function bangunWhere(filter: FilterTabelHarga): { sql: string; params: unknown[]
    */
   if (filter.tautan === "tertaut") syarat.push("p.accurate_code IS NOT NULL")
   if (filter.tautan === "belum") syarat.push("p.accurate_code IS NULL")
+  // Daftar kerja penautan yang sesungguhnya: belum tertaut, dan belum
+  // dinyatakan "tidak dijual di web". Keduanya sama-sama alasan sah untuk tidak
+  // muncul di sini.
+  if (filter.tautan === "belum-aktif") {
+    syarat.push("p.accurate_code IS NULL")
+    syarat.push("ig.kode_accurate IS NULL")
+  }
+  if (filter.tautan === "diabaikan") syarat.push("ig.kode_accurate IS NOT NULL")
 
   return { sql: syarat.length ? `WHERE ${syarat.join(" AND ")}` : "", params }
 }
@@ -253,6 +279,7 @@ export async function listHargaAccurate(filter: FilterTabelHarga): Promise<Hasil
     `SELECT COUNT(*) AS n
      FROM accurate_products a
      LEFT JOIN products p ON p.accurate_code = a.\`Kode Accurate\`
+     LEFT JOIN accurate_ignored ig ON ig.kode_accurate = a.\`Kode Accurate\`
      ${where}`,
     ...params,
   )
@@ -275,9 +302,14 @@ export async function listHargaAccurate(filter: FilterTabelHarga): Promise<Hasil
        a.\`PRICE\`         AS price,
        a.\`Stok Sistem\`   AS stok,
        p.woo_id            AS wooId,
-       p.name              AS namaProdukWeb
+       p.name              AS namaProdukWeb,
+       ig.kode_accurate    AS diabaikanKode,
+       ig.alasan           AS diabaikanAlasan,
+       ig.ditandai_oleh    AS diabaikanOleh,
+       ig.ditandai_at      AS diabaikanAt
      FROM accurate_products a
      LEFT JOIN products p ON p.accurate_code = a.\`Kode Accurate\`
+     LEFT JOIN accurate_ignored ig ON ig.kode_accurate = a.\`Kode Accurate\`
      ${where}
      ORDER BY ${bangunOrderBy(filter)}
      LIMIT ? OFFSET ?`,
@@ -301,6 +333,16 @@ export async function listHargaAccurate(filter: FilterTabelHarga): Promise<Hasil
         r.wooId === null
           ? null
           : { wooId: Number(r.wooId), nama: r.namaProdukWeb ?? "(tanpa nama)" },
+      // `diabaikanKode` yang menentukan ada-tidaknya baris penanda, bukan
+      // `alasan` — alasan boleh kosong dan barisnya tetap sah.
+      diabaikan:
+        r.diabaikanKode === null
+          ? null
+          : {
+              alasan: r.diabaikanAlasan,
+              oleh: r.diabaikanOleh ?? "(tidak tercatat)",
+              pada: new Date(r.diabaikanAt ?? Date.now()).toISOString(),
+            },
     })),
     total,
     page,
@@ -402,6 +444,69 @@ export async function tautkanKode(wooId: number, kode: string | null): Promise<H
     wooId,
   )
   if (terpengaruh === 0) return { ok: false, alasan: "Produk web tidak ditemukan." }
+  return { ok: true }
+}
+
+/**
+ * Tandai satu barang Accurate sebagai "tidak dijual lewat web".
+ *
+ * Tidak menghapus apa pun: barangnya tetap di `accurate_products` dan tetap
+ * tampil di tabel harga. Yang berubah hanya kedudukannya di daftar kerja
+ * penautan — lihat `FilterTautan` di atas.
+ *
+ * Menolak barang yang SUDAH tertaut ke produk web. Menandai "tidak dijual di
+ * web" untuk sesuatu yang sedang dijual di web adalah dua pernyataan yang
+ * bertentangan, dan yang salah satu di antaranya pasti keliru; lebih baik
+ * pemakainya melepas tautannya dulu secara sadar.
+ */
+export async function abaikanKode(
+  kode: string,
+  alasan: string | null,
+  oleh: string,
+): Promise<HasilTaut> {
+  const prisma = getPrisma()
+
+  const ada = await prisma.$queryRawUnsafe<{ n: bigint }[]>(
+    "SELECT COUNT(*) AS n FROM accurate_products WHERE `Kode Accurate` = ?",
+    kode,
+  )
+  if (Number(ada[0]?.n ?? 0) === 0) {
+    return { ok: false, alasan: "Kode Accurate tidak ditemukan." }
+  }
+
+  const tertaut = await prisma.$queryRawUnsafe<{ nama: string }[]>(
+    "SELECT name AS nama FROM products WHERE accurate_code = ?",
+    kode,
+  )
+  if (tertaut.length > 0) {
+    return {
+      ok: false,
+      alasan: `Masih tertaut ke produk web: ${tertaut[0]!.nama}. Lepaskan tautannya dulu.`,
+    }
+  }
+
+  // `upsert` lewat ON DUPLICATE KEY: menandai ulang barang yang sudah ditandai
+  // memperbarui alasan & pencatatnya, bukan gagal dengan galat kunci ganda.
+  await prisma.$executeRawUnsafe(
+    `INSERT INTO accurate_ignored (kode_accurate, alasan, ditandai_oleh)
+     VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE alasan = VALUES(alasan), ditandai_oleh = VALUES(ditandai_oleh)`,
+    kode,
+    alasan,
+    oleh,
+  )
+  return { ok: true }
+}
+
+/** Batalkan penandaan — barang kembali masuk daftar kerja penautan. */
+export async function batalkanAbaikan(kode: string): Promise<HasilTaut> {
+  const terpengaruh = await getPrisma().$executeRawUnsafe(
+    "DELETE FROM accurate_ignored WHERE kode_accurate = ?",
+    kode,
+  )
+  // Nol baris terhapus berarti memang tidak sedang ditandai. Itu keadaan akhir
+  // yang diminta, jadi bukan kegagalan.
+  void terpengaruh
   return { ok: true }
 }
 
