@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { revalidatePath } from "next/cache"
-import { createProduct, updateProduct, ProductVariationError } from "@/lib/api/woocommerce/products"
+import {
+  createProduct,
+  updateProduct,
+  ProductSkuError,
+  ProductVariationError,
+} from "@/lib/api/woocommerce/products"
+import { Prisma } from "@prisma/client"
 import { UnauthorizedError, requireAuth } from "@/lib/auth"
 import { getPrisma } from "@/lib/prisma/client"
 import { buildProductLogEntries, diffProductChanges } from "@/lib/logs/product-log"
@@ -28,6 +34,32 @@ function tolakKalauVarianBermasalah(error: unknown) {
     : null
 }
 
+/**
+ * SKU kembar. Dua jalur bisa sampai ke sini:
+ *
+ *   1. pemeriksaan di `products.ts`, yang sudah menyebut nama pemiliknya, dan
+ *   2. constraint unik database — untuk dua staff yang menyimpan SKU sama pada
+ *      saat yang hampir sama, saat pemeriksaan (1) masih melihat kolom kosong.
+ *
+ * `meta.target` diperiksa karena tabel produk punya beberapa kolom unik (slug,
+ * `accurate_code`): membalas "SKU sudah dipakai" untuk pelanggaran slug akan
+ * mengirim staff memperbaiki kolom yang sama sekali tidak bermasalah.
+ */
+function tolakKalauSkuBentrok(error: unknown) {
+  if (error instanceof ProductSkuError) {
+    return NextResponse.json({ error: error.message }, { status: 400 })
+  }
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
+    return null
+  }
+  return JSON.stringify(error.meta?.target ?? "").toLowerCase().includes("sku")
+    ? NextResponse.json(
+        { error: "SKU itu baru saja dipakai produk lain. Pakai SKU lain." },
+        { status: 409 },
+      )
+    : null
+}
+
 export async function POST(request: NextRequest) {
   try {
     const authUser = await requireAuth()
@@ -51,7 +83,10 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json(product)
   } catch (error) {
-    const ditolak = tolakKalauBelumMasuk(error) ?? tolakKalauVarianBermasalah(error)
+    const ditolak =
+      tolakKalauBelumMasuk(error) ??
+      tolakKalauVarianBermasalah(error) ??
+      tolakKalauSkuBentrok(error)
     if (ditolak) return ditolak
     console.error("Failed to create product:", error)
     return NextResponse.json({ error: "Gagal membuat produk" }, { status: 500 })
@@ -103,7 +138,10 @@ export async function PUT(request: NextRequest) {
     revalidatePath("/admin/produk")
     return NextResponse.json(product)
   } catch (error) {
-    const ditolak = tolakKalauBelumMasuk(error) ?? tolakKalauVarianBermasalah(error)
+    const ditolak =
+      tolakKalauBelumMasuk(error) ??
+      tolakKalauVarianBermasalah(error) ??
+      tolakKalauSkuBentrok(error)
     if (ditolak) return ditolak
     console.error("Failed to update product:", error)
     return NextResponse.json({ error: "Gagal menyimpan produk" }, { status: 500 })

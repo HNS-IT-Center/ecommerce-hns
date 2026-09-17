@@ -34,6 +34,14 @@ export type Product = {
   description: string;
   short_description: string;
   sku: string;
+  /**
+   * Kode barang di Accurate (`products.accurate_code`), penambat ke database
+   * kasir. BUKAN `sku` — keduanya kolom berbeda dengan tugas berbeda, dan
+   * `accurate_code` yang dipakai seluruh join harga (lihat docs/13).
+   *
+   * `null` untuk produk yang belum ditautkan, dan itu keadaan normal.
+   */
+  accurate_code: string | null;
   date_created: string;
   date_modified: string;
   price: string;
@@ -87,7 +95,7 @@ export type GetProductsParams = {
   brand?: string | string[]; // Custom if using brands taxonomy
   perPage?: number;
   page?: number;
-  orderby?: "date" | "id" | "include" | "title" | "slug" | "price" | "popularity" | "rating" | "sku";
+  orderby?: "date" | "id" | "include" | "title" | "slug" | "price" | "popularity" | "rating" | "sku" | "accurate_code";
   order?: "asc" | "desc";
   search?: string;
   minPrice?: number;
@@ -116,6 +124,14 @@ export type GetProductsParams = {
    * produk bervariasi, yang diperiksa adalah variannya, bukan induknya.
    */
   flag?: "missing-sku" | "empty-stock" | "missing-image";
+  /**
+   * Menyaring menurut penambat Accurate (`products.accurate_code`).
+   *
+   * Terpisah dari `flag` karena bukan penanda cacat data: produk tanpa kode
+   * Accurate adalah keadaan normal bagi mayoritas katalog. Dipakai staff untuk
+   * melihat sisa pekerjaan penautan, bukan untuk melaporkan masalah.
+   */
+  accurateLink?: "linked" | "unlinked";
   /**
    * Menyaring daftar berdasarkan jenis produk. Dipakai admin untuk memisahkan
    * produk bervariasi — harga & stoknya ditentukan per varian, jadi keduanya
@@ -166,6 +182,18 @@ export type ProductInput = {
   variation_attributes?: string[];
   /** Daftar varian lengkap. Varian lama yang tak ada di sini akan dihapus. */
   variations?: ProductVariationInput[];
+  /**
+   * SKU produk ini (`products.sku`). Opsional — mayoritas katalog belum punya.
+   *
+   * BUKAN `accurate_code`. Keduanya sama-sama "kode barang" di mata staff, tapi
+   * kolomnya berbeda dengan tugas berbeda: seluruh join harga Accurate memakai
+   * `accurate_code` (docs/13), sedangkan kolom ini kode katalog web yang tampil
+   * di kolom SKU daftar produk. Mengisi salah satunya tidak mengisi yang lain.
+   *
+   * Kolomnya unik di database, jadi string kosong dinormalkan jadi NULL saat
+   * ditulis — lihat `normalizeSku` di `lib/api/woocommerce/products.ts`.
+   */
+  sku?: string;
   description?: string;
   short_description?: string;
   regular_price?: string;

@@ -50,7 +50,10 @@ const STATIC_ROUTES: Array<{
   { path: "/build-pc", changeFrequency: "weekly", priority: 0.9 },
   { path: "/tools", changeFrequency: "monthly", priority: 0.8 },
   { path: "/stores", changeFrequency: "monthly", priority: 0.8 },
-  { path: "/blog", changeFrequency: "weekly", priority: 0.7 },
+  // `/blog` dibuang sementara: halamannya dinonaktifkan karena WordPress
+  // sumbernya sudah tidak terjangkau (lihat src/app/blog/_nonaktif/README.md).
+  // Mengumumkan alamat yang menjawab 404 ke mesin pencari hanya mengundang
+  // perayapan sia-sia. Kembalikan baris ini saat blog dihidupkan lagi.
   { path: "/about", changeFrequency: "monthly", priority: 0.6 },
   { path: "/contact", changeFrequency: "monthly", priority: 0.6 },
   { path: "/support", changeFrequency: "monthly", priority: 0.5 },

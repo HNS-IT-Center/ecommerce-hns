@@ -43,6 +43,21 @@ export type ProductVariationValues = z.infer<typeof productVariationSchema>
 const baseProductFormSchema = z.object({
   name: z.string().min(1, "Nama produk wajib diisi"),
   /**
+   * SKU induk. Opsional, dan kolomnya hanya DITAWARKAN untuk produk simple:
+   * pada produk bervariasi, barang yang benar-benar dijual adalah variannya,
+   * dan SKU-nya diisi per baris lewat `productVariationSchema` di atas.
+   *
+   * Tetap ada di skema untuk kedua tipe supaya nilai yang sudah tersimpan ikut
+   * terbawa saat produk bervariasi disimpan — form yang tidak menampilkan
+   * kolomnya tetap mengirimkannya kembali apa adanya, sehingga mengubah tipe
+   * produk tidak menghapus SKU induk diam-diam.
+   *
+   * Batas 100 karakter mengikuti `@db.VarChar(100)` di skema. Tanpa ini,
+   * ketikan yang terlalu panjang baru ditolak database dan sampai ke staff
+   * sebagai galat 500, bukan pesan di sebelah kolomnya.
+   */
+  sku: z.string().max(100, "SKU maksimal 100 karakter").optional(),
+  /**
    * Tipe produk. Sebelumnya form selalu mengirim "simple" — termasuk saat
    * mengedit produk variable, yang membuat induknya berubah jadi produk biasa
    * dan seluruh varian kehilangan induk. Sekarang tipenya eksplisit.

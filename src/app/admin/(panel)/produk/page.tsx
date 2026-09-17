@@ -23,14 +23,19 @@ type Props = {
     type_filter?: string
     flag_filter?: string
     category_filter?: string
+    accurate_filter?: string
   }>
 }
 
 export default async function AdminProdukPage({ searchParams }: Props) {
   await requirePageView("produk")
-  const { q, page, sort, order, status_filter, type_filter, flag_filter, category_filter } = await searchParams
+  const { q, page, sort, order, status_filter, type_filter, flag_filter, category_filter, accurate_filter } =
+    await searchParams
   const currentPage = Number(page ?? 1)
-  const currentSort = (sort === "title" || sort === "sku" || sort === "price" || sort === "date") ? sort : "date"
+  const currentSort =
+    (sort === "title" || sort === "sku" || sort === "price" || sort === "date" || sort === "accurate_code")
+      ? sort
+      : "date"
   const currentOrder = (order === "asc" || order === "desc") ? order : "desc"
 
   const apiStatus =
@@ -57,6 +62,9 @@ export default async function AdminProdukPage({ searchParams }: Props) {
         ? "empty-stock"
         : undefined
 
+  const apiAccurateLink =
+    accurate_filter === "linked" || accurate_filter === "unlinked" ? accurate_filter : undefined
+
   const parsedCategory = Number(category_filter)
   const categoryId = Number.isInteger(parsedCategory) && parsedCategory > 0 ? parsedCategory : null
   const categoryScope = categoryId === null ? undefined : await resolveCategoryScope(categoryId)
@@ -71,6 +79,7 @@ export default async function AdminProdukPage({ searchParams }: Props) {
       status: apiStatus,
       type: apiType,
       flag: apiFlag,
+      accurateLink: apiAccurateLink,
       // Daftar kosong berarti id kategori tidak dikenal. Ia tetap diteruskan
       // sebagai `[0]`, bukan dibuang: `buildPrismaWhere` mengabaikan array
       // kosong, dan penyaring yang diabaikan menampilkan SEMUA produk di bawah
@@ -91,6 +100,10 @@ export default async function AdminProdukPage({ searchParams }: Props) {
     id: product.id,
     name: product.name,
     sku: product.sku ?? "",
+    // Kolom terpisah dari `sku`, bukan penggantinya: `sku` milik web, ini
+    // penambat ke Accurate. Keduanya tampil berdampingan supaya tidak ada yang
+    // mengisi yang satu mengira sedang mengisi yang lain.
+    accurateCode: product.accurate_code,
     status: product.status,
     // Penanda produk bervariasi + jumlah varian, supaya staff tahu sebelum
     // membuka form bahwa harga yang tampil adalah "mulai dari" dan bahwa

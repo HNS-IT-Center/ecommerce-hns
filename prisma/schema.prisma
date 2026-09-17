@@ -1212,3 +1212,129 @@ model ProductSyncJob {
   @@index([productId])
   @@map("product_sync_jobs")
 }
+
+/// Jenis usulan yang bisa mengendap di antrean.
+///
+/// Sengaja hanya dua, mencerminkan apa yang benar-benar dideteksi
+/// `buildSyncPlan`. `SyncConflict` (wooId bertabrakan dengan produk buatan
+/// panel) TIDAK masuk sini: ia bukan sesuatu yang bisa disetujui atau ditolak,
+/// melainkan keadaan yang harus dibereskan manusia di salah satu sisi.
+enum SyncProposalKind {
+  NEW_PRODUCT
+  PRICE_CHANGE
+}
+
+enum SyncProposalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  /// Usulannya lenyap dengan sendirinya sebelum sempat diputuskan — harga di
+  /// WooCommerce kembali sama, atau produknya sudah masuk lewat jalur lain.
+  /// Dibedakan dari REJECTED supaya "tidak ada yang perlu diputuskan lagi"
+  /// tidak terbaca sebagai "seseorang menolaknya".
+  STALE
+}
+
+/// Antrean usulan sinkronisasi WooCommerce -> katalog kita, hasil pemindaian
+/// terjadwal (cron hPanel, dini hari). Menunggu persetujuan staff.
+///
+/// **Baris ini TIDAK menyimpan harga, dan itu bukan kelalaian.**
+///
+/// Usulan bisa mengendap berhari-hari sebelum disentuh. Harga yang ikut
+/// tersimpan saat pemindaian akan jadi angka basi, dan menyetujuinya berarti
+/// menuliskan harga yang sudah tidak berlaku ke katalog yang dilihat
+/// pelanggan. Karena itu baris ini hanya menyimpan **produk mana** dan
+/// **usulan jenis apa**; angkanya diambil ulang dari WooCommerce saat
+/// ditampilkan maupun saat diterapkan, lewat `fetchRemoteProductsByIds`.
+///
+/// Pola yang sama sudah dipakai `ProductSyncJob` di atas ("worker membaca
+/// harga terbaru langsung dari database, bukan dari isi job") dan
+/// `sync/apply.ts` ("harga tidak pernah datang dari klien"). Ini
+/// memperpanjangnya dari hitungan menit ke hitungan hari — CLAUDE.md §2.7.
+model SyncProposal {
+  id     Int                @id @default(autoincrement())
+  wooId  Int                @map("woo_id")
+  kind   SyncProposalKind
+  status SyncProposalStatus @default(PENDING)
+
+  /// Nama produk saat dipindai, UNTUK TAMPILAN DAN RIWAYAT SAJA.
+  ///
+  /// Tidak pernah dipakai menulis ke katalog: yang menulis adalah
+  /// `sync/import.ts` dan `sync/apply.ts`, yang mengambil namanya sendiri dari
+  /// WooCommerce. Disimpan supaya baris yang sudah diputuskan tetap terbaca
+  /// ("produk apa yang dulu ditolak") tanpa harus memanggil situs lama.
+  scannedName String @map("scanned_name") @db.VarChar(500)
+
+  /// Kunci anti-duplikat: "<wooId>:<kind>" selama PENDING, di-NULL-kan begitu
+  /// diputuskan.
+  ///
+  /// Pola dan alasannya sama persis dengan `ProductSyncJob.dedupeKey` — MariaDB
+  /// tidak menganggap NULL duplikat di unique index, sehingga riwayat keputusan
+  /// bebas menumpuk sementara usulan PENDING tetap satu per (produk, jenis).
+  /// Partial index (WHERE status='PENDING') tidak tersedia di MariaDB; ini
+  /// padanannya.
+  dedupeKey String? @unique @map("dedupe_key") @db.VarChar(64)
+
+  /// Nama staff yang memutuskan, bukan relasi ke `users`.
+  ///
+  /// Disalin sebagai teks dengan alasan yang sama seperti `ProductLog.userName`:
+  /// riwayat keputusan harus tetap terbaca setelah akun yang bersangkutan
+  /// di-soft-delete, dan relasi yang menunjuk baris tersembunyi akan menampilkan
+  /// keputusan tanpa pemutus.
+  decidedBy String?   @map("decided_by") @db.VarChar(191)
+  decidedAt DateTime? @map("decided_at")
+
+  /// Kapan usulan ini pertama muncul, dan kapan terakhir masih terlihat di
+  /// pemindaian. Keduanya dipakai menandai usulan yang sudah lama menganggur.
+  firstSeenAt DateTime @default(now()) @map("first_seen_at")
+  lastSeenAt  DateTime @default(now()) @map("last_seen_at")
+
+  @@index([status, kind])
+  @@index([wooId])
+  @@map("sync_proposals")
+}
+
+/// Barang Accurate yang sengaja TIDAK akan ditautkan ke produk web.
+///
+/// Bukan barang mati — Accurate sudah menandai yang itu sendiri lewat kolom
+/// `STATUS` ("YA" berarti dihentikan; 1.148 baris, semuanya berstok nol), dan
+/// halaman harga sudah bisa menyaringnya. Tabel ini untuk hal yang Accurate
+/// TIDAK tahu: barang yang masih hidup di kasir tapi memang tidak dijual lewat
+/// web. Itu keputusan HNS, bukan keadaan barangnya.
+///
+/// **Kenapa tabel sendiri, bukan kolom di `accurate_products`.** Tabel itu
+/// cerminan Google Sheet yang diisi ulang dari luar (`lib/api/accurate/
+/// import-sheet.ts`). Upsert-nya memang hanya menyentuh enam kolom yang
+/// disebutnya, jadi kolom tambahan akan selamat hari ini — tapi keputusan milik
+/// HNS tidak seharusnya menumpang di cerminan data pihak lain, yang suatu saat
+/// bisa diisi ulang penuh. Di sini ia juga punya tempat untuk mencatat siapa
+/// dan kapan, yang di tabel cerminan berarti menambah tiga kolom lagi.
+///
+/// Barisnya TIDAK menghapus apa pun: barang tetap ada di `accurate_products`
+/// dan tetap tampil di tabel harga. Yang berubah hanya kedudukannya di daftar
+/// kerja penautan.
+model AccurateIgnored {
+  /// Kode barang di Accurate (`accurate_products`.`Kode Accurate`).
+  ///
+  /// Dipakai sebagai kunci primer, bukan id tersendiri: satu kode hanya bisa
+  /// diabaikan sekali, dan itu sifat yang lebih baik ditegakkan database
+  /// daripada dijaga kode pemanggil.
+  ///
+  /// Sengaja TANPA foreign key ke `accurate_products` — tabel itu bukan model
+  /// Prisma (kolomnya berspasi seperti `Kode Accurate`) dan isinya diganti dari
+  /// luar. Relasi yang menunjuk ke sana akan menghalangi impor ulang.
+  kodeAccurate String @id @map("kode_accurate") @db.VarChar(50)
+
+  /// Alasan singkat, opsional. Kosong berarti "ditandai tanpa keterangan" —
+  /// tetap sah, karena memaksa alasan hanya melahirkan alasan asal-asalan.
+  alasan String? @db.VarChar(255)
+
+  /// Nama staff yang menandai, disalin sebagai teks.
+  ///
+  /// Alasannya sama seperti `ProductLog.userName` dan `SyncProposal.decidedBy`:
+  /// riwayat harus tetap terbaca setelah akun yang bersangkutan di-soft-delete.
+  ditandaiOleh String   @map("ditandai_oleh") @db.VarChar(191)
+  ditandaiAt   DateTime @default(now()) @map("ditandai_at")
+
+  @@map("accurate_ignored")
+}

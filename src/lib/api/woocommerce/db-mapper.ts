@@ -239,6 +239,11 @@ export function prismaProductToWoo(prismaProduct: PrismaProductWithRelations): W
     description: prismaProduct.description || "",
     short_description: prismaProduct.shortDescription || "",
     sku: prismaProduct.sku || "",
+    // Dibiarkan `null` kalau kosong, TIDAK dijadikan "" seperti `sku` di atas.
+    // Kolomnya unik: string kosong adalah nilai yang sah dan hanya boleh
+    // dipegang satu baris, sedangkan NULL boleh berapa pun. Menyamakan
+    // keduanya membuat produk kedua yang belum tertaut gagal disimpan.
+    accurate_code: prismaProduct.accurateCode ?? null,
     // `importedAt` (@default(now())) adalah kapan baris ini masuk ke katalog
     // HNS: tanggal impor massal untuk produk warisan Woo, dan waktu simpan
     // untuk produk yang dibuat lewat admin panel — keduanya tidak pernah

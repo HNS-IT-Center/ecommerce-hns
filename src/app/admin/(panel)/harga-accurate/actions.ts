@@ -10,6 +10,8 @@ import {
   simpanHargaInternal,
   cariProdukWeb,
   tautkanKode,
+  abaikanKode,
+  batalkanAbaikan,
   type PerubahanHarga,
   type HasilSimpan,
   type CalonProdukWeb,
@@ -234,6 +236,70 @@ export async function tautkanKodeAction(input: {
     return {
       ok: false,
       alasan: error instanceof Error ? error.message : "Gagal menautkan.",
+    }
+  }
+}
+
+/** Panjang alasan dijepit di sini supaya tidak melebihi VARCHAR(255) kolomnya. */
+const MAX_ALASAN = 255
+
+/**
+ * Tandai barang Accurate sebagai tidak dijual lewat web — atau batalkan.
+ *
+ * Izinnya "edit", sama seperti menautkan: keduanya sama-sama menentukan isi
+ * daftar kerja penautan, dan yang boleh melihat tabel belum tentu boleh
+ * memutuskan barang mana yang tidak akan pernah masuk web.
+ */
+export async function abaikanKodeAction(input: {
+  kode: string
+  alasan: string | null
+}): Promise<HasilTaut> {
+  let oleh = "Admin"
+  try {
+    const authUser = await requirePermission("harga-accurate", "edit")
+    if (authUser && typeof authUser === "object" && "name" in authUser) {
+      oleh = String(authUser.name)
+    }
+  } catch {
+    return { ok: false, alasan: "Anda tidak punya izin menandai barang." }
+  }
+
+  const kode = input.kode.trim()
+  if (kode === "") return { ok: false, alasan: "Kode Accurate tidak dikenali." }
+
+  const alasanBersih = input.alasan?.trim()
+  const alasan = alasanBersih ? alasanBersih.slice(0, MAX_ALASAN) : null
+
+  try {
+    const hasil = await abaikanKode(kode, alasan, oleh)
+    if (hasil.ok) revalidatePath("/admin/harga-accurate")
+    return hasil
+  } catch (error) {
+    return {
+      ok: false,
+      alasan: error instanceof Error ? error.message : "Gagal menandai barang.",
+    }
+  }
+}
+
+export async function batalkanAbaikanAction(kode: string): Promise<HasilTaut> {
+  try {
+    await requirePermission("harga-accurate", "edit")
+  } catch {
+    return { ok: false, alasan: "Anda tidak punya izin membatalkan penandaan." }
+  }
+
+  const bersih = kode.trim()
+  if (bersih === "") return { ok: false, alasan: "Kode Accurate tidak dikenali." }
+
+  try {
+    const hasil = await batalkanAbaikan(bersih)
+    if (hasil.ok) revalidatePath("/admin/harga-accurate")
+    return hasil
+  } catch (error) {
+    return {
+      ok: false,
+      alasan: error instanceof Error ? error.message : "Gagal membatalkan penandaan.",
     }
   }
 }

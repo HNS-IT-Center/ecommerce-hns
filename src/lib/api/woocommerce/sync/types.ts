@@ -55,6 +55,31 @@ export type RemoteProduct = {
   variations: number[]
 }
 
+/**
+ * Medan yang diminta saat MEMINDAI, dan karenanya satu-satunya yang boleh
+ * dibaca `buildSyncPlan`.
+ *
+ * Pemindaian meminta `_fields` ke WooCommerce supaya `description` dan kawan-
+ * kawannya tidak ikut melintasi jaringan untuk kemudian dibuang (daftar dan
+ * alasannya di `remote.ts`). Tipe ini yang menegakkan batas itu: memakai
+ * `RemoteProduct` di jalur pindai berarti menjanjikan medan yang tidak pernah
+ * datang, dan pembandingannya akan gagal diam-diam alih-alih ditolak compiler.
+ *
+ * Daftarnya harus sejalan dengan `SCAN_FIELDS` di `remote.ts`.
+ */
+export type ScannedProduct = Pick<
+  RemoteProduct,
+  | "id"
+  | "name"
+  | "type"
+  | "status"
+  | "regular_price"
+  | "sale_price"
+  | "date_created_gmt"
+  | "categories"
+  | "variations"
+>
+
 /** Varian dari `/products/{id}/variations`. */
 export type RemoteVariation = {
   id: number

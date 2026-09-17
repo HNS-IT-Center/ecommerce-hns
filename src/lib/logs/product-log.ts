@@ -40,6 +40,7 @@ export type ProductLogEntry = {
  */
 export type ProductSnapshot = {
   name: string
+  sku: string | null
   status: string
   shortDescription: string | null
   description: string | null
@@ -91,6 +92,16 @@ export function diffProductChanges(
 
   if (input.name !== undefined && existing.name !== input.name) {
     changes.push({ field: "name", old: existing.name, new: input.name })
+  }
+
+  if (input.sku !== undefined) {
+    const oldSku = existing.sku ?? ""
+    const newSku = input.sku.trim()
+    if (oldSku !== newSku) {
+      // Tanda pisah dipakai untuk "tidak ada SKU": sel log yang kosong tidak
+      // bisa dibedakan dari data yang hilang saat riwayat ditelusuri balik.
+      changes.push({ field: "sku", old: oldSku || "—", new: newSku || "—" })
+    }
   }
 
   if (input.status !== undefined) {

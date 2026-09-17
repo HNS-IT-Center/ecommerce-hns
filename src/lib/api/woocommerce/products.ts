@@ -192,6 +192,17 @@ export function buildPrismaWhere(params: GetProductsParams): Prisma.ProductWhere
     ];
   }
 
+  // Penambat Accurate. Sengaja BUKAN salah satu `ProductFlag`: flag berarti
+  // "data produk ini belum beres" dan ikut tampil sebagai kartu peringatan di
+  // dashboard. Belum tertaut Accurate bukan cacat — mayoritas produk memang
+  // begitu dan tidak semuanya perlu ditautkan (docs/13), jadi menjadikannya
+  // flag akan memasang peringatan permanen atas keadaan yang normal.
+  if (params.accurateLink === "linked") {
+    where.accurateCode = { not: null };
+  } else if (params.accurateLink === "unlinked") {
+    where.accurateCode = null;
+  }
+
   if (params.minPrice !== undefined || params.maxPrice !== undefined) {
     where.regularPrice = {};
     if (params.minPrice !== undefined) where.regularPrice.gte = params.minPrice;
@@ -209,6 +220,10 @@ function buildPrismaOrderBy(params: GetProductsParams): Prisma.ProductOrderByWit
     case 'popularity': return { viewCount: orderDir };
     case 'title': return { name: orderDir };
     case 'sku': return { sku: orderDir };
+    // Mengurutkan kolom penambat Accurate. Berguna terutama sebagai "asc":
+    // NULL didahulukan di MariaDB, jadi produk yang BELUM tertaut naik ke
+    // atas — itu daftar pekerjaan yang tersisa.
+    case 'accurate_code': return { accurateCode: orderDir };
     default: return { id: orderDir };
   }
 }
@@ -1032,6 +1047,73 @@ export class ProductVariationError extends Error {
   }
 }
 
+/**
+ * SKU yang ditolak karena sudah dipakai baris lain.
+ *
+ * Dibedakan dari Error biasa dengan alasan yang sama seperti
+ * ProductVariationError: staff bisa memperbaikinya sendiri (ganti SKU), jadi
+ * pesannya harus sampai apa adanya dengan 400 — bukan 500 yang buntu.
+ */
+export class ProductSkuError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProductSkuError";
+  }
+}
+
+/**
+ * Menormalkan SKU dari form jadi bentuk yang boleh masuk kolom unik.
+ *
+ * Kosong WAJIB jadi `null`, bukan `""`. Kolom `sku` unik, dan string kosong
+ * adalah nilai sah yang hanya boleh dipegang SATU baris — menyimpan `""` akan
+ * membuat produk KEDUA yang disimpan tanpa SKU gagal, dengan galat keunikan
+ * yang tidak nyambung sama sekali dengan apa yang staff lakukan. NULL boleh
+ * berapa pun di MariaDB.
+ *
+ * Besar-kecil huruf tidak diubah: SKU sering harus sama persis dengan milik
+ * supplier, jadi menaikkannya jadi huruf besar bukan keputusan yang boleh
+ * diambil diam-diam di lapisan ini.
+ */
+function normalizeSku(sku: string | undefined): string | null {
+  if (sku === undefined) return null;
+  return sku.trim() || null;
+}
+
+/**
+ * Menolak SKU yang sudah dipakai, dengan menyebut pemiliknya.
+ *
+ * Constraint unik di database-lah yang benar-benar menjaga kebenarannya —
+ * pemeriksaan ini semata-mata supaya pesannya berguna. P2002 apa adanya cuma
+ * bisa diterjemahkan jadi "SKU sudah dipakai" tanpa bisa menyebut produk mana,
+ * padahal justru itu yang dibutuhkan staff yang sedang menyusuri ribuan produk.
+ * Route API tetap menangkap P2002 sebagai jaring pengaman untuk dua staff yang
+ * menyimpan SKU sama pada saat yang hampir sama.
+ *
+ * `selfId` dilewatkan saat menyunting supaya menyimpan produk TANPA mengubah
+ * SKU-nya tidak dianggap bentrok dengan dirinya sendiri.
+ *
+ * Varian ikut diperiksa dan disebut terpisah: varian adalah baris `products`
+ * juga, jadi SKU-nya berbagi satu ruang unik dengan SKU induk, dan staff perlu
+ * tahu kalau yang memegangnya ternyata varian milik produk lain.
+ */
+async function assertSkuBelumDipakai(
+  prisma: ReturnType<typeof getPrisma>,
+  sku: string,
+  selfId: number | null,
+): Promise<void> {
+  const pemilik = await prisma.product.findFirst({
+    where: { sku, ...(selfId !== null && { id: { not: selfId } }) },
+    select: { name: true, type: true },
+  });
+  if (!pemilik) return;
+
+  throw new ProductSkuError(
+    pemilik.type === ProductType.VARIATION
+      ? `SKU "${sku}" sudah dipakai varian "${pemilik.name}". Pakai SKU lain.`
+      : `SKU "${sku}" sudah dipakai produk "${pemilik.name}". Pakai SKU lain.`,
+  );
+}
+
 const STOCK_STATUS_FROM_INPUT = {
   instock: StockStatus.INSTOCK,
   outofstock: StockStatus.OUTOFSTOCK,
@@ -1363,6 +1445,11 @@ export async function createProduct(
   const isVariable = input.type === "variable";
   const status = STATUS_FROM_PARAM[input.status ?? "draft"];
 
+  // Diperiksa di LUAR transaksi: kalau SKU-nya bentrok, tidak ada gunanya
+  // membuka transaksi dan menulis relasi hanya untuk digulung balik.
+  const sku = normalizeSku(input.sku);
+  if (sku !== null) await assertSkuBelumDipakai(prisma, sku, null);
+
   const created = await prisma.$transaction(async (tx) => {
     const brandId = await resolveBrandId(tx, input.brand);
     const product = await tx.product.create({
@@ -1373,6 +1460,7 @@ export async function createProduct(
         status,
         name: input.name,
         slug,
+        sku,
         shortDescription: input.short_description || null,
         description: input.description || null,
         regularPrice: input.regular_price || null,
@@ -1435,6 +1523,21 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
     }
   }
 
+  // Tiga keadaan yang harus dibedakan, bukan dua:
+  //
+  //   `undefined` — field tidak dikirim (quick edit harga & jalur harga
+  //                 Accurate mengirim sebagian field saja). SKU tersimpan
+  //                 DIBIARKAN apa adanya.
+  //   `null`      — dikirim kosong: SKU-nya sengaja dihapus.
+  //   string      — SKU baru.
+  //
+  // Menyamakan yang pertama dengan yang kedua akan membuat setiap penyimpanan
+  // harga cepat ikut mengosongkan SKU produknya.
+  const nextSku = input.sku === undefined ? undefined : normalizeSku(input.sku);
+  if (nextSku !== undefined && nextSku !== null && nextSku !== existing.sku) {
+    await assertSkuBelumDipakai(prisma, nextSku, existing.id);
+  }
+
   const nextStatus = input.status !== undefined ? STATUS_FROM_PARAM[input.status] ?? ProductStatus.DRAFT : existing.status;
   const nextType =
     input.type === undefined
@@ -1452,6 +1555,7 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
         ...(brandId !== undefined && { brandId }),
         ...(input.type !== undefined && { type: nextType }),
         ...(input.name !== undefined && { name: input.name, slug: slugify(input.name, existing.wooId) }),
+        ...(nextSku !== undefined && { sku: nextSku }),
         ...(input.status !== undefined && {
           status: STATUS_FROM_PARAM[input.status] ?? ProductStatus.DRAFT,
         }),

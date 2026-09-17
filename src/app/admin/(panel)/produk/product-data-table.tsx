@@ -38,6 +38,14 @@ export type BulkProductRow = {
   id: number
   name: string
   sku: string
+  /**
+   * Kode barang di Accurate. `null` = belum ditautkan, dan itu wajar untuk
+   * mayoritas produk.
+   *
+   * Berbeda dari `sku` di atas dan tidak boleh dipertukarkan: seluruh join
+   * harga Accurate memakai kolom ini, bukan `sku` (docs/13).
+   */
+  accurateCode: string | null
   status: string
   price: number
   image: string | null
@@ -174,6 +182,7 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
   const flagFilter =
     searchParams.get("flag_filter") || (statusFilter === "empty_stock" ? "empty-stock" : "")
   const categoryFilter = searchParams.get("category_filter") || ""
+  const accurateFilter = searchParams.get("accurate_filter") || ""
   const currentSort = searchParams.get("sort") || "date"
   const currentOrder = searchParams.get("order") || "desc"
 
@@ -382,6 +391,21 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
           <option value="missing-image">Foto Utama Kosong</option>
         </select>
 
+        {/* Terpisah dari dropdown kondisi di atas dengan sengaja: belum
+            tertaut Accurate bukan cacat data, melainkan sisa pekerjaan
+            penautan. Menaruhnya di "Kondisi" akan membuat ribuan produk
+            normal tampak bermasalah. */}
+        <select
+          value={accurateFilter}
+          onChange={(e) => handleFilterChange("accurate_filter", e.target.value)}
+          aria-label="Filter penautan kode Accurate"
+          className="rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+        >
+          <option value="">Semua Tautan</option>
+          <option value="unlinked">Belum Ada Kode Accurate</option>
+          <option value="linked">Sudah Tertaut</option>
+        </select>
+
         <div className="flex-1 flex items-center gap-2 rounded-xl border border-input bg-background px-3 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary overflow-hidden">
           <Search className="h-4 w-4 text-muted-foreground" />
           <input
@@ -462,7 +486,13 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
                   <SortIcon field="title" currentSort={currentSort} currentOrder={currentOrder} />
                 </div>
               </th>
-              <th 
+              {/* Kolom Kode Accurate sengaja TIDAK ditampilkan di daftar ini.
+                  Berdampingan dengan SKU, keduanya sama-sama tampak seperti
+                  "kode barang" dan staff bisa mengisi yang satu mengira sedang
+                  mengisi yang lain. Penyuntingannya ada di Quick Edit.
+                  Kolomnya tetap hidup di database dan tetap menambat harga
+                  kasir ke produk web (docs/13 §3.5) — hanya tidak dipajang. */}
+              <th
                 className="px-4 py-3 font-semibold cursor-pointer hover:bg-muted/50 transition-colors w-[100px]"
                 onClick={() => handleSort("sku")}
               >

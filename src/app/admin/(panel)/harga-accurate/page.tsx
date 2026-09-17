@@ -127,7 +127,10 @@ async function TabDaftar({
   // `tautan` bertipe sempit sejak awal — nilai dari alamat divalidasi di sini,
   // dan "" berarti "semua" (bukan penyaring yang gagal dibaca).
   const tautan: FilterTautan | "" =
-    searchParams.tautan === "tertaut" || searchParams.tautan === "belum"
+    searchParams.tautan === "tertaut" ||
+    searchParams.tautan === "belum" ||
+    searchParams.tautan === "belum-aktif" ||
+    searchParams.tautan === "diabaikan"
       ? searchParams.tautan
       : ""
 

@@ -28,6 +28,7 @@ import { CategoryPicker } from "./category-picker"
 import { AttributeRow } from "./attribute-row"
 import { VariationEditor } from "./variation-editor"
 import { type BulkProductRow } from "./product-data-table"
+import { tautkanKodeAccurateAction } from "./actions"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
@@ -49,6 +50,90 @@ type QuickEditModalProps = {
   categories: ProductCategory[]
   attributeOptions: ProductAttributeTaxonomy[]
   onClose: () => void
+}
+
+/**
+ * Isian Kode Accurate — penambat produk web ke barang di kasir Accurate.
+ *
+ * Berdiri di luar react-hook-form milik modal ini dengan sengaja. Kolomnya
+ * tidak ditulis `updateProduct` melainkan `tautkanKode`, yang memeriksa dua
+ * hal sebelum menyimpan: kodenya benar-benar ada di Accurate, dan belum
+ * menambat produk lain. Menyatukannya ke payload produk melewati keduanya —
+ * dan kode yang salah pasang mengirim harga ke produk yang keliru (docs/13).
+ *
+ * Karena itu pula ia menyimpan sendiri saat ditinggalkan, tidak menunggu
+ * tombol Simpan modal: yang tersimpan di sini bukan bagian dari produk,
+ * melainkan tautannya.
+ */
+function AccurateCodeField({ wooId, kode }: { wooId: number; kode: string | null }) {
+  const [nilai, setNilai] = useState(kode ?? "")
+  const [menyimpan, setMenyimpan] = useState(false)
+  const [galat, setGalat] = useState<string | null>(null)
+  const [tersimpan, setTersimpan] = useState(false)
+
+  const simpan = async () => {
+    const bersih = nilai.trim()
+    const semula = kode ?? ""
+    if (bersih === semula) {
+      setGalat(null)
+      return
+    }
+
+    setMenyimpan(true)
+    setGalat(null)
+    setTersimpan(false)
+    const hasil = await tautkanKodeAccurateAction({ wooId, kode: bersih === "" ? null : bersih })
+    setMenyimpan(false)
+
+    if (hasil.error) {
+      // Isian dikembalikan ke nilai tersimpan. Teks yang ditolak kalau
+      // dibiarkan menempel akan tampak seperti sudah tertaut.
+      setGalat(hasil.error)
+      setNilai(semula)
+      return
+    }
+    setTersimpan(true)
+  }
+
+  return (
+    <div>
+      <Label htmlFor="qe-accurate-code" className="mb-1.5">
+        Kode Accurate <span className="font-normal text-muted-foreground">(opsional)</span>
+      </Label>
+      <div className="relative">
+        <Input
+          id="qe-accurate-code"
+          className={FIELD_TEXT}
+          placeholder="Kosongkan kalau belum ditautkan"
+          value={nilai}
+          disabled={menyimpan}
+          onChange={(e) => {
+            setNilai(e.target.value)
+            setTersimpan(false)
+          }}
+          onBlur={simpan}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault()
+              e.currentTarget.blur()
+            }
+          }}
+        />
+        {menyimpan && (
+          <Loader2 className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-muted-foreground" />
+        )}
+      </div>
+      {galat ? (
+        <p className="mt-1 text-[11px] text-destructive">{galat}</p>
+      ) : tersimpan ? (
+        <p className="mt-1 text-[11px] text-success">Tautan tersimpan.</p>
+      ) : (
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Penambat harga ke Accurate. Tersimpan sendiri, di luar tombol Simpan.
+        </p>
+      )}
+    </div>
+  )
 }
 
 function SectionHeading({
@@ -111,6 +196,10 @@ export function QuickEditModal({
     resolver: zodResolver(quickEditFormSchema),
     defaultValues: {
       name: product.name,
+      // Dimuat dari baris tabel kalau `raw` belum memuatnya. Alasannya sama
+      // seperti di halaman edit: payload selalu menyertakan `sku`, jadi nilai
+      // yang tidak dimuat akan ikut terhapus saat staff menyimpan.
+      sku: raw?.sku || product.sku || "",
       // Tipe asli ikut dibawa supaya validasi memakai aturan yang benar —
       // produk bervariasi tidak diwajibkan punya harga sendiri. Varian tidak
       // disunting di sini, jadi daftarnya dibiarkan apa adanya dan tidak ikut
@@ -257,6 +346,9 @@ export function QuickEditModal({
       id: product.id,
       name: values.name,
       status: values.status,
+      // Ikut dikirim juga untuk produk bervariasi yang kolomnya tidak tampil —
+      // nilainya apa adanya dari defaultValues, jadi tidak ada yang berubah.
+      sku: values.sku ?? "",
       regular_price: values.regularPrice,
       sale_price: values.salePrice || "",
       // Diakhiri pada penghujung hari yang dipilih supaya obral masih berlaku
@@ -401,6 +493,41 @@ export function QuickEditModal({
                         <p className="mt-1 text-[11px] text-destructive">{errors.name.message}</p>
                       )}
                     </div>
+
+                    {/* Sama seperti formulir penuh: kolom SKU induk hanya untuk
+                        produk simple. Produk bervariasi mengisinya per varian
+                        di editor varian di bawah. */}
+                    {isVariable ? (
+                      <div className="rounded-lg border border-dashed border-input px-2.5 py-2 text-[11px] text-muted-foreground">
+                        <span className="font-medium text-foreground">SKU</span> diisi per varian
+                        — lihat kolom SKU di tabel varian di bawah.
+                      </div>
+                    ) : (
+                      <div>
+                        <Label htmlFor="qe-sku" className="mb-1.5">
+                          SKU <span className="font-normal text-muted-foreground">(opsional)</span>
+                        </Label>
+                        <Input
+                          id="qe-sku"
+                          className={FIELD_TEXT}
+                          placeholder="Kosongkan kalau belum punya SKU"
+                          {...register("sku")}
+                        />
+                        {errors.sku && (
+                          <p className="mt-1 text-[11px] text-destructive">{errors.sku.message}</p>
+                        )}
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Harus unik antar produk & varian. Bukan Kode Accurate.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Kode Accurate berdiri sendiri, tidak ikut `register()`
+                        formulir ini: ia tidak lewat `updateProduct` melainkan
+                        `tautkanKode`, yang memeriksa kodenya ada di Accurate
+                        dan belum menambat produk lain. Menyatukannya ke payload
+                        produk akan melewati kedua pemeriksaan itu. */}
+                    <AccurateCodeField wooId={product.id} kode={product.accurateCode} />
 
                     <div>
                       <Label className="mb-2">Status</Label>

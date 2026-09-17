@@ -12,6 +12,7 @@ import {
   Check,
   X,
   Unlink as LinkOff,
+  EyeOff,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -29,6 +30,8 @@ import {
   simpanHargaInternalAction,
   cariProdukWebAction,
   tautkanKodeAction,
+  abaikanKodeAction,
+  batalkanAbaikanAction,
 } from "./actions"
 
 /** Kolom harga internal yang bisa disunting di halaman ini. */
@@ -142,6 +145,25 @@ export function TabelHargaView({
 
   /** Baris yang sedang dicarikan pasangan produk webnya (null = dialog tutup). */
   const [menautkan, setMenautkan] = React.useState<BarisTabelHarga | null>(null)
+
+  /** Baris yang sedang ditandai "tidak dijual di web" (null = dialog tutup). */
+  const [mengabaikan, setMengabaikan] = React.useState<BarisTabelHarga | null>(null)
+  const [pendingAbaikan, startAbaikan] = React.useTransition()
+
+  const batalkanAbaikan = React.useCallback(
+    (baris: BarisTabelHarga) => {
+      startAbaikan(async () => {
+        const res = await batalkanAbaikanAction(baris.kodeAccurate)
+        if (!res.ok) {
+          setError(res.alasan)
+          return
+        }
+        setPesan(`${baris.namaBarang ?? baris.kodeAccurate} kembali ke daftar penautan.`)
+        router.refresh()
+      })
+    },
+    [router],
+  )
 
   const [teksCari, setTeksCari] = React.useState(filter.q)
   const sudahMengetik = React.useRef(false)
@@ -331,8 +353,17 @@ export function TabelHargaView({
           <Pilihan
             label="Semua (web)"
             nilai={filter.tautan}
-            opsi={["tertaut", "belum"]}
-            beriLabel={(v) => (v === "tertaut" ? "Sudah ada di web" : "Belum ada di web")}
+            opsi={["tertaut", "belum-aktif", "belum", "diabaikan"]}
+            beriLabel={(v) => {
+              // "belum-aktif" adalah daftar kerja yang sebenarnya; "belum"
+              // dipertahankan supaya yang sudah diabaikan masih bisa dilihat
+              // bersama sisanya kalau seseorang perlu meninjau ulang.
+              if (v === "tertaut") return "Sudah ada di web"
+              if (v === "belum-aktif") return "Perlu ditautkan"
+              if (v === "belum") return "Belum ada di web (semua)"
+              if (v === "diabaikan") return "Tidak dijual di web"
+              return v
+            }}
             onPilih={(v) => navigasi(bangunUrl({ tautan: v, page: 1 }))}
           />
         </div>
@@ -396,6 +427,9 @@ export function TabelHargaView({
                         baris={r}
                         bolehEdit={bolehEdit}
                         onTautkan={() => setMenautkan(r)}
+                        onAbaikan={() => setMengabaikan(r)}
+                        onBatalkanAbaikan={() => batalkanAbaikan(r)}
+                        pendingAbaikan={pendingAbaikan}
                       />
                     </dd>
                   </div>
@@ -455,6 +489,9 @@ export function TabelHargaView({
                         baris={r}
                         bolehEdit={bolehEdit}
                         onTautkan={() => setMenautkan(r)}
+                        onAbaikan={() => setMengabaikan(r)}
+                        onBatalkanAbaikan={() => batalkanAbaikan(r)}
+                        pendingAbaikan={pendingAbaikan}
                       />
                     </td>
                   </tr>
@@ -533,6 +570,111 @@ export function TabelHargaView({
         }
         onConfirm={simpanTerkonfirmasi}
       />
+
+      {mengabaikan && (
+        <DialogAbaikan
+          baris={mengabaikan}
+          onTutup={() => setMengabaikan(null)}
+          onSelesai={(kabar) => {
+            setMengabaikan(null)
+            setError(null)
+            setPesan(kabar)
+            router.refresh()
+          }}
+          onGagal={(alasan) => {
+            setPesan(null)
+            setError(alasan)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+/**
+ * Dialog penandaan "tidak dijual lewat web".
+ *
+ * Dialog tersendiri, bukan `ConfirmDialog` project, karena butuh satu isian
+ * alasan. Alasannya opsional dengan sengaja: memaksa mengisi hanya melahirkan
+ * alasan asal-asalan, dan yang benar-benar berguna dicatat orang tanpa dipaksa.
+ */
+function DialogAbaikan({
+  baris,
+  onTutup,
+  onSelesai,
+  onGagal,
+}: {
+  baris: BarisTabelHarga
+  onTutup: () => void
+  onSelesai: (kabar: string) => void
+  onGagal: (alasan: string) => void
+}) {
+  const [alasan, setAlasan] = React.useState("")
+  const [pending, startTransition] = React.useTransition()
+  const nama = baris.namaBarang ?? baris.kodeAccurate
+
+  function simpan() {
+    startTransition(async () => {
+      const res = await abaikanKodeAction({
+        kode: baris.kodeAccurate,
+        alasan: alasan.trim() === "" ? null : alasan,
+      })
+      if (!res.ok) {
+        onGagal(res.alasan)
+        return
+      }
+      onSelesai(`${nama} ditandai tidak dijual di web.`)
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-md rounded-xl border border-border bg-background p-5 shadow-lg">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold">Tandai tidak dijual di web</h2>
+            <p className="mt-1 text-xs break-words text-muted-foreground">{nama}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onTutup}
+            aria-label="Tutup"
+            className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <p className="mt-4 rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+          Barangnya tetap ada di tabel harga dan tidak dihapus dari Accurate. Yang berubah hanya
+          kedudukannya di daftar kerja penautan — ia tidak lagi muncul sebagai pekerjaan tersisa.
+        </p>
+
+        <label className="mt-4 block">
+          <span className="text-xs font-medium">Alasan (opsional)</span>
+          <input
+            type="text"
+            autoFocus
+            value={alasan}
+            maxLength={255}
+            onChange={(e) => setAlasan(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !pending) simpan()
+            }}
+            placeholder="mis. hanya dijual di toko"
+            className="mt-1.5 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+          />
+        </label>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onTutup} disabled={pending}>
+            Batal
+          </Button>
+          <Button size="sm" onClick={simpan} disabled={pending}>
+            {pending ? "Menyimpan…" : "Tandai"}
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -728,11 +870,46 @@ function SelProdukWeb({
   baris,
   bolehEdit,
   onTautkan,
+  onAbaikan,
+  onBatalkanAbaikan,
+  pendingAbaikan,
 }: {
   baris: BarisTabelHarga
   bolehEdit: boolean
   onTautkan: () => void
+  onAbaikan: () => void
+  onBatalkanAbaikan: () => void
+  pendingAbaikan: boolean
 }) {
+  // Diperiksa sebelum `produkWeb`: barang yang ditandai diabaikan tidak mungkin
+  // tertaut (`abaikanKode` menolaknya), jadi urutan ini tidak menyembunyikan
+  // keadaan mana pun — ia hanya menempatkan yang paling menentukan di depan.
+  if (baris.diabaikan) {
+    return (
+      <div className="min-w-0">
+        <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+          <EyeOff className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span className="break-words">
+            Tidak dijual di web
+            {baris.diabaikan.alasan && (
+              <span className="block text-[10px] italic">{baris.diabaikan.alasan}</span>
+            )}
+          </span>
+        </p>
+        {bolehEdit && (
+          <button
+            type="button"
+            onClick={onBatalkanAbaikan}
+            disabled={pendingAbaikan}
+            className="mt-1 text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50"
+          >
+            Batalkan
+          </button>
+        )}
+      </div>
+    )
+  }
+
   if (baris.produkWeb) {
     return (
       <div className="min-w-0">
@@ -760,13 +937,25 @@ function SelProdukWeb({
         Belum ada di web
       </p>
       {bolehEdit && (
-        <button
-          type="button"
-          onClick={onTautkan}
-          className="mt-1 text-[10px] font-medium text-primary underline-offset-2 hover:underline"
-        >
-          Tautkan…
-        </button>
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <button
+            type="button"
+            onClick={onTautkan}
+            className="text-[10px] font-medium text-primary underline-offset-2 hover:underline"
+          >
+            Tautkan…
+          </button>
+          <span className="text-[10px] text-muted-foreground">·</span>
+          <button
+            type="button"
+            onClick={onAbaikan}
+            disabled={pendingAbaikan}
+            title="Barang ini memang tidak dijual lewat web — sembunyikan dari daftar kerja penautan"
+            className="text-[10px] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-50"
+          >
+            Abaikan
+          </button>
+        </div>
       )}
     </div>
   )
