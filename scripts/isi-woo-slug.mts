@@ -57,7 +57,11 @@ console.log(DRY_RUN ? "MODE: DRY-RUN (tidak menulis apa pun)\n" : "MODE: TERAPKA
 
 // --- 1. Tarik katalog WooCommerce ------------------------------------------
 console.log("Menarik katalog dari WooCommerce...")
-const remote = await fetchRemoteProducts()
+// `slug` WAJIB diminta lewat `extraFields`: pemindaian biasa memangkas medan
+// lewat `_fields` dan slug tidak termasuk di dalamnya (lihat SCAN_FIELDS di
+// sync/remote.ts). Tanpa baris ini seluruh slug datang `undefined`, saringan di
+// bawah menghasilkan nol produk, dan skripnya "berhasil" tanpa menulis apa pun.
+const remote = await fetchRemoteProducts({ extraFields: ["slug"] })
 console.log(
   "  " +
     remote.products.length +
@@ -79,8 +83,15 @@ if (remote.truncated) {
  * pernah di-crawl dan tidak punya tautan beredar, jadi tidak ada alamat yang
  * perlu diselamatkan.
  */
-const publik = remote.products.filter(
-  (p) => p.status === "publish" && typeof p.slug === "string" && p.slug.trim() !== "",
+// `extraFields: ["slug"]` di atas membuat slug ikut datang, tapi tipe kembalian
+// `fetchRemoteProducts` tetap `ScannedProduct` — ia tidak tahu apa yang diminta
+// pemanggil. Penyempitan dilakukan di sini, di satu tempat, dan `typeof` di
+// bawah tetap memeriksanya apa adanya alih-alih memercayai anotasi ini.
+const terpindai = remote.products as (typeof remote.products[number] & { slug?: unknown })[]
+
+const publik = terpindai.filter(
+  (p): p is typeof p & { slug: string } =>
+    p.status === "publish" && typeof p.slug === "string" && p.slug.trim() !== "",
 )
 console.log("  " + publik.length + " di antaranya publish dengan slug terisi")
 

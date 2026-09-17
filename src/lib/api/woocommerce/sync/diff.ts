@@ -4,7 +4,7 @@ import type {
   NewProduct,
   NewProductGroup,
   PriceChange,
-  RemoteProduct,
+  ScannedProduct,
   SyncConflict,
   SyncPlan,
 } from "./types"
@@ -52,7 +52,7 @@ function parseDate(value: string): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
-function classifyNew(remote: RemoteProduct, boundary: Date | null): NewProductGroup {
+function classifyNew(remote: ScannedProduct, boundary: Date | null): NewProductGroup {
   if (!boundary) return "baru"
   const created = parseDate(remote.date_created_gmt)
   // Tanggal yang tidak terbaca dianggap "tertinggal", bukan "baru": kelompok
@@ -63,7 +63,7 @@ function classifyNew(remote: RemoteProduct, boundary: Date | null): NewProductGr
 }
 
 function matchCategory(
-  remote: RemoteProduct,
+  remote: ScannedProduct,
   // Hanya `has` yang dipakai di sini; pemilik data boleh Set maupun Map.
   known: { has(name: string): boolean },
 ): { names: string[]; matched: string | null } {
@@ -75,7 +75,7 @@ function matchCategory(
 }
 
 export function buildSyncPlan(
-  remoteProducts: RemoteProduct[],
+  remoteProducts: ScannedProduct[],
   snapshot: LocalCatalogSnapshot,
   meta: { scannedAt: Date; remoteCount: number },
 ): SyncPlan {

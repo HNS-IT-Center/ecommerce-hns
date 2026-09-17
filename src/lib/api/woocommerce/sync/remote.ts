@@ -1,5 +1,5 @@
 import { wooFetchWithMeta } from "../client"
-import type { RemoteProduct, RemoteVariation } from "./types"
+import type { RemoteProduct, RemoteVariation, ScannedProduct } from "./types"
 
 /**
  * Pengambilan katalog dari WooCommerce REST.
@@ -33,15 +33,73 @@ export type FetchRemoteOptions = {
    * Kosong berarti sapuan penuh.
    */
   modifiedAfter?: string | null
+  /**
+   * Medan tambahan di luar `SCAN_FIELDS`, untuk pemanggil yang butuh lebih.
+   *
+   * Ada karena `scripts/isi-woo-slug.mts` memakai fungsi ini untuk menyusun
+   * peta 301 redirect dan membutuhkan `slug` — medan yang sengaja tidak diminta
+   * saat memindai. Tanpa jalan ini, satu-satunya pilihan adalah mengembalikan
+   * `slug` ke daftar pindai dan menyeretnya di ±33 halaman untuk keperluan
+   * satu skrip yang jalan sesekali.
+   *
+   * Hasilnya tetap bertipe `ScannedProduct`; pemanggil yang meminta tambahan
+   * mempersempitnya sendiri, karena hanya ia yang tahu apa yang ia minta.
+   */
+  extraFields?: readonly (keyof RemoteProduct)[]
 }
 
 export type FetchRemoteResult = {
-  products: RemoteProduct[]
+  products: ScannedProduct[]
   /** Jumlah yang dilaporkan WooCommerce lewat header `X-WP-Total`. */
   reportedTotal: number
   pagesFetched: number
   truncated: boolean
 }
+
+/**
+ * Kolom yang diminta saat MEMINDAI, lewat `_fields` WooCommerce.
+ *
+ * Daftar ini persis apa yang dibaca `buildSyncPlan` di `diff.ts` — tidak lebih.
+ * Tanpa `_fields`, setiap produk datang lengkap dengan `description` dan
+ * `short_description`: ribuan kata HTML per halaman yang dikirim melintasi
+ * jaringan lalu dibuang tanpa pernah dibaca, dikalikan ±33 halaman.
+ *
+ * Yang sengaja TIDAK diminta di sini, dan alasannya:
+ *
+ * - `description`, `short_description`, `images`, `attributes`, `brands`,
+ *   `stock_status`, `stock_quantity`, `sku` — hanya dipakai saat MENGIMPOR
+ *   produk, dan importer mengambil datanya sendiri lewat
+ *   `fetchRemoteProductsByIds` (yang sengaja tidak dibatasi `_fields`).
+ * - `date_modified_gmt` — tidak dibaca `diff.ts`; penyaringan "sejak" dikerjakan
+ *   WooCommerce lewat `modified_after`, bukan oleh kita.
+ *
+ * Kalau suatu saat `diff.ts` membaca medan baru, medan itu WAJIB ditambahkan di
+ * sini — kalau tidak, nilainya datang sebagai `undefined` dan pembandingannya
+ * gagal diam-diam, bukan dengan galat.
+ */
+const SCAN_FIELDS = [
+  "id",
+  "name",
+  "type",
+  "status",
+  "regular_price",
+  "sale_price",
+  "date_created_gmt",
+  "categories",
+  "variations",
+] as const satisfies readonly (keyof ScannedProduct)[]
+
+/**
+ * Penjaga: `SCAN_FIELDS` wajib memuat SETIAP medan `ScannedProduct`.
+ *
+ * `satisfies` di atas hanya menolak nama yang tidak ada di tipe. Yang berbahaya
+ * justru kebalikannya — menambah medan ke `ScannedProduct` lalu lupa memintanya
+ * lewat `_fields`. Medannya akan datang `undefined` dan pembandingan harga
+ * gagal tanpa galat. Baris ini membuat kelalaian itu jadi error kompilasi.
+ */
+type MedanTakDiminta = Exclude<keyof ScannedProduct, (typeof SCAN_FIELDS)[number]>
+const _semuaMedanDiminta: MedanTakDiminta extends never ? true : never = true
+void _semuaMedanDiminta
 
 function buildPath(page: number, options: FetchRemoteOptions): string {
   const params = new URLSearchParams({
@@ -56,6 +114,10 @@ function buildPath(page: number, options: FetchRemoteOptions): string {
     // sehingga ada baris yang terlewat dan ada yang terhitung dua kali.
     orderby: "id",
     order: "asc",
+    // Memangkas muatan jaringan; lihat SCAN_FIELDS di atas. Header
+    // `X-WP-Total`/`X-WP-TotalPages` tidak terpengaruh — keduanya datang dari
+    // header respons, bukan dari body yang dibatasi di sini.
+    _fields: [...SCAN_FIELDS, ...(options.extraFields ?? [])].join(","),
   })
   if (options.modifiedAfter) params.set("modified_after", options.modifiedAfter)
   return `/products?${params.toString()}`
@@ -64,8 +126,8 @@ function buildPath(page: number, options: FetchRemoteOptions): string {
 async function fetchPage(
   page: number,
   options: FetchRemoteOptions,
-): Promise<{ data: RemoteProduct[]; totalPages: number; total: number }> {
-  const { data, meta } = await wooFetchWithMeta<RemoteProduct[]>(buildPath(page, options), {
+): Promise<{ data: ScannedProduct[]; totalPages: number; total: number }> {
+  const { data, meta } = await wooFetchWithMeta<ScannedProduct[]>(buildPath(page, options), {
     // Sinkronisasi harus melihat keadaan sekarang. Entri cache Next di sini
     // berarti membandingkan katalog kita dengan WooCommerce versi kemarin.
     cache: "no-store",
@@ -83,13 +145,13 @@ export async function fetchRemoteProducts(
   options: FetchRemoteOptions = {},
 ): Promise<FetchRemoteResult> {
   const first = await fetchPage(1, options)
-  const products: RemoteProduct[] = [...first.data]
+  const products: ScannedProduct[] = [...first.data]
 
   const totalPages = Math.max(1, first.totalPages)
   const lastPage = Math.min(totalPages, MAX_PAGES)
 
   for (let page = 2; page <= lastPage; page += CONCURRENCY) {
-    const batch: Promise<{ data: RemoteProduct[] }>[] = []
+    const batch: Promise<{ data: ScannedProduct[] }>[] = []
     for (let offset = 0; offset < CONCURRENCY && page + offset <= lastPage; offset++) {
       batch.push(fetchPage(page + offset, options))
     }
