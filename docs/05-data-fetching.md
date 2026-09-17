@@ -1529,3 +1529,28 @@ bilahnya dimatikan sebelum dinyalakan dan tetap merayap.
 
 Berlaku untuk tautan unduhan mana pun yang ditambahkan nanti, bukan cuma yang
 ini.
+
+## 22. `getFooterStores()` — alamat toko di footer (17 September 2026)
+
+Footer menampilkan nama, alamat, dan tautan Google Maps tiap cabang. Datanya dari
+tabel `stores` lewat `getFooterStores()` di `lib/api/stores.ts`, bukan konstanta —
+supaya footer, `/stores`, dan `/contact` membaca sumber yang sama dan staff cukup
+mengubahnya di `/admin/toko`.
+
+### Kenapa fungsi terpisah dari `getActiveStores()`
+
+Footer dirender di **setiap** halaman. `getActiveStores()` tidak di-cache (halaman
+pemakainya sudah ISR), jadi memakainya di footer berarti satu query tambahan per
+render di halaman dinamis. `getFooterStores()` dibungkus `unstable_cache` dengan
+tag `STORES_CACHE_TAG` (`"stores"`) dan `revalidate: 3600` sebagai jaring pengaman.
+
+Kolom yang dipilih hanya `id`, `name`, `address`, `mapsUrl`: hasil `unstable_cache`
+diserialisasi ke JSON, dan `latitude`/`longitude` (Decimal) tidak selamat melewatinya.
+
+### Pembuangan cache
+
+`revalidateStorePages()` di `app/admin/(panel)/toko/actions.ts` sekarang juga
+memanggil `revalidateTag(STORES_CACHE_TAG, "max")`. Halaman ISR yang merender
+footer ikut segar lewat tag itu — tidak perlu (dan tidak mungkin) mendaftar
+`revalidatePath` untuk setiap halaman. Aksi baru yang mengubah tabel `stores`
+wajib lewat fungsi itu juga.
