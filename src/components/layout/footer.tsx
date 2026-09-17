@@ -128,7 +128,10 @@ export async function Footer() {
               <li><Link href="/about" className="hover:text-white hover:underline">Tentang Kami</Link></li>
               <li><Link href="/stores" className="hover:text-white hover:underline">Toko Fisik</Link></li>
               <li><Link href="/contact" className="hover:text-white hover:underline">Kontak Kami</Link></li>
-              <li><Link href="/blog" className="hover:text-white hover:underline">Blog</Link></li>
+              {/* Tautan "Blog" dibuang sementara — halamannya dinonaktifkan
+                  karena WordPress sumbernya tidak terjangkau. Lihat
+                  src/app/blog/_nonaktif/README.md. Kembalikan baris ini saat
+                  blog dihidupkan lagi. */}
             </ul>
           </div>
 
