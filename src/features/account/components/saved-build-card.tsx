@@ -24,7 +24,7 @@ export function SavedBuildCard({ build }: { build: ResolvedSavedBuild }) {
           thumbnails.map((src, i) => (
             <div
               key={i}
-              className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border bg-background"
+              className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border bg-white"
               style={{ marginLeft: i > 0 ? "-0.5rem" : 0, zIndex: MAX_THUMBNAILS - i }}
             >
               <ProductImage src={src} alt="" width={56} height={56} className="h-full w-full object-cover" />

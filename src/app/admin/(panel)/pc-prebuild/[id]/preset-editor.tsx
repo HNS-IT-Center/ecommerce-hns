@@ -12,6 +12,11 @@ import {
 } from "@/lib/pc-builder/compatibility"
 import type { PcBuilderStepConfig } from "@/lib/pc-builder/config"
 import type { PcPrebuildItem, PcPrebuildPreset } from "@/lib/pc-prebuild/config"
+import {
+  applicablePrebuildDiscount,
+  isPrebuildDiscountActive,
+  type PrebuildDiscount,
+} from "@/lib/pc-prebuild/discount"
 import type { PrebuildGame } from "@/lib/pc-prebuild/games"
 import { MAX_BRANCHING_ITEMS } from "@/lib/pc-prebuild/limits"
 import type { PrebuildPerformance } from "@/lib/pc-prebuild/performance"
@@ -20,12 +25,13 @@ import { formatRupiah } from "@/lib/utils"
 
 import { savePcPrebuildPreset } from "../actions"
 import { AnalysisPanel } from "../_components/analysis-panel"
+import { DiscountPanel } from "../_components/discount-panel"
 import { PresetImages } from "../_components/preset-images"
 import { SlotBoard } from "../_components/slot-board"
 
 /**
  * Editor satu paket — satu halaman yang dibaca dari atas ke bawah:
- * identitas → foto → komponen → analisis.
+ * identitas → foto → komponen → harga → analisis.
  *
  * Sengaja BUKAN tab. Menyusun paket adalah satu pekerjaan berurutan, dan tab
  * menyembunyikan bagian yang belum diisi — staff jadi menekan "Simpan" pada
@@ -37,8 +43,9 @@ import { SlotBoard } from "../_components/slot-board"
  *
  * Yang dijumlahkan adalah harga satuan yang dikirim server dari katalog. Yang
  * DILARANG (CLAUDE.md §2.7) adalah menurunkan harga baru dari rumus — perkalian
- * persentase, potongan, "harga member". Tidak ada satu pun di sini, dan angka
- * ini tidak pernah ikut tersimpan ke preset.
+ * persentase, "harga member". Tidak ada satu pun di sini, dan angka ini tidak
+ * pernah ikut tersimpan ke preset. Satu-satunya rupiah yang tersimpan adalah
+ * potongan paket, dan itu ditetapkan staff sebagai data (`discount.ts`).
  */
 
 type Props = {
@@ -52,7 +59,8 @@ type Props = {
 const BAGIAN = [
   { nomor: 1, id: "identitas", judul: "Nama & foto" },
   { nomor: 2, id: "komponen", judul: "Komponen" },
-  { nomor: 3, id: "analisis", judul: "Analisis performa" },
+  { nomor: 3, id: "harga", judul: "Harga paket" },
+  { nomor: 4, id: "analisis", judul: "Analisis performa" },
 ] as const
 
 export function PresetEditor({ initialPreset, isNew, steps, games, initialCatalog }: Props) {
@@ -65,6 +73,11 @@ export function PresetEditor({ initialPreset, isNew, steps, games, initialCatalo
   const [performance, setPerformance] = useState<PrebuildPerformance | null>(
     initialPreset.performance ?? null
   )
+  const [discount, setDiscount] = useState<PrebuildDiscount | null>(
+    initialPreset.discount ?? null
+  )
+  // Jam dibaca sekali saat editor dibuka — cukup untuk menilai masa berlaku.
+  const [sekarang] = useState(() => Date.now())
 
   const [katalog, setKatalog] = useState(() => new Map(initialCatalog.map((p) => [p.id, p])))
 
@@ -112,6 +125,13 @@ export function PresetEditor({ initialPreset, isNew, steps, games, initialCatalo
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [semuaItem, katalog]
   )
+
+  /** Harga yang dilihat pelanggan untuk susunan bawaan — total dikurangi potongan yang berlaku. */
+  const hargaPaket =
+    total -
+    (isPrebuildDiscountActive(discount, sekarang)
+      ? applicablePrebuildDiscount(discount.amount, total)
+      : 0)
 
   const bercabang = semuaItem.filter((i) => i.alternatives.length > 0).length
   const belumLengkap = semuaItem.filter((i) => i.productId <= 0).length
@@ -164,6 +184,7 @@ export function PresetEditor({ initialPreset, isNew, steps, games, initialCatalo
         order: initialPreset.order,
         slots,
         ...(performance ? { performance } : {}),
+        ...(discount ? { discount } : {}),
       })
 
       if (!hasil.success) {
@@ -225,7 +246,10 @@ export function PresetEditor({ initialPreset, isNew, steps, games, initialCatalo
               </p>
               <p className="text-xs text-muted-foreground">
                 {semuaItem.length} komponen ·{" "}
-                <span className="font-bold text-sale-red">{formatRupiah(total)}</span>
+                {hargaPaket < total && (
+                  <span className="mr-1 line-through">{formatRupiah(total)}</span>
+                )}
+                <span className="font-bold text-sale-red">{formatRupiah(hargaPaket)}</span>
               </p>
             </div>
 
@@ -344,6 +368,22 @@ export function PresetEditor({ initialPreset, isNew, steps, games, initialCatalo
 
           <Bagian
             nomor={3}
+            judul="Harga paket"
+            keterangan="Total dibaca dari katalog. Yang bisa diatur di sini hanya potongan untuk paket ini."
+          >
+            <DiscountPanel
+              total={total}
+              discount={discount}
+              branching={bercabang > 0}
+              onChange={(d) => {
+                setDiscount(d)
+                setTersimpan(false)
+              }}
+            />
+          </Bagian>
+
+          <Bagian
+            nomor={4}
             judul="Analisis performa"
             keterangan="Perlu komponen yang sudah final. Hasilnya masuk sebagai draf."
           >
@@ -374,8 +414,10 @@ export function PresetEditor({ initialPreset, isNew, steps, games, initialCatalo
         <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-background/95 p-3 backdrop-blur md:hidden">
           <div className="flex items-center gap-3">
             <div className="min-w-0 flex-1">
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Total</p>
-              <p className="truncate font-bold text-sale-red">{formatRupiah(total)}</p>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                Harga paket
+              </p>
+              <p className="truncate font-bold text-sale-red">{formatRupiah(hargaPaket)}</p>
             </div>
             {TombolSimpan}
           </div>

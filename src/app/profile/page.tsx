@@ -40,7 +40,7 @@ export default async function Page() {
   );
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-page">
       <Header />
       <main className="flex-1 p-4 py-12 sm:px-6 lg:px-8">
         <div className="mx-auto w-full max-w-4xl space-y-8">

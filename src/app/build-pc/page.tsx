@@ -58,7 +58,7 @@ export default async function BuildPcPage({
       const selections: Record<string, BuilderSelection[]> = {}
 
       /**
-       * `pick` membawa pilihan tukar sebagai `stepId:productId`, BUKAN indeks.
+       * `pick` membawa pilihan tukar sebagai `stepId:id`, BUKAN indeks.
        *
        * Indeks akan berkhianat diam-diam: begitu staff mengurutkan ulang atau
        * menghapus satu pilihan, setiap tautan yang sudah tersebar lewat
@@ -68,9 +68,14 @@ export default async function BuildPcPage({
        * Satu langkah kini bisa berisi BEBERAPA barang (dua NVMe berbeda),
        * masing-masing dengan pilihan tukarnya sendiri. Karena itu yang disimpan
        * per langkah adalah HIMPUNAN id yang diminta, bukan satu id — dan
-       * pencocokannya dilakukan per barang. `productId` tetap unik di dalam satu
-       * langkah (ditegakkan parser), jadi `stepId:productId` masih menunjuk
-       * tepat satu pilihan.
+       * pencocokannya dilakukan per barang.
+       *
+       * `id` adalah id VARIAN kalau pilihannya bervarian (`idBerlaku`), bukan
+       * `productId`. Sejak chip varian multi-select (16 Sep 2026) "SSD 1TB atau
+       * 2TB" adalah dua pilihan dengan induk yang sama; mencocokkan lewat
+       * induk selalu memuat varian pertama. Tautan lama yang membawa
+       * `productId` induk tetap dibaca — lewat putaran kedua, dan karena
+       * kandidat pertama adalah bawaan, ia jatuh ke varian bawaan.
        */
       const diminta = new Map<string, Set<number>>()
       for (const bagian of (pick ?? "").split(",")) {
@@ -101,7 +106,8 @@ export default async function BuildPcPage({
           // kandidat barang ini dan produknya masih ada. Kalau tidak, jatuh ke
           // bawaan — bukan dipaksakan masuk.
           const dariUrl = idStep
-            ? kandidat.find((k) => idStep.has(k.productId) && byId.has(idBerlaku(k)))
+            ? (kandidat.find((k) => idStep.has(idBerlaku(k)) && byId.has(idBerlaku(k))) ??
+              kandidat.find((k) => idStep.has(k.productId) && byId.has(idBerlaku(k))))
             : undefined
 
           // Bawaan = kandidat pertama yang produknya masih ada. Stok kosong
@@ -124,7 +130,7 @@ export default async function BuildPcPage({
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-page">
       <div className="hidden md:block print:hidden">
         <Header />
       </div>

@@ -1,3 +1,4 @@
+import { applicablePrebuildDiscount } from "@/lib/pc-prebuild/discount"
 import type { CartItem } from "@/store/cart"
 
 /**
@@ -26,8 +27,19 @@ export type CartGroup =
       name: string
       /** Jumlah paket. Kuantitas tiap baris sudah dikali angka ini. */
       quantity: number
+      /** Potongan paket (Rp per paket) yang tersimpan di keranjang — lihat `CartBundleRef.discount`. */
+      discount: number
       lines: CartItem[]
     }
+
+/**
+ * Potongan per paket yang dipakai menghitung. Dioper dari luar dengan alasan yang
+ * sama dengan `unitPriceOf`: di `/cart` dan `/checkout` angkanya datang dari
+ * server (`bundleDiscountByKey`), bukan dari yang mengendap di localStorage.
+ */
+export type BundleDiscountOf = (group: Extract<CartGroup, { kind: "bundle" }>) => number
+
+const potonganTersimpan: BundleDiscountOf = (group) => group.discount
 
 /**
  * Urutannya mengikuti KEMUNCULAN PERTAMA tiap kelompok, bukan mengumpulkan
@@ -55,6 +67,7 @@ export function groupCartItems(items: CartItem[]): CartGroup[] {
         presetId: bundle.presetId,
         name: bundle.name,
         quantity: bundle.quantity,
+        discount: bundle.discount ?? 0,
         lines: [item],
       })
       continue
@@ -77,10 +90,37 @@ export function groupCartItems(items: CartItem[]): CartGroup[] {
  */
 export function groupTotal(
   group: CartGroup,
+  unitPriceOf: (item: CartItem) => number,
+  discountOf: BundleDiscountOf = potonganTersimpan
+): number {
+  return groupNormalTotal(group, unitPriceOf) - groupDiscount(group, unitPriceOf, discountOf)
+}
+
+/** Total sebelum potongan paket — untuk harga coret. */
+export function groupNormalTotal(
+  group: CartGroup,
   unitPriceOf: (item: CartItem) => number
 ): number {
   if (group.kind === "item") return unitPriceOf(group.item) * group.item.quantity
   return group.lines.reduce((total, line) => total + unitPriceOf(line) * line.quantity, 0)
+}
+
+/**
+ * Potongan paket yang berlaku untuk SELURUH jumlah paket di kelompok ini.
+ *
+ * Penjaganya dinilai per SATU paket — potongan yang menyamai total satu paket
+ * tidak berlaku — lalu dikali jumlah paket. Rumusnya sama persis dengan yang
+ * dijalankan server saat memesan (`prepareCheckoutWhatsApp`).
+ */
+export function groupDiscount(
+  group: CartGroup,
+  unitPriceOf: (item: CartItem) => number,
+  discountOf: BundleDiscountOf = potonganTersimpan
+): number {
+  if (group.kind === "item") return 0
+  const jumlahPaket = Math.max(1, group.quantity)
+  const normalPerPaket = groupNormalTotal(group, unitPriceOf) / jumlahPaket
+  return applicablePrebuildDiscount(discountOf(group), normalPerPaket) * jumlahPaket
 }
 
 /** Seluruh baris keranjang di dalam sebuah kelompok. */
@@ -127,9 +167,10 @@ export function isGroupBlocked(group: CartGroup, unavailableCartItemIds: string[
 export function groupsTotal(
   groups: CartGroup[],
   unitPriceOf: (item: CartItem) => number,
-  unavailableCartItemIds: string[] = []
+  unavailableCartItemIds: string[] = [],
+  discountOf: BundleDiscountOf = potonganTersimpan
 ): number {
   return groups
     .filter((group) => !isGroupBlocked(group, unavailableCartItemIds))
-    .reduce((total, group) => total + groupTotal(group, unitPriceOf), 0)
+    .reduce((total, group) => total + groupTotal(group, unitPriceOf, discountOf), 0)
 }

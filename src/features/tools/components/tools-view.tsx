@@ -34,7 +34,7 @@ export function ToolsView() {
 
   if (isMobile) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] text-center p-6 bg-muted/30 rounded-2xl border border-border">
+      <div className="flex flex-col items-center justify-center min-h-[400px] text-center p-6 bg-card rounded-2xl border border-border">
         <Monitor className="w-12 h-12 text-muted-foreground mb-4" />
         <h2 className="text-xl font-bold mb-2">Hanya Tersedia di Desktop</h2>
         <p className="text-muted-foreground max-w-md">
@@ -73,7 +73,7 @@ export function ToolsView() {
           ))}
         </div>
 
-        <div className="bg-background rounded-2xl border border-border overflow-hidden">
+        <div className="bg-card rounded-2xl border border-border overflow-hidden">
           {activeTab === "keyboard" && <KeyboardTest onAction={(action) => addLog("Keyboard", action)} />}
           {activeTab === "mouse" && <MouseTest onAction={(action) => addLog("Mouse", action)} />}
           {activeTab === "gamepad" && <GamepadTest onAction={(action) => addLog("Gamepad", action)} />}

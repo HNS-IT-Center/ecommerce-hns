@@ -219,7 +219,7 @@ export function ComponentSelectionModal({ isOpen, onClose, slot }: ComponentSele
                   onClick={() => handleSelect(product)}
                   className="flex cursor-pointer items-center gap-4 rounded-xl border bg-card p-3 transition-colors hover:border-primary hover:shadow-sm"
                 >
-                  <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-muted">
+                  <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-white">
                     {/* Penjaga `&&` yang dulu ada di sini dilepas:
                         ProductImage sudah menerima src kosong dan
                         menggambar placeholder yang sama seperti saat

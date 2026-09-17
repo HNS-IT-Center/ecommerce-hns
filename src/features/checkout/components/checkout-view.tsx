@@ -6,9 +6,11 @@ import { useCartStore, type CartItem } from "@/store/cart"
 import {
   groupCartItems,
   groupLines,
+  groupDiscount,
   groupTotal,
   groupsTotal,
   isGroupBlocked,
+  type BundleDiscountOf,
   type CartGroup,
 } from "@/lib/cart/grouping"
 import { formatRupiah } from "@/lib/utils"
@@ -19,7 +21,7 @@ import { ProductImage } from "@/components/ui/product-image"
 import { WhatsAppOrderButton } from "./whatsapp-order-button"
 
 export function CheckoutView() {
-  const { items, getSelectedTotalPrice } = useCartStore()
+  const { items } = useCartStore()
 
   /**
    * Harga menurut katalog, terisi setelah tombol WhatsApp membacanya.
@@ -33,12 +35,11 @@ export function CheckoutView() {
     total: number
     unitPriceByCartItemId: Record<string, number>
     unavailableCartItemIds: string[]
+    bundleDiscountByKey: Record<string, number>
   } | null>(null)
 
   // Only show selected items
   const selectedItems = items.filter(item => item.selected !== false)
-  const cartTotal = getSelectedTotalPrice()
-
   /** Harga satuan yang ditampilkan: katalog kalau sudah dibaca, keranjang kalau belum. */
   const unitPriceOf = (item: CartItem) =>
     catalogPricing?.unitPriceByCartItemId[item.id] ?? item.price
@@ -46,8 +47,20 @@ export function CheckoutView() {
   const isUnavailable = (item: { id: string }) =>
     catalogPricing?.unavailableCartItemIds.includes(item.id) ?? false
 
+  /** Potongan paket: menurut konfigurasi kalau sudah dibaca, yang tersimpan kalau belum. */
+  const discountOf: BundleDiscountOf = (group) =>
+    catalogPricing?.bundleDiscountByKey[group.key] ?? group.discount
+
   const groups = groupCartItems(selectedItems)
   const takTersedia = catalogPricing?.unavailableCartItemIds ?? []
+
+  /**
+   * Total menurut angka yang tersimpan di keranjang — harga satuan dan potongan
+   * paket — sebagai pembanding `priceWasCorrected`. Dulu `getSelectedTotalPrice()`
+   * milik store, yang tidak tahu soal potongan paket: setiap keranjang berisi
+   * paket berpotongan akan selalu dinyatakan "disesuaikan".
+   */
+  const cartTotal = groupsTotal(groups, (item) => item.price)
 
   /**
    * Dijumlahkan dari kelompok yang sedang tampil, BUKAN diambil dari
@@ -63,7 +76,7 @@ export function CheckoutView() {
    * Sama alasannya dengan `/cart` dan panel `/build-pc` — lihat
    * `groupsTotal` di lib/cart/grouping.ts.
    */
-  const displayedTotal = groupsTotal(groups, unitPriceOf, takTersedia)
+  const displayedTotal = groupsTotal(groups, unitPriceOf, takTersedia, discountOf)
 
   /**
    * Dibandingkan terhadap total menurut harga keranjang. Kalau katalog sudah
@@ -123,7 +136,8 @@ export function CheckoutView() {
                   group={group}
                   blocked={isGroupBlocked(group, takTersedia)}
                   isUnavailable={isUnavailable}
-                  total={groupTotal(group, unitPriceOf)}
+                  total={groupTotal(group, unitPriceOf, discountOf)}
+                  discount={groupDiscount(group, unitPriceOf, discountOf)}
                 />
               ) : (
                 <ItemSummary
@@ -169,7 +183,7 @@ export function CheckoutView() {
       </div>
 
       <div className="lg:col-span-4">
-        <div className="sticky top-24 rounded-xl border bg-muted/30 p-6">
+        <div className="sticky top-24 rounded-xl border bg-card p-6">
           <h2 className="text-lg font-bold">Ringkasan Pembayaran</h2>
           
           <div className="mt-6 space-y-4">
@@ -216,7 +230,7 @@ function ItemSummary({
 }) {
   return (
     <div className="flex gap-4 p-6 sm:gap-6">
-      <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-muted sm:h-24 sm:w-24">
+      <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-lg bg-white sm:h-24 sm:w-24">
         <ProductImage
           src={item.image}
           alt={item.name}
@@ -271,11 +285,15 @@ function BundleSummary({
   blocked,
   isUnavailable,
   total,
+  discount,
 }: {
   group: Extract<CartGroup, { kind: "bundle" }>
   blocked: boolean
   isUnavailable: (item: { id: string }) => boolean
+  /** Setelah potongan paket. */
   total: number
+  /** Potongan paket untuk seluruh jumlah paket; 0 = tidak ada. */
+  discount: number
 }) {
   return (
     <div className="p-6">
@@ -295,8 +313,18 @@ function BundleSummary({
           </h3>
         </div>
 
-        <div className="text-right font-bold text-foreground">
-          {blocked ? "—" : formatRupiah(total)}
+        <div className="text-right">
+          {discount > 0 && !blocked && (
+            <p className="text-xs text-muted-foreground line-through">
+              {formatRupiah(total + discount)}
+            </p>
+          )}
+          <p className="font-bold text-foreground">{blocked ? "—" : formatRupiah(total)}</p>
+          {discount > 0 && !blocked && (
+            <p className="text-[11px] font-semibold text-brand-green">
+              Potongan paket {formatRupiah(discount)}
+            </p>
+          )}
         </div>
       </div>
 

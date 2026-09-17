@@ -1,19 +1,33 @@
+import { applicablePrebuildDiscount } from "@/lib/pc-prebuild/discount"
 import type { CartItem } from "@/store/cart"
 
 import type { PrebuildComponent, PrebuildOption, PrebuildView } from "./types"
 
 /**
  * Pilihan pelanggan atas barang-barang yang bisa ditukar, dikunci
- * `PrebuildComponent.key` → `productId` yang dipilih.
+ * `PrebuildComponent.key` → `optionId()` pilihan yang dipilih.
  *
- * Yang disimpan `productId`, BUKAN indeks pilihan — aturan yang sama dengan
- * `?pick=` di URL (docs/11-pc-prebuild.md §5). Indeks berkhianat diam-diam
- * begitu staff mengurutkan ulang pilihan di panel admin.
+ * Yang disimpan id, BUKAN indeks pilihan — aturan yang sama dengan `?pick=` di
+ * URL (docs/11-pc-prebuild.md §5). Indeks berkhianat diam-diam begitu staff
+ * mengurutkan ulang pilihan di panel admin.
  *
  * Kunci yang tidak ada di `selection`, atau yang menunjuk produk yang bukan
  * salah satu pilihan barang itu, JATUH KE BAWAAN — bukan dipaksakan masuk.
  */
 export type PrebuildSelection = Record<string, number>
+
+/**
+ * Identitas satu pilihan: variannya kalau ada, kalau tidak produknya sendiri.
+ *
+ * BUKAN `productId`. Sejak chip varian multi-select (16 Sep 2026) dua pilihan
+ * bisa menunjuk induk yang sama — "SSD 1TB atau 2TB" — dan membedakannya lewat
+ * `productId` membuat kedua tombol menyala bersamaan, sementara yang masuk
+ * keranjang selalu varian pertama. Baris varian juga sebuah `Product`, jadi id-nya
+ * tidak mungkin bertabrakan dengan id produk lain.
+ */
+export function optionId(option: { productId: number; variationId?: number }): number {
+  return option.variationId ?? option.productId
+}
 
 /** Bawaan = pilihan pertama. `null` hanya kalau seluruh pilihannya hilang. */
 export function chosenOption(
@@ -21,7 +35,7 @@ export function chosenOption(
   selection: PrebuildSelection
 ): PrebuildOption | null {
   const diminta = selection[component.key]
-  const cocok = component.options.find((o) => o.productId === diminta)
+  const cocok = component.options.find((o) => optionId(o) === diminta)
   return cocok ?? component.options[0] ?? null
 }
 
@@ -52,9 +66,31 @@ export function selectionTotal(view: PrebuildView, selection: PrebuildSelection)
   )
 }
 
-/** Id yang memegang harga: variannya kalau ada, kalau tidak produknya sendiri. */
-function idBerlaku(option: PrebuildOption): number {
-  return option.variationId ?? option.productId
+export type PackagePrice = {
+  /** Penjumlahan harga katalog komponen. */
+  normal: number
+  /** Potongan paket yang benar-benar berlaku terhadap `normal`; 0 = tidak ada. */
+  discount: number
+  /** Yang dibayar pelanggan. */
+  final: number
+}
+
+/**
+ * Harga satu paket dari total normalnya.
+ *
+ * SATU-SATUNYA tempat potongan paket dikurangkan di sisi klien — kartu, halaman
+ * detail, dan PDF semuanya lewat sini, dan keranjang lewat rumus yang sama di
+ * `lib/pc-prebuild/discount.ts`. Potongan adalah data yang ditetapkan staff,
+ * bukan angka yang dikarang (CLAUDE.md §2.7).
+ */
+export function packagePrice(view: Pick<PrebuildView, "discount">, normal: number): PackagePrice {
+  const discount = applicablePrebuildDiscount(view.discount, normal)
+  return { normal, discount, final: normal - discount }
+}
+
+/** Harga paket menurut pilihan yang sedang aktif. */
+export function selectionPrice(view: PrebuildView, selection: PrebuildSelection): PackagePrice {
+  return packagePrice(view, selectionTotal(view, selection))
 }
 
 /**
@@ -66,7 +102,7 @@ function idBerlaku(option: PrebuildOption): number {
  * pernah menerima dua paket yang salah satunya tidak pernah dipilih siapa pun.
  */
 export function bundleKey(view: PrebuildView, selection: PrebuildSelection): string {
-  const pilihan = chosenComponents(view, selection).map(({ option }) => idBerlaku(option))
+  const pilihan = chosenComponents(view, selection).map(({ option }) => optionId(option))
   return `${view.id}|${pilihan.join("-")}`
 }
 
@@ -104,6 +140,7 @@ export function toCartLines(
       name: view.name,
       unitQuantity: option.quantity,
       quantity: bundleQuantity,
+      ...(view.discount > 0 ? { discount: view.discount } : {}),
     },
   }))
 }
@@ -115,15 +152,64 @@ export function toCartLines(
  * toh cuma punya satu kemungkinan, dan menyebutnya lagi hanya memanjangkan URL
  * yang beredar lewat WhatsApp.
  *
- * Bentuknya `stepId:productId`, bukan indeks — lihat catatan panjang di
+ * Bentuknya `stepId:optionId`, bukan indeks — lihat catatan panjang di
  * `/build-pc` page.tsx.
  */
 export function builderUrl(view: PrebuildView, selection: PrebuildSelection): string {
-  const pick = chosenComponents(view, selection)
-    .filter(({ component }) => component.branching)
-    .map(({ component, option }) => `${component.stepId}:${option.productId}`)
-    .join(",")
-
+  const pick = pickParam(view, selection)
   const dasar = `/build-pc?preset=${encodeURIComponent(view.id)}`
   return pick ? `${dasar}&pick=${encodeURIComponent(pick)}` : dasar
+}
+
+/**
+ * Tautan ke lembar cetak PDF paket dengan pilihan pelanggan ikut terbawa.
+ *
+ * `?pick=` berbentuk SAMA dengan milik `builderUrl`, jadi satu pembaca
+ * (`selectionFromPick`) melayani keduanya.
+ */
+export function printUrl(view: PrebuildView, selection: PrebuildSelection): string {
+  const pick = pickParam(view, selection)
+  const dasar = `/pc-prebuild/${encodeURIComponent(view.id)}/print`
+  return pick ? `${dasar}?pick=${encodeURIComponent(pick)}` : dasar
+}
+
+/** `stepId:optionId,…` untuk barang yang punya pilihan tukar saja. */
+function pickParam(view: PrebuildView, selection: PrebuildSelection): string {
+  return chosenComponents(view, selection)
+    .filter(({ component }) => component.branching)
+    .map(({ component, option }) => `${component.stepId}:${optionId(option)}`)
+    .join(",")
+}
+
+/**
+ * `?pick=` → pilihan. Kebalikan `pickParam`, dengan aturan pencocokan yang sama
+ * dengan `/build-pc` page.tsx:
+ *
+ * - id dicocokkan ke `optionId()` lebih dulu, lalu ke `productId` — tautan lama
+ *   yang membawa id induk jatuh ke varian pertama produk itu;
+ * - id yang bukan salah satu pilihan barangnya diabaikan, jadi barangnya jatuh
+ *   ke bawaan. URL bisa disunting siapa saja; yang bisa dipilih lewat URL hanya
+ *   yang memang ditawarkan staff.
+ */
+export function selectionFromPick(view: PrebuildView, raw: string | undefined): PrebuildSelection {
+  const diminta = new Map<string, Set<number>>()
+  for (const bagian of (raw ?? "").split(",").slice(0, 50)) {
+    const [stepId, mentah] = bagian.split(":")
+    const id = Number(mentah)
+    if (!stepId || !Number.isSafeInteger(id) || id <= 0) continue
+    const set = diminta.get(stepId) ?? new Set<number>()
+    set.add(id)
+    diminta.set(stepId, set)
+  }
+
+  const selection: PrebuildSelection = {}
+  for (const component of view.components) {
+    const ids = diminta.get(component.stepId)
+    if (!ids || !component.branching) continue
+    const cocok =
+      component.options.find((o) => ids.has(optionId(o))) ??
+      component.options.find((o) => ids.has(o.productId))
+    if (cocok) selection[component.key] = optionId(cocok)
+  }
+  return selection
 }

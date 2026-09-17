@@ -3,7 +3,7 @@ import { ProductGridSkeleton } from "@/components/ui/product-grid-skeleton"
 
 export function ShopPageSkeleton() {
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-page">
       <div className="sticky top-0 z-50 h-16 w-full border-b bg-background" />
       <main className="flex-1 bg-muted/20 py-8">
         <div className="container mx-auto px-4 md:px-6">

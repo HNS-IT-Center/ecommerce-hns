@@ -49,7 +49,7 @@ export default async function AboutPage() {
   const stores = await getActiveStores();
   const utama = stores[0] ?? null;
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-page">
       <Header />
       <main className="flex-1">
         {/* HERO SECTION */}

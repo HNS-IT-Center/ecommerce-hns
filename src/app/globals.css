@@ -5,6 +5,7 @@
 
 @theme inline {
   --color-background: var(--background);
+  --color-page: var(--page);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-inter);
   --font-mono: var(--font-geist-mono);
@@ -62,7 +63,10 @@
     --text-950: #05150d;
     
     --background-50: #fffefe;
-    --background-100: #ebe0e0;
+    /* Netral, bukan abu kemerahan (#ebe0e0) seperti sebelumnya. Tingkat ini
+       yang menjadi `--muted` — placeholder, chip, hover — dan nada merahnya
+       terbaca kotor di atas halaman abu-abu `--page`. */
+    --background-100: #eceef1;
     --background-200: #d6c2c2;
     --background-300: #c2a3a3;
     --background-400: #ad8585;
@@ -112,9 +116,19 @@
     /* Shadcn UI variable mappings */
     --background: var(--background-50);
     --foreground: var(--text-950);
-    --card: var(--background-50);
+    /* Latar HALAMAN storefront (`bg-page` di pembungkus tiap halaman), sengaja
+       terpisah dari `--background`.
+
+       Dulu halaman dan kartu sama-sama `--background-50`, jadi kartu hanya
+       dipisahkan garis 1px. Mengubah `--background` sendiri tidak bisa jadi
+       jawabannya: token itu dipakai ratusan kali sebagai permukaan DI DALAM
+       kartu, bilah sticky, dan header — semuanya akan ikut jadi abu-abu. */
+    /* Dipudarkan dari #f4f5f7 (17 Sep 2026) — yang itu terasa terlalu abu.
+       Cukup untuk memisahkan kartu putih, tidak sampai terbaca sebagai warna. */
+    --page: #f9fafb;
+    --card: #ffffff;
     --card-foreground: var(--text-950);
-    --popover: var(--background-50);
+    --popover: #ffffff;
     --popover-foreground: var(--text-950);
     --primary: var(--primary-500);
     --primary-foreground: var(--primary-50);
@@ -259,6 +273,7 @@
 
     /* Shadcn UI variable mappings for dark mode */
     --background: var(--background-50);
+    --page: var(--background-50);
     --foreground: var(--text-950);
     --card: var(--background-50);
     --card-foreground: var(--text-950);

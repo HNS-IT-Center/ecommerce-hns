@@ -73,7 +73,7 @@ export function VariationList({
                   : "cursor-pointer border-border/60 hover:border-blue-500 hover:bg-accent"
             }`}
           >
-            <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-secondary/50">
+            <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-white">
               <ProductImage
                 src={variation.image || fallbackImage}
                 alt={variation.label}

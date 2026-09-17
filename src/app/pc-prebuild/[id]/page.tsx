@@ -54,7 +54,7 @@ export default async function PrebuildDetailPage({ params }: Props) {
   const view = toPrebuildView(resolved, steps)
 
   return (
-    <div className="flex min-h-dvh flex-col bg-background">
+    <div className="flex min-h-dvh flex-col bg-page">
       <Header />
       <main className="flex-1">
         <PrebuildDetail view={view} games={games} />

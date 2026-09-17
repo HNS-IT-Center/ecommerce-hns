@@ -59,7 +59,7 @@ export function FooterStores({ stores }: { stores: FooterStore[] }) {
 
   return (
     <TooltipProvider delay={200}>
-      <div className="mt-12 border-t border-white/15 pt-8">
+      <div className="mt-4 border-t border-white/15 pt-8">
         <h4 className="text-sm font-bold uppercase tracking-wider">Toko Kami</h4>
         <ul className="mt-4 grid gap-6 md:grid-cols-2 lg:gap-12">
           {stores.map((store) => {

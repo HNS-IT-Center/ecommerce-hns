@@ -3,9 +3,12 @@
 import { useCartStore, type CartItem } from "@/store/cart"
 import {
   groupCartItems,
+  groupDiscount,
+  groupNormalTotal,
   groupTotal,
   groupsTotal,
   isGroupBlocked,
+  type BundleDiscountOf,
   type CartGroup,
 } from "@/lib/cart/grouping"
 import { useCatalogPricing } from "@/features/checkout/hooks/use-catalog-pricing"
@@ -132,6 +135,10 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
 
   const takTersedia = pricing?.unavailableCartItemIds ?? []
 
+  /** Potongan paket: menurut konfigurasi kalau sudah dibaca, yang tersimpan kalau belum. */
+  const discountOf: BundleDiscountOf = (group) =>
+    pricing?.bundleDiscountByKey[group.key] ?? group.discount
+
   /**
    * Total mengikuti aturan yang sama dengan `/cart` dan `/checkout`:
    * dijumlahkan dari kelompok yang BENAR-BENAR akan dibawa ke checkout, memakai
@@ -139,7 +146,7 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
    * `groupsTotal` di lib/cart/grouping.ts.
    */
   const selectedGroups = groupCartItems(items.filter((i) => i.selected !== false))
-  const displayedTotal = groupsTotal(selectedGroups, unitPriceOf, takTersedia)
+  const displayedTotal = groupsTotal(selectedGroups, unitPriceOf, takTersedia, discountOf)
 
   const paketDitahan = selectedGroups.filter(
     (g) => g.kind === "bundle" && isGroupBlocked(g, takTersedia)
@@ -322,6 +329,7 @@ export function CartSheet({ children }: { children: React.ReactNode }) {
                       key={group.key}
                       group={group}
                       unitPriceOf={unitPriceOf}
+                      discountOf={discountOf}
                       blocked={isGroupBlocked(group, takTersedia)}
                       // Kunci konfirmasi diberi awalan supaya tidak pernah
                       // bertabrakan dengan id baris keranjang biasa.
@@ -557,7 +565,7 @@ function ItemCard({
 
         {/* Gambar mengecil di layar sempit supaya nama produk tetap kebagian
             ruang baca yang layak. */}
-        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-muted sm:h-20 sm:w-20">
+        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-white sm:h-20 sm:w-20">
           {item.image ? (
             <ProductImage src={item.image} alt={item.name} fill sizes="80px" className="object-cover" />
           ) : (
@@ -622,6 +630,7 @@ function ItemCard({
 function BundleCard({
   group,
   unitPriceOf,
+  discountOf,
   blocked,
   pending,
   onPending,
@@ -632,6 +641,7 @@ function BundleCard({
   group: Extract<CartGroup, { kind: "bundle" }>
   /** Harga satuan katalog per komponen paket. */
   unitPriceOf: (item: CartItem) => number
+  discountOf: BundleDiscountOf
   /** Ada komponennya yang sudah tidak terbit — paketnya ditahan seluruhnya. */
   blocked: boolean
   pending: boolean
@@ -678,8 +688,15 @@ function BundleCard({
           )}
 
           <div className="mt-0.5 flex flex-wrap items-center justify-between gap-2">
-            <span className="text-sm font-bold tabular-nums text-sale-red">
-              {formatRupiah(groupTotal(group, unitPriceOf))}
+            <span className="flex flex-col">
+              {groupDiscount(group, unitPriceOf, discountOf) > 0 && (
+                <span className="text-[11px] tabular-nums text-muted-foreground line-through">
+                  {formatRupiah(groupNormalTotal(group, unitPriceOf))}
+                </span>
+              )}
+              <span className="text-sm font-bold tabular-nums text-sale-red">
+                {formatRupiah(groupTotal(group, unitPriceOf, discountOf))}
+              </span>
             </span>
 
             <Stepper

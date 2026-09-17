@@ -197,7 +197,7 @@ export async function Footer() {
             selebar footer karena alamatnya terlalu panjang untuk kolom grid. */}
         <FooterStores stores={stores} />
         
-        <div className="mt-12 border-t border-white/15 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-white/60">
+        <div className="mt-4 border-t border-white/15 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-white/60">
           <p>© 2026 HNS IT Center. All rights reserved.</p>
           <p>Batam - Kepulauan Riau - Indonesia</p>
         </div>

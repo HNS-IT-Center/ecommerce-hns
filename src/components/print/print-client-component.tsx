@@ -19,7 +19,16 @@ import { ArrowLeft, Printer } from "lucide-react"
  * dialog masih menggantung membuat halaman tujuan tampak "loading putih" tanpa
  * henti, padahal yang terjadi tab-nya sedang menunggu dialog yang tak terlihat.
  */
-export function PrintClientComponent() {
+type Props = {
+  /** Tujuan tombol kembali. Bawaannya wizard Rakit PC, pemakai pertama komponen ini. */
+  backHref?: string
+  backLabel?: string
+}
+
+export function PrintClientComponent({
+  backHref = "/build-pc",
+  backLabel = "Kembali ke Rakit PC",
+}: Props = {}) {
   const [status, setStatus] = useState<"loading" | "ready">("loading")
   // Strict Mode menjalankan effect dua kali di dev. Tanpa penjaga ini dialog
   // cetak kedua terbuka menimpa yang pertama, dan tab tetap terkunci walau
@@ -74,11 +83,11 @@ export function PrintClientComponent() {
     <div className="no-print print:hidden sticky top-0 z-50 border-b border-neutral-200 bg-white/95 backdrop-blur supports-backdrop-filter:bg-white/80">
       <div className="mx-auto flex max-w-[210mm] items-center justify-between gap-3 px-4 py-2.5">
         <Link
-          href="/build-pc"
+          href={backHref}
           className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          Kembali ke Rakit PC
+          {backLabel}
         </Link>
 
         <button

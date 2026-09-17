@@ -314,7 +314,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-page">
       <JsonLd data={productJsonLd} />
       {/* Header melayang di atas galeri sampai pembeli menggulir.
 

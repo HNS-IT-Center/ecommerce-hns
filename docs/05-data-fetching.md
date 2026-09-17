@@ -634,6 +634,32 @@ keterangan paket.
 `bundleName`, `bundleQuantity` — dan ketiganya HANYA memengaruhi cara pesan
 disusun.
 
+### Potongan paket (17 September 2026)
+
+Satu pengecualian atas "paket tidak punya jalur harga sendiri": potongan
+nominal yang ditetapkan staff per paket (`docs/11-pc-prebuild.md` §12).
+
+- `CheckoutLineInput` bertambah `bundlePresetId` (opsional). Ia HANYA dipakai
+  mencari paketnya di `PC_PREBUILD_CONFIG`; besar potongan **tidak pernah**
+  diterima dari klien. Tanpa bidang ini, id paket dibaca dari awalan
+  `bundleKey` (`<presetId>|…`) — keranjang lama tetap bekerja.
+- `prepareCheckoutWhatsApp` membaca konfigurasi paket hanya kalau ada baris
+  paket, menilai masa berlaku dengan jam server, lalu mengurangkan potongan
+  dari total blok SETELAH seluruh komponennya terkumpul.
+- Hasilnya bertambah `bundleDiscountByKey` (Rp per SATU paket, dikunci
+  `bundleKey`). `/cart`, panel keranjang, dan `/checkout` memakainya untuk
+  menggantikan `CartBundleRef.discount` yang tersimpan — pola yang sama dengan
+  `unitPriceByCartItemId` menggantikan `CartItem.price`.
+- Penjaga "potongan ≥ total satu paket tidak berlaku" dijalankan dua sisi lewat
+  `applicablePrebuildDiscount`: server di `prepareCheckoutWhatsApp`, klien di
+  `groupDiscount()` (`lib/cart/grouping.ts`). Satu rumus, dua pemanggil.
+- Pesan WhatsApp menyebut harga normal dan potongannya terang-terangan di blok
+  paket, supaya CS yang menjumlahkan komponen di kasir tahu asal selisihnya.
+- `/checkout` membandingkan total katalog dengan total tersimpan lewat
+  `groupsTotal(groups, (i) => i.price)`, bukan lagi `getSelectedTotalPrice()` —
+  yang terakhir tidak tahu soal potongan paket dan akan selalu menyatakan
+  "total disesuaikan".
+
 ### Paket yang komponennya hilang TIDAK dikirim, seluruhnya
 
 Kalau satu komponen sudah ditarik dari katalog, **seluruh paketnya** ditahan —

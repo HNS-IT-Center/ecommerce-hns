@@ -29,7 +29,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   if (!build) notFound();
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-page">
       <Header />
       <main className="flex-1 p-4 py-12 sm:px-6 lg:px-8">
         <div className="mx-auto w-full max-w-3xl space-y-6">
@@ -72,7 +72,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 key={`${item.stepId}-${i}`}
                 className="flex items-center gap-4 rounded-2xl border bg-card p-4 shadow-sm"
               >
-                <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-muted">
+                <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-white">
                   {item.product ? (
                     <ProductImage
                       src={item.product.image}
@@ -128,7 +128,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             ))}
           </div>
 
-          <div className="rounded-2xl border bg-muted/30 p-5">
+          <div className="rounded-2xl border bg-card p-5">
             <div className="flex items-center justify-between">
               <span className="text-sm font-bold">Total saat ini</span>
               <span className="text-xl font-black text-sale-red">{formatRupiah(build.subtotal)}</span>

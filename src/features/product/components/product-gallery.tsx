@@ -134,7 +134,7 @@ export function ProductGallery({
   if (images.length === 0) {
     return (
       <div className="relative aspect-square w-full overflow-hidden rounded-2xl drop-shadow-sm">
-        <ProductImage src={null} alt="Foto produk" fill fallbackClassName="bg-background" />
+        <ProductImage src={null} alt="Foto produk" fill fallbackClassName="bg-white" />
       </div>
     )
   }
@@ -288,7 +288,7 @@ export function ProductGallery({
            benar-benar terlihat saat halaman pertama dibuka. `dvh` ikut tinggi
            viewport yang sedang berlaku, sehingga 50% memang 50% dari yang
            dilihat pembeli. */
-        className="group relative w-full h-[50dvh] sm:h-auto sm:aspect-square sm:max-h-[500px] overflow-hidden rounded-none sm:rounded-2xl bg-background drop-shadow-sm flex items-center justify-center cursor-pointer sm:cursor-crosshair"
+        className="group relative w-full h-[50dvh] sm:h-auto sm:aspect-square sm:max-h-[500px] overflow-hidden rounded-none sm:rounded-2xl bg-white drop-shadow-sm flex items-center justify-center cursor-pointer sm:cursor-crosshair"
         onClick={handleImageClick}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
@@ -489,7 +489,7 @@ export function ProductGallery({
             menutupi poster dan pemutarnya. */}
         {!isMobile && !isVideoSlide && magnifierStyle.display === 'block' && activeSlide?.kind === "image" && (
           <div
-            className="absolute inset-0 z-30 pointer-events-none bg-background"
+            className="absolute inset-0 z-30 pointer-events-none bg-white"
             style={{
               backgroundImage: `url(${activeSlide.image.src})`,
               backgroundPosition: `${magnifierStyle.bgPosX}% ${magnifierStyle.bgPosY}%`,
@@ -552,7 +552,7 @@ export function ProductGallery({
               key={i}
               onClick={() => goToIndex(i, i > activeIndex ? 1 : -1)}
               className={cn(
-                "relative h-20 w-20 sm:h-24 sm:w-24 shrink-0 overflow-hidden rounded-xl transition-all bg-background drop-shadow-sm cursor-pointer snap-center",
+                "relative h-20 w-20 sm:h-24 sm:w-24 shrink-0 overflow-hidden rounded-xl transition-all bg-white drop-shadow-sm cursor-pointer snap-center",
                 i === activeIndex
                   ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
                   : "opacity-70 hover:opacity-100"

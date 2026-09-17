@@ -69,7 +69,7 @@ export default async function VerifyBuildPage({
   const quotes = await listRecentQuotes(sort, RECENT_LIMIT)
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-page">
       <Header />
       <Breadcrumb
         items={[{ label: "Beranda", href: "/" }, { label: "Cek Rakitan PC" }]}

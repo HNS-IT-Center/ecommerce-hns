@@ -9,7 +9,7 @@ export const metadata = {
 
 export default function CartPage() {
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-page">
       <Header />
       <main className="flex-1 bg-muted/20">
         <div className="mx-auto max-w-7xl px-4 py-8 md:px-6 md:py-12">

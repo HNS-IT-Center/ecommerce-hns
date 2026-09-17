@@ -37,7 +37,7 @@ export default async function PcPrebuildPage() {
   const views = resolved.map((preset) => toPrebuildView(preset, steps))
 
   return (
-    <div className="flex min-h-dvh flex-col bg-background">
+    <div className="flex min-h-dvh flex-col bg-page">
       <Header />
       {/* `min-h-dvh` ada di SINI juga, bukan cuma di pembungkus luar. Yang di
           luar hanya menjamin footer tidak naik ke tengah layar saat paketnya

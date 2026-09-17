@@ -957,9 +957,9 @@ export function DynamicBuilderView({
           return stepSels.map((sel, idx) => (
             <div
               key={`${step.id}-${idx}`}
-              className="group relative flex gap-2.5 rounded-lg border border-border/50 bg-muted/40 dark:bg-muted/20 p-2 transition-colors hover:border-border"
+              className="group relative flex gap-2.5 rounded-lg border border-border/50 bg-card p-2 transition-colors hover:border-border"
             >
-              <div className="h-12 w-12 shrink-0 overflow-hidden rounded-md bg-background flex items-center justify-center">
+              <div className="h-12 w-12 shrink-0 overflow-hidden rounded-md bg-white flex items-center justify-center">
                 <ProductImage
                   src={sel.product.image}
                   alt={sel.product.name}

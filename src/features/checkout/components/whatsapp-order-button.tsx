@@ -47,6 +47,8 @@ type Props = {
     unitPriceByCartItemId: Record<string, number>;
     /** Id baris keranjang yang produknya sudah tidak terbit. */
     unavailableCartItemIds: string[];
+    /** Potongan paket per paket menurut konfigurasi, dikunci `bundle.key`. */
+    bundleDiscountByKey: Record<string, number>;
   }) => void;
 };
 
@@ -81,6 +83,7 @@ export function WhatsAppOrderButton({ onPriced }: Props) {
           ...(i.bundle
             ? {
                 bundleKey: i.bundle.key,
+                bundlePresetId: i.bundle.presetId,
                 bundleName: i.bundle.name,
                 bundleQuantity: i.bundle.quantity,
               }
@@ -106,6 +109,7 @@ export function WhatsAppOrderButton({ onPriced }: Props) {
         total: hasil.total,
         unitPriceByCartItemId: hasil.unitPriceByCartItemId,
         unavailableCartItemIds: hasil.unavailableCartItemIds,
+        bundleDiscountByKey: hasil.bundleDiscountByKey,
       });
 
       // Kalau ada harga yang berubah atau barang yang hilang, pelanggan harus

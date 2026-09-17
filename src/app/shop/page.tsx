@@ -152,7 +152,7 @@ export default async function ShopPage({ searchParams }: ShopPageProps) {
   const activeFilterCount = countActiveShopFilters(resolvedParams)
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-page">
       <Header />
       <main className="flex-1 bg-muted/20 py-8 relative">
         <div className="container mx-auto px-4 md:px-6">

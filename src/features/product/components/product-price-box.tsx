@@ -54,7 +54,7 @@ export function ProductPriceBox({
        jadi tidak ada cabang yang perlu tumbuh melewatinya. `justify-center`
        membuat cabang satu baris duduk di tengah ruang itu, bukan menggantung
        di atas dengan ruang kosong menganga di bawahnya. */
-    <div className="-mx-4 flex min-h-[92px] flex-col justify-center border-y border-border bg-muted/30 px-4 py-4 md:mx-0 md:min-h-[108px] md:rounded-xl md:border md:p-5">
+    <div className="-mx-4 flex min-h-[92px] flex-col justify-center border-y border-border bg-card px-4 py-4 md:mx-0 md:min-h-[108px] md:rounded-xl md:border md:p-5">
       {priceRange ? (
         /**
          * Rentang tampil polos tanpa badge diskon maupun harga coret: tiap

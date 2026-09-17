@@ -9,6 +9,8 @@
  *
  * **Preset TIDAK menyimpan harga.** Isinya hanya `productId`, `variationId`,
  * dan `quantity`; harga selalu dibaca ulang dari katalog saat halaman dirender.
+ * Satu-satunya rupiah di preset adalah `discount` — besar POTONGAN yang
+ * ditetapkan staff, bukan harga (lihat `discount.ts`).
  * Ini keharusan CLAUDE.md §2.7, bukan pilihan gaya: preset yang menyimpan angka
  * akan menampilkan harga yang benar hari ini dan salah bulan depan tanpa ada
  * yang menyadarinya. Persis itu yang pernah terjadi pada panel "My Build" yang
@@ -54,6 +56,7 @@ import {
   MAX_PREBUILD_IMAGES,
   MAX_QUANTITY_PER_ITEM,
 } from "./limits"
+import { parsePrebuildDiscount, type PrebuildDiscount } from "./discount"
 import { parsePrebuildPerformance, type PrebuildPerformance } from "./performance"
 
 export const PC_PREBUILD_CACHE_TAG = "pc-prebuild-config"
@@ -83,9 +86,10 @@ export {
 /**
  * Pilihan tukar untuk satu barang — pelanggan memilih salah satu.
  *
- * `productId` mengidentifikasi pilihan, TERMASUK di URL `?pick=`. Karena itu ia
- * tidak boleh kembar dalam satu barang: dua tombol yang menunjuk produk sama
- * tidak bisa dibedakan satu sama lain.
+ * Pilihan dikenali lewat `variationId ?? productId` (`optionId()` di
+ * features/pc-prebuild/lib/selection.ts), TERMASUK di URL `?pick=` — bukan lewat
+ * `productId` saja, karena dua varian satu produk berbagi induk yang sama.
+ * Pasangan (`productId`, `variationId`) tidak boleh kembar dalam satu barang.
  */
 export type PcPrebuildAlternative = {
   productId: number
@@ -161,6 +165,13 @@ export type PcPrebuildPreset = {
    * bersama presetnya, karena ia memang cuma berlaku untuk satu paket itu.
    */
   performance?: PrebuildPerformance
+  /**
+   * Potongan nominal untuk seluruh paket, ditetapkan staff — satu-satunya angka
+   * rupiah yang disimpan preset. Ia BUKAN harga: harga tetap dibaca dari
+   * katalog, potongan ini dikurangkan darinya. Aturan dan alasannya di
+   * `discount.ts` dan docs/11-pc-prebuild.md §3.
+   */
+  discount?: PrebuildDiscount
 }
 
 export type PcPrebuildConfig = {
@@ -368,6 +379,7 @@ function toPreset(value: unknown, index: number): PcPrebuildPreset | null {
   // Analisis yang cacat DIBUANG, bukan diteruskan setengah jadi: panel performa
   // adalah tempelan di atas paket, jadi paketnya harus tetap utuh tanpanya.
   const performance = parsePrebuildPerformance(preset.performance)
+  const discount = parsePrebuildDiscount(preset.discount)
 
   return {
     id: preset.id,
@@ -377,6 +389,7 @@ function toPreset(value: unknown, index: number): PcPrebuildPreset | null {
     order: angkaSah(preset.order) ? preset.order : index,
     slots,
     ...(performance ? { performance } : {}),
+    ...(discount ? { discount } : {}),
   }
 }
 

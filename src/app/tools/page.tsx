@@ -125,7 +125,7 @@ export default function ToolsPage() {
   const baseUrl = env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "");
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-page">
       <JsonLd data={buildToolJsonLd(baseUrl)} />
       <JsonLd data={buildFaqJsonLd()} />
       <Header />

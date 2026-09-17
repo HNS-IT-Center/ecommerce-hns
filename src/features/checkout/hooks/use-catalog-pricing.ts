@@ -23,6 +23,8 @@ export type CatalogPricing = {
   unitPriceByCartItemId: Record<string, number>;
   /** Id baris keranjang yang produknya sudah tidak terbit. */
   unavailableCartItemIds: string[];
+  /** Potongan paket PC Prebuild per paket menurut konfigurasi, dikunci `bundle.key`. */
+  bundleDiscountByKey: Record<string, number>;
   /** Selisih terhadap harga yang tersimpan di keranjang. */
   changes: Array<{
     cartItemId: string;
@@ -47,6 +49,7 @@ function toInput(items: CartItem[]) {
     ...(i.bundle
       ? {
           bundleKey: i.bundle.key,
+          bundlePresetId: i.bundle.presetId,
           bundleName: i.bundle.name,
           bundleQuantity: i.bundle.quantity,
         }
@@ -110,6 +113,7 @@ export function useCatalogPricing({ auto = false, filter }: Options = {}) {
         total: hasil.total,
         unitPriceByCartItemId: hasil.unitPriceByCartItemId,
         unavailableCartItemIds: hasil.unavailableCartItemIds,
+        bundleDiscountByKey: hasil.bundleDiscountByKey,
         changes: current
           .filter((i) => {
             const baru = hasil.unitPriceByCartItemId[i.id];

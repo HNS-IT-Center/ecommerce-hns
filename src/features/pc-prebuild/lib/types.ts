@@ -67,10 +67,18 @@ export type PrebuildView = {
    * sisanya mengikuti urutan langkah di `/admin/pc-builder`.
    */
   components: PrebuildComponent[]
-  /** Total pilihan bawaan, dari katalog. */
+  /** Total NORMAL pilihan bawaan, dari katalog — sebelum potongan paket. */
   total: number
-  /** Kombinasi termurah — dipakai label "mulai dari" pada paket bercabang. */
+  /** Kombinasi termurah (normal) — dipakai label "mulai dari" pada paket bercabang. */
   minTotal: number
+  /**
+   * Potongan paket yang sedang berlaku, Rp per paket; 0 = tidak ada. Masa
+   * berlakunya sudah diperiksa server. Jangan dikurangkan sendiri — pakai
+   * `packagePrice()` supaya penjaga "potongan ≥ total" ikut berjalan.
+   */
+  discount: number
+  /** Hari terakhir potongan berlaku (`YYYY-MM-DD`), `null` = tanpa batas atau tanpa potongan. */
+  discountEndsAt: string | null
   branchingCount: number
   missingCount: number
   outOfStockCount: number

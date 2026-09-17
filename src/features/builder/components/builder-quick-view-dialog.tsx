@@ -220,7 +220,7 @@ export function BuilderQuickViewDialog({
           {/* Kiri: galeri. `md:self-start` diperlukan supaya `sticky` berfungsi —
               flex item yang meregang penuh setinggi barisnya tidak punya ruang
               untuk menempel pada apa pun. */}
-          <div className="relative flex w-full shrink-0 items-center justify-center bg-secondary/10 p-5 md:sticky md:top-0 md:w-[40%] md:self-start md:p-8">
+          <div className="relative flex w-full shrink-0 items-center justify-center bg-white p-5 md:sticky md:top-0 md:w-[40%] md:self-start md:p-8">
             <div className="w-full max-w-md">
               {product && <ProductGallery images={galleryImages} />}
             </div>
