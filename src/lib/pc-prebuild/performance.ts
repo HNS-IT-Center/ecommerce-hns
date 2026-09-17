@@ -2,11 +2,11 @@
  * Hasil analisis performa satu paket PC Prebuild — bentuk data, katalog tetap,
  * dan parsernya.
  *
- * Berkas ini SENGAJA tidak mengimpor apa pun kecuali `limits.ts` (yang juga
- * tidak mengimpor apa pun). Panel admin dan panel publik dua-duanya Client
- * Component dan keduanya butuh katalog di bawah; mengimpornya dari `config.ts`
- * akan menyeret `getPrisma()` ke bundle browser dan menggagalkan build
- * Turbopack (lihat docs/11-pc-prebuild.md §7).
+ * Berkas ini SENGAJA hanya mengimpor berkas yang sendirinya tidak mengimpor apa
+ * pun — `limits.ts` dan `component-roles.ts`. Panel admin dan panel publik
+ * dua-duanya Client Component dan keduanya butuh katalog di bawah; mengimpornya
+ * dari `config.ts` akan menyeret `getPrisma()` ke bundle browser dan
+ * menggagalkan build Turbopack (lihat docs/11-pc-prebuild.md §7).
  *
  * ## Kenapa katalognya TETAP, bukan bebas dari AI
  *
@@ -25,6 +25,11 @@
  * bisa dipertanggungjawabkan HNS, bukan angka yang muncul begitu saja dari
  * sebuah model.
  */
+import {
+  detectComponentRole,
+  type PrebuildComponentRole,
+} from "@/lib/pc-prebuild/component-roles"
+
 /** Bagian tetap: kebutuhan pemakai yang diskor AI, 0-100. */
 export const PREBUILD_USE_CASES = [
   {
@@ -238,6 +243,31 @@ export type FingerprintSlot = {
 }
 
 /**
+ * Peran komponen yang TIDAK memengaruhi angka performa, jadi tidak ikut sidik
+ * jari.
+ *
+ * Mengganti casing, PSU, pendingin, monitor, atau keyboard tidak mengubah FPS
+ * maupun kelas penggunaan paket — tapi dulu semuanya ikut dihitung, jadi
+ * mengganti casing sudah cukup untuk menyalakan "Perlu hitung ulang".
+ *
+ * **Daftarnya sengaja daftar-KECUALI, bukan daftar-YANG-DIHITUNG.** Peran
+ * ditebak dari nama langkah (`detectComponentRole`), dan tebakan itu bisa
+ * meleset: langkah bernama aneh jatuh ke `"other"`. Dengan bentuk ini, yang
+ * meleset tetap IKUT dihitung — paling banter peringatan menyala terlalu
+ * sering. Kalau dibalik jadi daftar `["cpu","gpu","ram"]`, langkah VGA yang
+ * namanya tidak terbaca akan diam-diam KELUAR dari sidik jari, dan mengganti
+ * VGA berhenti menyalakan peringatan sama sekali — kegagalan yang tidak
+ * terlihat siapa pun.
+ */
+const PERFORMANCE_NEUTRAL_ROLES: ReadonlySet<PrebuildComponentRole> = new Set([
+  "case",
+  "psu",
+  "cooler",
+  "monitor",
+  "peripheral",
+])
+
+/**
  * Sidik jari komponen sebuah paket.
  *
  * URUTAN IKUT DIHITUNG, dan itu disengaja: barang pertama dalam sebuah langkah
@@ -249,14 +279,36 @@ export type FingerprintSlot = {
  * berbeda (1 TB vs 2 TB) adalah dua rakitan berbeda, dan analisis yang dihitung
  * untuk salah satunya tidak berlaku untuk yang lain.
  *
+ * `alternatives` TIDAK ikut — ia pilihan tukar, bukan yang terpasang, dan
+ * memang bukan yang dianalisis (lihat endpoint analisis). Jadi menambah atau
+ * mengurangi tawaran varian tidak pernah membuat analisis basi.
+ *
+ * Langkah yang perannya netral terhadap performa DIBUANG sebelum dihitung —
+ * lihat `PERFORMANCE_NEUTRAL_ROLES`. `namaStep` boleh kosong; kalau nama
+ * langkahnya tidak diketahui, perannya `"other"` dan slotnya tetap ikut.
+ *
+ * Nama langkah dipakai sebagai satu-satunya petunjuk peran, BUKAN nama produk.
+ * Nama produk datang dari katalog, dan sidik jari yang bergantung pada katalog
+ * akan berubah sendiri saat staff menyunting nama produk — padahal tidak ada
+ * komponen yang berpindah. Alasan yang sama dipakai `resolve.ts` saat memilih
+ * menghitung sidik jari dari bentuk tersimpan, bukan dari hasil resolve.
+ *
  * Berawalan versi supaya kalau formatnya berubah, seluruh hasil lama otomatis
  * dianggap basi dan dihitung ulang — bukan dibandingkan dengan aturan yang
  * sudah tidak berlaku. `v2` menandai pindahnya `options` ke `items` bervarian;
- * seluruh analisis yang dihitung sebelum itu memang perlu dihitung ulang,
- * karena matriks FPS-nya pun berubah bentuk.
+ * `v3` menandai dibuangnya langkah yang netral terhadap performa.
  */
-export function fingerprintSlots(slots: readonly FingerprintSlot[]): string {
+export function fingerprintSlots(
+  slots: readonly FingerprintSlot[],
+  namaStep?: ReadonlyMap<string, string>
+): string {
   const bagian = [...slots]
+    .filter(
+      (slot) =>
+        !PERFORMANCE_NEUTRAL_ROLES.has(
+          detectComponentRole(namaStep?.get(slot.stepId) ?? slot.stepId)
+        )
+    )
     .sort((a, b) => a.stepId.localeCompare(b.stepId))
     .map((slot) => {
       const items = slot.items
@@ -265,32 +317,51 @@ export function fingerprintSlots(slots: readonly FingerprintSlot[]): string {
       return `${slot.stepId}:${items}`
     })
 
-  return `v2|${bagian.join("|")}`
+  return `v3|${bagian.join("|")}`
 }
 
-/** Hasil sudah tidak cocok dengan komponen paket saat ini. */
+/**
+ * Hasil sudah tidak cocok dengan komponen paket saat ini.
+ *
+ * Sejak 16 September 2026 ini **hanya** menyalakan peringatan di panel admin —
+ * tidak lagi menyembunyikan apa pun dari pelanggan. Lihat
+ * `isPerformanceVisible`.
+ */
 export function isPerformanceStale(
   performance: PrebuildPerformance | null | undefined,
-  slots: readonly FingerprintSlot[]
+  slots: readonly FingerprintSlot[],
+  namaStep?: ReadonlyMap<string, string>
 ): boolean {
   if (!performance) return false
-  return performance.fingerprint !== fingerprintSlots(slots)
+  return performance.fingerprint !== fingerprintSlots(slots, namaStep)
 }
 
 /**
  * Boleh dilihat pelanggan?
  *
- * Dua syarat, dan keduanya dijalankan di server sebelum data dikirim ke
- * browser: staff sudah menayangkannya, DAN komponennya belum berubah sejak
- * dihitung. Analisis basi lebih buruk daripada tidak ada analisis — ia
- * menjelaskan PC yang bukan lagi PC yang sedang dilihat.
+ * **Satu syarat: staff sudah menayangkannya.**
+ *
+ * Dulu ada syarat kedua — komponennya belum berubah sejak dihitung — dengan
+ * alasan "analisis basi lebih buruk daripada tidak ada analisis". Alasan itu
+ * benar untuk pergantian VGA dan salah untuk pergantian casing, dan keduanya
+ * diperlakukan sama: satu penyuntingan sepele sudah cukup untuk melenyapkan
+ * seluruh panel performa dari halaman paket. Yang dilihat pelanggan bukan angka
+ * yang lebih akurat, melainkan tidak ada angka sama sekali — padahal angka itu
+ * alasan utama halaman ini dibaca.
+ *
+ * Gantinya dua-duanya dikerjakan di tempat yang tepat: sidik jari dipersempit
+ * ke komponen yang benar-benar memengaruhi performa (jadi peringatannya jarang
+ * menyala tanpa sebab), dan saat ia menyala, yang diberi tahu adalah **staff**
+ * lewat panel admin — bukan pelanggan lewat panel yang hilang.
+ *
+ * Angka performa memang perkiraan dan sudah dinyatakan begitu ke pelanggan
+ * (§9 dokumen). Jangan mengembalikan penyaringan kebasian ke sini tanpa
+ * membaca alasan di atas.
  */
 export function isPerformanceVisible(
-  performance: PrebuildPerformance | null | undefined,
-  slots: readonly FingerprintSlot[]
+  performance: PrebuildPerformance | null | undefined
 ): performance is PrebuildPerformance {
-  if (!performance || !performance.published) return false
-  return !isPerformanceStale(performance, slots)
+  return Boolean(performance && performance.published)
 }
 
 function teks(value: unknown, max: number): string {

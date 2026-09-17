@@ -7,8 +7,8 @@ import type { PrebuildPerformance } from "@/lib/pc-prebuild/performance"
  * Ini BUKAN `ResolvedPrebuildPreset`. Bedanya disengaja:
  *
  * - `resolve.ts` bertanda `server-only` dan bentuknya mengandung hal yang tidak
- *   boleh menyeberang ke pelanggan (`performance` apa adanya — termasuk draf,
- *   hasil basi, dan `bottleneck` yang khusus admin). Yang menyeberang hanya
+ *   boleh menyeberang ke pelanggan (`performance` apa adanya — termasuk draf
+ *   dan `bottleneck` yang khusus admin). Yang menyeberang hanya
  *   `performancePublic`, dan itu ditegakkan di `toPrebuildView()`.
  * - Berkas ini tidak mengimpor apa pun yang menyentuh Prisma, jadi Client
  *   Component boleh memakainya. `component-roles.ts` dan `performance.ts`
@@ -75,7 +75,9 @@ export type PrebuildView = {
   missingCount: number
   outOfStockCount: number
   /**
-   * HANYA `performancePublic`: sudah ditayangkan staff DAN belum basi.
+   * HANYA `performancePublic`: sudah ditayangkan staff. Hasil yang BASI ikut
+   * tayang sejak 16 Sep 2026 — yang diberi tahu adalah staff lewat panel admin,
+   * bukan pelanggan lewat panel yang hilang (lihat `isPerformanceVisible`).
    * `null` = panel performa tidak dirender sama sekali.
    */
   performance: PrebuildPerformance | null

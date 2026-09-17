@@ -13,6 +13,39 @@ import {
 
 import { usePathname } from "next/navigation"
 
+/**
+ * Kelas per varian toast.
+ *
+ * `success` sudah ada sebelumnya; nilainya dipindah ke sini apa adanya, tanpa
+ * satu pun kelas berubah.
+ *
+ * `danger` untuk penolakan yang MENGHENTIKAN aksi — langkah wajib PC Builder
+ * yang belum diisi, misalnya. Toast netral (abu-abu `bg-popover`) terbaca
+ * seperti kabar biasa dan justru terlewat saat orang sedang bergegas menekan
+ * Print; merah menyampaikan bahwa ada yang harus dikerjakan dulu, sebelum
+ * kalimatnya sempat dibaca.
+ *
+ * Merahnya disamakan dengan tanda `*` di daftar langkah PC Builder
+ * (`text-red-500`, lihat `dynamic-builder-view.tsx`) supaya penanda "wajib" di
+ * dua tempat itu terbaca sebagai hal yang sama.
+ */
+const VARIANT_STYLES = {
+  success: {
+    root: "bg-green-600 text-white border-green-600 min-h-0",
+    content: "p-3 py-2",
+    title: "text-white text-sm",
+    description: "text-white/90 text-xs",
+    close: "text-white/80 hover:text-white top-2 right-2",
+  },
+  danger: {
+    root: "bg-red-600 text-white border-red-600 min-h-0",
+    content: "p-3 py-2",
+    title: "text-white text-sm",
+    description: "text-white/90 text-xs",
+    close: "text-white/80 hover:text-white top-2 right-2",
+  },
+} as const
+
 export function Toaster() {
   const { toasts } = useToastManager()
   const pathname = usePathname()
@@ -44,19 +77,34 @@ export function Toaster() {
           // sebagai prop tingkat atas — base-ui tidak punya field `variant`,
           // jadi menaruhnya di sana dulu hanya bisa lolos typecheck dengan
           // `as any` di setiap pemanggil.
-          const isSuccess = toast.data?.variant === "success"
+          //
+          // Kelasnya diambil dari VARIANT_STYLES, bukan dirangkai lewat ternary
+          // di tiap baris JSX seperti dulu: dengan dua varian berwarna, bentuk
+          // lama berarti lima ternary yang harus diubah berbarengan setiap kali
+          // ada varian baru.
+          //
+          // `: unknown` bukan hiasan. `toast.data` bertipe `any` di base-ui,
+          // dan perbandingan `===` tidak mempersempit `any` — tanpa anotasi ini
+          // pengindeksan VARIANT_STYLES di bawah gagal typecheck (TS7053).
+          // Lewat `unknown`, kedua perbandingan di bawahnya menjadi type guard
+          // yang sah, sesuai CLAUDE.md §2.4.
+          const variant: unknown = toast.data?.variant
+          const styles =
+            variant === "success" || variant === "danger"
+              ? VARIANT_STYLES[variant]
+              : null
           return (
           <ToastRoot 
             key={toast.id} 
             toast={toast}
-            className={isSuccess ? "bg-green-600 text-white border-green-600 min-h-0" : ""}
+            className={styles?.root ?? ""}
           >
-            <ToastContent className={isSuccess ? "p-3 py-2" : ""}>
+            <ToastContent className={styles?.content ?? ""}>
               <div className="flex min-w-0 flex-1 flex-col gap-0">
-                <ToastTitle className={isSuccess ? "text-white text-sm" : ""} />
-                <ToastDescription className={isSuccess ? "text-white/90 text-xs" : ""} />
+                <ToastTitle className={styles?.title ?? ""} />
+                <ToastDescription className={styles?.description ?? ""} />
               </div>
-              <ToastClose className={isSuccess ? "text-white/80 hover:text-white top-2 right-2" : ""}>&times;</ToastClose>
+              <ToastClose className={styles?.close ?? ""}>&times;</ToastClose>
             </ToastContent>
           </ToastRoot>
         )})}

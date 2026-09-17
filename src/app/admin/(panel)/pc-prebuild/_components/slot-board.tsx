@@ -22,7 +22,7 @@ import {
   MAX_ITEMS_PER_SLOT,
   MAX_QUANTITY_PER_ITEM,
 } from "@/lib/pc-prebuild/limits"
-import type { PrebuildPickerProduct } from "@/lib/pc-prebuild/products"
+import type { PrebuildPickerProduct, PrebuildVariation } from "@/lib/pc-prebuild/products"
 import { formatRupiah } from "@/lib/utils"
 
 import type { AttributeRequirementGroup } from "@/lib/pc-builder/compatibility"
@@ -84,6 +84,21 @@ export function SlotBoard({
   const bolehTambah =
     items.length < MAX_ITEMS_PER_SLOT && (step.allowMultiple === true || items.length === 0)
 
+  /**
+   * Kunci tiap barang di slot ini. Dipakai dua hal: menandai baris yang akan
+   * dibuang parser, dan mematikan chip varian yang akan menghasilkan baris
+   * kembar.
+   *
+   * Barisan penilaiannya menyalin `rapikanItems`: yang muncul PERTAMA bertahan,
+   * yang berikutnya dengan kunci sama yang dibuang. Jadi yang ditandai adalah
+   * baris belakangan, bukan dua-duanya — menandai keduanya akan menyuruh staff
+   * membetulkan baris yang sebenarnya aman.
+   *
+   * Baris kosong (`productId` 0) tidak ikut: ia penampung sementara yang memang
+   * mati di parser, dan menandainya kembar cuma bising.
+   */
+  const kunciItems = items.map(kunciBarang)
+
   function ubahItem(index: number, patch: Partial<PcPrebuildItem>) {
     onChange(items.map((item, i) => (i === index ? { ...item, ...patch } : item)))
   }
@@ -142,6 +157,12 @@ export function SlotBoard({
               onLearn={onLearn}
               branchingLeft={branchingLeft}
               requiredAttributeValueGroups={requiredAttributeValueGroups}
+              duplicate={item.productId > 0 && kunciItems.indexOf(kunciItems[index]) < index}
+              takenKeys={
+                new Set(
+                  kunciItems.filter((_, j) => j !== index && items[j].productId > 0)
+                )
+              }
               onChange={(patch) => ubahItem(index, patch)}
               onRemove={() => onChange(items.filter((_, i) => i !== index))}
             />
@@ -149,6 +170,167 @@ export function SlotBoard({
         </div>
       )}
     </section>
+  )
+}
+
+/**
+ * Kunci identitas satu barang — HARUS sama persis dengan `kunciBarang` di
+ * [`lib/pc-prebuild/config.ts`](../../../../../lib/pc-prebuild/config.ts).
+ *
+ * Parser membuang baris yang kuncinya kembar saat menyimpan (`rapikanItems` dan
+ * `rapikanAlternatives`). Panel memakai kunci yang sama supaya kejadian itu
+ * terlihat SEBELUM tombol simpan ditekan — sebelumnya pembuangannya tanpa
+ * jejak: staff menyusun dua pilihan, menyimpan, dan yang kembali cuma satu.
+ *
+ * Kalau rumus kunci di parser berubah, ubah juga di sini. Dua rumus yang
+ * berbeda lebih buruk daripada tidak ada peringatan sama sekali: panel akan
+ * menenangkan staff tentang baris yang tetap dibuang.
+ */
+function kunciBarang(ref: { productId: number; variationId?: number }): string {
+  return `${ref.productId}~${ref.variationId ?? 0}`
+}
+
+/**
+ * Varian bawaan saat sebuah produk baru dipilih: varian pertama yang BELUM
+ * dipakai baris lain di lingkup yang sama.
+ *
+ * Memakai `variations[0]` apa adanya membuat baris kedua dari produk yang sama
+ * selalu lahir kembar dengan baris pertama, lalu dibuang saat simpan — itulah
+ * yang membuat "SSD 1TB atau 2TB" sebagai pilihan tukar tidak bisa dinyatakan
+ * sama sekali.
+ *
+ * Kalau semua variannya sudah terpakai, tetap kembalikan yang pertama:
+ * barisnya akan ditandai kembar dan staff yang memutuskan, bukan panel yang
+ * diam-diam menolak memilih apa pun. Barang tanpa varian mengembalikan
+ * `undefined` — induk SIMPLE memang tidak punya varian.
+ */
+function varianBawaan(
+  p: PrebuildPickerProduct,
+  terpakai: Set<string>
+): number | undefined {
+  const bebas = p.variations.find(
+    (v) => !terpakai.has(kunciBarang({ productId: p.id, variationId: v.id }))
+  )
+  return (bebas ?? p.variations[0])?.id
+}
+
+/**
+ * Peringatan baris kembar. Nadanya sengaja merah, bukan kuning seperti stok
+ * kosong: stok kosong tetap tersimpan, baris kembar TIDAK.
+ */
+function DuplicateWarning({ text }: { text: string }) {
+  return (
+    <p className="flex items-start gap-1.5 rounded-lg bg-sale-red/5 px-2.5 py-2 text-xs text-sale-red">
+      <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+      {text}
+    </p>
+  )
+}
+
+/**
+ * Pemilih varian — dipakai barang UTAMA maupun pilihan tukar.
+ *
+ * Dulu hanya barang utama yang punya pemilih ini; pilihan tukar mengunci
+ * `variations[0]` tanpa cara mengubahnya, jadi paket tidak bisa menawarkan
+ * "1TB atau 2TB" dari produk yang sama. Satu komponen untuk dua tempat supaya
+ * keduanya tidak menyimpang lagi.
+ *
+ * Varian yang kuncinya sudah dipakai baris lain DIMATIKAN, bukan sekadar
+ * ditandai: memilihnya cuma akan menghasilkan baris yang dibuang parser.
+ */
+function VariantChips({
+  productId,
+  variations,
+  selectedIds,
+  defaultId,
+  canAdd,
+  takenKeys,
+  onToggle,
+  compact = false,
+}: {
+  productId: number
+  variations: PrebuildVariation[]
+  /** Varian yang sedang ditawarkan. Tidak pernah kosong selama produknya terpilih. */
+  selectedIds: number[]
+  /**
+   * Varian yang jadi BAWAAN — hanya untuk produk utama. Kelompok pilihan tukar
+   * tidak punya bawaan: seluruh isinya memang pilihan.
+   */
+  defaultId?: number
+  /** Jatah pilihan masih ada. Kalau habis, varian yang belum aktif dimatikan. */
+  canAdd: boolean
+  /** Kunci milik baris LAIN di lingkup yang sama. Kunci baris ini sendiri tidak ikut. */
+  takenKeys: Set<string>
+  onToggle: (variationId: number) => void
+  compact?: boolean
+}) {
+  return (
+    <div>
+      <p
+        className={`mb-1.5 font-semibold uppercase tracking-wide text-muted-foreground ${
+          compact ? "text-[10px]" : "text-[11px]"
+        }`}
+      >
+        Varian
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {variations.map((v) => {
+          const aktif = selectedIds.includes(v.id)
+          const bawaan = v.id === defaultId
+          const terpakai =
+            !aktif && takenKeys.has(kunciBarang({ productId, variationId: v.id }))
+
+          // Varian terakhir tidak boleh dimatikan: produk tanpa varian terpilih
+          // masuk total sebagai harga induk, yang untuk VARIABLE sering nol.
+          const terakhir = aktif && selectedIds.length <= 1
+          const jatahHabis = !aktif && !canAdd
+          const mati = terpakai || terakhir || jatahHabis
+
+          return (
+            <button
+              key={v.id}
+              type="button"
+              disabled={mati}
+              aria-pressed={aktif}
+              title={
+                terpakai
+                  ? "Varian ini sudah dipakai baris lain di langkah yang sama"
+                  : terakhir
+                    ? "Minimal satu varian harus ditawarkan"
+                    : jatahHabis
+                      ? "Jatah pilihan untuk barang ini sudah penuh"
+                      : undefined
+              }
+              onClick={() => onToggle(v.id)}
+              className={`inline-flex max-w-full items-center gap-1.5 rounded-full border font-semibold transition-colors ${
+                compact ? "px-2 py-0.5 text-[11px]" : "px-2.5 py-1 text-xs"
+              } ${
+                aktif
+                  ? "border-brand-green bg-brand-green text-primary-foreground"
+                  : mati
+                    ? "cursor-not-allowed opacity-40"
+                    : "hover:border-brand-green hover:text-brand-green"
+              } ${terakhir ? "cursor-not-allowed" : ""}`}
+            >
+              {/* Label varian bisa panjang ("1TB · Hitam · NVMe Gen4").
+                  Dipotong, dan harganya yang TIDAK boleh menyusut — angka
+                  yang terpotong separuh lebih buruk daripada nama yang
+                  terpotong. */}
+              <span className="min-w-0 truncate">{v.label}</span>
+              <span className={`shrink-0 ${aktif ? "opacity-80" : "text-muted-foreground"}`}>
+                {formatRupiah(v.price)}
+              </span>
+              {v.stock <= 0 && (
+                <span className={`shrink-0 ${aktif ? "opacity-80" : "text-sale-red"}`}>
+                  · habis
+                </span>
+              )}
+              {bawaan && <span className="shrink-0 opacity-80">· bawaan</span>}
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -160,6 +342,8 @@ function ItemRow({
   onLearn,
   branchingLeft,
   requiredAttributeValueGroups,
+  duplicate,
+  takenKeys,
   onChange,
   onRemove,
 }: {
@@ -169,6 +353,10 @@ function ItemRow({
   onLearn: (products: PrebuildPickerProduct[]) => void
   branchingLeft: number
   requiredAttributeValueGroups: AttributeRequirementGroup[]
+  /** Barang ini sama persis dengan barang lain yang lebih dulu di slot yang sama. */
+  duplicate: boolean
+  /** Kunci barang LAIN di slot yang sama. */
+  takenKeys: Set<string>
   onChange: (patch: Partial<PcPrebuildItem>) => void
   onRemove: () => void
 }) {
@@ -186,16 +374,145 @@ function ItemRow({
   function pilihProduk(p: PrebuildPickerProduct) {
     onChange({
       productId: p.id,
-      // Produk bervarian LANGSUNG memakai varian pertama, bukan menunggu staff
-      // memilih. Induk VARIABLE tidak punya harga sendiri, jadi barang yang
-      // "belum dipilih variannya" akan masuk total sebagai nol rupiah — persis
-      // jenis angka diam-diam salah yang paling sulit ketahuan.
-      variationId: p.variations[0]?.id,
+      // Produk bervarian LANGSUNG memakai salah satu variannya, bukan menunggu
+      // staff memilih. Induk VARIABLE tidak punya harga sendiri, jadi barang
+      // yang "belum dipilih variannya" akan masuk total sebagai nol rupiah —
+      // persis jenis angka diam-diam salah yang paling sulit ketahuan.
+      // Yang dipakai adalah varian pertama yang belum diambil baris lain; lihat
+      // `varianBawaan`.
+      variationId: varianBawaan(p, takenKeys),
       label: undefined,
     })
   }
 
   const bolehTukar = item.alternatives.length > 0 || branchingLeft > 0
+
+  /**
+   * Jatah pilihan masih tersisa. Dua syarat, bukan satu: jumlahnya belum
+   * mentok, DAN barang ini boleh bercabang sama sekali (`MAX_BRANCHING_ITEMS`
+   * dihitung per paket, bukan per barang).
+   */
+  const bolehTambahPilihan =
+    item.alternatives.length < MAX_ALTERNATIVES_PER_ITEM && bolehTukar
+
+  /**
+   * Lingkup pilihan tukar. Barangnya SENDIRI ikut dihitung, karena
+   * `rapikanAlternatives` membuang pilihan yang sama dengan barangnya — pilihan
+   * tukar yang identik dengan bawaannya bukan pilihan.
+   */
+  const kunciItemIni = kunciBarang(item)
+
+  /**
+   * Varian produk UTAMA yang sedang ditawarkan, bawaan lebih dulu.
+   *
+   * Ini inti Opsi A: "beberapa varian aktif" bukan bentuk data baru, melainkan
+   * cara lain membaca bentuk yang sudah ada — `variationId` barangnya plus
+   * `alternatives` yang menunjuk produk yang SAMA. Pelanggan menerimanya sebagai
+   * `options` biasa lewat `toComponent` di `features/pc-prebuild/lib/to-view.ts`,
+   * jadi tidak ada satu pun pembaca hilir yang perlu tahu soal pengelompokan
+   * ini.
+   */
+  const varianUtamaAktif: number[] = [
+    ...(item.variationId ? [item.variationId] : []),
+    ...item.alternatives
+      .filter((a) => a.productId === item.productId && a.variationId)
+      .map((a) => a.variationId as number),
+  ]
+
+  /**
+   * Pilihan tukar yang menunjuk produk LAIN, dikelompokkan per produk.
+   *
+   * Satu produk = satu baris, dan chip di baris itu menentukan varian mana saja
+   * dari produk tersebut yang ditawarkan. Tanpa pengelompokan, tiga varian dari
+   * satu SSD tampil sebagai tiga baris produk yang kelihatan berbeda padahal
+   * barangnya sama — dan staff harus mengganti produknya tiga kali untuk
+   * menukar satu tawaran.
+   *
+   * Varian produk utama TIDAK ikut ke sini: ia sudah diwakili chip di atas.
+   * Menampilkannya dua kali berarti dua tempat mengubah data yang sama.
+   */
+  const kelompokTukar: { productId: number; variationIds: (number | undefined)[] }[] = []
+  for (const alt of item.alternatives) {
+    if (alt.productId === item.productId) continue
+    const ada = kelompokTukar.find((g) => g.productId === alt.productId)
+    if (ada) ada.variationIds.push(alt.variationId)
+    else kelompokTukar.push({ productId: alt.productId, variationIds: [alt.variationId] })
+  }
+
+  /** Nyalakan/matikan satu varian produk utama. */
+  function ubahVarianUtama(vId: number) {
+    const aktif = varianUtamaAktif.includes(vId)
+
+    if (!aktif) {
+      if (!bolehTambahPilihan) return
+      onChange({
+        alternatives: [
+          ...item.alternatives,
+          { productId: item.productId, variationId: vId, quantity: item.quantity },
+        ],
+      })
+      return
+    }
+
+    if (varianUtamaAktif.length <= 1) return
+
+    if (vId !== item.variationId) {
+      onChange({
+        alternatives: item.alternatives.filter(
+          (a) => !(a.productId === item.productId && a.variationId === vId)
+        ),
+      })
+      return
+    }
+
+    // Yang dimatikan adalah BAWAANnya — varian aktif berikutnya naik
+    // menggantikannya, lalu barisnya keluar dari daftar pilihan. Tanpa promosi
+    // ini barangnya kehilangan `variationId` dan harganya jatuh ke harga induk
+    // yang sering nol.
+    const penerus = item.alternatives.find(
+      (a) => a.productId === item.productId && a.variationId && a.variationId !== vId
+    )
+    if (!penerus) return
+    onChange({
+      variationId: penerus.variationId,
+      alternatives: item.alternatives.filter((a) => a !== penerus),
+    })
+  }
+
+  /**
+   * Pindahkan bawaan. Yang lama TURUN jadi pilihan di posisi yang sama, bukan
+   * dibuang: bawaan cuma soal mana yang terpilih duluan di halaman pelanggan.
+   */
+  function jadikanBawaan(vId: number) {
+    if (!item.variationId || vId === item.variationId) return
+    const calon = item.alternatives.find(
+      (a) => a.productId === item.productId && a.variationId === vId
+    )
+    if (!calon) return
+    onChange({
+      variationId: vId,
+      alternatives: item.alternatives.map((a) =>
+        a === calon ? { ...a, variationId: item.variationId } : a
+      ),
+    })
+  }
+
+  /** Ganti seluruh isi satu kelompok, di posisi yang sama. */
+  function gantiKelompok(productIdLama: number, baru: PcPrebuildAlternative[]) {
+    const hasil: PcPrebuildAlternative[] = []
+    let sudahDisisipkan = false
+    for (const a of item.alternatives) {
+      if (a.productId !== productIdLama) {
+        hasil.push(a)
+        continue
+      }
+      if (!sudahDisisipkan) {
+        hasil.push(...baru)
+        sudahDisisipkan = true
+      }
+    }
+    onChange({ alternatives: hasil })
+  }
 
   return (
     <div className="space-y-3 p-4">
@@ -221,42 +538,47 @@ function ItemRow({
         </button>
       </div>
 
+      {duplicate && (
+        <DuplicateWarning text="Barang ini sama persis dengan barang lain di langkah ini — yang kembar tidak ikut tersimpan. Pilih varian lain, atau hapus salah satunya dan naikkan jumlahnya." />
+      )}
+
       {produk && produk.variations.length > 0 && (
-        <div>
-          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Varian
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {produk.variations.map((v) => {
-              const aktif = v.id === item.variationId
-              return (
-                <button
-                  key={v.id}
-                  type="button"
-                  onClick={() => onChange({ variationId: v.id })}
-                  className={`inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors ${
-                    aktif
-                      ? "border-brand-green bg-brand-green text-primary-foreground"
-                      : "hover:border-brand-green hover:text-brand-green"
-                  }`}
-                >
-                  {/* Label varian bisa panjang ("1TB · Hitam · NVMe Gen4").
-                      Dipotong, dan harganya yang TIDAK boleh menyusut — angka
-                      yang terpotong separuh lebih buruk daripada nama yang
-                      terpotong. */}
-                  <span className="min-w-0 truncate">{v.label}</span>
-                  <span className={`shrink-0 ${aktif ? "opacity-80" : "text-muted-foreground"}`}>
-                    {formatRupiah(v.price)}
-                  </span>
-                  {v.stock <= 0 && (
-                    <span className={`shrink-0 ${aktif ? "opacity-80" : "text-sale-red"}`}>
-                      · habis
-                    </span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
+        <div className="space-y-2">
+          <VariantChips
+            productId={produk.id}
+            variations={produk.variations}
+            selectedIds={varianUtamaAktif}
+            defaultId={item.variationId}
+            canAdd={bolehTambahPilihan}
+            takenKeys={takenKeys}
+            onToggle={ubahVarianUtama}
+          />
+
+          {/* Bawaan dipilih lewat select, bukan lewat klik kedua pada chip:
+              chip sudah punya satu arti (ditawarkan / tidak), dan menumpuk arti
+              kedua di atasnya membuat mematikan varian dan memindah bawaan
+              saling tertukar. */}
+          {varianUtamaAktif.length > 1 && (
+            <label className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Bawaan
+              </span>
+              <select
+                value={item.variationId ?? 0}
+                onChange={(e) => jadikanBawaan(Number(e.target.value))}
+                className="min-w-0 flex-1 rounded-lg border bg-background px-2 py-1 text-xs font-semibold"
+              >
+                {varianUtamaAktif.map((id) => (
+                  <option key={id} value={id}>
+                    {produk.variations.find((v) => v.id === id)?.label ?? `#${id}`}
+                  </option>
+                ))}
+              </select>
+              <span className="w-full text-[11px] text-muted-foreground">
+                Varian yang terpilih duluan di halaman pelanggan, dan yang dipakai total paket.
+              </span>
+            </label>
+          )}
         </div>
       )}
 
@@ -305,10 +627,16 @@ function ItemRow({
         </p>
       )}
 
-      {/* Pilihan tukar sengaja TERSEMBUNYI di balik satu klik. Tampilan untuk
-          pelanggan belum dirancang ulang, jadi ia belum berpengaruh apa-apa di
-          luar panel ini — menampilkannya sejajar dengan jumlah akan membuatnya
-          terlihat sepenting jumlah. */}
+      {/* Pilihan tukar sengaja TERSEMBUNYI di balik satu klik: kebanyakan
+          komponen tidak punya pilihan tukar, dan menampilkannya sejajar dengan
+          jumlah akan membuatnya terlihat sepenting jumlah.
+
+          Sejak 28 Agustus 2026 isinya SUDAH sampai ke pelanggan — `toComponent`
+          di `features/pc-prebuild/lib/to-view.ts` merangkai barang beserta
+          pilihan tukarnya jadi `options` milik `ComponentPicker`. Keterangan di
+          panel ini sempat menyatakan sebaliknya selama berbulan-bulan, yang
+          artinya staff diberi tahu bahwa pekerjaannya di sini belum berpengaruh
+          padahal sudah dilihat pelanggan. */}
       {produk && (
         <div className="rounded-lg border border-dashed">
           <button
@@ -333,27 +661,39 @@ function ItemRow({
           {bukaTukar && (
             <div className="space-y-2 border-t px-3 py-3">
               <p className="text-[11px] text-muted-foreground">
-                Komponen pengganti yang boleh dipilih pelanggan. Tampilan untuk pelanggan belum
-                dibuat — isinya tersimpan dan siap dipakai nanti.
+                Komponen pengganti yang boleh dipilih pelanggan di halaman paket. Pilihannya ikut
+                ke keranjang dan ke PC Builder. Untuk menawarkan ukuran berbeda dari produk yang
+                SAMA (misal SSD 1TB atau 2TB), tidak perlu ke sini — nyalakan variannya langsung
+                di chip Varian di atas.
               </p>
 
-              {item.alternatives.map((alt, i) => (
-                <AlternativeRow
-                  key={`${alt.productId}-${i}`}
+              {kelompokTukar.map((grup) => (
+                <AlternativeGroup
+                  key={grup.productId}
                   step={step}
-                  alt={alt}
+                  productId={grup.productId}
+                  variationIds={grup.variationIds}
+                  quantity={item.quantity}
                   katalog={katalog}
                   onLearn={onLearn}
                   requiredAttributeValueGroups={requiredAttributeValueGroups}
-                  onChange={(patch) =>
+                  canAdd={bolehTambahPilihan}
+                  duplicate={grup.productId > 0 && grup.productId === item.productId}
+                  takenKeys={
+                    new Set([
+                      ...(item.productId > 0 ? [kunciItemIni] : []),
+                      ...item.alternatives
+                        .filter((a) => a.productId > 0 && a.productId !== grup.productId)
+                        .map(kunciBarang),
+                    ])
+                  }
+                  onReplace={(baru) => gantiKelompok(grup.productId, baru)}
+                  onRemove={() =>
                     onChange({
-                      alternatives: item.alternatives.map((a, j) =>
-                        j === i ? { ...a, ...patch } : a
+                      alternatives: item.alternatives.filter(
+                        (a) => a.productId !== grup.productId
                       ),
                     })
-                  }
-                  onRemove={() =>
-                    onChange({ alternatives: item.alternatives.filter((_, j) => j !== i) })
                   }
                 />
               ))}
@@ -365,7 +705,9 @@ function ItemRow({
                     alternatives: [...item.alternatives, { productId: 0, quantity: item.quantity }],
                   })
                 }
-                disabled={!bolehTukar || item.alternatives.length >= MAX_ALTERNATIVES_PER_ITEM}
+                disabled={
+                  !bolehTambahPilihan || kelompokTukar.some((g) => g.productId === 0)
+                }
                 className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors hover:border-brand-green hover:text-brand-green disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Plus className="h-3.5 w-3.5" />
@@ -385,46 +727,135 @@ function ItemRow({
   )
 }
 
-function AlternativeRow({
+/**
+ * Satu PRODUK pengganti, beserta varian-varian yang ditawarkan darinya.
+ *
+ * Satu baris = satu produk, bukan satu entri `alternatives`. Tiga varian dari
+ * satu SSD adalah tiga entri di data, tapi satu baris di sini — kalau tidak,
+ * ketiganya tampil sebagai tiga produk yang kelihatan berbeda padahal barangnya
+ * sama, dan menukar tawarannya berarti mengganti produk tiga kali.
+ *
+ * Kelompok ini TIDAK punya bawaan: bawaan hanya ada pada barang utama, dan
+ * seluruh isi kelompok ini memang pilihan.
+ */
+function AlternativeGroup({
   step,
-  alt,
+  productId,
+  variationIds,
+  quantity,
   katalog,
   onLearn,
   requiredAttributeValueGroups,
-  onChange,
+  canAdd,
+  duplicate,
+  takenKeys,
+  onReplace,
   onRemove,
 }: {
   step: PcBuilderStepConfig
-  alt: PcPrebuildAlternative
+  /** 0 = kelompok kosong yang baru ditambahkan, produknya belum dipilih. */
+  productId: number
+  /** Varian yang ditawarkan dari produk ini. Satu entri `undefined` untuk produk SIMPLE. */
+  variationIds: (number | undefined)[]
+  /** Jumlah milik barangnya — dipakai saat entri baru dibuat. */
+  quantity: number
   katalog: Map<number, PrebuildPickerProduct>
   onLearn: (products: PrebuildPickerProduct[]) => void
   requiredAttributeValueGroups: AttributeRequirementGroup[]
-  onChange: (patch: Partial<PcPrebuildAlternative>) => void
+  /** Jatah pilihan untuk barang ini masih ada. */
+  canAdd: boolean
+  /** Kelompok ini menunjuk produk yang sama dengan barang utamanya. */
+  duplicate: boolean
+  /** Kunci barang utama dan kelompok lain. */
+  takenKeys: Set<string>
+  onReplace: (entries: PcPrebuildAlternative[]) => void
   onRemove: () => void
 }) {
-  const produk = katalog.get(alt.productId) ?? null
+  const produk = katalog.get(productId) ?? null
+
+  const aktif = variationIds.filter((id): id is number => typeof id === "number")
+
+  function ubahVarian(vId: number) {
+    if (aktif.includes(vId)) {
+      // Varian terakhir tidak dimatikan lewat chip — menghapus SELURUH kelompok
+      // itu tombol tersendiri, supaya "tidak menawarkan produk ini lagi" tidak
+      // terjadi tanpa disengaja saat staff cuma mengurangi pilihan.
+      if (aktif.length <= 1) return
+      onReplace(
+        aktif
+          .filter((id) => id !== vId)
+          .map((id) => ({ productId, variationId: id, quantity }))
+      )
+      return
+    }
+
+    if (!canAdd) return
+    onReplace(
+      [...aktif, vId].map((id) => ({ productId, variationId: id, quantity }))
+    )
+  }
 
   return (
-    <div className="flex items-start gap-2 rounded-lg bg-muted/40 p-2">
-      <div className="min-w-0 flex-1">
-        <ProductPicker
-          step={step}
-          selected={produk}
-          compact
-          onSelect={(p) => onChange({ productId: p.id, variationId: p.variations[0]?.id })}
-          onLearn={onLearn}
-          requiredAttributeValueGroups={requiredAttributeValueGroups}
-          missingId={alt.productId > 0 && !produk ? alt.productId : null}
-        />
+    <div className="space-y-2 rounded-lg bg-muted/40 p-2">
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <ProductPicker
+            step={step}
+            selected={produk}
+            compact
+            onSelect={(p) =>
+              onReplace([
+                { productId: p.id, variationId: varianBawaan(p, takenKeys), quantity },
+              ])
+            }
+            onLearn={onLearn}
+            requiredAttributeValueGroups={requiredAttributeValueGroups}
+            missingId={productId > 0 && !produk ? productId : null}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label="Hapus pilihan"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:border-sale-red hover:text-sale-red"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
       </div>
-      <button
-        type="button"
-        onClick={onRemove}
-        aria-label="Hapus pilihan"
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:border-sale-red hover:text-sale-red"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
+
+      {duplicate && (
+        <DuplicateWarning text="Ini produk yang sama dengan barangnya sendiri — yang kembar tidak ikut tersimpan. Untuk menawarkan varian lain dari produk ini, pakai chip Varian di atas." />
+      )}
+
+      {produk && produk.variations.length > 0 && (
+        <VariantChips
+          compact
+          productId={produk.id}
+          variations={produk.variations}
+          selectedIds={aktif}
+          canAdd={canAdd}
+          takenKeys={takenKeys}
+          onToggle={ubahVarian}
+        />
+      )}
+
+      {/* Harga tiap varian yang ditawarkan — itulah yang berubah saat pelanggan
+          menukarnya. Angkanya datang dari katalog apa adanya; tidak ada
+          perkalian atau persentase di sini (CLAUDE.md §2.7). */}
+      {produk && (
+        <p className="text-right text-[11px] text-muted-foreground">
+          <span className="uppercase tracking-wide">Harga satuan</span>{" "}
+          <span className="font-bold tabular-nums text-foreground">
+            {aktif.length > 0
+              ? aktif
+                  .map((id) =>
+                    formatRupiah(produk.variations.find((v) => v.id === id)?.price ?? 0)
+                  )
+                  .join(" · ")
+              : formatRupiah(produk.price)}
+          </span>
+        </p>
+      )}
     </div>
   )
 }

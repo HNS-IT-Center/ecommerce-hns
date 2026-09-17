@@ -21,7 +21,7 @@ import type { PrebuildComponent, PrebuildOption, PrebuildView } from "./types"
  * Dua hal yang dikerjakan di sini dan TIDAK boleh dipindah ke komponen:
  *
  * 1. Hanya `performancePublic` yang diteruskan. `performance` apa adanya berisi
- *    draf, hasil basi, dan `bottleneck` yang khusus admin
+ *    draf dan `bottleneck` yang khusus admin
  *    (docs/11-pc-prebuild.md §9). Penyaringannya sudah di `resolve.ts`; di sini
  *    tinggal memastikan bidang yang lain tidak ikut terbawa.
  * 2. Pilihan yang produknya sudah hilang dari katalog dibuang dari daftar.

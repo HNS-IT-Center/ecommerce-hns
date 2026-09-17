@@ -22,9 +22,10 @@ import { UseCaseScores } from "./use-cases"
  *   seperti nilai rapor membuat paket yang sehat terlihat cacat.
  * - Saran upgrade — fiturnya dibuang seluruhnya, bukan disembunyikan.
  *
- * Yang dioper ke sini WAJIB `performancePublic` (sudah tayang dan belum basi),
- * bukan `performance` apa adanya. Penyaringannya di `resolve.ts` supaya tidak
- * diulang di tiap halaman.
+ * Yang dioper ke sini WAJIB `performancePublic` (sudah ditayangkan staff), bukan
+ * `performance` apa adanya. Penyaringannya di `resolve.ts` supaya tidak diulang
+ * di tiap halaman. Hasil yang komponennya sudah berubah IKUT tayang — yang
+ * diberi tahu staff, bukan pelanggan (lihat `isPerformanceVisible`).
  *
  * ## Disclaimer ada DI DALAM panel
  *

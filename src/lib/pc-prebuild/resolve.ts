@@ -349,8 +349,11 @@ export async function resolvePrebuildPresets(
       // yang bisa dikerjakan staff untuk itu selain mengganti komponennya
       // (yang toh mengubah sidik jari juga).
       performance: preset.performance ?? null,
-      performanceStale: isPerformanceStale(preset.performance, preset.slots),
-      performancePublic: isPerformanceVisible(preset.performance, preset.slots)
+      // Kebasian sekarang HANYA menyalakan peringatan di panel admin. Ia tidak
+      // lagi menyembunyikan panel performa dari pelanggan — alasannya ada di
+      // `isPerformanceVisible`.
+      performanceStale: isPerformanceStale(preset.performance, preset.slots, namaStep),
+      performancePublic: isPerformanceVisible(preset.performance)
         ? preset.performance
         : null,
     }

@@ -6,6 +6,7 @@ import { motion, AnimatePresence, type PanInfo } from "framer-motion"
 import { ChevronLeft, ChevronRight, X, Play } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { getVideoEmbed, getVideoPosterUrl } from "@/lib/utils/product"
+import { ImageActions } from "./image-actions"
 
 export type GalleryImage = {
   src: string
@@ -304,10 +305,44 @@ export function ProductGallery({
             "PUTIH / 32 INCH / 165HZ", dan tanpa batas lebar ia akan menindih
             angkanya di layar sempit. Dari `sm` ke atas ia kembali ke kanan-atas,
             tempat penghitungnya memang tidak dilukis. */}
+        {/* `bottom-14`, bukan `bottom-3`: di mobile tombol salin & unduh duduk
+            di kiri-BAWAH (lihat di bawah), jadi penanda ini bertengger tepat di
+            atasnya alih-alih menimpanya. Keduanya hanya muncul di slide foto,
+            jadi susunannya selalu utuh. */}
         {activeSlide?.kind === "image" && activeSlide.image.variantLabel && (
-          <span className="absolute bottom-3 left-3 z-40 max-w-[60%] truncate rounded-full bg-black/70 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-md sm:bottom-auto sm:left-auto sm:right-3 sm:top-3 sm:max-w-none">
+          <span className="absolute bottom-14 left-3 z-40 max-w-[60%] truncate rounded-full bg-black/70 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-md sm:bottom-auto sm:left-auto sm:right-3 sm:top-3 sm:max-w-none">
             {activeSlide.image.variantLabel}
           </span>
+        )}
+
+        {/* Tombol salin & unduh untuk foto yang sedang tampil.
+
+            Tempatnya berbeda per layar, dan itu disengaja:
+
+            - Di MOBILE kiri-bawah. Kiri-atas tidak bisa dipakai: halaman produk
+              menaikkan kanvas ini sampai puncak layar dan menaruh header
+              transparan melayang di atasnya (`TransparentHeaderProvider`), jadi
+              tombol kembali di header berdiri tepat di sana. Penghitung "3/7"
+              memakai kanan-bawah, dan penanda varian di kiri-bawah digeser naik
+              ke `bottom-14` supaya keduanya bertumpuk rapi.
+            - Dari `sm` ke atas kiri-atas. Di sana headernya tidak lagi melayang
+              di atas galeri, penanda varian pindah ke kanan-atas, dan
+              penghitungnya tidak dilukis sama sekali.
+
+            `z-50` seperti tombol panah, karena lapisan penangkap geseran di
+            `z-[41]` akan menelan kliknya kalau lebih rendah.
+
+            Selalu terlihat, tidak menunggu hover — di mobile hover tidak ada
+            sama sekali, dan di desktop tombol yang baru muncul setelah kursor
+            masuk hanya ditemukan orang yang sudah tahu ia ada. Tidak dilukis di
+            slide video: yang tampil di sana milik YouTube/Vimeo, bukan foto
+            produk yang kita layani. */}
+        {activeSlide?.kind === "image" && (
+          <ImageActions
+            src={activeSlide.image.src}
+            fileBaseName={activeSlide.image.alt}
+            className="absolute bottom-3 left-3 z-50 sm:bottom-auto sm:top-3"
+          />
         )}
 
         {/* Poster slide video: pembeli melihat sampul dan menekan play dulu,
@@ -576,7 +611,19 @@ export function ProductGallery({
               <X className="h-6 w-6" />
             </button>
             
-            <div 
+            {/* Tombol yang sama di lightbox, di kiri-atas — tombol tutup ada di
+                kanan-atas. Selalu terlihat: lightbox paling sering dibuka di
+                ponsel, dan di sana tidak ada hover. */}
+            {activeSlide?.kind === "image" && (
+              <ImageActions
+                src={activeSlide.image.src}
+                fileBaseName={activeSlide.image.alt}
+                tone="dark"
+                className="absolute left-4 top-4 z-[110]"
+              />
+            )}
+
+            <div
               className="relative h-full w-full max-w-5xl"
               onClick={(e) => e.stopPropagation()}
             >

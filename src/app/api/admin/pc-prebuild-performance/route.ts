@@ -320,14 +320,20 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const [steps, games] = await Promise.all([getPcBuilderConfig(), getPcPrebuildGames()])
+    const namaStep = new Map(steps.map((step) => [step.id, step.name]))
+
     // Sidik jari dihitung DI SINI, bukan diterima dari klien: ia yang nanti
     // menentukan hasil analisis masih berlaku atau sudah basi, dan nilai yang
     // dikirim klien tidak dijamin dihitung dari komponen yang sama dengan yang
     // baru saja dianalisis.
-    const fingerprint = fingerprintSlots(slots)
-
-    const [steps, games] = await Promise.all([getPcBuilderConfig(), getPcPrebuildGames()])
-    const namaStep = new Map(steps.map((step) => [step.id, step.name]))
+    //
+    // `namaStep` WAJIB ikut: ia yang menentukan langkah mana yang netral
+    // terhadap performa dan karena itu dibuang dari sidik jari. Menghitungnya
+    // tanpa peta ini menghasilkan sidik jari yang berbeda dari yang dihitung
+    // `resolve.ts`, dan hasil yang baru saja dianalisis akan langsung dinyatakan
+    // basi.
+    const fingerprint = fingerprintSlots(slots, namaStep)
 
     // SELURUH barang dianalisis — semuanya memang terpasang bersamaan. Yang
     // TIDAK ikut adalah `alternatives`: itu pilihan tukar, dan menganalisis

@@ -246,10 +246,16 @@ function PresetCard({ preset, onDelete }: { preset: KartuPreset; onDelete: () =>
         <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
           {preset.analysisStale && <Chip tone="warning" icon={TriangleAlert} label="Perlu hitung ulang" />}
           {!preset.hasAnalysis && <Chip tone="muted" icon={Sparkles} label="Belum dianalisis" />}
-          {preset.hasAnalysis && !preset.analysisStale && preset.analysisPublished && (
+          {/* Status tayang/draf ditampilkan JUGA saat basi. Dulu ia disembunyikan
+              karena analisis basi otomatis hilang dari halaman pelanggan, jadi
+              "tayang" tidak berarti apa-apa. Sekarang yang basi tetap tayang —
+              dan justru kombinasi "Perlu hitung ulang" + "Analisis tayang" yang
+              perlu dilihat staff: itu artinya pelanggan sedang membaca angka
+              untuk susunan yang lama. */}
+          {preset.hasAnalysis && preset.analysisPublished && (
             <Chip tone="green" icon={Sparkles} label="Analisis tayang" />
           )}
-          {preset.hasAnalysis && !preset.analysisStale && !preset.analysisPublished && (
+          {preset.hasAnalysis && !preset.analysisPublished && (
             <Chip tone="muted" icon={Sparkles} label="Analisis draf" />
           )}
         </div>

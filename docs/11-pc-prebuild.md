@@ -101,6 +101,70 @@ Yang dikirim ke AI justru **id induknya**: kategori dan nama yang menjelaskan
 komponen menempel di induk, sementara baris varian biasanya cuma mengulang nama
 induk plus satu nilai atribut dan sering tidak berkategori.
 
+**Pemilih varian ada di barang utama DAN pilihan tukar (16 September 2026).**
+Sebelumnya hanya barang utama yang punya; pilihan tukar mengunci `variations[0]`
+tanpa cara mengubahnya. Akibatnya bukan sekadar "tidak bisa dipilih": dua
+pilihan tukar dari produk yang sama lahir dengan kunci `productId~variationId`
+yang kembar, lalu **yang kedua dibuang `rapikanAlternatives` saat menyimpan
+tanpa pesan apa pun**. Menawarkan "SSD 1TB atau 2TB" — kasus paling wajar untuk
+pilihan tukar — karena itu mustahil dinyatakan.
+
+### Chip varian MULTI-SELECT, dan satu baris per produk (16 September 2026)
+
+Chip varian bukan radio: staff menyalakan **beberapa varian sekaligus**, dan
+pelanggan yang memilih salah satunya.
+
+**Ini bukan bentuk data baru.** "Beberapa varian aktif" adalah cara lain membaca
+bentuk yang sudah ada: `variationId` milik barangnya, ditambah `alternatives`
+yang menunjuk **produk yang sama** dengan `variationId` berbeda. Pelanggan
+menerimanya sebagai `options` biasa lewat `toComponent`, jadi tidak ada satu pun
+pembaca hilir yang perlu tahu soal pengelompokan ini. Jangan tergoda menambah
+`variationIds: number[]` ke `PcPrebuildItem` — itu generasi bentuk keempat untuk
+sesuatu yang sudah bisa dinyatakan, dan §2 sudah menjelaskan ongkos hidup
+berdampingannya dua bentuk.
+
+Konsekuensinya di panel: **satu baris = satu produk, bukan satu entri
+`alternatives`.**
+
+- Chip di baris barang utama mengurus varian produk utama.
+- Daftar "Pilihan tukar" hanya berisi **produk lain**, dikelompokkan per produk
+  (`AlternativeGroup`). Tiga varian dari satu SSD adalah tiga entri di data,
+  tapi satu baris di panel.
+- Varian produk utama **tidak** muncul lagi sebagai baris di daftar itu.
+
+Pemisahan ini yang membuat panel tidak punya dua tempat untuk mengubah data yang
+sama. Versi yang membiarkan keduanya muncul sempat dipertimbangkan dan ditolak:
+varian yang sama tampil sebagai chip aktif *dan* sebagai baris yang bisa dihapus
+terpisah, dan menghapus barisnya membuat chip-nya padam sendiri — jenis
+kebingungan yang membuat staff berhenti memakai fiturnya.
+
+Aturan yang ditegakkan panel:
+
+- **Bawaan** adalah `variationId` barangnya: yang terpilih duluan di halaman
+  pelanggan dan yang dipakai total paket. Dipindah lewat select tersendiri,
+  bukan lewat klik kedua pada chip — chip sudah punya satu arti (ditawarkan atau
+  tidak), dan menumpuk arti kedua membuat "matikan varian" dan "pindahkan
+  bawaan" saling tertukar.
+- Mematikan chip bawaan **mempromosikan** varian aktif berikutnya. Tanpa itu
+  barangnya kehilangan `variationId` dan harganya jatuh ke harga induk yang
+  untuk VARIABLE sering nol.
+- **Varian terakhir tidak bisa dimatikan.** Berhenti menawarkan sebuah produk
+  adalah tombol hapus tersendiri, bukan efek samping dari mengurangi pilihan.
+- Chip mati saat jatah `MAX_ALTERNATIVES_PER_ITEM` habis — jadi maksimal **4
+  varian aktif** per barang (1 bawaan + 3 pilihan). Menawarkan lebih dari itu
+  berarti menaikkan batasnya, dan batas itu ada supaya halaman paket tidak
+  berubah jadi konfigurator (untuk itu sudah ada PC Builder).
+- Produk yang baru dipilih mengambil varian pertama yang **belum** terpakai
+  (`varianBawaan`), bukan `variations[0]` apa adanya.
+- Kelompok yang menunjuk produk yang sama dengan barang utamanya diberi
+  peringatan merah, bukan kuning: stok kosong tetap tersimpan, baris kembar
+  tidak.
+
+Rumus kunci `productId~variationId` di `slot-board.tsx` adalah **salinan** milik
+`config.ts`. Kalau yang di parser berubah, ubah juga di panel — dua rumus
+berbeda lebih buruk daripada tidak ada peringatan sama sekali, karena panel akan
+menenangkan staff tentang baris yang tetap dibuang.
+
 Daftar game untuk grid FPS TIDAK tinggal di sini melainkan di baris `settings`
 sendiri berkunci `PC_PREBUILD_GAMES` — ia satu daftar untuk semua paket, dan
 menyimpannya bersama paket berarti menyunting satu nama game ikut menuliskan
@@ -515,32 +579,65 @@ berbunyi "1440p Ultra" dan "QHD High", atau "Gaming Kompetitif" dan "Esports".
 Pelanggan berhenti bisa membandingkan paket, dan flag di kartu kehilangan
 artinya sebagai penanda.
 
-### Sidik jari: analisis basi tidak pernah sampai ke pelanggan
+### Sidik jari: yang diberi tahu STAFF, bukan pelanggan (direvisi 16 Sep 2026)
 
-Setiap hasil menyimpan `fingerprint` — sidik jari seluruh slot beserta urutan
-pilihannya, dihitung `fingerprintSlots()`. Begitu staff mengganti satu komponen,
-sidik jarinya tidak cocok lagi:
+Setiap hasil menyimpan `fingerprint` — sidik jari komponen paket, dihitung
+`fingerprintSlots()`. Begitu staff mengganti komponen yang memengaruhi performa,
+sidik jarinya tidak cocok lagi dan panel admin menandai paketnya "Perlu hitung
+ulang" (di kepala kartu, jadi terlihat tanpa membuka paketnya).
 
-- panel admin menandai paketnya "Perlu hitung ulang" (di kepala kartu, jadi
-  terlihat tanpa membuka paketnya),
-- `resolve.ts` mengosongkan `performancePublic`, sehingga panelnya **hilang**
-  dari halaman pelanggan sampai dihitung ulang.
+**Dulu ia juga mengosongkan `performancePublic`, sehingga panel performa hilang
+dari halaman pelanggan. Itu sudah dicabut.** Alasan lamanya — "analisis basi
+lebih buruk daripada tidak ada analisis" — benar untuk pergantian VGA dan salah
+untuk pergantian casing, dan keduanya diperlakukan sama: satu penyuntingan
+sepele sudah cukup untuk melenyapkan seluruh panel performa. Yang didapat
+pelanggan bukan angka yang lebih akurat, melainkan tidak ada angka sama sekali —
+padahal angka itu alasan utama halaman paket dibaca.
 
-Urutan pilihan ikut dihitung, karena pilihan pertama adalah bawaan — menukar
-urutan berarti menganalisis komponen yang berbeda. Sidik jarinya berawalan versi
-(`v1|…`) supaya perubahan format nanti otomatis membuat semua hasil lama dianggap
-basi, bukan dibandingkan dengan aturan yang sudah tidak berlaku.
+Gantinya dua hal, masing-masing di tempat yang tepat:
+
+1. **Sidik jarinya dipersempit.** Langkah yang perannya netral terhadap performa
+   — casing, PSU, pendingin, monitor, periferal — dibuang sebelum dihitung
+   (`PERFORMANCE_NEUTRAL_ROLES`), jadi peringatannya tidak menyala tanpa sebab.
+2. **Saat ia menyala, yang diberi tahu staff.** Kartu deck menampilkan "Perlu
+   hitung ulang" BERSAMA status tayang/draf — kombinasi "Perlu hitung ulang" +
+   "Analisis tayang" artinya pelanggan sedang membaca angka untuk susunan lama,
+   dan itu yang perlu terlihat.
+
+Daftarnya **daftar-KECUALI, bukan daftar-yang-dihitung**, dan itu wajib: peran
+ditebak dari nama langkah, dan langkah bernama aneh jatuh ke `"other"`. Dengan
+bentuk ini yang meleset tetap ikut dihitung — paling banter peringatan menyala
+terlalu sering. Dibalik jadi `["cpu","gpu","ram"]`, langkah VGA yang namanya
+tidak terbaca akan diam-diam keluar dari sidik jari, dan mengganti VGA berhenti
+menyalakan peringatan sama sekali.
+
+Petunjuk perannya **nama langkah saja, bukan nama produk**. Nama produk datang
+dari katalog, dan sidik jari yang bergantung pada katalog berubah sendiri saat
+staff menyunting nama produk — padahal tidak ada komponen yang berpindah.
+
+`alternatives` tidak pernah ikut sidik jari: ia pilihan tukar, bukan yang
+terpasang, dan memang bukan yang dianalisis. Jadi menambah atau mengurangi
+tawaran varian tidak pernah membuat analisis basi.
+
+Urutan ikut dihitung, karena yang pertama adalah bawaan — menukar urutan berarti
+menganalisis komponen yang berbeda. Sidik jarinya berawalan versi supaya
+perubahan format otomatis membuat hasil lama dianggap basi: `v2` menandai
+pindahnya `options` ke `items` bervarian, `v3` dibuangnya langkah netral.
 
 `resolve.ts` mengembalikan tiga bidang, dan bedanya disengaja:
 
 | Bidang | Isi | Dipakai |
 |---|---|---|
-| `performance` | apa adanya, termasuk draf & basi | panel admin |
-| `performanceStale` | komponen sudah berubah | panel admin |
-| `performancePublic` | sudah tayang DAN belum basi | halaman pelanggan |
+| `performance` | apa adanya, termasuk draf | panel admin |
+| `performanceStale` | komponen berpengaruh sudah berubah | panel admin |
+| `performancePublic` | sudah ditayangkan staff | halaman pelanggan |
 
 Penyaringannya di satu tempat, bukan diulang di tiap halaman: satu halaman yang
 lupa memeriksanya sudah cukup untuk memperlihatkan draf ke pelanggan.
+
+**Kalau suatu hari panel ini disembunyikan lagi saat basi, baca dulu paragraf
+kedua.** Yang hilang bukan ketidakakuratan, melainkan satu-satunya alasan
+halaman paket dibuka.
 
 ### Angkanya perkiraan, dan diperlakukan begitu
 
