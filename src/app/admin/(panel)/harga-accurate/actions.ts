@@ -240,20 +240,21 @@ export async function tautkanKodeAction(input: {
   }
 }
 
-/** Panjang alasan dijepit di sini supaya tidak melebihi VARCHAR(255) kolomnya. */
-const MAX_ALASAN = 255
-
 /**
  * Tandai barang Accurate sebagai tidak dijual lewat web — atau batalkan.
  *
  * Izinnya "edit", sama seperti menautkan: keduanya sama-sama menentukan isi
  * daftar kerja penautan, dan yang boleh melihat tabel belum tentu boleh
  * memutuskan barang mana yang tidak akan pernah masuk web.
+ *
+ * TIDAK menerima alasan. Isiannya sempat ada lalu dibuang atas keputusan
+ * pemilik project — satu pertanyaan ya/tidak sudah cukup, dan isian opsional
+ * yang jarang diisi hanya menambah langkah pada pekerjaan yang dilakukan
+ * berulang kali. Kolom `alasan` di `accurate_ignored` SENGAJA DIPERTAHANKAN:
+ * baris yang terlanjur ditandai lewat versi sebelumnya masih menyimpan
+ * keterangannya, dan tampilan masih menampilkannya kalau ada.
  */
-export async function abaikanKodeAction(input: {
-  kode: string
-  alasan: string | null
-}): Promise<HasilTaut> {
+export async function abaikanKodeAction(input: { kode: string }): Promise<HasilTaut> {
   let oleh = "Admin"
   try {
     const authUser = await requirePermission("harga-accurate", "edit")
@@ -267,11 +268,8 @@ export async function abaikanKodeAction(input: {
   const kode = input.kode.trim()
   if (kode === "") return { ok: false, alasan: "Kode Accurate tidak dikenali." }
 
-  const alasanBersih = input.alasan?.trim()
-  const alasan = alasanBersih ? alasanBersih.slice(0, MAX_ALASAN) : null
-
   try {
-    const hasil = await abaikanKode(kode, alasan, oleh)
+    const hasil = await abaikanKode(kode, null, oleh)
     if (hasil.ok) revalidatePath("/admin/harga-accurate")
     return hasil
   } catch (error) {

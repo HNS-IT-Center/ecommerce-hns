@@ -486,11 +486,19 @@ export async function abaikanKode(
   }
 
   // `upsert` lewat ON DUPLICATE KEY: menandai ulang barang yang sudah ditandai
-  // memperbarui alasan & pencatatnya, bukan gagal dengan galat kunci ganda.
+  // memperbarui pencatatnya, bukan gagal dengan galat kunci ganda.
+  //
+  // `alasan` hanya ditimpa kalau yang baru BUKAN null — `COALESCE` di sini
+  // bukan kerapian. Panel sudah tidak punya isian alasan lagi dan selalu
+  // mengirim null, jadi tanpa penjagaan ini sekali menandai ulang akan
+  // menghapus keterangan yang ditulis staff lewat versi sebelumnya. Baris
+  // seperti itu sudah ada di produksi.
   await prisma.$executeRawUnsafe(
     `INSERT INTO accurate_ignored (kode_accurate, alasan, ditandai_oleh)
      VALUES (?, ?, ?)
-     ON DUPLICATE KEY UPDATE alasan = VALUES(alasan), ditandai_oleh = VALUES(ditandai_oleh)`,
+     ON DUPLICATE KEY UPDATE
+       alasan = COALESCE(VALUES(alasan), alasan),
+       ditandai_oleh = VALUES(ditandai_oleh)`,
     kode,
     alasan,
     oleh,
