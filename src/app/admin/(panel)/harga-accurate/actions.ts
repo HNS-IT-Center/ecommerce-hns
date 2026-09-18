@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { requirePermission } from "@/lib/auth"
 import { updateProductPriceAction } from "../produk/actions"
 import { buildAccuratePricePreview } from "@/lib/services/accurate-price"
+import { tolakHargaKatalog } from "@/lib/api/woocommerce/products"
 import { importDariSheet, type ImportResult } from "@/lib/api/accurate/import-sheet"
 import {
   simpanHargaInternal,
@@ -97,8 +98,15 @@ export async function terapkanHargaAction(
 
   for (const item of items) {
     // Validasi ulang di server — klien tidak dipercaya (§2.7).
-    if (!Number.isFinite(item.regularPrice) || item.regularPrice <= 0) {
-      hasil.gagal.push({ wooId: item.wooId, alasan: "harga tidak wajar" })
+    //
+    // Memakai penjaga yang sama dengan jalur tulis katalog, bukan perbandingan
+    // sendiri: `updateProductPriceAction` di bawah akan menolaknya juga, dan
+    // dua ambang yang ditulis terpisah cepat atau lambat berbeda. Yang di sini
+    // menyaring lebih awal supaya alasannya menyebut barisnya, bukan muncul
+    // sebagai galat umum setelah perjalanan ke database.
+    const tolak = tolakHargaKatalog(item.regularPrice, "Harga jual")
+    if (tolak) {
+      hasil.gagal.push({ wooId: item.wooId, alasan: tolak })
       continue
     }
 

@@ -8,6 +8,7 @@ import {
   previewBulkAssignCategory,
   deleteProduct,
   invalidateProductCaches,
+  tolakHargaKatalog,
   updateProduct,
   type BulkCategoryMode,
 } from "@/lib/api/woocommerce/products"
@@ -185,6 +186,24 @@ export async function updateProductPriceAction(
   try {
     const authUser = await requirePermission("produk", "edit")
     const userName = (authUser && typeof authUser === 'object' && 'name' in authUser) ? String(authUser.name) : "Admin"
+
+    /**
+     * Penjaga harga tidak wajar — DI SINI, bukan hanya di formulir.
+     *
+     * Fungsi ini satu-satunya jalur tulis harga katalog: dipakai penyuntingan
+     * inline di daftar produk, penerapan harga dari Accurate
+     * (`terapkanHargaAction`), dan kolom Harga Jual. Penjaga di formulir hanya
+     * menutup jalur yang lewat formulir; yang di sini menutup semuanya.
+     *
+     * Harga obral ikut diperiksa: obral Rp 6 sama berbahayanya dengan harga
+     * normal Rp 6 — justru itu yang masuk keranjang.
+     */
+    const tolakRegular = tolakHargaKatalog(regularPrice, "Harga normal")
+    if (tolakRegular) return { error: tolakRegular }
+    if (salePrice !== undefined) {
+      const tolakSale = tolakHargaKatalog(salePrice, "Harga obral")
+      if (tolakSale) return { error: tolakSale }
+    }
 
     const prisma = getPrisma()
     const product = await prisma.product.findUnique({ where: { wooId: id } })
