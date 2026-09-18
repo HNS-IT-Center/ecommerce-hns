@@ -1554,7 +1554,24 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
       data: {
         ...(brandId !== undefined && { brandId }),
         ...(input.type !== undefined && { type: nextType }),
-        ...(input.name !== undefined && { name: input.name, slug: slugify(input.name, existing.wooId) }),
+        // Slug dihitung ulang HANYA kalau namanya benar-benar berubah.
+        //
+        // `ProductInput.name` wajib diisi, jadi setiap penyimpanan sebagian —
+        // menyunting harga atau SKU dari daftar produk — ikut mengirim nama
+        // yang sama persis. Tanpa pemeriksaan ini, penyimpanan seperti itu
+        // menghitung ulang slug dan MENGUBAH ALAMAT produk.
+        //
+        // Bukan kekhawatiran teoretis: `slugify` selalu menambahkan akhiran
+        // `-{wooId}`, sedangkan slug yang ada di katalog mayoritas tidak
+        // punya akhiran itu — 2.693 dari 3.330 produk induk akan bergeser
+        // alamatnya. Alamat yang sudah beredar di tautan WhatsApp pelanggan,
+        // bookmark, dan hasil pencarian Google ikut putus, dan pemetaan
+        // `woo_slug` untuk redirect 301 tidak menutup slug store yang berubah
+        // sesudah cutover.
+        ...(input.name !== undefined && {
+          name: input.name,
+          ...(input.name !== existing.name && { slug: slugify(input.name, existing.wooId) }),
+        }),
         ...(nextSku !== undefined && { sku: nextSku }),
         ...(input.status !== undefined && {
           status: STATUS_FROM_PARAM[input.status] ?? ProductStatus.DRAFT,
