@@ -41,7 +41,7 @@ export function useTransparentHeader() {
  * Dipasang halaman produk di sekeliling Header supaya galeri bisa naik sampai
  * mentok ke puncak layar dengan header mengambang di atasnya. Setelah pembeli
  * menggulir melewati ambang, header kembali ke wujud biasa — solid, bergaris
- * bawah, dan dengan kolom pencarian yang muncul kembali.
+ * bawah. (Tombol pencarian di halaman produk tetap terlihat di kedua wujud.)
  */
 export function TransparentHeaderProvider({ children }: { children: React.ReactNode }) {
   const [isScrolled, setIsScrolled] = useState(false)

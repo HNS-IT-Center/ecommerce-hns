@@ -21,7 +21,10 @@ const GLASS_BUTTON =
   "bg-black/35 text-white backdrop-blur-md [&_button]:text-white [&_button]:hover:bg-transparent [&_button]:hover:text-white"
 
 /**
- * Baris atas versi mobile: Back — Pencarian — Keranjang.
+ * Baris atas versi mobile: Back — Pencarian — (Bagikan) — Keranjang.
+ *
+ * Pencarian berupa kolom di kebanyakan halaman, dan tombol ikon di halaman
+ * produk — lihat catatan di dalam komponen.
  *
  * Dipisah dari `Header` karena wujudnya bergantung pada gulungan, dan itu butuh
  * state klien — sementara `Header` sendiri Server Component yang mengambil
@@ -33,7 +36,7 @@ const GLASS_BUTTON =
  * sempit ini cukup memuat yang berkaitan dengan halaman yang sedang dibuka.
  */
 export function HeaderMobileBar() {
-  const { isTransparent } = useTransparentHeader()
+  const { isEnabled, isTransparent } = useTransparentHeader()
 
   return (
     <div className="flex w-full items-center gap-2 md:hidden">
@@ -49,35 +52,32 @@ export function HeaderMobileBar() {
         <BackButton />
       </div>
 
-      {/* Kolom pencarian muncul dengan memudar di tempat — lebarnya tidak ikut
-          beranimasi.
-
-          Sebelumnya ia bergerak antara `w-0` dan `flex-1`, jadi setiap kali
-          pembeli melewati ambang gulungan kolomnya memanjang ulang dari kiri ke
-          kanan. Di halaman produk yang digulir naik-turun, gerakan melar itu
-          berulang terus dan menarik mata ke header, padahal yang dibaca pembeli
-          ada di bawahnya.
-
-          Sekarang `flex-1` dipegang tetap di kedua keadaan sehingga lebarnya
-          sudah final sejak awal, dan hanya `opacity` yang beranimasi. `invisible`
-          menyusul setelah pudar supaya kolom yang tak terlihat tidak bisa
-          ditekan atau kena fokus keyboard — dan karena ia tetap memesan
-          ruangnya, keranjang di kanan tidak lagi bergeser saat pencarian
-          muncul-hilang. Ganjalan `flex-1` terpisah yang dulu ada di bawah jadi
-          tidak diperlukan lagi.
-
-          Tetap di DOM, bukan dilepas: melepasnya akan membuang isi ketikan
-          pembeli setiap kali halaman melewati ambang, dan komponennya memasang
-          listener history-nya sendiri yang tidak perlu dibongkar-pasang. */}
-      <div
-        className={cn(
-          "min-w-0 flex-1 transition-opacity duration-300",
-          isTransparent ? "invisible opacity-0" : "visible opacity-100",
-        )}
-        aria-hidden={isTransparent}
-      >
-        <SearchBar className="w-full max-w-none sm:hidden flex" />
-      </div>
+      {/* Halaman produk (satu-satunya yang menyalakan header melayang) memakai
+          tombol ikon pencarian di samping Bagikan, bukan kolom. Masukan sales:
+          kolom yang tersembunyi di puncak lalu baru muncul setelah digulir
+          membuat pembeli tidak tahu pencarian ada di sana. Ikon ini terlihat
+          sejak awal, termasuk di atas foto. Halaman lain tetap memakai kolom
+          di bawah, karena di sana kolom yang langsung terlihat justru yang
+          mengajak orang mencari. */}
+      {isEnabled ? (
+        <>
+          <div className="min-w-0 flex-1" />
+          <div
+            className={cn(
+              "shrink-0 rounded-full transition-all duration-300",
+              isTransparent && GLASS_BUTTON,
+            )}
+          >
+            <SearchBar variant="icon" />
+          </div>
+        </>
+      ) : (
+        // Di halaman selain produk header tidak pernah transparan, jadi
+        // kolomnya cukup selalu tampil.
+        <div className="min-w-0 flex-1">
+          <SearchBar className="w-full max-w-none sm:hidden flex" />
+        </div>
+      )}
 
       {/* Bagikan, tepat di sebelah keranjang. Hanya muncul di halaman yang
           memasang ShareTargetProvider — di halaman lain komponennya menarik
