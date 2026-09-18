@@ -7,7 +7,12 @@ import { ChevronDown, ChevronUp, ChevronsUpDown, Edit, Layers, Pencil, Search, T
 
 import { formatRupiah } from "@/lib/utils"
 import { parseRupiah } from "@/lib/utils"
-import { deleteProductAction, updateProductPriceAction, bulkUpdateProductStatusAction } from "./actions"
+import {
+  deleteProductAction,
+  updateProductPriceAction,
+  bulkUpdateProductStatusAction,
+  updateProductSkuAction,
+} from "./actions"
 import { QuickEditModal } from "./quick-edit-modal"
 import type { Product, ProductCategory, ProductAttributeTaxonomy } from "@/types/woocommerce"
 import type { RootCategoryOption } from "@/lib/api/woocommerce/categories"
@@ -159,6 +164,114 @@ function SortIcon({ field, currentSort, currentOrder }: { field: string, current
   if (currentSort !== field) return <ChevronsUpDown className="h-4 w-4 text-slate-400" />
   if (currentOrder === "asc") return <ChevronUp className="h-4 w-4 text-green-500" />
   return <ChevronDown className="h-4 w-4 text-red-500" />
+}
+
+/**
+ * Sel SKU yang bisa diketik langsung di daftar.
+ *
+ * Disunting di tempat, bukan lewat Quick Edit, karena mengisi SKU adalah
+ * pekerjaan beruntun: staff menyusuri daftar dengan kode di tangan dan
+ * mengetiknya baris demi baris. Membuka dan menutup modal untuk satu kolom
+ * akan jadi beban tersendiri. Formulir penuh dan Quick Edit tetap punya isian
+ * SKU-nya sendiri — yang ini menambah jalan, bukan menggantikan.
+ *
+ * Produk BERVARIASI tidak menampilkan isian, melainkan tombol ke Quick Edit —
+ * pola yang sama dengan kolom harga di sebelahnya, dan alasannya sama:
+ * SKU-nya milik masing-masing varian, sedangkan kolom induknya memang lazim
+ * kosong. Kotak ketik di sini akan mengundang staff mengisi tempat yang tidak
+ * dibaca siapa pun. Jalur yang benar sudah ada — Quick Edit membawa tabel
+ * varian lengkap dengan kolom SKU per baris — jadi tombolnya mengarah ke sana
+ * alih-alih menawarkan isian yang menyesatkan.
+ *
+ * Pemanggilnya memberi `key` berisi SKU tersimpan, sehingga nilai baru dari
+ * server me-remount sel ini alih-alih disalin lewat useEffect.
+ */
+function SkuCell({
+  product,
+  onOpenQuickEdit,
+}: {
+  product: BulkProductRow
+  onOpenQuickEdit: () => void
+}) {
+  const [nilai, setNilai] = useState(product.sku)
+  const [menyimpan, setMenyimpan] = useState(false)
+  const [galat, setGalat] = useState<string | null>(null)
+  const router = useRouter()
+
+  const simpan = useCallback(async () => {
+    const bersih = nilai.trim()
+    if (bersih === product.sku) {
+      setGalat(null)
+      return
+    }
+
+    setMenyimpan(true)
+    setGalat(null)
+    const hasil = await updateProductSkuAction(product.id, bersih)
+    setMenyimpan(false)
+
+    if (hasil.error) {
+      // Isian dikembalikan ke nilai tersimpan. Teks yang ditolak kalau
+      // dibiarkan menempel akan tampak seperti sudah tersimpan — dan pesan
+      // penolakannya menyebut produk lain yang memegang SKU itu.
+      setGalat(hasil.error)
+      setNilai(product.sku)
+      return
+    }
+    router.refresh()
+  }, [nilai, product.sku, product.id, router])
+
+  if (product.type === "variable") {
+    return (
+      <Tooltip>
+        <TooltipTrigger render={
+          <button
+            type="button"
+            onClick={onOpenQuickEdit}
+            className="group -m-1 flex w-full flex-col items-start gap-0.5 rounded p-1 text-left transition-colors hover:bg-muted/50"
+          >
+            <span className="text-xs text-muted-foreground">—</span>
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-info">
+              <Layers className="h-3 w-3 shrink-0" />
+              Atur per varian
+            </span>
+          </button>
+        } />
+        <TooltipContent>
+          SKU produk ini diisi per varian. Klik untuk membukanya di Quick Edit.
+        </TooltipContent>
+      </Tooltip>
+    )
+  }
+
+  return (
+    <div className="min-w-0">
+      <div className="flex items-center gap-1.5">
+        <input
+          value={nilai}
+          onChange={(e) => setNilai(e.target.value)}
+          onBlur={simpan}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault()
+              e.currentTarget.blur()
+            }
+            if (e.key === "Escape") {
+              setNilai(product.sku)
+              setGalat(null)
+              e.currentTarget.blur()
+            }
+          }}
+          disabled={menyimpan}
+          placeholder="—"
+          aria-label={`SKU ${product.name}`}
+          className="w-full min-w-0 rounded-md border border-transparent bg-transparent px-2 py-1 text-xs transition-colors hover:border-input focus:border-input focus:bg-background focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+        />
+        {menyimpan && <Loader2 className="h-3 w-3 shrink-0 animate-spin text-muted-foreground" />}
+      </div>
+      {galat && <p className="mt-1 px-2 text-[11px] leading-tight text-destructive">{galat}</p>}
+    </div>
+  )
 }
 
 // `categories` sengaja TIDAK ikut di-destructure walau ada di `Props`: komponen
@@ -572,7 +685,11 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
                   <FlaggedVariationNote count={product.flaggedVariations["missing-image"]} label="tanpa foto" />
                 </td>
                 <td className="px-4 py-3 align-middle text-muted-foreground">
-                  {product.sku || "-"}
+                  <SkuCell
+                    key={product.sku}
+                    product={product}
+                    onOpenQuickEdit={() => setQuickEditProduct(product)}
+                  />
                   <FlaggedVariationNote count={product.flaggedVariations["missing-sku"]} label="tanpa SKU" />
                 </td>
                 <td className="px-4 py-3 align-middle">

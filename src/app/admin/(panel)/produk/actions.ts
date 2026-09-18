@@ -237,6 +237,73 @@ export async function updateProductPriceAction(
   }
 }
 
+/**
+ * Mengubah SKU satu produk dari daftar produk, tanpa membuka formulir.
+ *
+ * Bentuknya meniru `updateProductPriceAction` di atas, termasuk alasannya:
+ * penyuntingan dari daftar harus melewati `updateProduct` yang sama dengan
+ * formulir, bukan menulis ke Prisma sendiri. Yang didapat dari sana bukan cuma
+ * kerapian — `updateProduct` memanggil `assertSkuBelumDipakai`, yang menolak
+ * SKU yang sudah dipakai sambil MENYEBUT produk pemiliknya. Pesan itulah yang
+ * dibutuhkan staff yang sedang menyusuri ribuan baris; galat P2002 mentah dari
+ * database cuma bisa berkata "sudah dipakai" tanpa memberi tahu oleh siapa.
+ *
+ * Kosong berarti MENGHAPUS SKU, bukan menyimpan string kosong — kolomnya unik,
+ * dan "" hanya muat untuk satu baris. `normalizeSku` di lapisan data yang
+ * mengubahnya jadi NULL.
+ *
+ * @param id SKU milik produk ber-`wooId` ini — bukan `Product.id` internal,
+ *           mengikuti daftar produk admin yang menyajikan `wooId` sebagai `id`.
+ */
+export async function updateProductSkuAction(
+  id: number,
+  sku: string,
+): Promise<{ error: string | null }> {
+  try {
+    const authUser = await requirePermission("produk", "edit")
+    const userName =
+      authUser && typeof authUser === "object" && "name" in authUser ? String(authUser.name) : "Admin"
+
+    const prisma = getPrisma()
+    const product = await prisma.product.findUnique({ where: { wooId: id } })
+    if (!product) return { error: "Produk tidak ditemukan." }
+
+    // `name` wajib diisi `ProductInput`, dan diambil dari produk yang sama
+    // supaya tidak pernah terhitung sebagai perubahan di log.
+    const payload: ProductInput = { name: product.name, sku }
+
+    await updateProduct(id, payload)
+
+    const entries = buildProductLogEntries(
+      diffProductChanges({ ...product, categories: [], images: [] }, payload),
+    )
+    if (entries.length > 0) {
+      await prisma.productLog.createMany({
+        data: entries.map((entry) => ({
+          userName,
+          productId: product.wooId,
+          productName: product.name,
+          ...entry,
+        })),
+      })
+    }
+
+    refresh([id], [product.slug])
+    return { error: null }
+  } catch (error) {
+    if (error instanceof UnauthorizedError) {
+      return { error: error.message }
+    }
+    // Pesan dari `assertSkuBelumDipakai` sengaja diteruskan apa adanya — ia
+    // menyebut produk yang memegang SKU itu, dan itu keterangan yang paling
+    // berguna di layar.
+    if (error instanceof Error) {
+      return { error: error.message }
+    }
+    return { error: "Gagal menyimpan SKU." }
+  }
+}
+
 export async function bulkUpdateProductStatusAction(ids: number[], actionType: string) {
   try {
     const authUser = await requirePermission("produk", "edit")
