@@ -72,12 +72,49 @@ const KASUS: { judul: string; daftar: Kasus[] }[] = [
         catatan: false,
         kenapa: "tiga lapis + desimal Inggris; pecahan dibulatkan ke atas",
       },
+    ],
+  },
+  {
+    judul: "Pengelompokan tidak wajar — dibaca TAPI wajib bercatatan",
+    daftar: [
       {
         masuk: "12.34.567",
         nilai: 1_234_567,
-        catatan: false,
-        kenapa: "pengelompokan tidak rapi — tetap dibaca sebagai ribuan, bukan ditolak",
+        catatan: true,
+        kenapa: "kelompok tengah 2 digit — impor tidak gagal, tapi harus muncul di laporan",
       },
+      {
+        masuk: "1.2345.678",
+        nilai: 12_345_678,
+        catatan: true,
+        kenapa: "kelompok tengah 4 digit",
+      },
+      {
+        masuk: "1234.567",
+        nilai: 1_234_567,
+        catatan: true,
+        kenapa: "kelompok pertama 4 digit — seharusnya paling banyak 3",
+      },
+      {
+        masuk: "12.34.567,50",
+        nilai: 1_234_568,
+        catatan: true,
+        kenapa: "pengelompokan aneh pada bagian bulat, walau desimalnya sah",
+      },
+      {
+        masuk: "1.23",
+        nilai: 1,
+        catatan: true,
+        kenapa: "desimal SAH (bagian bulat '1' satu kelompok) — catatannya soal nilainya, bukan bentuknya",
+      },
+      {
+        masuk: "1.2.3",
+        nilai: 123,
+        catatan: true,
+        kenapa: "DUA catatan sekaligus: pengelompokan aneh DAN hasilnya di bawah ambang",
+      },
+      { masuk: "123.456", nilai: 123_456, catatan: false, kenapa: "pembanding: 3+3 digit itu WAJAR" },
+      { masuk: "1.000.000", nilai: 1_000_000, catatan: false, kenapa: "pembanding: 1+3+3 juga wajar" },
     ],
   },
   {

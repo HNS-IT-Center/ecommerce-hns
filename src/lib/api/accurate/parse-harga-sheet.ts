@@ -66,6 +66,29 @@ function bersihkan(raw: string): string {
 }
 
 /**
+ * Apakah pengelompokan ribuan wajar: kelompok pertama 1-3 digit, sisanya
+ * TEPAT 3 digit.
+ *
+ * "6.400.000" dan "125.000" wajar. "12.34.567" tidak — pengelompokan seperti
+ * itu tidak pernah ditulis orang maupun dihasilkan sistem yang waras, jadi
+ * kemunculannya di Sheet lebih mungkin berarti kolom bergeser atau selnya
+ * korup daripada angka yang perlu diselamatkan.
+ *
+ * Nilainya tetap dibaca — impor tidak boleh gagal total karena satu sel aneh —
+ * tapi hasilnya diberi catatan supaya muncul di laporan impor dan ditinjau
+ * manusia. Menerimanya diam-diam adalah pola yang sama persis dengan yang
+ * melahirkan kerusakan 236 nilai itu: parser yang terlalu ramah pada masukan
+ * yang seharusnya membunyikan alarm.
+ */
+function pengelompokanWajar(bagianBulat: string): boolean {
+  const kelompok = bagianBulat.split(/[.,]/)
+  if (kelompok.length === 1) return true // tanpa pemisah — tidak ada yang bisa salah
+  const [pertama, ...sisanya] = kelompok
+  if (pertama!.length < 1 || pertama!.length > 3) return false
+  return sisanya.every((k) => k.length === 3)
+}
+
+/**
  * Tentukan posisi pemisah desimal, atau -1 kalau seluruh pemisah adalah
  * pemisah ribuan. Lihat tabel aturan di kepala berkas.
  */
@@ -120,8 +143,13 @@ export function parseHargaSheet(raw: string | null | undefined): HargaSheet {
     return { nilai: null, catatan: `pemisah angka tidak dikenali: "${raw}"` }
   }
 
-  const bulat = (pos === -1 ? angka : angka.slice(0, pos)).replace(/[.,]/g, "")
+  const bagianBulat = pos === -1 ? angka : angka.slice(0, pos)
+  const bulat = bagianBulat.replace(/[.,]/g, "")
   const pecahan = pos === -1 ? "" : angka.slice(pos + 1).replace(/[.,]/g, "")
+
+  // Diperiksa sebelum nilainya dihitung, supaya catatannya bisa menyebut teks
+  // aslinya apa adanya.
+  const kelompokAneh = !pengelompokanWajar(bagianBulat)
 
   if (bulat === "" && pecahan === "") {
     return { nilai: null, catatan: `tidak terbaca sebagai angka: "${raw}"` }
@@ -138,11 +166,19 @@ export function parseHargaSheet(raw: string | null | undefined): HargaSheet {
   if (rupiah <= 0) {
     return { nilai: null, catatan: `nilai tidak wajar: "${raw}"` }
   }
-  if (rupiah < AMBANG_HARGA_RENDAH) {
-    return {
-      nilai: rupiah,
-      catatan: `harga sangat rendah (${rupiah}) — mungkin ribuan terpotong, cek dulu`,
-    }
+
+  // Keduanya bisa menyala bersamaan, dan dua-duanya perlu sampai ke laporan —
+  // yang satu menyoal bentuk tulisannya, yang lain besaran hasilnya.
+  const catatan: string[] = []
+  if (kelompokAneh) {
+    catatan.push(
+      `pengelompokan angka tidak wajar: "${raw}" — dibaca ${rupiah.toLocaleString("id-ID")}, ` +
+        `tapi bentuk seperti ini biasanya menandakan sel korup atau kolom bergeser`,
+    )
   }
-  return { nilai: rupiah, catatan: null }
+  if (rupiah < AMBANG_HARGA_RENDAH) {
+    catatan.push(`harga sangat rendah (${rupiah}) — mungkin ribuan terpotong, cek dulu`)
+  }
+
+  return { nilai: rupiah, catatan: catatan.length > 0 ? catatan.join(" · ") : null }
 }
