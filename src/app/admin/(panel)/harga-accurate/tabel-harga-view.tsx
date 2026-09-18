@@ -678,11 +678,28 @@ function PemilihProdukWeb({
     }
   }, [bersih, terlaluPendek, cocok])
 
+  /**
+   * Menyala bawaannya karena itu yang hampir selalu diinginkan: 97% produk
+   * tertaut SKU-nya memang sama dengan kode Accurate. Tetap berupa centang,
+   * bukan perilaku diam-diam — mengisi kolom lain tanpa terlihat adalah
+   * kejutan, dan staff berhak mematikannya untuk produk yang SKU-nya memakai
+   * kode pabrikan.
+   */
+  const [isiSku, setIsiSku] = React.useState(true)
+
   function pilih(p: CalonProdukWeb) {
     startTransition(async () => {
-      const res = await tautkanKodeAction({ wooId: p.wooId, kode: baris.kodeAccurate })
-      if (res.ok) onSelesai(`Ditautkan ke "${p.nama}".`)
-      else onGagal(res.alasan)
+      const res = await tautkanKodeAction({ wooId: p.wooId, kode: baris.kodeAccurate, isiSku })
+      if (!res.ok) {
+        onGagal(res.alasan)
+        return
+      }
+      // SKU yang gagal diisi TIDAK menggagalkan penautan, tapi juga tidak
+      // ditelan — kabarnya disebut supaya staff tahu ada yang perlu diisi
+      // sendiri.
+      if (res.skuDilewati) onSelesai(`Ditautkan ke "${p.nama}". ${res.skuDilewati}`)
+      else if (res.skuDiisi) onSelesai(`Ditautkan ke "${p.nama}", SKU diisi "${res.skuDiisi}".`)
+      else onSelesai(`Ditautkan ke "${p.nama}".`)
     })
   }
 
@@ -741,7 +758,27 @@ function PemilihProdukWeb({
           </div>
         )}
 
-        <div className="relative mt-4">
+        <label className="mt-4 flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-muted/40 p-3">
+          <input
+            type="checkbox"
+            checked={isiSku}
+            onChange={(e) => setIsiSku(e.target.checked)}
+            disabled={pending}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+          />
+          <span className="min-w-0 text-xs">
+            <span className="font-medium">
+              Isi SKU produk dengan{" "}
+              <span className="rounded bg-muted px-1 py-0.5 font-mono">{baris.kodeAccurate}</span>
+            </span>
+            <span className="mt-0.5 block text-muted-foreground">
+              Hanya kalau SKU-nya masih kosong — yang sudah terisi tidak ditimpa. Dilewati kalau
+              kode ini sudah dipakai produk lain sebagai SKU.
+            </span>
+          </span>
+        </label>
+
+        <div className="relative mt-3">
           <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="search"

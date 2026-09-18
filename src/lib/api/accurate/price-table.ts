@@ -403,7 +403,18 @@ export async function cariProdukWeb(q: string, batas = 20): Promise<CalonProdukW
 }
 
 export type HasilTaut =
-  | { ok: true }
+  | {
+      ok: true
+      /** SKU yang ikut terisi dari kode Accurate, kalau diminta dan berhasil. */
+      skuDiisi?: string
+      /**
+       * Alasan SKU TIDAK jadi diisi walau diminta — mis. kodenya sudah dipakai
+       * produk lain sebagai SKU. Penautannya sendiri tetap berhasil; ini
+       * keterangan supaya staff tahu ada bagian yang perlu tangan manusia,
+       * bukan mengira SKU-nya sudah beres.
+       */
+      skuDilewati?: string
+    }
   | { ok: false; alasan: string }
 
 /**
@@ -412,8 +423,27 @@ export type HasilTaut =
  * Menolak, bukan menimpa, kalau kodenya sudah menambat produk lain. Kolomnya
  * unik, jadi menimpa berarti memutus tautan produk lain diam-diam — dan orang
  * yang menautkan tidak akan tahu ia baru saja melepas sesuatu.
+ *
+ * `isiSku` mengisi `products.sku` dengan kode Accurate yang sama, dan itu bukan
+ * tebakan: dari 876 produk tertaut yang ber-SKU, **849 (97%) SKU-nya sama
+ * persis dengan kode Accurate-nya**. Mengisinya otomatis meneruskan kebiasaan
+ * yang sudah berjalan, bukan memaksakan aturan baru.
+ *
+ * Tiga batas yang dijaga, semuanya penting:
+ *
+ *  1. **Hanya mengisi yang KOSONG.** SKU yang sudah ada tidak pernah ditimpa —
+ *     staff mungkin sengaja memakai kode pabrikan di sana.
+ *  2. **Dilewati kalau kodenya sudah dipakai produk lain sebagai SKU** (5 kasus
+ *     saat ini). Memaksakannya akan ditolak database, dan menggagalkan seluruh
+ *     penautan hanya karena SKU-nya bentrok adalah hukuman yang tidak sepadan.
+ *  3. **Penautan tetap berhasil walau SKU-nya gagal.** Keduanya urusan
+ *     berbeda; yang gagal dilaporkan lewat `skuDilewati`, tidak ditelan.
  */
-export async function tautkanKode(wooId: number, kode: string | null): Promise<HasilTaut> {
+export async function tautkanKode(
+  wooId: number,
+  kode: string | null,
+  opsi?: { isiSku?: boolean },
+): Promise<HasilTaut> {
   const prisma = getPrisma()
 
   if (kode !== null) {
@@ -444,7 +474,32 @@ export async function tautkanKode(wooId: number, kode: string | null): Promise<H
     wooId,
   )
   if (terpengaruh === 0) return { ok: false, alasan: "Produk web tidak ditemukan." }
-  return { ok: true }
+
+  // Penautannya sudah selesai di atas. Pengisian SKU di bawah ini tambahan —
+  // apa pun hasilnya, tautannya tetap berdiri.
+  if (kode === null || !opsi?.isiSku) return { ok: true }
+
+  const skuSekarang = await prisma.$queryRawUnsafe<{ sku: string | null }[]>(
+    "SELECT sku FROM products WHERE woo_id = ?",
+    wooId,
+  )
+  const adaIsinya = (skuSekarang[0]?.sku ?? "").trim() !== ""
+  if (adaIsinya) return { ok: true }
+
+  const dipakaiLain = await prisma.$queryRawUnsafe<{ nama: string }[]>(
+    "SELECT name AS nama FROM products WHERE sku = ? AND woo_id <> ?",
+    kode,
+    wooId,
+  )
+  if (dipakaiLain.length > 0) {
+    return {
+      ok: true,
+      skuDilewati: `SKU "${kode}" sudah dipakai produk lain (${dipakaiLain[0]!.nama}), jadi tidak diisi.`,
+    }
+  }
+
+  await prisma.$executeRawUnsafe("UPDATE products SET sku = ? WHERE woo_id = ?", kode, wooId)
+  return { ok: true, skuDiisi: kode }
 }
 
 /**

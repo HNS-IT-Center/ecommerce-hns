@@ -217,6 +217,8 @@ export async function cariProdukWebAction(
 export async function tautkanKodeAction(input: {
   wooId: number
   kode: string | null
+  /** Isi `products.sku` dengan kode Accurate kalau SKU-nya masih kosong. */
+  isiSku?: boolean
 }): Promise<HasilTaut> {
   try {
     await requirePermission("harga-accurate", "edit")
@@ -229,8 +231,14 @@ export async function tautkanKodeAction(input: {
   }
 
   try {
-    const hasil = await tautkanKode(input.wooId, input.kode)
-    if (hasil.ok) revalidatePath("/admin/harga-accurate")
+    const hasil = await tautkanKode(input.wooId, input.kode, { isiSku: input.isiSku })
+    if (hasil.ok) {
+      revalidatePath("/admin/harga-accurate")
+      // Daftar produk ikut disegarkan kalau SKU-nya berubah — kolom SKU di
+      // sana dilayani cache sendiri, dan tanpa ini ia menampilkan kosong
+      // sampai entri cache-nya kedaluwarsa.
+      if (hasil.skuDiisi) revalidatePath("/admin/produk")
+    }
     return hasil
   } catch (error) {
     return {
