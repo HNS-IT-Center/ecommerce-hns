@@ -81,6 +81,12 @@ type Rekap = {
    * yang belum punya SP tidak menghasilkan apa-apa untuk sinkronisasi harga —
    * tidak ada angka yang bisa mengalir. Barang seperti itu tetap perlu
    * ditautkan suatu saat, tapi bukan yang pertama.
+   *
+   * Ambangnya Rp 1.000, SAMA dengan `AMBANG_HARGA_RENDAH` di `stock-db.ts` —
+   * bukan sekadar `> 0`. Katalog ini memuat harga sisa pembacaan yang memotong
+   * ribuan ("165.000" tersimpan "165"), dan dengan ambang nol, 55 barang
+   * berharga palsu ikut masuk daftar prioritas. Titik dibuang sebelum
+   * dibandingkan supaya "7.290.000" tidak terbaca 7,29 lalu ikut tersaring.
    */
   perluBerharga: bigint
 }
@@ -96,12 +102,12 @@ const rekap = await q<Rekap>(
                 AND p.woo_id IS NULL
                 AND ig.kode_accurate IS NULL THEN 1 ELSE 0 END) AS perlu,
      SUM(CASE WHEN a.\`SP\` IS NOT NULL AND a.\`SP\` <> ''
-                AND CAST(a.\`SP\` AS DECIMAL(18,0)) > 0 THEN 1 ELSE 0 END) AS berharga,
+                AND CAST(REPLACE(TRIM(a.\`SP\`), '.', '') AS DECIMAL(18,0)) >= 1000 THEN 1 ELSE 0 END) AS berharga,
      SUM(CASE WHEN (a.\`STATUS\` <> 'YA' OR a.\`STATUS\` IS NULL)
                 AND p.woo_id IS NULL
                 AND ig.kode_accurate IS NULL
                 AND a.\`SP\` IS NOT NULL AND a.\`SP\` <> ''
-                AND CAST(a.\`SP\` AS DECIMAL(18,0)) > 0 THEN 1 ELSE 0 END) AS perluBerharga
+                AND CAST(REPLACE(TRIM(a.\`SP\`), '.', '') AS DECIMAL(18,0)) >= 1000 THEN 1 ELSE 0 END) AS perluBerharga
    FROM accurate_products a
    LEFT JOIN products p ON p.accurate_code = a.\`Kode Accurate\`
    LEFT JOIN accurate_ignored ig ON ig.kode_accurate = a.\`Kode Accurate\`
