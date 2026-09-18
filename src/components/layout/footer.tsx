@@ -4,6 +4,8 @@ import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 import { CS_EMAIL, SOCIAL_LINKS } from "@/lib/constants/contact"
 import { InstagramIcon, TiktokIcon } from "@/components/icons/social-icons"
 import { FooterPaymentMethods } from "./footer-payment-methods"
+import { FooterStores } from "./footer-stores"
+import { getFooterStores } from "@/lib/api/stores"
 import WhatsappIcon from "@/components/icons/whatsapp-icon"
 import { env } from "@/config/env"
 import { getThemeSettings } from "@/lib/theme/settings"
@@ -15,7 +17,7 @@ export async function Footer() {
     "Halo HNS IT Center, saya ingin bertanya."
   )
 
-  const theme = await getThemeSettings()
+  const [theme, stores] = await Promise.all([getThemeSettings(), getFooterStores()])
   const isChristmas = theme.activeChromeThemeId === "christmas"
 
   // Navy diambil dari `--primary-800` (#0d2959) — nada yang sama dengan
@@ -189,8 +191,13 @@ export async function Footer() {
           </div>
           
         </div>
+
+        {/* Alamat dari tabel `stores` (dikelola di /admin/toko), bukan ditulis di
+            sini — supaya footer, /stores, dan /contact tidak bisa berbeda. Baris
+            selebar footer karena alamatnya terlalu panjang untuk kolom grid. */}
+        <FooterStores stores={stores} />
         
-        <div className="mt-12 border-t border-white/15 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-white/60">
+        <div className="mt-4 border-t border-white/15 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-white/60">
           <p>© 2026 HNS IT Center. All rights reserved.</p>
           <p>Batam - Kepulauan Riau - Indonesia</p>
         </div>

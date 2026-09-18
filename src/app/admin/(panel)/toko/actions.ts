@@ -1,11 +1,12 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { requirePermission } from "@/lib/auth";
 import {
   StoreOperationError,
   createStore as createStoreRow,
+  STORES_CACHE_TAG,
   softDeleteStore,
   updateStore as updateStoreRow,
   type StoreInput,
@@ -63,6 +64,10 @@ function revalidateStorePages() {
   revalidatePath("/admin/toko");
   revalidatePath("/stores");
   revalidatePath("/contact");
+  // Alamat toko juga tampil di footer SETIAP halaman (`getFooterStores`).
+  // Membuang tag-nya ikut menyegarkan semua halaman ISR yang memakainya —
+  // `revalidatePath` per halaman tidak mungkin didaftar satu per satu.
+  revalidateTag(STORES_CACHE_TAG, "max");
 }
 
 /**

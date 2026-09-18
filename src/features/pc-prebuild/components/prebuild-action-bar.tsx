@@ -3,7 +3,10 @@
 import Link from "next/link"
 import { Check, ShoppingCart, Wrench } from "lucide-react"
 
+import { formatDiscountEndDate } from "@/lib/pc-prebuild/discount"
 import { formatRupiah } from "@/lib/utils"
+
+import type { PackagePrice } from "../lib/selection"
 
 /**
  * Bilah aksi yang menempel di bawah halaman paket.
@@ -13,12 +16,16 @@ import { formatRupiah } from "@/lib/utils"
  * bayangan di bawah konten yang harus dijaga tetap sepadan.
  *
  * Harga di sini adalah PENJUMLAHAN harga satuan katalog atas pilihan yang
- * sedang aktif — bukan angka yang diturunkan dari rumus (CLAUDE.md §2.7).
+ * sedang aktif, dikurangi potongan paket yang ditetapkan staff — lewat
+ * `selectionPrice()`, bukan dihitung di komponen ini (CLAUDE.md §2.7,
+ * docs/11-pc-prebuild.md §12).
  * Server tetap menghitung ulang seluruhnya saat pesanan dikirim ke CS.
  */
 
 type Props = {
-  total: number
+  price: PackagePrice
+  /** Hari terakhir potongan paket berlaku (`YYYY-MM-DD`), kalau dibatasi. */
+  discountEndsAt: string | null
   /** Jumlah komponen yang seluruh pilihannya hilang dari katalog. */
   missingCount: number
   onAddToCart: () => void
@@ -30,7 +37,8 @@ type Props = {
 }
 
 export function PrebuildActionBar({
-  total,
+  price,
+  discountEndsAt,
   missingCount,
   onAddToCart,
   added,
@@ -52,9 +60,26 @@ export function PrebuildActionBar({
               </span>
             )}
           </p>
-          <p className="truncate text-xl font-extrabold text-sale-red md:text-2xl">
-            {formatRupiah(total)}
-          </p>
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <p className="truncate text-xl font-extrabold text-sale-red md:text-2xl">
+              {formatRupiah(price.final)}
+            </p>
+            {price.discount > 0 && (
+              <p className="text-sm text-muted-foreground line-through">
+                {formatRupiah(price.normal)}
+              </p>
+            )}
+          </div>
+          {price.discount > 0 && (
+            <p className="text-xs font-semibold text-brand-green">
+              Hemat {formatRupiah(price.discount)}
+              {discountEndsAt && (
+                <span className="font-normal text-muted-foreground">
+                  {" "}· berlaku s.d. {formatDiscountEndDate(discountEndsAt, "short")}
+                </span>
+              )}
+            </p>
+          )}
         </div>
 
         <div className="flex shrink-0 items-center gap-2">

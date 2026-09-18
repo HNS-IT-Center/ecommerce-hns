@@ -36,7 +36,7 @@ function QuoteNotFound({ code, malformed }: { code: string; malformed: boolean }
   const shown = code.length > 24 ? `${code.slice(0, 24)}…` : code
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-page">
       <Header />
 
       <main className="flex-1 bg-muted/20 py-8">
@@ -149,7 +149,7 @@ export default async function VerifyQuotePage({
   })
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-page">
       <Header />
 
       <main className="flex-1 bg-muted/20 py-8">

@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useMemo, useState } from "react"
-import { ArrowLeft, ImageOff, Layers } from "lucide-react"
+import { ArrowLeft, FileDown, ImageOff, Layers } from "lucide-react"
 
 import { ProductGallery, type GalleryImage } from "@/features/product/components/product-gallery"
 import { useAddToCartToast } from "@/features/cart/hooks/use-add-to-cart-toast"
@@ -11,7 +11,8 @@ import { useCartStore } from "@/store/cart"
 
 import {
   builderUrl,
-  selectionTotal,
+  printUrl,
+  selectionPrice,
   toCartLines,
   type PrebuildSelection,
 } from "../lib/selection"
@@ -30,9 +31,9 @@ import { PrebuildActionBar } from "./prebuild-action-bar"
  * ## Harga
  *
  * Yang terjadi di sini cuma PENJUMLAHAN harga satuan yang dikirim server dari
- * katalog. Tidak ada perkalian, persentase, atau potongan; satu-satunya
- * potongan yang sah adalah `salePrice` katalog, dan itu sudah ikut di harga
- * satuannya (CLAUDE.md §2.7, docs/11-pc-prebuild.md §3).
+ * katalog, dikurangi potongan paket yang ditetapkan staff (`packagePrice`).
+ * Tidak ada perkalian atau persentase; potongan produk (`salePrice`) sudah ikut
+ * di harga satuannya (CLAUDE.md §2.7, docs/11-pc-prebuild.md §3).
  *
  * ## Yang TIDAK dirender
  *
@@ -52,8 +53,9 @@ export function PrebuildDetail({ view, games }: Props) {
   const cartItems = useCartStore((s) => s.items)
   const toast = useAddToCartToast()
 
-  const total = useMemo(() => selectionTotal(view, selection), [view, selection])
+  const harga = useMemo(() => selectionPrice(view, selection), [view, selection])
   const href = useMemo(() => builderUrl(view, selection), [view, selection])
+  const pdfHref = useMemo(() => printUrl(view, selection), [view, selection])
   const lines = useMemo(() => toCartLines(view, selection), [view, selection])
 
   /**
@@ -73,8 +75,8 @@ export function PrebuildDetail({ view, games }: Props) {
 
   const galeri: GalleryImage[] = view.images.map((src) => ({ src, alt: view.name }))
 
-  function pilih(componentKey: string, productId: number) {
-    setSelection((sebelum) => ({ ...sebelum, [componentKey]: productId }))
+  function pilih(componentKey: string, id: number) {
+    setSelection((sebelum) => ({ ...sebelum, [componentKey]: id }))
   }
 
   function masukkanKeranjang() {
@@ -115,6 +117,21 @@ export function PrebuildDetail({ view, games }: Props) {
                 {view.summary}
               </p>
             )}
+
+            {/* Lembar cetak dibuka di tab baru dan langsung memanggil dialog
+                cetak — di sana pelanggan memilih "Simpan sebagai PDF", lalu
+                membagikan berkasnya dari HP/PC. Pilihan tukar yang sedang aktif
+                ikut terbawa, begitu juga harganya. Tidak dicatat sebagai
+                quotation (lihat app/pc-prebuild/[id]/print/page.tsx). */}
+            <a
+              href={pdfHref}
+              target="_blank"
+              rel="noopener"
+              className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl border bg-card px-4 text-sm font-bold transition-colors hover:border-brand-green hover:text-brand-green"
+            >
+              <FileDown className="h-4 w-4" />
+              Bagikan PDF
+            </a>
           </div>
 
           {view.performance ? (
@@ -159,7 +176,8 @@ export function PrebuildDetail({ view, games }: Props) {
       </section>
 
       <PrebuildActionBar
-        total={total}
+        price={harga}
+        discountEndsAt={view.discountEndsAt}
         missingCount={view.missingCount}
         onAddToCart={masukkanKeranjang}
         added={sudahDiKeranjang}

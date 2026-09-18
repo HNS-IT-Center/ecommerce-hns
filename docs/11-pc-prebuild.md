@@ -72,6 +72,7 @@ keranjang → /checkout → WhatsApp CS   (paket sebagai satu blok bernama)
       }]
     }],
     performance?: { … }          // hasil analisis AI — opsional, lihat §9
+    discount?: { amount, endsAt } // potongan paket — opsional, lihat §12
   }]
 }
 ```
@@ -201,7 +202,8 @@ separuh jalan.
 ## 3. Harga — baca ini sebelum mengubah apa pun
 
 **Preset tidak pernah menyimpan harga.** Isinya hanya `productId`, `variationId`,
-dan `quantity`.
+dan `quantity`. Satu-satunya rupiah di preset adalah **potongan** paket (§12) —
+besar pengurangnya, bukan harga.
 
 Ini keharusan [CLAUDE.md §2.7](../CLAUDE.md), bukan pilihan gaya. Preset yang
 menyimpan angka akan menampilkan harga yang benar hari ini dan salah bulan depan
@@ -264,9 +266,21 @@ satu pilihan di panel admin, setiap tautan yang sudah tersebar lewat WhatsApp
 menunjuk produk lain. Pelanggan membuka tautan "RAM 32GB" minggu depan dan
 mendapat 16GB — tanpa error, tanpa ada yang tahu.
 
-Konsekuensinya: **`productId` tidak boleh kembar dalam satu slot.** Dua tombol
-"Samsung 1TB" tidak bisa dibedakan. Parser membuang yang kembar, dan panel admin
-menyembunyikan produk yang sudah dipakai pilihan lain di slot yang sama.
+**Yang dibawa adalah `optionId` — id VARIAN kalau pilihannya bervarian, bukan
+`productId` induk (diperbaiki 17 September 2026).** Sejak chip varian
+multi-select (§2), "SSD 1TB atau 2TB" adalah dua pilihan dengan induk yang sama.
+Selama pilihan dikenali lewat `productId`, halaman paket menyalakan kedua tombol
+sekaligus, keranjang selalu menerima varian pertama, dan "Ubah Rakitan" memuat
+varian pertama juga — pelanggan memilih 2TB dan memesan 1TB tanpa tanda apa pun.
+
+Satu fungsi yang menentukannya: `optionId()` di
+`features/pc-prebuild/lib/selection.ts`, dipakai `ComponentPicker`, pilihan di
+halaman paket, `?pick=`, dan kunci bundle keranjang. Id varian adalah id baris
+`Product` sendiri, jadi tidak mungkin bertabrakan dengan id produk lain.
+
+Tautan lama yang membawa `productId` induk tetap dibaca: `/build-pc` dan
+`selectionFromPick()` mencocokkan `optionId` lebih dulu, lalu `productId` — yang
+jatuh ke varian pertama produk itu, sama seperti perilaku sebelumnya.
 
 Saat memuat: `productId` yang **tidak ada** di daftar pilihan slot itu **jatuh ke
 bawaan**, bukan dipaksakan masuk.
@@ -851,4 +865,112 @@ panel.
 
 Ambang warna FPS ikut keluar ke `lib/fps-tone.ts` karena kartu memakainya juga.
 Kalau ambangnya disalin, paket yang sama bisa terlihat "hijau" di layar staff
-dan "kuning" di layar pelanggan.
+dan "kuning" di layar pelanggan. Ambangnya sendiri ada di `fpsLevel()`; layar
+memetakannya ke kelas Tailwind, lembar cetak (§13) ke warna tinta.
+
+---
+
+## 12. Potongan paket (17 September 2026)
+
+Permintaan PIC: staff bisa memotong harga satu paket secara keseluruhan.
+Bagian **3 — Harga paket** di editor `/admin/pc-prebuild/<id>`.
+
+| Pertanyaan | Keputusan |
+|---|---|
+| Yang disimpan | **Nominal potongan** (Rp 500.000), bukan harga jadi |
+| Kalau harga komponen berubah | Harga paket ikut naik-turun; potongannya tetap |
+| Pilihan tukar | Potongan yang sama berlaku untuk kombinasi mana pun |
+| Masa berlaku | Opsional (`endsAt`, `YYYY-MM-DD`, sampai akhir hari WIB). Kosong = tanpa batas |
+| Potongan ≥ total satu paket | **Tidak diberlakukan sama sekali**, bukan dijepit ke nol — panel admin menandainya merah |
+| Jumlah paket 2 | Potongan × 2 |
+
+**Kenapa nominal, bukan harga jadi.** Harga jadi yang dibekukan membuat HNS
+rugi diam-diam saat komponen naik, atau menjual paket lebih mahal dari harga
+normalnya saat komponen turun. Potongan nominal tidak pernah menghasilkan
+keduanya.
+
+**Kenapa ini tidak melanggar CLAUDE.md §2.7.** Yang dilarang adalah harga yang
+dikarang kode. Potongan ini data yang ditulis staff, sama kedudukannya dengan
+`salePrice`, dan pengecualiannya dicatat di §2.7 sendiri. Syaratnya dijaga:
+**satu rumus** (`lib/pc-prebuild/discount.ts`) untuk semua pemakai.
+
+| Tempat | Lewat |
+|---|---|
+| Kartu `/pc-prebuild` (dinilai terhadap `minTotal` pada paket bercabang) | `packagePrice()` |
+| Halaman paket & bilah aksi | `selectionPrice()` |
+| Lembar cetak PDF | `selectionPrice()` |
+| Keranjang, panel keranjang, `/checkout` | `groupDiscount()` → `applicablePrebuildDiscount()` |
+| Pesan WhatsApp | `prepareCheckoutWhatsApp` → `applicablePrebuildDiscount()` |
+
+Masa berlaku dinilai **server** (`resolve.ts` → `activeDiscount`, dan
+`prepareCheckoutWhatsApp` dengan jamnya sendiri). Klien tidak menilai tanggal,
+supaya halaman dan keranjang tidak pernah berbeda pendapat soal "masih berlaku".
+
+`CartBundleRef.discount` di localStorage hanyalah angka tampilan sampai katalog
+dibaca — kedudukannya sama dengan `CartItem.price`. Yang menentukan isi pesan
+CS dibaca server dari konfigurasi (lihat `docs/05-data-fetching.md` §13).
+
+---
+
+## 13. Lembar spesifikasi PDF (17 September 2026)
+
+Tombol **Bagikan PDF** di halaman paket membuka
+`/pc-prebuild/<id>/print?pick=…` di tab baru. Halaman itu memanggil dialog cetak
+browser; pelanggan memilih "Simpan sebagai PDF" lalu membagikan berkasnya dari
+perangkatnya sendiri.
+
+**Mekanismenya sengaja sama dengan quotation `/build-pc/print`** — halaman
+Tailwind yang dicetak browser, bukan PDF yang dibuat server. Keputusan pemilik
+produk: desainnya tetap Tailwind, tanpa dependency baru. Konsekuensi yang
+diterima:
+
+- Berkasnya dibuat di perangkat pelanggan, bukan disimpan HNS. Tidak ada cache
+  PDF yang harus dibuat ulang saat harga atau komponen berubah — setiap kali
+  tombolnya ditekan, halamannya membaca katalog segar.
+- Web tidak bisa membagikan berkas yang baru diunduh; itu dikerjakan dari
+  menu unduhan/berkas di HP.
+
+Bedanya dengan quotation Build PC:
+
+| | `/build-pc/print` | `/pc-prebuild/<id>/print` |
+|---|---|---|
+| Dicatat `recordPcBuildQuote` / nomor verifikasi | ya | **tidak** — brosur, bukan penawaran kasir |
+| Harga per komponen | ikut sakelar `showItemPrices` | **tidak pernah** — hanya harga paket (§11) |
+| Tata letak | tabel komponen | foto + harga kiri, nama + ringkasan + grid komponen kanan, performa selebar halaman |
+
+**Satu tata letak untuk semua perangkat.** Tidak ada kelas responsif di dalam
+lembar; ia dirender selebar A4 di layar mana pun. PDF dari HP identik dengan PDF
+dari PC. Di layar sempit pratinjaunya digulir menyamping.
+
+**Satu atau dua halaman, ditentukan dari JUMLAH isi — bukan dibiarkan mengalir.**
+Lembar satu halaman pas untuk 10 komponen + 8 game dengan sisa ±3mm. Satu
+tambahan saja melempar kaki halaman sendirian ke halaman 2, jadi pemisahnya
+dipilih di depan (`tataLetak` di `print/page.tsx`):
+
+| Isi | Halaman 1 | Halaman 2 |
+|---|---|---|
+| ≤ 10 komponen dan ≤ 8 game | semuanya | — |
+| lebih dari itu, ≤ 16 komponen | foto, harga, komponen, ringkasan performa, S&K | tabel FPS |
+| > 16 komponen | foto, harga, komponen, S&K | seluruh blok performa |
+
+Diuji 17 Sep 2026 dengan 10/8, 14/12, dan 18/8 — ketiganya rapi. Halaman 1
+selalu berakhir dengan S&K supaya tetap utuh kalau hanya halaman itu yang
+dikirim. Halaman 2 membawa pita nama paket sendiri.
+
+Di bawah harga tercetak **"Harga berlaku per <hari, tanggal>"** — tanggal lembar
+dibuat, karena berkas PDF-nya tidak ikut berubah sesudahnya.
+
+**Performa.** Hanya `performancePublic`, sama seperti halaman paket. Tabelnya
+seluruh matriks 3 resolusi × 3 setelan per game. Karena analisis hanya berlaku
+untuk susunan bawaan (§9), lembar yang dicetak dengan pilihan tukar non-bawaan
+menuliskannya terang-terangan.
+
+**Warna dan CMYK.** Browser selalu membuat PDF RGB; tidak ada CSS yang bisa
+memaksa CMYK. Yang dikerjakan: seluruh warna lembar datang dari
+`lib/print/ink.ts`, palet yang dipilih supaya konversi driver printer ke CMYK
+bersih — di dalam gamut, kanal tegas, abu-abu netral. Warna layar yang menyala
+(biru `#2166de`) sengaja tidak dipakai di lembar cetak. Palet yang sama kini
+dipakai `/build-pc/print`.
+
+**`<thead>` tidak dipakai** di tabel FPS: aturan cetak global memberi `thead th`
+padding 12mm untuk tabel quotation yang bersambung antar halaman.

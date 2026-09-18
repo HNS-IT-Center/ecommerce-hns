@@ -11,6 +11,7 @@ import {
 } from "@/lib/api/stock-display"
 import type { PcBuilderStepConfig } from "@/lib/pc-builder/config"
 import { collectPresetProductIds, type PcPrebuildPreset } from "@/lib/pc-prebuild/config"
+import { isPrebuildDiscountActive, type PrebuildDiscount } from "@/lib/pc-prebuild/discount"
 import {
   isPerformanceStale,
   isPerformanceVisible,
@@ -118,6 +119,16 @@ export type ResolvedPrebuildPreset = {
    * Sama dengan `total` kalau paketnya tidak punya barang bercabang.
    */
   minTotal: number
+  /** Potongan paket apa adanya, termasuk yang sudah lewat masa berlakunya — untuk panel admin. */
+  discount: PrebuildDiscount | null
+  /**
+   * Potongan yang SEDANG berlaku menurut tanggal (Rp per paket), 0 kalau tidak ada.
+   *
+   * Belum dibandingkan dengan total: total bergantung pada pilihan tukar yang
+   * dipilih pelanggan, jadi penjaga "potongan ≥ total" dijalankan di tempat
+   * total itu diketahui — lewat `applicablePrebuildDiscount`.
+   */
+  activeDiscount: number
   /** Barang yang SELURUH pilihannya hilang dari katalog. */
   missingCount: number
   /** Barang yang produknya ada tapi stoknya kosong. */
@@ -279,6 +290,7 @@ export async function resolvePrebuildPresets(
     stockDisplayMode
   )
   const namaStep = new Map(steps.map((step) => [step.id, step.name]))
+  const sekarang = Date.now()
 
   return presets.map((preset) => {
     const slots: ResolvedPrebuildSlot[] = preset.slots.map((slot) => {
@@ -336,6 +348,8 @@ export async function resolvePrebuildPresets(
         if (kandidat.length === 0) return jumlah
         return jumlah + Math.min(...kandidat.map((k) => hargaBaris(k.product, k.quantity)))
       }, 0),
+      discount: preset.discount ?? null,
+      activeDiscount: isPrebuildDiscountActive(preset.discount, sekarang) ? preset.discount.amount : 0,
       missingCount: semuaItem.filter((item) => item.effective === null).length,
       outOfStockCount: semuaItem.filter(
         (item) => item.effective !== null && item.effective.stock <= 0

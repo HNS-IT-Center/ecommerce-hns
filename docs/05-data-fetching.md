@@ -634,6 +634,32 @@ keterangan paket.
 `bundleName`, `bundleQuantity` — dan ketiganya HANYA memengaruhi cara pesan
 disusun.
 
+### Potongan paket (17 September 2026)
+
+Satu pengecualian atas "paket tidak punya jalur harga sendiri": potongan
+nominal yang ditetapkan staff per paket (`docs/11-pc-prebuild.md` §12).
+
+- `CheckoutLineInput` bertambah `bundlePresetId` (opsional). Ia HANYA dipakai
+  mencari paketnya di `PC_PREBUILD_CONFIG`; besar potongan **tidak pernah**
+  diterima dari klien. Tanpa bidang ini, id paket dibaca dari awalan
+  `bundleKey` (`<presetId>|…`) — keranjang lama tetap bekerja.
+- `prepareCheckoutWhatsApp` membaca konfigurasi paket hanya kalau ada baris
+  paket, menilai masa berlaku dengan jam server, lalu mengurangkan potongan
+  dari total blok SETELAH seluruh komponennya terkumpul.
+- Hasilnya bertambah `bundleDiscountByKey` (Rp per SATU paket, dikunci
+  `bundleKey`). `/cart`, panel keranjang, dan `/checkout` memakainya untuk
+  menggantikan `CartBundleRef.discount` yang tersimpan — pola yang sama dengan
+  `unitPriceByCartItemId` menggantikan `CartItem.price`.
+- Penjaga "potongan ≥ total satu paket tidak berlaku" dijalankan dua sisi lewat
+  `applicablePrebuildDiscount`: server di `prepareCheckoutWhatsApp`, klien di
+  `groupDiscount()` (`lib/cart/grouping.ts`). Satu rumus, dua pemanggil.
+- Pesan WhatsApp menyebut harga normal dan potongannya terang-terangan di blok
+  paket, supaya CS yang menjumlahkan komponen di kasir tahu asal selisihnya.
+- `/checkout` membandingkan total katalog dengan total tersimpan lewat
+  `groupsTotal(groups, (i) => i.price)`, bukan lagi `getSelectedTotalPrice()` —
+  yang terakhir tidak tahu soal potongan paket dan akan selalu menyatakan
+  "total disesuaikan".
+
 ### Paket yang komponennya hilang TIDAK dikirim, seluruhnya
 
 Kalau satu komponen sudah ditarik dari katalog, **seluruh paketnya** ditahan —
@@ -1529,3 +1555,28 @@ bilahnya dimatikan sebelum dinyalakan dan tetap merayap.
 
 Berlaku untuk tautan unduhan mana pun yang ditambahkan nanti, bukan cuma yang
 ini.
+
+## 22. `getFooterStores()` — alamat toko di footer (17 September 2026)
+
+Footer menampilkan nama, alamat, dan tautan Google Maps tiap cabang. Datanya dari
+tabel `stores` lewat `getFooterStores()` di `lib/api/stores.ts`, bukan konstanta —
+supaya footer, `/stores`, dan `/contact` membaca sumber yang sama dan staff cukup
+mengubahnya di `/admin/toko`.
+
+### Kenapa fungsi terpisah dari `getActiveStores()`
+
+Footer dirender di **setiap** halaman. `getActiveStores()` tidak di-cache (halaman
+pemakainya sudah ISR), jadi memakainya di footer berarti satu query tambahan per
+render di halaman dinamis. `getFooterStores()` dibungkus `unstable_cache` dengan
+tag `STORES_CACHE_TAG` (`"stores"`) dan `revalidate: 3600` sebagai jaring pengaman.
+
+Kolom yang dipilih hanya `id`, `name`, `address`, `mapsUrl`: hasil `unstable_cache`
+diserialisasi ke JSON, dan `latitude`/`longitude` (Decimal) tidak selamat melewatinya.
+
+### Pembuangan cache
+
+`revalidateStorePages()` di `app/admin/(panel)/toko/actions.ts` sekarang juga
+memanggil `revalidateTag(STORES_CACHE_TAG, "max")`. Halaman ISR yang merender
+footer ikut segar lewat tag itu — tidak perlu (dan tidak mungkin) mendaftar
+`revalidatePath` untuk setiap halaman. Aksi baru yang mengubah tabel `stores`
+wajib lewat fungsi itu juga.

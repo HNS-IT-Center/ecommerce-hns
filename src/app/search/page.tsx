@@ -146,7 +146,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const activeFilterCount = countActiveShopFilters(resolvedParams)
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-page">
       <Header />
       <Breadcrumb
         items={[

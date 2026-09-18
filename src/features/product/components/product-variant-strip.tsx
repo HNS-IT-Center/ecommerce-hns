@@ -142,7 +142,7 @@ export function ProductVariantStrip({
                    miring — foto yang cuma diredupkan masih terbaca sebagai
                    pilihan yang sah di layar kecil. */
                 className={cn(
-                  "relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-background drop-shadow-sm transition-all",
+                  "relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-white drop-shadow-sm transition-all",
                   isUnavailable
                     ? "cursor-not-allowed opacity-40 ring-1 ring-border"
                     : isActive

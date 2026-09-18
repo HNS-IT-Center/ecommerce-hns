@@ -24,7 +24,7 @@ export default async function ContactPage() {
   )
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-page">
       <Header />
       <main className="flex-1">
         {/* Title Section */}

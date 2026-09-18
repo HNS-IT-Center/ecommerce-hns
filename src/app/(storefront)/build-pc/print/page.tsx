@@ -8,38 +8,9 @@ import { recordPcBuildQuote } from "@/lib/api/pc-build-quotes"
 import { buildVariationLabel } from "@/lib/utils/variation"
 import { env } from "@/config/env"
 import { resolveSiteUrl } from "@/lib/utils/site-url"
-import { PrintClientComponent } from "./print-client-component"
-
-/**
- * `6282169703377` → `+62 821-6970-3377`. Nomor di env disimpan polos (dipakai
- * apa adanya oleh wa.me), jadi format bacanya dibuat di sini khusus untuk
- * dicetak: 3 digit awal, lalu blok 4-an, sisanya digabung di blok terakhir.
- */
-function formatWhatsAppNumber(raw: string): string {
-  const digits = raw.replace(/\D/g, "")
-  if (!digits) return raw
-
-  const local = digits.replace(/^62/, "").replace(/^0/, "")
-  if (local.length < 6) return `+62 ${local}`
-
-  const blocks = [local.slice(0, 3), local.slice(3, 7), local.slice(7)].filter(Boolean)
-  return `+62 ${blocks.join("-")}`
-}
-
-/**
- * Palet cetak. Nilai-nilai ini dipilih supaya konversi ke CMYK oleh driver
- * printer/PDF menghasilkan warna pekat tanpa "hijau kotor" atau abu-abu bernoda:
- * setiap warna sengaja memakai kanal RGB yang murni/ekstrem.
- *
- * - INK_NAVY  ≈ C100 M85 Y30 K25  (biru korporat, tanpa campuran merah berlebih)
- * - INK_RED   ≈ C0  M100 Y100 K0  (merah proses, aman untuk harga)
- * - INK_BLACK ≈ K100              (teks utama; hitam murni, bukan rich black)
- */
-const INK_NAVY = "#0d2959"
-const INK_RED = "#d81f26"
-const INK_BLACK = "#000000"
-const INK_GRAY = "#6b7280"
-const INK_HAIRLINE = "#d4d4d4"
+import { formatWhatsAppNumber } from "@/lib/utils/whatsapp-number"
+import { INK_BLACK, INK_GRAY, INK_HAIRLINE, INK_NAVY, INK_RED } from "@/lib/print/ink"
+import { PrintClientComponent } from "@/components/print/print-client-component"
 
 export const metadata = {
   title: "Quotation Rakitan PC",

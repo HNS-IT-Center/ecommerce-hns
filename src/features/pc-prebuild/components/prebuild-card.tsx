@@ -15,6 +15,8 @@ import {
   type PrebuildFpsResolution,
 } from "@/lib/pc-prebuild/performance"
 import { formatRupiah } from "@/lib/utils"
+
+import { packagePrice } from "../lib/selection"
 import { ProductImage } from "@/components/ui/product-image"
 
 import { COMPONENT_ROLE_ICONS } from "../lib/component-icons"
@@ -103,6 +105,10 @@ export function PrebuildCard({ view, games }: Props) {
     router.push(href)
   }
 
+  // Kartu paket bercabang berlabel "mulai dari", jadi potongannya dinilai
+  // terhadap kombinasi termurah — angka yang memang sedang ditampilkan.
+  const harga = packagePrice(view, view.branchingCount > 0 ? view.minTotal : view.total)
+
   return (
     // Hover-nya sengaja mencolok: kartu ini padat isi, dan tanpa perubahan yang
     // jelas tidak ada yang menandai bahwa seluruh kartunya memang bisa ditekan.
@@ -144,8 +150,13 @@ export function PrebuildCard({ view, games }: Props) {
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
               {view.branchingCount > 0 ? "Mulai dari" : "Harga paket"}
             </p>
+            {harga.discount > 0 && (
+              <p className="truncate text-xs text-muted-foreground line-through">
+                {formatRupiah(harga.normal)}
+              </p>
+            )}
             <p className="truncate text-lg font-extrabold text-sale-red">
-              {formatRupiah(view.branchingCount > 0 ? view.minTotal : view.total)}
+              {formatRupiah(harga.final)}
             </p>
           </div>
 
@@ -203,7 +214,7 @@ export function PrebuildCard({ view, games }: Props) {
 function SisiKomponen({ view, onOpen }: { view: PrebuildView; onOpen: () => void }) {
   return (
     <div onClick={onOpen} className="flex h-full w-full shrink-0 cursor-pointer flex-col">
-      <div className="relative aspect-16/10 w-full shrink-0 overflow-hidden bg-muted">
+      <div className="relative aspect-16/10 w-full shrink-0 overflow-hidden bg-white">
         {/* Paket tanpa foto — atau yang fotonya gagal dimuat — tetap tampil
             dengan daftar komponen berikon; fiturnya tidak menunggu aset
             (docs/11-pc-prebuild.md §6). */}

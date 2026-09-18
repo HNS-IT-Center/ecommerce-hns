@@ -13,9 +13,26 @@
  */
 export type FpsTone = { bar: string; text: string }
 
+/**
+ * Tingkat FPS menurut ambang di atas. Layar memetakannya ke kelas Tailwind
+ * (`fpsTone`), lembar cetak PDF ke warna tinta — ambangnya tetap satu.
+ */
+export type FpsLevel = "high" | "smooth" | "playable" | "low"
+
+export function fpsLevel(avg: number): FpsLevel {
+  if (avg >= 100) return "high"
+  if (avg >= 60) return "smooth"
+  if (avg >= 30) return "playable"
+  return "low"
+}
+
+const TONES: Record<FpsLevel, FpsTone> = {
+  high: { bar: "bg-brand-green", text: "text-brand-green" },
+  smooth: { bar: "bg-success", text: "text-success" },
+  playable: { bar: "bg-warning", text: "text-warning" },
+  low: { bar: "bg-sale-red", text: "text-sale-red" },
+}
+
 export function fpsTone(avg: number): FpsTone {
-  if (avg >= 100) return { bar: "bg-brand-green", text: "text-brand-green" }
-  if (avg >= 60) return { bar: "bg-success", text: "text-success" }
-  if (avg >= 30) return { bar: "bg-warning", text: "text-warning" }
-  return { bar: "bg-sale-red", text: "text-sale-red" }
+  return TONES[fpsLevel(avg)]
 }

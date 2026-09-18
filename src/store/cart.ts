@@ -29,6 +29,16 @@ export type CartBundleRef = {
   unitQuantity: number
   /** Jumlah paket. Sama di semua baris milik paket yang sama. */
   quantity: number
+  /**
+   * Potongan paket (Rp per paket) yang TAMPIL saat paket dimasukkan. Sama di
+   * semua baris milik paket yang sama.
+   *
+   * Sama kedudukannya dengan `CartItem.price`: angka tampilan sampai katalog
+   * dibaca ulang. Yang berlaku saat memesan dibaca server dari konfigurasi
+   * paket (`prepareCheckoutWhatsApp` → `bundleDiscountByKey`), jadi menyunting
+   * angka ini lewat devtools tidak mengubah apa pun yang diterima CS.
+   */
+  discount?: number
 }
 
 export interface CartItem {

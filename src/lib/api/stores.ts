@@ -11,6 +11,7 @@
  * konvensi yang sama seperti modul kategori: pembersihan cache milik lapisan
  * action, supaya fungsi di sini tetap bisa dipakai dari script.
  */
+import { unstable_cache } from "next/cache";
 import { getPrisma } from "@/lib/prisma/client";
 import type { Store } from "@prisma/client";
 import {
@@ -99,6 +100,36 @@ export async function getActiveStores(): Promise<StoreWithHours[]> {
     include: { hours: true },
   });
   return rows.map(withHours);
+}
+
+export const STORES_CACHE_TAG = "stores";
+
+export type FooterStore = Pick<Store, "id" | "name" | "address" | "mapsUrl">;
+
+/**
+ * Alamat toko untuk footer.
+ *
+ * Terpisah dari `getActiveStores` karena footer dirender di SETIAP halaman.
+ * Tanpa `unstable_cache`, setiap render halaman — termasuk halaman yang dinamis —
+ * menambah satu query ke MariaDB hanya untuk teks yang berubah beberapa kali
+ * setahun. Tag-nya dibuang oleh `revalidateStorePages()` di aksi admin, jadi
+ * perubahan alamat tetap tampil seketika; `revalidate` hanya jaring pengaman.
+ *
+ * Hanya empat kolom yang dipilih: hasil `unstable_cache` diserialisasi ke JSON,
+ * dan `latitude`/`longitude` (Decimal) tidak selamat melewatinya.
+ */
+export async function getFooterStores(): Promise<FooterStore[]> {
+  const fetcher = unstable_cache(
+    () =>
+      getPrisma().store.findMany({
+        where: { deletedAt: null },
+        orderBy: { sortOrder: "asc" },
+        select: { id: true, name: true, address: true, mapsUrl: true },
+      }),
+    ["footer-stores"],
+    { revalidate: 3600, tags: [STORES_CACHE_TAG] },
+  );
+  return fetcher();
 }
 
 /**

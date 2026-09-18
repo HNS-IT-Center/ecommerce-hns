@@ -6,6 +6,11 @@ import {
 } from "@/lib/api/woocommerce/cart-pricing";
 import { getActiveStores } from "@/lib/api/stores";
 import { normalizePhone } from "@/features/stores/lib/maps";
+import { getPcPrebuildConfig } from "@/lib/pc-prebuild/config";
+import {
+  applicablePrebuildDiscount,
+  isPrebuildDiscountActive,
+} from "@/lib/pc-prebuild/discount";
 
 /**
  * Menyiapkan pesan WhatsApp untuk isi keranjang.
@@ -61,6 +66,16 @@ export type PrepareCheckoutResult =
       unitPriceByCartItemId: Record<string, number>;
       /** Id baris keranjang yang produknya sudah tidak terbit. */
       unavailableCartItemIds: string[];
+      /**
+       * Potongan paket PC Prebuild yang sedang berlaku, Rp per SATU paket,
+       * dikunci `bundleKey`. 0 = tidak ada atau sudah lewat masa berlakunya.
+       *
+       * Dibaca dari konfigurasi paket, BUKAN dari angka yang dikirim klien —
+       * sama perlakuannya dengan `unitPriceByCartItemId`. Penjaga "potongan ≥
+       * total" dijalankan penerimanya lewat rumus yang sama
+       * (`lib/cart/grouping.ts` → `groupDiscount`).
+       */
+      bundleDiscountByKey: Record<string, number>;
       /** Harga yang berubah sejak halaman dimuat. Kosong = tidak ada yang berubah. */
       changes: PriceChange[];
       /** True kalau pesan diringkas karena terlalu panjang. */
@@ -103,6 +118,11 @@ export type CheckoutLineInput = CartLineRequest & {
    */
   bundleKey?: string;
   bundleName?: string;
+  /**
+   * Id paket di `PC_PREBUILD_CONFIG`. Hanya dipakai membaca POTONGAN paketnya
+   * dari konfigurasi — besar potongannya tidak pernah diterima dari klien.
+   */
+  bundlePresetId?: string;
   /** Jumlah paket, untuk keterangan "x2 paket" di kepala blok. */
   bundleQuantity?: number;
 };
@@ -188,7 +208,17 @@ type BarisTerkirim = {
 /** Blok pesan: satu barang lepas, atau satu paket beserta isinya. */
 type BlokPesan =
   | { kind: "item"; baris: BarisTerkirim }
-  | { kind: "bundle"; name: string; quantity: number; baris: BarisTerkirim[]; total: number };
+  | {
+      kind: "bundle";
+      key: string;
+      name: string;
+      quantity: number;
+      baris: BarisTerkirim[];
+      /** Setelah potongan paket. */
+      total: number;
+      /** Potongan untuk seluruh jumlah paket di blok ini; 0 = tidak ada. */
+      discount: number;
+    };
 
 function jumlahUnit(blok: BlokPesan[]): number {
   return blok.reduce(
@@ -216,7 +246,13 @@ function buildDetailedMessage(blok: BlokPesan[], total: number): string {
 
       const isi = b.baris.map((l) => `   - ${l.name} (x${l.quantity})`).join("\n");
       const jumlahPaket = b.quantity > 1 ? ` (${b.quantity} paket)` : "";
-      return `${i + 1}. *PAKET: ${b.name}*${jumlahPaket}\n${isi}\n   Total paket: ${rupiah(b.total)}`;
+      // Potongan disebut terang-terangan: CS yang menjumlahkan komponen di
+      // sistem kasir harus tahu dari mana selisihnya, bukan mengira salah hitung.
+      const potongan =
+        b.discount > 0
+          ? `\n   Harga normal: ${rupiah(b.total + b.discount)}\n   Potongan paket: -${rupiah(b.discount)}`
+          : "";
+      return `${i + 1}. *PAKET: ${b.name}*${jumlahPaket}\n${isi}${potongan}\n   Total paket: ${rupiah(b.total)}`;
     })
     .join("\n");
 
@@ -271,7 +307,7 @@ export async function prepareCheckoutWhatsApp(
     return { ok: false, reason: "empty" };
   }
 
-  const [cart, stores] = await Promise.all([
+  const [cart, stores, prebuildConfig] = await Promise.all([
     priceCartFromCatalog(
       input.map((l) => ({
         productId: priceBearingId(l),
@@ -281,6 +317,9 @@ export async function prepareCheckoutWhatsApp(
       "wooId",
     ),
     getActiveStores(),
+    // Hanya kalau ada paket di keranjang — keranjang biasa tidak perlu
+    // menyentuh konfigurasi paket sama sekali.
+    input.some((l) => l.bundleKey) ? getPcPrebuildConfig() : Promise.resolve(null),
   ]);
 
   if (cart.lines.length === 0) {
@@ -329,6 +368,24 @@ export async function prepareCheckoutWhatsApp(
       .map((l) => l.bundleKey as string),
   );
 
+  /**
+   * Potongan per paket menurut konfigurasi SAAT INI, dikunci `bundleKey`.
+   *
+   * Masa berlaku dinilai di sini dengan jam server — satu-satunya jam yang
+   * menentukan apa yang diterima CS. Paket yang sudah dihapus staff tidak punya
+   * potongan lagi; harganya jatuh ke harga normal, bukan ditolak.
+   */
+  const sekarang = Date.now();
+  const bundleDiscountByKey: Record<string, number> = {};
+  for (const l of input) {
+    if (!l.bundleKey || l.bundleKey in bundleDiscountByKey) continue;
+    const presetId = l.bundlePresetId ?? l.bundleKey.split("|")[0];
+    const discount = prebuildConfig?.presets.find((p) => p.id === presetId)?.discount;
+    bundleDiscountByKey[l.bundleKey] = isPrebuildDiscountActive(discount, sekarang)
+      ? discount.amount
+      : 0;
+  }
+
   const unitPriceByCartItemId: Record<string, number> = {};
   const changes: PriceChange[] = [];
   const blok: BlokPesan[] = [];
@@ -369,10 +426,12 @@ export async function prepareCheckoutWhatsApp(
       indeksPaket.set(l.bundleKey, blok.length);
       blok.push({
         kind: "bundle",
+        key: l.bundleKey,
         name: l.bundleName?.trim() || "Paket Rakitan",
         quantity: Math.max(1, Math.floor(Number(l.bundleQuantity) || 1)),
         baris: [baris],
         total: baris.lineTotal,
+        discount: 0,
       });
       continue;
     }
@@ -388,11 +447,22 @@ export async function prepareCheckoutWhatsApp(
     return { ok: false, reason: "all-unavailable" };
   }
 
+  // Potongan paket dikurangkan SETELAH seluruh komponennya terkumpul, karena
+  // penjaganya ("potongan ≥ total satu paket tidak berlaku") butuh total
+  // utuhnya. Rumusnya sama dengan `groupDiscount` di lib/cart/grouping.ts.
+  for (const b of blok) {
+    if (b.kind !== "bundle") continue;
+    const normalPerPaket = b.total / b.quantity;
+    b.discount =
+      applicablePrebuildDiscount(bundleDiscountByKey[b.key] ?? 0, normalPerPaket) * b.quantity;
+    b.total -= b.discount;
+  }
+
   const lines = blok.flatMap((b) => (b.kind === "item" ? [b.baris] : b.baris));
-  // Totalnya dihitung dari baris yang BENAR-BENAR dikirim, bukan `cart.total` —
-  // paket yang diblokir sudah tidak ikut, dan angka di layar harus sama dengan
-  // angka di pesan.
-  const total = lines.reduce((n, l) => n + l.lineTotal, 0);
+  // Totalnya dihitung dari blok yang BENAR-BENAR dikirim, bukan `cart.total` —
+  // paket yang diblokir sudah tidak ikut, potongan paket sudah dikurangkan, dan
+  // angka di layar harus sama dengan angka di pesan.
+  const total = blok.reduce((n, b) => n + (b.kind === "item" ? b.baris.lineTotal : b.total), 0);
 
   // `normalizePhone`, bukan sekadar membuang non-digit: nomor tersimpan dalam
   // bentuk lokal ("0821-6970-3377") dan wa.me menolak awalan 0 — tautannya
@@ -419,6 +489,7 @@ export async function prepareCheckoutWhatsApp(
     removedNames,
     unitPriceByCartItemId,
     unavailableCartItemIds,
+    bundleDiscountByKey,
     changes,
     summarised: perluRingkas,
   };

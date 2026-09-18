@@ -4,9 +4,11 @@ import { useCartStore, type CartItem } from "@/store/cart"
 import {
   groupCartItems,
   groupLines,
+  groupDiscount,
   groupTotal,
   groupsTotal,
   isGroupBlocked,
+  type BundleDiscountOf,
   type CartGroup,
 } from "@/lib/cart/grouping"
 import { formatRupiah } from "@/lib/utils"
@@ -63,6 +65,10 @@ export function CartView() {
 
   const unitPriceOf = (item: CartItem) => pricing?.unitPriceByCartItemId[item.id] ?? item.price
 
+  /** Potongan paket: menurut konfigurasi kalau sudah dibaca, yang tersimpan kalau belum. */
+  const discountOf: BundleDiscountOf = (group) =>
+    pricing?.bundleDiscountByKey[group.key] ?? group.discount
+
   const isUnavailable = (item: { id: string }) =>
     pricing?.unavailableCartItemIds.includes(item.id) ?? false
 
@@ -107,7 +113,7 @@ export function CartView() {
    * jadi kedua angka itu sekarang mustahil berbeda. Ia juga mengecualikan paket
    * yang ditahan — yang memang tidak ikut dikirim ke CS.
    */
-  const displayedTotal = groupsTotal(groups, unitPriceOf, takTersedia)
+  const displayedTotal = groupsTotal(groups, unitPriceOf, takTersedia, discountOf)
 
   /**
    * Barang yang belum sempat diverifikasi ke katalog — yaitu yang masuk
@@ -192,7 +198,8 @@ export function CartView() {
                   // menyatakan "perubahannya ditandai di daftar sebelah" sambil
                   // menunjuk daftar yang tidak menandai apa pun.
                   changedCount={group.lines.filter((line) => changeOf(line)).length}
-                  total={groupTotal(group, unitPriceOf)}
+                  total={groupTotal(group, unitPriceOf, discountOf)}
+                  discount={groupDiscount(group, unitPriceOf, discountOf)}
                   onQuantity={(qty) => updateBundleQuantity(group.key, qty)}
                   onRemove={() => removeBundle(group.key)}
                 />
@@ -216,7 +223,7 @@ export function CartView() {
 
       {/* Order Summary */}
       <div className="lg:col-span-4">
-        <div className="sticky top-24 rounded-xl border bg-muted/30 p-6">
+        <div className="sticky top-24 rounded-xl border bg-card p-6">
           <h2 className="text-lg font-bold">Ringkasan Belanja</h2>
 
           <div className="mt-6 space-y-4">
@@ -474,6 +481,7 @@ function BundleBlock({
   isUnavailable,
   changedCount,
   total,
+  discount,
   onQuantity,
   onRemove,
 }: {
@@ -482,7 +490,10 @@ function BundleBlock({
   isUnavailable: (item: { id: string }) => boolean
   /** Komponen yang harganya berubah sejak paket ini dimasukkan. */
   changedCount: number
+  /** Setelah potongan paket. */
   total: number
+  /** Potongan paket untuk seluruh jumlah paket; 0 = tidak ada. */
+  discount: number
   onQuantity: (quantity: number) => void
   onRemove: () => void
 }) {
@@ -490,7 +501,7 @@ function BundleBlock({
 
   return (
     <div className="p-4 sm:p-6">
-      <div className="rounded-xl border bg-muted/20">
+      <div className="rounded-xl border bg-card">
         <div className="flex flex-wrap items-start justify-between gap-3 border-b p-4">
           <div className="min-w-0">
             <p className="inline-flex items-center gap-1.5 rounded-md bg-brand-green/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-brand-green">
@@ -507,7 +518,17 @@ function BundleBlock({
             <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
               Harga paket
             </p>
+            {discount > 0 && !blocked && (
+              <p className="text-xs text-muted-foreground line-through">
+                {formatRupiah(total + discount)}
+              </p>
+            )}
             <p className="text-lg font-extrabold text-sale-red">{formatRupiah(total)}</p>
+            {discount > 0 && !blocked && (
+              <p className="text-[11px] font-semibold text-brand-green">
+                Potongan paket {formatRupiah(discount)}
+              </p>
+            )}
             {changedCount > 0 && !blocked && (
               <p className="mt-0.5 text-[11px] font-semibold text-muted-foreground">
                 Harga {changedCount} komponen berubah
@@ -530,7 +551,7 @@ function BundleBlock({
         <ul className="divide-y">
           {group.lines.map((line) => (
             <li key={line.id} className="flex items-center gap-3 px-4 py-3">
-              <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border bg-background">
+              <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border bg-white">
                 <ProductImage src={line.image} alt="" fill sizes="48px" className="object-contain p-1" />
               </div>
 

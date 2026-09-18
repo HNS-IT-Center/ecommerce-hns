@@ -411,7 +411,7 @@ export function ProductInfo({
       </div>
 
       {/* QR Code */}
-      <div className="order-10 flex items-center justify-between rounded-lg border border-border bg-muted/20 p-4 md:mt-4">
+      <div className="order-10 flex items-center justify-between rounded-lg border border-border bg-card p-4 md:mt-4">
         <div className="space-y-1">
           <p className="text-sm font-semibold text-primary">Scan QR Produk</p>
           <p className="text-xs text-muted-foreground max-w-[200px]">

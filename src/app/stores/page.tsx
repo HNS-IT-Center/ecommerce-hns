@@ -59,7 +59,7 @@ export default async function StoresPage() {
   }));
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-page">
       {stores.map((store) => (
         <JsonLd
           key={store.id}

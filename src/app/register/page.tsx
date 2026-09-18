@@ -45,7 +45,7 @@ export default async function Page() {
   if (customer) redirect("/profile");
 
   return (
-    <div className="flex min-h-dvh flex-col bg-background">
+    <div className="flex min-h-dvh flex-col bg-page">
       <Header />
       {/* `items-start` di mobile, BUKAN `items-center`: form ini 6 field,
           seringkali lebih tinggi dari viewport. `items-center` pada flex
@@ -58,7 +58,7 @@ export default async function Page() {
           `pb-24` mengganjal MobileDock (fixed, 60px + safe-area) yang tidak
           ikut dihitung tinggi dokumen. */}
       <main className="flex flex-1 items-start justify-center p-4 pb-24 pt-12 sm:px-6 md:items-center md:pb-12 lg:px-8">
-        <div className="w-full max-w-sm rounded-2xl border border-border bg-background p-6 shadow-sm">
+        <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-sm">
           <h1 className="text-xl font-bold">Daftar Akun</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Untuk menyimpan rakitan PC dan melihatnya kembali kapan saja.

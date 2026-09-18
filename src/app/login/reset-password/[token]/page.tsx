@@ -11,7 +11,7 @@ export default async function Page({ params }: { params: Promise<{ token: string
   const { token } = await params;
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-page">
       <Header />
       <main className="flex flex-1 items-center justify-center p-4 py-12 sm:px-6 lg:px-8">
         <div className="w-full max-w-sm space-y-6 rounded-2xl border bg-card p-8 shadow-sm">

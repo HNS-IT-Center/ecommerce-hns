@@ -89,7 +89,7 @@ export function ProductCardBuilder({
         harus jadi SAUDARA tombol pilih-komponen, bukan anaknya. Tombol di dalam
         tombol bukan HTML yang sah, dan browser menormalisasinya dengan
         memutus struktur — klik pratinjaunya ikut memilih komponen. */}
-      <div className="relative aspect-square w-full overflow-hidden bg-secondary/50 rounded-t-xl group/image">
+      <div className="relative aspect-square w-full overflow-hidden bg-white rounded-t-xl group/image">
         <button
           type="button"
           onClick={product.stock > 0 ? onSelect : undefined}

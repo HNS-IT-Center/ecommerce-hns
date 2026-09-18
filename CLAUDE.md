@@ -86,6 +86,7 @@ Sebelum membuat komponen baru, agent WAJIB:
 
 - **DILARANG** menghitung, mengalikan, mengurangi, atau menyimulasikan harga di sisi klien — dengan alasan apa pun.
 - Satu-satunya potongan yang sah adalah `salePrice` dari katalog, yang ditetapkan staff lewat panel admin.
+- **Pengecualian tertulis (17 September 2026): potongan paket PC Prebuild.** Staff menetapkan potongan NOMINAL untuk satu paket di `/admin/pc-prebuild/<id>`, tersimpan sebagai data di `PC_PREBUILD_CONFIG`. Ia dikurangkan dari total katalog komponen lewat SATU rumus (`lib/pc-prebuild/discount.ts`) yang dipakai halaman paket, keranjang, PDF, dan server checkout. Bukan persen, bukan harga jadi, dan tidak pernah dari status login — rinciannya di `docs/11-pc-prebuild.md` §12.
 - Persentase diskon boleh dihitung, karena ia **keterangan** atas selisih dua angka katalog — bukan sumber potongannya.
 - **DILARANG** menampilkan harga yang tidak bisa diperoleh siapa pun, termasuk label seperti "Harga Member" selama mekanismenya tidak ada.
 - Harga yang masuk keranjang wajib sama persis dengan harga yang tampil di halaman produk.

@@ -106,7 +106,7 @@ export function SearchResultsDropdown({
                   index === highlightedIndex ? "bg-muted" : "hover:bg-muted"
                 )}
               >
-                <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-md bg-muted">
+                <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-md bg-white">
                   <ProductImage
                     src={product.image_url}
                     alt={product.name}

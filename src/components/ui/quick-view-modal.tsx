@@ -236,7 +236,7 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
         <div className="flex flex-col md:flex-row h-full md:h-[650px] max-h-[90vh] overflow-y-auto md:overflow-hidden">
           
           {/* Left Side - Image/Gallery */}
-          <div className="w-full md:w-[40%] p-6 md:p-8 flex items-center justify-center bg-secondary/10 relative md:sticky md:top-0 shrink-0">
+          <div className="w-full md:w-[40%] p-6 md:p-8 flex items-center justify-center bg-white relative md:sticky md:top-0 shrink-0">
              <div className="w-full max-w-md">
                 <ProductGallery images={galleryImages} videoUrl={product.video_url} />
              </div>

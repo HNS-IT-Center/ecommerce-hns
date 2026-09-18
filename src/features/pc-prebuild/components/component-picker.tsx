@@ -3,7 +3,7 @@
 import { Check, TriangleAlert } from "lucide-react"
 
 import { COMPONENT_ROLE_ICONS } from "../lib/component-icons"
-import { chosenOption, type PrebuildSelection } from "../lib/selection"
+import { chosenOption, optionId, type PrebuildSelection } from "../lib/selection"
 import type { PrebuildComponent } from "../lib/types"
 import { ProductImage } from "@/components/ui/product-image"
 
@@ -19,7 +19,8 @@ import { ProductImage } from "@/components/ui/product-image"
  *
  * ## Pilihan tukar
  *
- * Yang dikirim ke pemanggil adalah `productId`, bukan indeks pilihan
+ * Yang dikirim ke pemanggil adalah `optionId()` — id varian kalau ada — bukan
+ * indeks pilihan, dan bukan `productId` (dua varian satu produk berbagi induk)
  * (docs/11-pc-prebuild.md §5) — id itu jugalah yang ikut ke `?pick=` saat
  * pelanggan menekan "Rakit Sendiri". Indeks akan menunjuk produk lain begitu
  * staff mengurutkan ulang pilihannya di panel admin, tanpa error dan tanpa ada
@@ -33,7 +34,7 @@ import { ProductImage } from "@/components/ui/product-image"
 type Props = {
   component: PrebuildComponent
   selection: PrebuildSelection
-  onSelect: (componentKey: string, productId: number) => void
+  onSelect: (componentKey: string, optionId: number) => void
 }
 
 export function ComponentPicker({ component, selection, onSelect }: Props) {
@@ -65,7 +66,7 @@ export function ComponentPicker({ component, selection, onSelect }: Props) {
   return (
     <div className="flex flex-col rounded-xl border bg-card p-3.5">
       <div className="flex items-start gap-3">
-        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border bg-background p-1">
+        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border bg-white p-1">
           <ProductImage
             src={terpilih.image}
             alt=""
@@ -101,12 +102,13 @@ export function ComponentPicker({ component, selection, onSelect }: Props) {
           </p>
           <div className="flex flex-wrap gap-1.5">
             {component.options.map((option) => {
-              const aktif = option.productId === terpilih.productId
+              const id = optionId(option)
+              const aktif = id === optionId(terpilih)
               return (
                 <button
-                  key={option.productId}
+                  key={id}
                   type="button"
-                  onClick={() => onSelect(component.key, option.productId)}
+                  onClick={() => onSelect(component.key, id)}
                   aria-pressed={aktif}
                   className={`inline-flex max-w-full items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-left text-xs font-semibold transition-colors ${
                     aktif

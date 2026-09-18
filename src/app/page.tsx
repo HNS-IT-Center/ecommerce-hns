@@ -10,7 +10,7 @@ import { SectionSkeleton } from "@/components/ui/section-skeleton"
 
 export default function HomePage() {
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex min-h-screen flex-col bg-page">
       <Header />
       <main className="flex-1">
         <Suspense fallback={<div className="mx-auto mt-6 h-[300px] w-full max-w-7xl animate-pulse rounded-3xl bg-muted px-4 sm:h-[350px] md:h-[400px] md:px-6" />}>

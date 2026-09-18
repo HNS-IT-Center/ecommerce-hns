@@ -135,6 +135,8 @@ export function toPrebuildView(
     components,
     total: preset.total,
     minTotal: preset.minTotal,
+    discount: preset.activeDiscount,
+    discountEndsAt: preset.activeDiscount > 0 ? (preset.discount?.endsAt ?? null) : null,
     branchingCount: preset.branchingCount,
     missingCount: preset.missingCount,
     outOfStockCount: preset.outOfStockCount,
