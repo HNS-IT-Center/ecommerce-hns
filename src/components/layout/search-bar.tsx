@@ -15,9 +15,16 @@ const MIN_QUERY_LENGTH = 2
 
 interface SearchBarProps {
   className?: string
+  /**
+   * `"icon"` menampilkan tombol ikon saja, yang membuka overlay layar penuh
+   * yang sama dengan kolom biasa. Dipakai bilah atas mobile halaman produk,
+   * di mana ruangnya sudah dipakai Back, Bagikan, dan Keranjang — dan kolom
+   * yang muncul-hilang mengikuti gulungan dirasa sales membingungkan pembeli.
+   */
+  variant?: "field" | "icon"
 }
 
-export function SearchBar({ className }: SearchBarProps = {}) {
+export function SearchBar({ className, variant = "field" }: SearchBarProps = {}) {
   const [query, setQuery] = useState("")
   const [isFocused, setIsFocused] = useState(false)
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
@@ -331,6 +338,34 @@ export function SearchBar({ className }: SearchBarProps = {}) {
       )}
     </form>
   )
+
+  // Varian ikon: overlay, riwayat Back, dan pemindainya tetap milik komponen
+  // ini — tombolnya hanya pengganti kolom sebagai pintu masuk ke overlay.
+  if (variant === "icon") {
+    return (
+      <>
+        <ScannerOverlay open={isScannerOpen} onOpenChange={handleScannerOpenChange} />
+        <div className={cn("relative", className)}>
+          <button
+            type="button"
+            onClick={() => setIsMobileSearchOpen(true)}
+            aria-label="Cari produk"
+            aria-expanded={isMobileSearchOpen}
+            className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <Search className="h-5 w-5" />
+          </button>
+          {isMobileSearchOpen &&
+            createPortal(
+              <div className="fixed inset-0 z-[100] bg-background overflow-y-auto h-[100dvh] overscroll-none">
+                {renderForm()}
+              </div>,
+              document.body
+            )}
+        </div>
+      </>
+    )
+  }
 
   return (
     <>

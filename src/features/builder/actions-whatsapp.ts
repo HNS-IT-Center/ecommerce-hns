@@ -2,6 +2,8 @@
 
 import { priceCartFromCatalog } from "@/lib/api/woocommerce/cart-pricing";
 import { getActiveStores } from "@/lib/api/stores";
+import { recordPcBuildQuote } from "@/lib/api/pc-build-quotes";
+import { resolveSiteUrl } from "@/lib/utils/site-url";
 import { normalizePhone } from "@/features/stores/lib/maps";
 import { displayVariationName } from "@/lib/utils/variation";
 
@@ -83,20 +85,53 @@ export async function prepareBuildWhatsApp(
     // dengan barang mana pun di rak — dan selisih antara 1TB dan 4TB pada
     // rakitan puluhan juta bukan selisih yang bisa dibereskan di chat.
     const nama = displayVariationName(l);
-    return `- ${prefix}${nama}${qty} (${rupiah(l.lineTotal)})`;
+    // Harga per baris sengaja tidak ikut: pesan cukup membawa total, dan
+    // rinciannya (termasuk harga satuan) bisa dibuka CS lewat kode quotation.
+    return `- ${prefix}${nama}${qty}`;
   });
+
+  // Harga katalog bisa berubah kapan saja, jadi total di pesan WAJIB bertanggal.
+  // Zona waktu dikunci ke WIB (Batam): server bisa berjalan di UTC, dan pesan
+  // yang dikirim pukul 06.00 WIB tidak boleh bertanggal kemarin.
+  const tanggal = new Date().toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "Asia/Jakarta",
+  });
+  const catatanHarga =
+    `_Harga berlaku per ${tanggal} dan dapat berubah sewaktu-waktu. ` +
+    `Harga dapat dikunci dengan DP._\n\n`;
+
+  const kodeQuotation = await catatQuotation(priced.lines, stepPerId);
+
+  // Tautannya ke /verify, yang hanya bisa dibuka staff berizin `verify`.
+  // Pelanggan yang mengkliknya dialihkan ke beranda (lihat proxy.ts), jadi
+  // barisnya diberi label "untuk CS" supaya tidak terasa seperti tautan rusak.
+  // Rincian untuk pelanggan tetap ada di teks pesan itu sendiri.
+  const barisKode = kodeQuotation
+    ? `Kode quotation (untuk CS): ${kodeQuotation.code}\n${kodeQuotation.url}\n\n`
+    : "";
 
   const rinci =
     `Halo HNS IT Center, saya ingin merakit PC dengan spesifikasi berikut:\n\n` +
     `${baris.join("\n")}\n\n` +
-    `*Total: ${rupiah(priced.total)}*\n\n` +
-    `Mohon info ketersediaan barang dan biaya rakit. Terima kasih.`;
+    `*Total: ${rupiah(priced.total)}*\n` +
+    catatanHarga +
+    barisKode +
+    `Mohon info ketersediaan barang. Terima kasih.`;
 
+  // Tanpa kode, CS tidak punya apa pun untuk "dibuka" — jadi kalimatnya
+  // berbeda tergantung pencatatan quotation berhasil atau tidak.
   const ringkas =
     `Halo HNS IT Center, saya ingin merakit PC dengan ${priced.lines.length} komponen, ` +
-    `total ${rupiah(priced.total)}.\n\n` +
-    `Daftarnya terlalu panjang untuk pesan ini — mohon dibantu buka rincian ` +
-    `rakitan saya bersama CS. Terima kasih.`;
+    `total ${rupiah(priced.total)}.\n` +
+    catatanHarga +
+    (kodeQuotation
+      ? `Daftarnya terlalu panjang untuk pesan ini — rinciannya bisa dibuka CS ` +
+        `lewat kode di bawah.\n\n${barisKode}Terima kasih.`
+      : `Daftarnya terlalu panjang untuk pesan ini — mohon dibantu buka rincian ` +
+        `rakitan saya bersama CS. Terima kasih.`);
 
   const nomor = normalizePhone(cabangUtama.phone);
   const urlRinci = `https://wa.me/${nomor}?text=${encodeURIComponent(rinci)}`;
@@ -115,4 +150,46 @@ export async function prepareBuildWhatsApp(
     unavailableProductIds: priced.unavailableProductIds,
     summarised: perluRingkas,
   };
+}
+
+/**
+ * Mencatat rakitan sebagai quotation, sama seperti halaman `/build-pc/print`.
+ *
+ * Kodenya deterministik dari `productId:qty:harga` (lihat `computeContentHash`),
+ * jadi rakitan yang sama pada harga yang sama mendapat kode yang SAMA dengan
+ * PDF yang dicetak pelanggan — CS dan kasir melihat satu dokumen, bukan dua.
+ *
+ * Yang dicatat adalah hasil `priceCartFromCatalog`, yaitu angka yang persis
+ * tertulis di pesan WhatsApp. Snapshot di /verify harus cocok dengan pesan
+ * yang dipegang CS.
+ *
+ * Kegagalan TIDAK menggagalkan Konsultasi: pesan tetap terkirim, hanya tanpa
+ * kode — pola yang sama dengan halaman print.
+ */
+async function catatQuotation(
+  lines: Awaited<ReturnType<typeof priceCartFromCatalog>>["lines"],
+  stepPerId: Map<number, string>,
+): Promise<{ code: string; url: string } | null> {
+  try {
+    const [{ code }, siteUrl] = await Promise.all([
+      recordPcBuildQuote(
+        lines.map((l) => ({
+          productId: l.productId,
+          // Nama induk, bukan nama baris varian — sama dengan halaman print.
+          name: l.parentName ?? l.name,
+          parentName: l.parentName,
+          variationLabel: l.variationLabel,
+          sku: l.sku || null,
+          price: l.unitPrice,
+          quantity: l.quantity,
+          stepName: stepPerId.get(l.productId) ?? null,
+        })),
+      ),
+      resolveSiteUrl(),
+    ]);
+    return { code, url: `${siteUrl}/verify/${code}` };
+  } catch (error) {
+    console.error("[build-pc/whatsapp] gagal mencatat quotation:", error);
+    return null;
+  }
 }

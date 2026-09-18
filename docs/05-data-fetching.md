@@ -1348,6 +1348,27 @@ diberi izin `verify` secara eksplisit.
 di luar browser, dan lewat `resolveSiteUrl()` supaya tidak menjadi
 `0.0.0.0:3000` di balik proxy atau host palsu dari header `Host`.
 
+### Kode juga ikut di pesan Konsultasi WhatsApp (18 September 2026)
+
+Tombol **Konsultasi** di PC Builder (`prepareBuildWhatsApp`,
+`features/builder/actions-whatsapp.ts`) sekarang ikut memanggil
+`recordPcBuildQuote` dan menambahkan baris *"Kode quotation (untuk CS): KODE"*
+beserta tautan `/verify/KODE` ke pesan. File PDF tidak bisa dilampirkan lewat
+`wa.me` (link itu hanya mengisi teks), jadi kode inilah pengganti lampirannya.
+
+- Yang dicatat adalah hasil `priceCartFromCatalog`, yaitu angka yang persis
+  tertulis di pesan. Karena kodenya deterministik (`id:qty:harga`), rakitan
+  yang sama dengan harga yang sama mendapat kode yang SAMA dengan PDF-nya.
+- Label "untuk CS" disengaja: pelanggan yang mengklik tautannya dialihkan ke
+  beranda. Rincian untuk pelanggan tetap ada di teks pesan itu sendiri.
+- Untuk pesan versi ringkas (URL > 4000 karakter), kode inilah satu-satunya
+  jalan CS membuka rincian rakitan.
+- Kalau pencatatan gagal, pesan tetap terkirim tanpa kode, dengan pola yang
+  sama seperti halaman print.
+- Pesan hanya memuat **total**, tanpa harga per komponen. Di bawah total ada
+  catatan bahwa harga berlaku per tanggal kirim (WIB), dapat berubah
+  sewaktu-waktu, dan baru terkunci dengan DP.
+
 ### Fungsi data baru (`lib/api/pc-build-quotes.ts`)
 
 | Fungsi | Dipakai | Catatan |

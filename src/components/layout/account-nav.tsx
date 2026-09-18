@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { LayoutDashboard, LogIn, LogOut, User } from "lucide-react"
+import { FileSearch, LayoutDashboard, LogIn, LogOut, User } from "lucide-react"
 
 import {
   DropdownMenu,
@@ -140,6 +140,13 @@ export function AccountNav({ logoutAction }: AccountNavProps) {
           <DropdownMenuItem onClick={() => router.push("/admin")}>
             <LayoutDashboard className="h-4 w-4" />
             Panel Admin
+          </DropdownMenuItem>
+        )}
+        {/* Sama: hanya navigasi. `/verify` menjaga dirinya lewat `requirePageView`. */}
+        {customer.canVerify && (
+          <DropdownMenuItem onClick={() => router.push("/verify")}>
+            <FileSearch className="h-4 w-4" />
+            Verifikasi Rakitan
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />

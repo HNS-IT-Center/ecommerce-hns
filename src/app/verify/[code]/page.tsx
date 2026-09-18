@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { SearchX } from "lucide-react"
+import { ArrowLeft, SearchX } from "lucide-react"
 
 import { requirePageView } from "@/lib/auth"
 import {
@@ -154,6 +154,17 @@ export default async function VerifyQuotePage({
 
       <main className="flex-1 bg-muted/20 py-8">
         <div className="mx-auto max-w-3xl px-4 md:px-6">
+          {/* Link biasa, bukan `router.back()`: kasir sering membuka halaman ini
+              langsung dari hasil scan/URL, sehingga tidak ada riwayat untuk
+              kembali. */}
+          <Link
+            href="/verify"
+            className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Kembali ke daftar
+          </Link>
+
           <div className="rounded-2xl border border-border bg-card p-6 shadow-sm md:p-8">
             <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-5">
               <div>

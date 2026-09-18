@@ -25,6 +25,8 @@ import {
   type CustomerSessionPayload,
 } from "./customer-session"
 import { SESSION_COOKIE, isIssuedBeforeRevocation, verifySession } from "./session"
+import { bisaAkses, muatIzinUser } from "./permissions"
+import { parseAdminRole } from "./roles"
 
 export {
   CUSTOMER_SESSION_COOKIE,
@@ -46,6 +48,12 @@ export type CurrentCustomer = {
    * ke jalur harga (CLAUDE.md §2.7).
    */
   isAdmin: boolean
+  /**
+   * Sesi admin itu punya izin `verify` (view). Sama seperti `isAdmin`: HANYA
+   * untuk menampilkan tautan "Verifikasi Rakitan" di dropdown akun. Halaman
+   * `/verify` tetap menjaga dirinya sendiri lewat `requirePageView`.
+   */
+  canVerify: boolean
 }
 
 /** Payload sesi dari cookie, atau null. Tidak menyentuh database. */
@@ -61,6 +69,7 @@ const ACCOUNT_SELECT = {
   username: true,
   phoneNumber: true,
   role: true,
+  roleId: true,
   sessionsRevokedAt: true,
   passwordChangedAt: true,
 } as const
@@ -116,6 +125,17 @@ export async function getCurrentCustomer(): Promise<CurrentCustomer | null> {
   const account = customerAccount ?? adminAccount
   if (!account) return null
 
+  // Izin dihitung dari akun ADMIN (pemilik cookie admin), bukan akun yang
+  // tampil — sama dengan yang diperiksa `requirePageView` di `/verify`.
+  // Pelanggan biasa tidak memicu query izin apa pun.
+  const canVerify = adminAccount
+    ? bisaAkses(
+        await muatIzinUser({ ...adminAccount, role: parseAdminRole(adminAccount.role) }),
+        "verify",
+        "view"
+      )
+    : false
+
   // Dibentuk ulang secara eksplisit — `role` dan penanda pencabutan tidak ada
   // urusannya di luar berkas ini, dan objek ini ikut dikirim `/api/auth/me`.
   return {
@@ -125,6 +145,7 @@ export async function getCurrentCustomer(): Promise<CurrentCustomer | null> {
     username: account.username,
     phoneNumber: account.phoneNumber,
     isAdmin: adminAccount !== null,
+    canVerify,
   }
 }
 
