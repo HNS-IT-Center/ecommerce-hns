@@ -78,22 +78,15 @@ export function ProductTabs({
   // sebagai kotak kosong bermargin; sekarang tidak menyisakan jarak apa pun.
   if (tabs.length === 0) return null;
 
-  // Satu bagian saja tidak butuh UI tab — deretan tab berisi satu tombol hanya
-  // menyiratkan ada bagian lain yang bisa dibuka, padahal tidak ada. Aturan ini
-  // dulu hanya berlaku saat spesifikasi kosong; sekarang berlaku dua arah,
-  // karena deskripsi jauh lebih sering kosong daripada spesifikasi.
+  // Deretan tab tetap tampil walau hanya satu bagian yang berisi (mis. produk
+  // tanpa atribut hanya punya "Deskripsi"). Tanpa judul tab, teks deskripsi
+  // menempel di bawah galeri tanpa keterangan apa pun — pembeli tidak tahu
+  // blok itu apa. Dulu satu bagian sengaja dirender tanpa tab; diubah atas
+  // permintaan 18 September 2026.
   // `mt-6` di mobile, bukan `mt-12`: di layar ponsel blok ini menyusul tepat
   // setelah QR, dan jarak 48px di sana terbaca seperti halaman yang sudah
   // habis — pembeli berhenti menggulir sebelum sampai ke deskripsi. Desktop
   // tetap 48px karena kolomnya memang lebih lega.
-  if (tabs.length === 1) {
-    return (
-      <div className="mt-6 md:mt-12">
-        {tabs[0].id === "desc" ? descriptionContent : specContent}
-      </div>
-    );
-  }
-
   return (
     <div className="mt-6 md:mt-12">
       {/*

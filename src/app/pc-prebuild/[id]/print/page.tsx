@@ -490,7 +490,7 @@ export default async function PrebuildPrintPage({ params, searchParams }: Props)
               // Dijepit enam baris supaya ringkasan yang panjang tidak mendorong
               // performa dan kaki halaman ke lembar kedua. Teks lengkapnya ada
               // di halaman paket, satu pindaian QR dari sini.
-              <p className="mt-1 line-clamp-6 text-[9.5px] leading-snug" style={{ color: INK_GRAY }}>
+              <p className="mt-1 line-clamp-6 text-justify text-[9.5px] leading-snug hyphens-auto" style={{ color: INK_GRAY }}>
                 {view.summary}
               </p>
             )}

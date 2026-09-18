@@ -113,7 +113,7 @@ export function PrebuildDetail({ view, games }: Props) {
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight md:text-3xl">{view.name}</h1>
             {view.summary && (
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground md:text-base">
+              <p className="mt-2 text-justify text-sm leading-relaxed text-muted-foreground hyphens-auto md:text-base">
                 {view.summary}
               </p>
             )}
