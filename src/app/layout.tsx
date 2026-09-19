@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toast } from "@/components/ui/toast";
@@ -12,6 +12,8 @@ import { CS_EMAIL } from "@/lib/constants/contact";
 import { getActiveThemeCss, getThemeSettings } from "@/lib/theme/settings";
 import { ChristmasSnow } from "@/components/theme/christmas-snow";
 import NextTopLoader from "nextjs-toploader";
+import { PwaRegister } from "@/features/pwa/components/pwa-register";
+import { InstallChip } from "@/features/pwa/components/install-chip";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -75,6 +77,23 @@ export const metadata: Metadata = {
   },
   description:
     "Jual Desktop PC, Gaming PC, Laptop, PC Components, Gaming Gear, Networking, Printer, Monitor, dan aksesoris komputer di Batam. Tersedia layanan rakit PC, service, dan upgrade hardware.",
+  // PWA (docs/14-pwa.md). The manifest link is added by `app/manifest.ts`;
+  // iOS ignores the manifest's icons and title, so they are repeated here.
+  applicationName: "HNS IT Center",
+  appleWebApp: {
+    capable: true,
+    title: "HNS IT Center",
+    statusBarStyle: "default",
+  },
+  icons: {
+    apple: "/icons/apple-touch-icon.png",
+  },
+};
+
+export const viewport: Viewport = {
+  // Matches the white header, so the status bar blends into it on Android and
+  // in the installed app's title bar on desktop.
+  themeColor: "#ffffff",
 };
 
 const organizationJsonLd = {
@@ -185,7 +204,9 @@ export default async function RootLayout({
               PDF quotation (/build-pc/print). */}
           <FloatingWhatsAppButton whatsappNumber={env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER} />
           <MobileDock isChristmas={isChristmas} />
+          <InstallChip />
         </FlyToCartProvider>
+        <PwaRegister />
       </body>
     </html>
   );
