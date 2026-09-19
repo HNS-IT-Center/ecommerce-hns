@@ -177,6 +177,45 @@ export async function terapkanHargaAction(
  * Harga jual (`SP`/SRP) TIDAK bisa disentuh dari sini — §2.7 menaruhnya di
  * jalur katalog ber-audit-log.
  */
+/**
+ * Simpan HARGA JUAL satu produk web dari tab Daftar Harga.
+ *
+ * Ini kebalikan arah dari `terapkanHargaAction` yang sudah dimatikan: bukan
+ * memindahkan angka Accurate ke katalog, melainkan menetapkan harga di web —
+ * satu-satunya tempat harga ditetapkan sejak 19 September 2026 (docs/13 §1).
+ *
+ * Lewat `updateProductPriceAction`, bukan tulis langsung, karena jalur itu yang
+ * punya audit log, revalidate, penjaga Rp 1.000, dan peringatan lonjakan 50%.
+ * Menulis sendiri di sini berarti dua jalur harga yang cepat atau lambat
+ * berselisih — dan yang satu tanpa penjaga.
+ *
+ * `konfirmasiLonjakan` diteruskan apa adanya: keputusan "ya, harganya benar"
+ * milik orang di depan layar, bukan milik lapisan ini.
+ */
+export async function simpanHargaJualAction(input: {
+  wooId: number
+  hargaJual: number
+  konfirmasiLonjakan?: boolean
+}): Promise<{
+  error: string | null
+  perluKonfirmasi?: { label: string; lama: number; baru: number; persen: number }[]
+}> {
+  try {
+    await requirePermission("harga-accurate", "edit")
+  } catch {
+    return { error: "Anda tidak punya izin mengubah harga di halaman ini." }
+  }
+
+  // Harga obral sengaja `undefined`, BUKAN null: null berarti "kosongkan
+  // obralnya", dan kolom ini tidak pernah bermaksud menyentuh obral.
+  const res = await updateProductPriceAction(input.wooId, input.hargaJual, undefined, {
+    konfirmasiLonjakan: input.konfirmasiLonjakan,
+  })
+
+  revalidatePath("/admin/harga-accurate")
+  return res
+}
+
 export async function simpanHargaInternalAction(
   perubahan: PerubahanHarga[],
 ): Promise<{ hasil: HasilSimpan | null; error: string | null }> {
