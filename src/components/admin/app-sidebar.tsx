@@ -450,7 +450,6 @@ export function AppSidebar({
         <div className="px-2 mt-auto mb-2">
           <Link
             href="/"
-            target="_blank"
             className={`flex items-center gap-3 rounded-lg w-full transition-colors duration-150 text-blue-100 hover:text-white hover:bg-white/10 ${
               open ? "px-3 py-2.5" : "justify-center py-2.5"
             }`}
