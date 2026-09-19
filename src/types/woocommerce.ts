@@ -47,6 +47,14 @@ export type Product = {
   price: string;
   regular_price: string;
   sale_price: string;
+  /**
+   * Batas atas rentang harga produk bervariasi — `price` & `regular_price` induk
+   * adalah varian TERMURAH, field ini varian TERMAHAL (harga efektif dan harga
+   * normalnya). Hanya terisi untuk produk `variable` yang variannya berharga;
+   * produk lain `undefined`.
+   */
+  price_max?: string;
+  regular_price_max?: string;
   on_sale: boolean;
   date_on_sale_from_gmt: string | null;
   date_on_sale_to_gmt: string | null;

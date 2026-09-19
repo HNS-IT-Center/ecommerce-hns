@@ -105,14 +105,18 @@ export function prismaProductToWoo(prismaProduct: PrismaProductWithRelations): W
 
   let regularPrice: string;
   let salePrice: string;
+  // Batas atas rentang harga varian — lihat `price_max` di tipe `Product`.
+  let regularPriceMax: string | undefined;
+  let effectivePriceMax: string | undefined;
 
   if (variationPrices.length > 0) {
+    const effectivePrices = variationPrices.map((p) => (p.sale && p.sale > 0 ? p.sale : p.regular));
     const minRegular = Math.min(...variationPrices.map((p) => p.regular));
-    const minEffective = Math.min(
-      ...variationPrices.map((p) => (p.sale && p.sale > 0 ? p.sale : p.regular))
-    );
+    const minEffective = Math.min(...effectivePrices);
     regularPrice = String(minRegular);
     salePrice = minEffective < minRegular ? String(minEffective) : "";
+    regularPriceMax = String(Math.max(...variationPrices.map((p) => p.regular)));
+    effectivePriceMax = String(Math.max(...effectivePrices));
   } else {
     regularPrice = prismaProduct.regularPrice ? String(prismaProduct.regularPrice) : "0";
     salePrice = prismaProduct.salePrice ? String(prismaProduct.salePrice) : "";
@@ -127,6 +131,7 @@ export function prismaProductToWoo(prismaProduct: PrismaProductWithRelations): W
   const saleExpired = saleEndDate !== null && saleEndDate.getTime() <= Date.now();
   if (saleExpired) {
     salePrice = "";
+    effectivePriceMax = regularPriceMax;
   }
 
   const price = salePrice ? salePrice : regularPrice;
@@ -261,6 +266,8 @@ export function prismaProductToWoo(prismaProduct: PrismaProductWithRelations): W
     price,
     regular_price: regularPrice,
     sale_price: salePrice,
+    price_max: effectivePriceMax,
+    regular_price_max: regularPriceMax,
     on_sale: onSale,
     date_on_sale_from_gmt: null,
     date_on_sale_to_gmt: saleEndDate ? saleEndDate.toISOString() : null,

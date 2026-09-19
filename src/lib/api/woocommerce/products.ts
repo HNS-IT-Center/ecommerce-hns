@@ -34,6 +34,7 @@ function applySaleExpiry(product: Product): Product {
     sale_price: "",
     on_sale: false,
     price: product.regular_price,
+    price_max: product.regular_price_max,
   };
 }
 
@@ -1366,9 +1367,8 @@ const EXPIRE_NOW = { expire: 0 } as const;
  * 2. Tag varian tidak pernah ikut dibuang, jadi daftar varian bisa basi sampai
  *    300 detik walau produknya baru saja disunting.
  *
- * Slug ikut diterima karena halaman produk publik di-cache per slug, dan slug
- * berubah setiap kali nama produk diganti — tanpa membuang slug LAMA, halaman
- * dengan alamat sebelumnya tetap menyajikan isi usang.
+ * Slug ikut diterima karena halaman produk publik di-cache per slug. Slug tidak
+ * lagi berubah saat update (lihat `updateProduct`), jadi cukup slug produk itu.
  */
 export function invalidateProductCaches(options: {
   wooId?: number;
@@ -1554,7 +1554,19 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
       data: {
         ...(brandId !== undefined && { brandId }),
         ...(input.type !== undefined && { type: nextType }),
-        ...(input.name !== undefined && { name: input.name, slug: slugify(input.name, existing.wooId) }),
+        // Slug SENGAJA tidak ikut berubah bersama nama — ia dibuat sekali di
+        // createProduct lalu tetap selamanya, seperti permalink WooCommerce.
+        //
+        // Dulu slug dihitung ulang dari nama di setiap update. Form edit dan
+        // quick edit harga selalu mengirim `name`, jadi simpan deskripsi atau
+        // harga saja sudah memindahkan alamat produk. Alamat lama tidak dicatat
+        // di mana pun, sehingga: tab yang terbuka jadi 404 saat di-refresh,
+        // QR yang ditempel di produk toko offline mati untuk produk yang
+        // `woo_slug`-nya kosong, dan HP yang pernah menerima redirect 308 dari
+        // `woo_slug` ke slug versi sebelumnya menyimpan tujuan mati itu secara
+        // permanen. Audit 18 September 2026: 53 produk terbit sudah kehilangan
+        // alamat lamanya dengan cara ini.
+        ...(input.name !== undefined && { name: input.name }),
         ...(nextSku !== undefined && { sku: nextSku }),
         ...(input.status !== undefined && {
           status: STATUS_FROM_PARAM[input.status] ?? ProductStatus.DRAFT,
@@ -1602,10 +1614,7 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
   }, { timeout: 30000 });
 
   const result = await refetchAsWoo(updated.id);
-  // Slug lama DAN baru dibuang: mengganti nama produk mengubah slug, dan tanpa
-  // membuang yang lama, alamat sebelumnya tetap menyajikan isi usang sampai
-  // masa cache-nya habis.
-  invalidateProductCaches({ wooId: id, slugs: [existing.slug, updated.slug] });
+  invalidateProductCaches({ wooId: id, slugs: [updated.slug] });
 
   // Antre push ke WooCommerce. Dipasang di sini, bukan di server action, karena
   // SEMUA jalur perubahan produk bermuara ke fungsi ini — pemanggil keempat

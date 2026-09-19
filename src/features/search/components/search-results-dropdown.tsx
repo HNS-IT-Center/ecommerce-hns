@@ -120,7 +120,9 @@ export function SearchResultsDropdown({
                     {highlightMatch(product.name, query)}
                   </p>
                   <p className="text-sm font-semibold text-sale-red">
-                    {formatRupiah(product.price)}
+                    {product.price_max != null
+                      ? `${formatRupiah(product.price)} – ${formatRupiah(product.price_max)}`
+                      : formatRupiah(product.price)}
                   </p>
                 </div>
               </Link>
