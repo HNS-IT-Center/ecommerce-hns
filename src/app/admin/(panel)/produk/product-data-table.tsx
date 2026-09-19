@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, useTransition, useEffect, useCallback } from "react"
+import { useState, useTransition, useEffect, useCallback, useRef } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams, usePathname } from "next/navigation"
 import { ChevronDown, ChevronUp, ChevronsUpDown, Edit, Layers, Pencil, Search, Trash2, Loader2 } from "lucide-react"
 
-import { formatRupiah } from "@/lib/utils"
+import { cn, formatRupiah } from "@/lib/utils"
 import { parseRupiah } from "@/lib/utils"
 import {
   deleteProductAction,
@@ -14,6 +14,8 @@ import {
   updateProductSkuAction,
 } from "./actions"
 import { QuickEditModal } from "./quick-edit-modal"
+import { HIGHLIGHT_PARAM, formHref } from "./list-url"
+import { useToastManager } from "@/components/ui/toast"
 import type { Product, ProductCategory, ProductAttributeTaxonomy } from "@/types/woocommerce"
 import type { RootCategoryOption } from "@/lib/api/woocommerce/categories"
 import type { FlaggedVariationCounts } from "@/lib/api/woocommerce/product-health"
@@ -298,6 +300,55 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
   const accurateFilter = searchParams.get("accurate_filter") || ""
   const currentSort = searchParams.get("sort") || "date"
   const currentOrder = searchParams.get("order") || "desc"
+
+  // Sorotan produk yang baru disimpan dari form (`?highlight=<id>`).
+  const toastManager = useToastManager()
+  const highlightParam = searchParams.get(HIGHLIGHT_PARAM)
+  const [highlightedId, setHighlightedId] = useState<number | null>(null)
+  const handledHighlight = useRef<string | null>(null)
+  const highlightTimer = useRef<number | undefined>(undefined)
+
+  useEffect(() => () => window.clearTimeout(highlightTimer.current), [])
+
+  useEffect(() => {
+    if (!highlightParam || handledHighlight.current === highlightParam) return
+    handledHighlight.current = highlightParam
+
+    // Parameternya dibuang lewat history, bukan router: sorotan cukup sekali,
+    // tidak boleh muncul lagi saat halaman dimuat ulang, dan membuangnya tidak
+    // perlu merender ulang daftar dari server.
+    const params = new URLSearchParams(window.location.search)
+    params.delete(HIGHLIGHT_PARAM)
+    const qs = params.toString()
+    window.history.replaceState(null, "", qs ? `${pathname}?${qs}` : pathname)
+
+    const id = Number(highlightParam)
+    if (!products.some((product) => product.id === id)) {
+      // Wajar, bukan galat: menyunting produk sering justru mengeluarkannya
+      // dari saringan (mis. menambah gambar di saringan "belum ada gambar").
+      // Tanpa pesan ini, staff mengira simpanannya hilang.
+      toastManager.add({
+        title: "Perubahan tersimpan",
+        description: "Produk tadi tidak tampil di sini karena sudah tidak cocok dengan filter atau halaman ini.",
+        data: { variant: "success" },
+      })
+      return
+    }
+
+    // Tabel desktop dan kartu mobile sama-sama ada di DOM; gulir ke yang tampil.
+    requestAnimationFrame(() => {
+      setHighlightedId(id)
+      const target = Array.from(
+        document.querySelectorAll<HTMLElement>(`[data-product-row="${id}"]`),
+      ).find((el) => el.offsetParent !== null)
+      target?.scrollIntoView({ block: "center", behavior: "smooth" })
+    })
+    // Timer disimpan di ref, bukan dibersihkan lewat cleanup efek ini: membuang
+    // parameter di atas mengubah `searchParams`, dan cleanup-nya akan membatalkan
+    // timer sehingga sorotan tidak pernah padam.
+    window.clearTimeout(highlightTimer.current)
+    highlightTimer.current = window.setTimeout(() => setHighlightedId(null), 2500)
+  }, [highlightParam, products, pathname, toastManager])
 
   // Inline Price Edit
   const [editingPriceId, setEditingPriceId] = useState<number | null>(null)
@@ -647,7 +698,14 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
               </tr>
             )}
             {products.map((product) => (
-              <tr key={product.id} className="hover:bg-muted/20 transition-colors">
+              <tr
+                key={product.id}
+                data-product-row={product.id}
+                className={cn(
+                  "transition-colors duration-700",
+                  highlightedId === product.id ? "bg-warning/15" : "hover:bg-muted/20",
+                )}
+              >
                 <td className="px-4 py-3 align-middle">
                   <input
                     type="checkbox"
@@ -812,7 +870,7 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
                     <Tooltip>
                       <TooltipTrigger render={
                         <Link
-                          href={`/admin/produk/${product.id}`}
+                          href={formHref(product.id, searchParams.toString())}
                           className="flex items-center justify-center h-8 w-8 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
                         >
                           <Edit className="h-4 w-4" />
@@ -848,7 +906,16 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
           </div>
         )}
         {products.map((product) => (
-          <div key={product.id} className="rounded-xl border border-border bg-background p-4 shadow-sm relative flex flex-col gap-3">
+          <div
+            key={product.id}
+            data-product-row={product.id}
+            className={cn(
+              "relative flex flex-col gap-3 rounded-xl border p-4 shadow-sm transition-colors duration-700",
+              highlightedId === product.id
+                ? "border-warning bg-warning/15"
+                : "border-border bg-background",
+            )}
+          >
             <div className="flex gap-3">
               <div className="h-16 w-16 shrink-0 overflow-hidden rounded-md bg-muted border border-border relative">
                 {product.image ? (
@@ -982,7 +1049,7 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
                 <Tooltip>
                   <TooltipTrigger render={
                     <Link
-                      href={`/admin/produk/${product.id}`}
+                      href={formHref(product.id, searchParams.toString())}
                       className="flex items-center justify-center h-8 w-8 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors shadow-sm"
                     >
                       <Edit className="h-4 w-4" />

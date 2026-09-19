@@ -12,6 +12,7 @@ import { getStockDisplayMode } from "@/lib/api/stock-display"
 import { requirePageView } from "@/lib/auth"
 import { ProductDataTable } from "./product-data-table"
 import { StockDisplayToggle } from "./stock-display-toggle"
+import { formHref } from "./list-url"
 
 type Props = {
   searchParams: Promise<{
@@ -29,8 +30,9 @@ type Props = {
 
 export default async function AdminProdukPage({ searchParams }: Props) {
   await requirePageView("produk")
+  const rawParams = await searchParams
   const { q, page, sort, order, status_filter, type_filter, flag_filter, category_filter, accurate_filter } =
-    await searchParams
+    rawParams
   const currentPage = Number(page ?? 1)
   const currentSort =
     (sort === "title" || sort === "sku" || sort === "price" || sort === "date" || sort === "accurate_code")
@@ -128,7 +130,12 @@ export default async function AdminProdukPage({ searchParams }: Props) {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Produk</h1>
         <Link
-          href="/admin/produk/baru"
+          href={formHref(
+            "baru",
+            new URLSearchParams(
+              Object.entries(rawParams).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+            ).toString(),
+          )}
           className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90"
         >
           <Plus className="h-4 w-4" />
@@ -175,6 +182,7 @@ export default async function AdminProdukPage({ searchParams }: Props) {
             if (type_filter) params.set("type_filter", type_filter)
             if (flag_filter) params.set("flag_filter", flag_filter)
             if (category_filter) params.set("category_filter", category_filter)
+            if (accurate_filter) params.set("accurate_filter", accurate_filter)
             params.set("page", String(p))
             return `/admin/produk?${params.toString()}`
           }
