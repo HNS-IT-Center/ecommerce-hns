@@ -33,6 +33,24 @@ import {
  */
 
 /**
+ * Penerapan SP Accurate ke harga katalog — DIMATIKAN 19 September 2026.
+ *
+ * Tanda tunggal untuk seluruh jalur ini. UI-nya sudah diganti pemberitahuan di
+ * `./page.tsx`, tapi server action tetap bisa dipanggil langsung oleh siapa pun
+ * yang tahu namanya — menghilangkan tombol bukan mematikan fitur.
+ *
+ * Alasannya ada di `./page.tsx` (TabSinkronisasi) dan `docs/13`: harga kini
+ * ditetapkan di web, sedangkan `accurate_products.SP` beku sejak 28 Agustus
+ * 2026 karena Sheet gudang sengaja tidak memuat kolom harga. Menerapkannya
+ * menimpa harga hidup dengan angka lama.
+ *
+ * Menghidupkan kembali: ubah tanda ini jadi `true` DAN kembalikan
+ * `<HargaAccurateView />` di `./page.tsx`. Dua-duanya, supaya tidak ada jalur
+ * yang menyala tanpa disadari.
+ */
+const PENERAPAN_SP_AKTIF = false
+
+/**
  * Impor data barang dari Google Sheet ke accurate_products. Upsert yang TIDAK
  * menyentuh harga (lihat import-sheet.ts). Dipakai tombol "Import Data".
  */
@@ -84,6 +102,19 @@ export async function terapkanHargaAction(
   items: TerapkanItem[],
 ): Promise<TerapkanHasil> {
   const hasil: TerapkanHasil = { berhasil: 0, gagal: [] }
+
+  // Penjaga pertama, sebelum izin dan sebelum menyentuh apa pun: jalur ini
+  // dimatikan. Setiap baris ditolak dengan alasannya sendiri — bukan gagal
+  // senyap — supaya yang memanggilnya tahu kenapa, bukan mengira datanya kosong.
+  if (!PENERAPAN_SP_AKTIF) {
+    for (const item of items) {
+      hasil.gagal.push({
+        wooId: item.wooId,
+        alasan: "penerapan harga Accurate dimatikan — harga ditetapkan di panel web",
+      })
+    }
+    return hasil
+  }
 
   // Penjaga izin: role tanpa "edit" di halaman ini tak boleh menerapkan harga
   // (§2.7). Kalau ditolak, seluruh item gagal dengan alasan izin — bukan

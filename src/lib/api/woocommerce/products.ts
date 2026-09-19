@@ -980,6 +980,79 @@ export function tolakHargaKatalog(harga: number | null, label: string): string |
 }
 
 /**
+ * Seberapa jauh harga boleh bergeser sebelum orang dimintai konfirmasi.
+ *
+ * 0,5 berarti setengah — harga baru yang kurang dari separuh atau lebih dari
+ * satu setengah kali harga lama akan ditanya ulang.
+ *
+ * Ambangnya diukur dari kesalahan yang benar-benar terjadi, bukan dipilih
+ * karena bulat. Dari ekspor log aktivitas web (2 Juli – 9 September 2026),
+ * salah jumlah nol adalah kesalahan RUTIN, dan keenam kasusnya lolos dari
+ * penjaga Rp 1.000 kecuali satu:
+ *
+ *   15.500.000 → 1.660.000    (-89%)  HP Victus FA2716TX
+ *    8.800.000 →   900.000    (-90%)  IdeaPad Slim 14AMN8
+ *      670.000 →    70.000    (-90%)  Gamepad Rexus Ezoth
+ *      850.000 →       950    (-99%)  Processor i7 4790   ← ini saja yang kena Rp 1.000
+ *   17.300.000 → 173.000.000  (+900%) Lenovo LOQ 15IRX9
+ *   31.999.000 → 319.990.000  (+900%) VGA Zotac RTX 5080
+ *
+ * Semuanya ditemukan staff sendiri dan dikoreksi dalam hitungan menit — tapi
+ * hanya karena kebetulan ada yang melihat. Selisih terjauh yang WAJAR di log
+ * yang sama jauh di bawah ambang ini (mis. 15.600.000 → 20.800.000, +33%),
+ * jadi harga yang sah tidak akan terhalang.
+ *
+ * Ini PERINGATAN, bukan penolakan. Harga turun separuh memang terjadi — obral
+ * besar, barang display, cuci gudang — dan memblokirnya berarti staff mencari
+ * jalan lain yang tidak terpantau.
+ */
+export const AMBANG_LONJAKAN_HARGA = 0.5;
+
+/** Satu peringatan lonjakan harga, cukup untuk ditampilkan apa adanya. */
+export type LonjakanHarga = {
+  label: string;
+  lama: number;
+  baru: number;
+  /** Persen perubahan, negatif berarti turun. Dibulatkan ke bilangan bulat. */
+  persen: number;
+  pesan: string;
+};
+
+/**
+ * Periksa apakah perpindahan harga cukup jauh untuk perlu ditanyakan.
+ *
+ * Mengembalikan `null` kalau masih wajar. Harga lama `null` atau nol selalu
+ * lolos: produk yang belum pernah berharga tidak punya pembanding, dan
+ * menanyakan "berubah tak hingga persen" tidak membantu siapa pun.
+ */
+export function periksaLonjakanHarga(
+  lama: number | null,
+  baru: number | null,
+  label: string,
+): LonjakanHarga | null {
+  if (lama === null || baru === null) return null;
+  if (!Number.isFinite(lama) || !Number.isFinite(baru)) return null;
+  if (lama <= 0) return null;
+
+  const rasio = Math.abs(baru - lama) / lama;
+  if (rasio <= AMBANG_LONJAKAN_HARGA) return null;
+
+  const persen = Math.round(((baru - lama) / lama) * 100);
+  const arah = baru > lama ? "naik" : "turun";
+  return {
+    label,
+    lama,
+    baru,
+    persen,
+    pesan:
+      `${label} ${arah} ${Math.abs(persen)}% — dari Rp ${lama.toLocaleString("id-ID")} ` +
+      `menjadi Rp ${baru.toLocaleString("id-ID")}. ` +
+      `Perubahan sebesar ini sering berarti jumlah nolnya keliru. ` +
+      `Pastikan angkanya benar sebelum melanjutkan.`,
+  };
+}
+
+/**
  * `client` sengaja bisa diisi transaction client: saat membuat banyak varian
  * sekaligus, id harus dihitung dari data DI DALAM transaksi yang sedang
  * berjalan. Membacanya lewat koneksi lain akan melewatkan baris yang baru
