@@ -23,6 +23,8 @@ type BeforeInstallPromptEvent = Event & {
  */
 export type InstallMode = "prompt" | "ios" | "installed" | "unavailable"
 
+import { isStandalone } from "./display-mode"
+
 let deferredPrompt: BeforeInstallPromptEvent | null = null
 let justInstalled = false
 const listeners = new Set<() => void>()
@@ -45,11 +47,6 @@ if (typeof window !== "undefined") {
     justInstalled = true
     notify()
   })
-}
-
-function isStandalone(): boolean {
-  const nav = window.navigator as Navigator & { standalone?: boolean }
-  return window.matchMedia("(display-mode: standalone)").matches || nav.standalone === true
 }
 
 function isIos(): boolean {

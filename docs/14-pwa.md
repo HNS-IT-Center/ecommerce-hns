@@ -70,3 +70,30 @@ Firefox desktop) atau aplikasi sudah terpasang.
 - **Play Store (TWA)** lewat Bubblewrap/PWABuilder. Butuh akun Google Play
   Developer dan `/.well-known/assetlinks.json`.
 - **Push notification.** Butuh VAPID key (env var baru) dan persetujuan user.
+
+## 6. Tautan `target="_blank"` di Aplikasi Terpasang
+
+Keputusan user 19 September 2026: di aplikasi terpasang, tautan ke halaman HNS
+sendiri **tidak** membuka tab baru.
+
+Alasannya bukan sekadar kenyamanan. Tab baru keluar dari jendela aplikasi — di
+Android ke tab Chrome, di iOS ke Safari. iOS memisahkan penyimpanan aplikasi
+terpasang dari Safari, jadi pelanggan mendarat dengan **keranjang kosong dan
+status belum login**.
+
+| Jenis | Di browser | Di aplikasi terpasang |
+|---|---|---|
+| `<a target="_blank">` ke situs HNS | Tab baru (tidak berubah) | Navigasi di jendela yang sama — `StandaloneLinkHandler` |
+| `window.open` ke situs HNS | Tab baru | Jendela yang sama — **wajib** lewat `openInternal()` (`features/pwa/lib/open-internal.ts`) |
+| Tautan keluar (WhatsApp, Maps, sosial media) | Tab baru | Tetap keluar — memang harus membuka aplikasinya sendiri |
+
+Aturan untuk kode baru:
+
+- `<a target="_blank">` ke halaman internal boleh dipakai seperti biasa; pencegat
+  global menanganinya.
+- `window.open` ke halaman internal **jangan** dipanggil langsung — pakai
+  `openInternal(path)`. Pencegat tidak bisa melihat `window.open`.
+- Halaman yang dibuka dengan cara ini wajib punya jalan kembali yang terlihat
+  (lihat `PrintClientComponent`): aplikasi terpasang di iOS tidak punya tombol Back.
+- `useUnsavedChangesGuard` ikut menjaga tautan `_blank` internal saat di
+  aplikasi terpasang, karena di sana halaman memang ditinggalkan.

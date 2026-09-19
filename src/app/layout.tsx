@@ -14,6 +14,7 @@ import { ChristmasSnow } from "@/components/theme/christmas-snow";
 import NextTopLoader from "nextjs-toploader";
 import { PwaRegister } from "@/features/pwa/components/pwa-register";
 import { InstallChip } from "@/features/pwa/components/install-chip";
+import { StandaloneLinkHandler } from "@/features/pwa/components/standalone-link-handler";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -207,6 +208,7 @@ export default async function RootLayout({
           <InstallChip />
         </FlyToCartProvider>
         <PwaRegister />
+        <StandaloneLinkHandler />
       </body>
     </html>
   );

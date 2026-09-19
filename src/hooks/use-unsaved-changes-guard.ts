@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { isStandalone } from "@/features/pwa/lib/display-mode";
 
 /**
  * Peringatkan sebelum perubahan yang belum disimpan hilang.
@@ -82,7 +83,12 @@ export function useUnsavedChangesGuard(
 
       const anchor = target.closest("a[href]");
       if (!(anchor instanceof HTMLAnchorElement)) return;
-      if (anchor.target === "_blank" || anchor.hasAttribute("download")) return;
+      if (anchor.hasAttribute("download")) return;
+      // Tab baru membiarkan halaman ini tetap hidup — KECUALI di aplikasi
+      // terpasang (PWA): di sana `StandaloneLinkHandler` mengubah `_blank`
+      // internal menjadi navigasi di jendela yang sama, jadi halaman ini ikut
+      // ditinggalkan dan perubahan yang belum disimpan harus dijaga.
+      if (anchor.target === "_blank" && !isStandalone()) return;
 
       const tujuan = new URL(anchor.href, window.location.href);
 

@@ -30,6 +30,7 @@ import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Edit2, Messag
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useToastManager } from "@/components/ui/toast"
+import { openInternal } from "@/features/pwa/lib/open-internal"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { motion, AnimatePresence } from "framer-motion"
 import Stack3Icon from "@/components/icons/stack-icon"
@@ -130,6 +131,24 @@ export function DynamicBuilderView({
   const [presetPending, setPresetPending] = useState(false)
   const presetSudahDitangani = useRef(false)
   const toastManager = useToastManager()
+
+  /**
+   * Id toast merah "<langkah> belum dipilih" dari `validateRequiredSteps`.
+   *
+   * Harus ditutup begitu pelanggan memilih komponen. `<Toast limit={1}>` di
+   * root layout TIDAK membuang toast lama saat toast baru datang — base-ui
+   * hanya menandainya `limited` dan menyembunyikannya. Akibatnya toast hijau
+   * "Komponen Ditambahkan" (2 detik) menutupi toast merah sebentar, lalu begitu
+   * hijau hilang, merah yang sudah basi muncul lagi dan memberi tahu pelanggan
+   * bahwa langkah yang barusan ia isi masih kosong.
+   */
+  const missingStepToastIdRef = useRef<string | null>(null)
+
+  const dismissMissingStepToast = () => {
+    if (missingStepToastIdRef.current === null) return
+    toastManager.close(missingStepToastIdRef.current)
+    missingStepToastIdRef.current = null
+  }
 
   /**
    * Harga dibaca dari katalog begitu halaman dibuka — bukan menunggu tombol.
@@ -428,7 +447,9 @@ export function DynamicBuilderView({
 
     const [firstMissing, ...restMissing] = missingSteps
 
-    toastManager.add({
+    // Menekan Print dua kali tidak boleh menumpuk dua toast merah yang sama.
+    dismissMissingStepToast()
+    missingStepToastIdRef.current = toastManager.add({
       title: `${firstMissing.name} belum dipilih`,
       description:
         restMissing.length > 0
@@ -478,8 +499,8 @@ export function DynamicBuilderView({
       return
     }
 
-    // Navigate to the print page
-    window.open(`/build-pc/print?items=${encodeURIComponent(itemsParam)}`, '_blank')
+    // New tab in the browser; same window in the installed app (docs/14-pwa.md §6).
+    openInternal(`/build-pc/print?items=${encodeURIComponent(itemsParam)}`)
   }
 
   /**
@@ -651,6 +672,7 @@ export function DynamicBuilderView({
     }
 
     selectProduct(activeStep.id, item)
+    dismissMissingStepToast()
     toastManager.add({
       title: "Komponen Ditambahkan",
       description: `${activeStep.name}: ${variation.label}`,
@@ -694,6 +716,7 @@ export function DynamicBuilderView({
     }
 
     selectProduct(activeStep.id, product)
+    dismissMissingStepToast()
     toastManager.add({
       title: "Komponen Ditambahkan",
       description: `${activeStep.name} berhasil dipilih`,
