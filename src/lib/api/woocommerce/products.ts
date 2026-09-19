@@ -933,6 +933,54 @@ export async function bulkAssignCategory(
 export const LOCAL_WOO_ID_BASE = 900_000_000;
 
 /**
+ * Harga katalog terendah yang boleh tersimpan. Di bawah ini DITOLAK, bukan
+ * sekadar diperingatkan.
+ *
+ * Ambangnya bukan tebakan. Diukur terhadap katalog pada 18 September 2026:
+ * **nol produk** berharga di bawah Rp 1.000, dan yang paling murah Rp 5.000
+ * (Arctic MX Cleaning Wipes) — jarak lima kali lipat, jadi tidak ada barang
+ * nyata yang terhalang.
+ *
+ * Yang dihalangi adalah harga rusak. Sebagian nilai di `accurate_products`
+ * kehilangan tiga angka nol saat dibaca ("165.000" tersimpan "165"), dan
+ * delapan di antaranya menempel pada produk yang sudah tertaut. Sebelum ini,
+ * jalur penerapan harga hanya MEMPERINGATKAN — peringatan yang terlewat sekali
+ * saja sudah cukup untuk menaruh "Rp 6" di halaman produk.
+ *
+ * Angkanya sengaja sama dengan `AMBANG_HARGA_RENDAH` di `accurate/stock-db.ts`,
+ * yang dipakai menandai harga mencurigakan saat DIBACA. Keduanya menjawab
+ * pertanyaan yang sama — "angka ini masuk akal sebagai harga rupiah?" — jadi
+ * membiarkannya berbeda berarti panel memperingatkan sesuatu yang tetap boleh
+ * disimpan, atau menolak sesuatu yang tidak pernah ditandai.
+ */
+export const HARGA_KATALOG_MINIMUM = 1000;
+
+/**
+ * Periksa apakah sebuah angka boleh disimpan sebagai harga katalog.
+ *
+ * Mengembalikan alasan penolakan, atau `null` kalau lolos. Dibuat sebagai
+ * fungsi, bukan perbandingan yang ditulis ulang di tiap pemanggil, supaya
+ * pesannya seragam dan ambangnya hanya hidup di satu tempat.
+ *
+ * `null` pada `harga` berarti "tidak diisi" dan selalu lolos — mengosongkan
+ * harga obral adalah tindakan yang sah; yang dijaga di sini nilai yang ADA.
+ */
+export function tolakHargaKatalog(harga: number | null, label: string): string | null {
+  if (harga === null) return null;
+  if (!Number.isFinite(harga)) return `${label} bukan angka.`;
+  if (harga <= 0) return `${label} harus lebih dari nol.`;
+  if (harga < HARGA_KATALOG_MINIMUM) {
+    return (
+      `${label} Rp ${harga.toLocaleString("id-ID")} ditolak — di bawah batas wajar ` +
+      `Rp ${HARGA_KATALOG_MINIMUM.toLocaleString("id-ID")}. ` +
+      `Biasanya ini harga yang ribuannya terpotong (mis. 165 seharusnya 165.000). ` +
+      `Perbaiki angkanya lebih dulu.`
+    );
+  }
+  return null;
+}
+
+/**
  * `client` sengaja bisa diisi transaction client: saat membuat banyak varian
  * sekaligus, id harus dihitung dari data DI DALAM transaksi yang sedang
  * berjalan. Membacanya lewat koneksi lain akan melewatkan baris yang baru

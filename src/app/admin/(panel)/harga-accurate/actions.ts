@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { requirePermission } from "@/lib/auth"
 import { updateProductPriceAction } from "../produk/actions"
 import { buildAccuratePricePreview } from "@/lib/services/accurate-price"
+import { tolakHargaKatalog } from "@/lib/api/woocommerce/products"
 import { importDariSheet, type ImportResult } from "@/lib/api/accurate/import-sheet"
 import {
   simpanHargaInternal,
@@ -97,8 +98,15 @@ export async function terapkanHargaAction(
 
   for (const item of items) {
     // Validasi ulang di server — klien tidak dipercaya (§2.7).
-    if (!Number.isFinite(item.regularPrice) || item.regularPrice <= 0) {
-      hasil.gagal.push({ wooId: item.wooId, alasan: "harga tidak wajar" })
+    //
+    // Memakai penjaga yang sama dengan jalur tulis katalog, bukan perbandingan
+    // sendiri: `updateProductPriceAction` di bawah akan menolaknya juga, dan
+    // dua ambang yang ditulis terpisah cepat atau lambat berbeda. Yang di sini
+    // menyaring lebih awal supaya alasannya menyebut barisnya, bukan muncul
+    // sebagai galat umum setelah perjalanan ke database.
+    const tolak = tolakHargaKatalog(item.regularPrice, "Harga jual")
+    if (tolak) {
+      hasil.gagal.push({ wooId: item.wooId, alasan: tolak })
       continue
     }
 
@@ -217,6 +225,8 @@ export async function cariProdukWebAction(
 export async function tautkanKodeAction(input: {
   wooId: number
   kode: string | null
+  /** Isi `products.sku` dengan kode Accurate kalau SKU-nya masih kosong. */
+  isiSku?: boolean
 }): Promise<HasilTaut> {
   try {
     await requirePermission("harga-accurate", "edit")
@@ -229,8 +239,14 @@ export async function tautkanKodeAction(input: {
   }
 
   try {
-    const hasil = await tautkanKode(input.wooId, input.kode)
-    if (hasil.ok) revalidatePath("/admin/harga-accurate")
+    const hasil = await tautkanKode(input.wooId, input.kode, { isiSku: input.isiSku })
+    if (hasil.ok) {
+      revalidatePath("/admin/harga-accurate")
+      // Daftar produk ikut disegarkan kalau SKU-nya berubah — kolom SKU di
+      // sana dilayani cache sendiri, dan tanpa ini ia menampilkan kosong
+      // sampai entri cache-nya kedaluwarsa.
+      if (hasil.skuDiisi) revalidatePath("/admin/produk")
+    }
     return hasil
   } catch (error) {
     return {
@@ -240,20 +256,21 @@ export async function tautkanKodeAction(input: {
   }
 }
 
-/** Panjang alasan dijepit di sini supaya tidak melebihi VARCHAR(255) kolomnya. */
-const MAX_ALASAN = 255
-
 /**
  * Tandai barang Accurate sebagai tidak dijual lewat web — atau batalkan.
  *
  * Izinnya "edit", sama seperti menautkan: keduanya sama-sama menentukan isi
  * daftar kerja penautan, dan yang boleh melihat tabel belum tentu boleh
  * memutuskan barang mana yang tidak akan pernah masuk web.
+ *
+ * TIDAK menerima alasan. Isiannya sempat ada lalu dibuang atas keputusan
+ * pemilik project — satu pertanyaan ya/tidak sudah cukup, dan isian opsional
+ * yang jarang diisi hanya menambah langkah pada pekerjaan yang dilakukan
+ * berulang kali. Kolom `alasan` di `accurate_ignored` SENGAJA DIPERTAHANKAN:
+ * baris yang terlanjur ditandai lewat versi sebelumnya masih menyimpan
+ * keterangannya, dan tampilan masih menampilkannya kalau ada.
  */
-export async function abaikanKodeAction(input: {
-  kode: string
-  alasan: string | null
-}): Promise<HasilTaut> {
+export async function abaikanKodeAction(input: { kode: string }): Promise<HasilTaut> {
   let oleh = "Admin"
   try {
     const authUser = await requirePermission("harga-accurate", "edit")
@@ -267,11 +284,8 @@ export async function abaikanKodeAction(input: {
   const kode = input.kode.trim()
   if (kode === "") return { ok: false, alasan: "Kode Accurate tidak dikenali." }
 
-  const alasanBersih = input.alasan?.trim()
-  const alasan = alasanBersih ? alasanBersih.slice(0, MAX_ALASAN) : null
-
   try {
-    const hasil = await abaikanKode(kode, alasan, oleh)
+    const hasil = await abaikanKode(kode, null, oleh)
     if (hasil.ok) revalidatePath("/admin/harga-accurate")
     return hasil
   } catch (error) {
