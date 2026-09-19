@@ -35,6 +35,11 @@ export function mapWooProductToUI(
   const salePrice = woo.sale_price ? parseInt(woo.sale_price, 10) : undefined;
   const price = salePrice ?? regularPrice;
 
+  // Hanya diisi bila varian termahal memang lebih mahal dari `price` — produk
+  // bervariasi yang semua variannya sama harga tampil sebagai satu angka.
+  const parsedPriceMax = woo.price_max ? parseInt(woo.price_max, 10) : NaN;
+  const priceMax = Number.isFinite(parsedPriceMax) && parsedPriceMax > price ? parsedPriceMax : undefined;
+
   // `_member_price` dari meta WooCommerce sengaja TIDAK dibaca lagi. Angkanya
   // ditampilkan sebagai "Member: Rp X" di kartu produk, padahal tidak ada
   // mekanisme member di situs ini — harga yang tidak pernah bisa didapat siapa
@@ -48,6 +53,7 @@ export function mapWooProductToUI(
     category: categoryName,
     price,
     regular_price: regularPrice,
+    price_max: priceMax,
     on_sale: woo.on_sale,
     image_url: imageUrl,
     sold: woo.total_sales ?? 0,

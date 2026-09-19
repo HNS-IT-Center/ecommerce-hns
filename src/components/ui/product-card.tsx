@@ -27,6 +27,11 @@ export interface Product {
   category: string
   price: number
   regular_price?: number
+  /**
+   * Harga varian termahal produk bervariasi (`price` = varian termurah). Hanya
+   * terisi bila lebih besar dari `price` — keberadaannya berarti harganya rentang.
+   */
+  price_max?: number
   on_sale?: boolean
   /** `null` = produk belum punya foto; `ProductImage` menggambar placeholder-nya. */
   image_url: string | null
@@ -74,6 +79,14 @@ export function ProductCard({ product, priority = false }: ProductCardProps) {
   const discountPercent = hasDiscount
     ? Math.round((1 - product.price / product.regular_price!) * 100)
     : 0;
+
+  // Produk bervariasi berharga beda-beda cukup ditandai "Mulai" di depan harga
+  // termurah — rentang penuh "Rp X – Rp Y" turun ke dua baris di grid 2 kolom
+  // HP dan membuat tinggi kartu tidak rata. Rentang lengkapnya ada di halaman
+  // produk dan dropdown pencarian.
+  const startingFromLabel = product.price_max != null && (
+    <span className="mr-1 text-[10px] font-normal text-muted-foreground">Mulai</span>
+  );
 
   /**
    * Origin dibaca setelah hidrasi, bukan lewat `setState` di dalam effect.
@@ -269,6 +282,7 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
             {hasDiscount ? (
               <div className="flex items-baseline gap-1.5">
                 <div className="text-sm font-bold text-(--card-price)">
+                  {startingFromLabel}
                   {formatRupiah(product.price)}
                 </div>
                 <span className="rounded bg-(--card-price)/10 px-1 py-0.5 text-[9px] font-bold text-(--card-price)">
@@ -277,6 +291,7 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
               </div>
             ) : (
               <div className="text-sm font-bold text-foreground">
+                {startingFromLabel}
                 {formatRupiah(product.price)}
               </div>
             )}
