@@ -47,7 +47,7 @@ export type BarisTabelHarga = {
   /**
    * Produk web yang tertaut lewat `products.accurate_code`, atau null.
    *
-   * Permintaan pemilik project (docs/13 §8.2): barang tanpa produk web TIDAK
+   * Permintaan pemilik project (docs/13 §5): barang tanpa produk web TIDAK
    * dibuatkan draft — yang dibutuhkan cuma keterangan ada atau belum. Daftar
    * yang belum tertaut sekaligus menjadi antrean kerja penautan.
    */
