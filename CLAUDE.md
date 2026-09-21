@@ -148,6 +148,7 @@ Sebelum bekerja di area tertentu, baca dokumen terkait di folder `docs/`:
 | [`docs/11-pc-prebuild.md`](./docs/11-pc-prebuild.md) | Menyentuh paket rakitan siap pakai: `/admin/pc-prebuild`, `/pc-prebuild`, atau pemuatan preset di `/build-pc`. |
 | [`docs/14-pwa.md`](./docs/14-pwa.md) | Menyentuh `public/sw.js`, manifest, ikon aplikasi, atau tombol install. **Service worker dilarang menyimpan halaman/API** — harga basi melanggar §2.7. |
 | [`docs/15-seo.md`](./docs/15-seo.md) | Menyentuh `metadata` di layout/halaman, `sitemap.ts`, `robots.ts`, ikon situs, atau structured data. **`alternates.canonical` dilarang di layout** — ia diwarisi semua halaman.
+| [`docs/16-database-lokal-docker.md`](./docs/16-database-lokal-docker.md) | Menguji perubahan yang menyentuh database, menjalankan skrip tulis, atau mencoba migrasi. **Uji di database lokal Docker dulu, jangan di produksi** — `DATABASE_URL` menunjuk lokal, produksi disimpan sebagai `PROD_DATABASE_URL`. |
 
 ---
 

@@ -44,6 +44,17 @@ const nextConfig: NextConfig = {
         hostname: "media.hnsitcenter.com",
         pathname: "/**",
       },
+      // Bucket R2 UJI (`ecommerce-hns-dev`, domain media-dev.hnsitcenter.com).
+      // Dipakai saat bekerja dengan database lokal Docker supaya unggahan
+      // percobaan tidak menumpuk di bucket yang dilihat pelanggan —
+      // docs/16-database-lokal-docker.md §6. Entri ini ikut git dan ikut build
+      // produksi, dan itu tidak apa-apa: ia hanya MENGIZINKAN host tersebut
+      // ditampilkan `next/image`, tidak membuat satu pun URL mengarah ke sana.
+      {
+        protocol: "https",
+        hostname: "media-dev.hnsitcenter.com",
+        pathname: "/**",
+      },
       // Thumbnail video YouTube, dipakai sebagai poster slide video di galeri
       // produk (lihat `getVideoPosterUrl`). Dibatasi ke path thumbnail saja.
       {
