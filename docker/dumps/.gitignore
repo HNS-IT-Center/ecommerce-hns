@@ -1,0 +1,8 @@
+# Dump produksi mendarat di sini — JANGAN ikut git.
+#
+# Isinya katalog lengkap HNS: harga modal, stok, catatan pembelian. Tabel
+# berisi data pribadi memang sudah dikecualikan oleh scripts/tarik-data-produksi.mts,
+# tapi sisanya tetap data operasional yang tidak pantas ada di repo.
+*.sql
+*.sql.gz
+!.gitignore

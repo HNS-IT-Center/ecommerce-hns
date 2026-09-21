@@ -1,0 +1,87 @@
+# Lingkungan uji LOKAL — database MariaDB di laptop, terpisah total dari
+# produksi Hostinger. Dipakai supaya percobaan skema, skrip tulis, dan impor
+# data tidak pernah menyentuh katalog yang dipakai pelanggan.
+#
+# Nyalakan:  npm run db:up      Matikan:  npm run db:down
+# Panduan lengkap: docs/16-database-lokal-docker.md
+#
+# BERKAS INI IKUT GIT dan itu disengaja: tidak ada satu pun kredensial produksi
+# di dalamnya. Password di bawah sepele (`hns`) karena port-nya cuma dibuka ke
+# 127.0.0.1 — lihat catatan di `ports`.
+
+name: hns-dev
+
+services:
+  mariadb:
+    # Versi dipatok menyamai produksi Hostinger (diperiksa 21 September 2026:
+    # 11.8.9-MariaDB-log). Menyamakan versi berarti perilaku yang diuji di sini
+    # — collation, sql_mode, rencana query — adalah perilaku yang nanti berjalan
+    # di produksi. Kalau produksi naik versi, naikkan juga angka ini.
+    image: mariadb:11.8
+    container_name: hns-mariadb-dev
+    restart: unless-stopped
+
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: ecommerce_hns
+      MARIADB_USER: hns
+      MARIADB_PASSWORD: hns
+
+    # 127.0.0.1 di depan BUKAN hiasan: tanpa itu Docker membuka port ini ke
+    # seluruh jaringan (dan menembus Windows Firewall lewat aturannya sendiri),
+    # sehingga siapa pun yang satu WiFi dengan laptop ini bisa masuk memakai
+    # password `hns`.
+    #
+    # Port host 3307, bukan 3306, supaya tidak bentrok dengan MySQL/XAMPP yang
+    # mungkin sudah terpasang. Di dalam container tetap 3306.
+    ports:
+      - "127.0.0.1:3307:3306"
+
+    command:
+      # Seluruh kolom di skema ini utf8mb4_unicode_ci. Kalau server lokal
+      # memakai collation bawaan yang berbeda, tabel hasil `migrate deploy` ikut
+      # berbeda dan pencarian produk bisa gagal dengan "Illegal mix of
+      # collations" — persis bug yang dicatat di src/lib/prisma/client.ts.
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      # Disalin apa adanya dari produksi supaya aturan ketat/longgar yang
+      # berlaku di sana juga berlaku di sini.
+      - --sql-mode=IGNORE_SPACE,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION
+      # Impor dump katalog (±4.900 produk, ±13.000 baris gambar) menabrak batas
+      # bawaan 16M di satu-dua INSERT panjang.
+      - --max-allowed-packet=256M
+
+    volumes:
+      - mariadb-data:/var/lib/mysql
+      # Perintah yang dijalankan sekali saat volume data pertama kali dibuat.
+      - ./docker/mariadb/init:/docker-entrypoint-initdb.d:ro
+      # Tempat dump produksi mendarat, supaya bisa diimpor dari dalam container.
+      # Isinya di-gitignore.
+      - ./docker/dumps:/dumps
+
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # Pengganti phpMyAdmin untuk melihat isi tabel. Sengaja di balik profil:
+  # `npm run db:up` tidak menjalankannya, jalankan dengan
+  # `docker compose -f docker-compose.dev.yml --profile alat up -d adminer`
+  # lalu buka http://localhost:8080 (server: mariadb, user: hns, sandi: hns).
+  adminer:
+    image: adminer:5
+    container_name: hns-adminer-dev
+    restart: unless-stopped
+    profiles: ["alat"]
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: mariadb
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+volumes:
+  mariadb-data:

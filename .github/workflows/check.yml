@@ -55,6 +55,16 @@ jobs:
         # `next build` di Hostinger — CI hijau, deploy merah.
         run: npx next typegen
 
+      - name: Cek kelengkapan env
+        # MEMBLOKIR, sengaja beda dari langkah lint di bawah. Pemeriksaan ini
+        # deterministik, tidak butuh secret, dan menutup kegagalan yang paling
+        # sulit terlihat: variabel baru yang hanya diisi di .env.local penulis
+        # fiturnya, lalu tayang di produksi tanpa nilainya. Yang terjadi di
+        # server bukan error, melainkan fitur yang menyala setengah —
+        # NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY hilang berbulan-bulan dengan cara
+        # itu, dan peta toko diam-diam turun mutunya.
+        run: npm run env:cek
+
       - name: Typecheck
         run: npm run typecheck
 

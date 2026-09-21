@@ -12,6 +12,33 @@
 - Tanpa prefix → **HANYA** tersedia di server (Server Component, Route Handler, Server Action).
 
 ### 1.2 Aturan Repo
+
+**Dua berkas contoh, dua tempat berbeda:**
+
+| Berkas | Isinya | Dibaca siapa |
+|---|---|---|
+| `.env.example` | Acuan **lokal** — localhost, database Docker, bucket R2 uji | Manusia, disalin jadi `.env.local` |
+| `.env.production.example` | Daftar periksa **produksi** — nilai yang berlaku di server | Manusia, disalin ke hPanel satu per satu |
+
+Keduanya ikut git dan **tidak memuat rahasia**. Nilai produksi yang sesungguhnya
+hanya ada di hPanel Hostinger → Node.js app → Environment variables; berkas kedua
+itu daftar apa yang harus ada di sana, bukan sumber nilainya.
+
+**Variabel baru wajib didaftarkan di keduanya.** `npm run env:cek` memeriksanya
+dengan memindai `process.env.*` di seluruh `src/`, dan langkah yang sama berjalan
+di CI secara **memblokir**.
+
+Alasannya bukan kerapian. Variabel baru selalu lahir di `.env.local` orang yang
+menulis fiturnya — di sana fiturnya langsung jalan, jadi tidak ada yang
+mengingatkan bahwa produksi belum punya nilainya. `NEXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY`
+hilang dengan cara itu: dipakai sejak peta toko dibuat, tidak pernah masuk berkas
+contoh mana pun, dan peta produksi turun ke mode tanpa pin terverifikasi Google
+tanpa satu pun error muncul.
+
+Variabel yang hanya dipakai perkakas di `scripts/` (mis. `PROD_DATABASE_URL`)
+cukup — dan hanya boleh — ada di `.env.example`. Mewajibkannya di produksi berarti
+menyuruh orang mengisi nilai yang tidak pernah dibaca server.
+
 - **JANGAN PERNAH** commit file `.env.local`, `.env.production`, atau file berisi secret asli.
 - **WAJIB** commit `.env.example` dengan placeholder — jadi acuan struktur.
 - Secret production disimpan di provider hosting (Vercel Environment Variables, Docker Secrets, dsb).
