@@ -62,11 +62,13 @@ export function UsulanView({ data, q }: { data: HasilUsulan; q: string }) {
   /** Barang yang sedang ditandai tidak dijual di web. */
   const [mengabaikan, setMengabaikan] = React.useState<BarisUsulan | null>(null)
 
-  function url(ubahan: { page?: number; q?: string }) {
+  function url(ubahan: { page?: number; q?: string; keyakinan?: Keyakinan | "" }) {
     const sp = new URLSearchParams()
     sp.set("tab", "usulan")
     const cari = ubahan.q ?? q
     if (cari) sp.set("q", cari)
+    const k = ubahan.keyakinan ?? data.keyakinan
+    if (k) sp.set("keyakinan", k)
     const page = ubahan.page ?? data.page
     if (page > 1) sp.set("page", String(page))
     return `/admin/harga-accurate?${sp.toString()}`
@@ -112,16 +114,52 @@ export function UsulanView({ data, q }: { data: HasilUsulan; q: string }) {
     <div>
       <div className="rounded-xl border border-border bg-muted/30 p-4">
         <p className="text-sm">
-          <strong>{data.total.toLocaleString("id-ID")}</strong> barang Accurate belum tertaut.
+          <strong>{data.totalSemua.toLocaleString("id-ID")}</strong> barang Accurate belum tertaut.
           Mesin mengurutkan kandidat; <strong>yang memutuskan tetap Anda</strong>.
         </p>
+
+        {/* Lencana rekap SEKALIGUS penyaring: angkanya sudah di sini, jadi
+            menaruh penyaring terpisah hanya akan menampilkan angka yang sama
+            dua kali. Menekan yang sedang aktif mematikannya — tanpa itu orang
+            harus mencari tombol "semua" yang tidak jelas letaknya. */}
         <div className="mt-2 flex flex-wrap gap-2 text-xs">
-          {(["tinggi", "sedang", "rendah"] as const).map((k) => (
-            <span key={k} className={`rounded-full border px-2 py-0.5 ${KELAS_KEYAKINAN[k]}`}>
-              {LABEL_KEYAKINAN[k]}: {data.rekap[k].toLocaleString("id-ID")}
-            </span>
-          ))}
+          {(["tinggi", "sedang", "rendah"] as const).map((k) => {
+            const aktif = data.keyakinan === k
+            return (
+              <button
+                key={k}
+                type="button"
+                disabled={pending}
+                aria-pressed={aktif}
+                onClick={() =>
+                  router.replace(url({ keyakinan: aktif ? "" : k, page: 1 }))
+                }
+                className={`rounded-full border px-2.5 py-0.5 transition-colors ${KELAS_KEYAKINAN[k]} ${
+                  aktif ? "ring-2 ring-primary/40 font-semibold" : "hover:brightness-95"
+                }`}
+              >
+                {LABEL_KEYAKINAN[k]}: {data.rekap[k].toLocaleString("id-ID")}
+              </button>
+            )
+          })}
+          {data.keyakinan && (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => router.replace(url({ keyakinan: "", page: 1 }))}
+              className="rounded-full border border-border px-2.5 py-0.5 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Tampilkan semua
+            </button>
+          )}
         </div>
+
+        {data.keyakinan && (
+          <p className="mt-2 text-xs">
+            Menampilkan <strong>{data.total.toLocaleString("id-ID")}</strong> barang bertingkat{" "}
+            <strong>{LABEL_KEYAKINAN[data.keyakinan]}</strong>.
+          </p>
+        )}
         <p className="mt-2 text-[11px] text-muted-foreground">
           Diurutkan dari yang paling jelas. Kandidat benar ada di 3 teratas pada sekitar 93% kasus
           saat diuji — jadi <strong>kira-kira 1 dari 14 barang tidak punya jawaban benar di

@@ -9,7 +9,7 @@ import {
   type ArahUrut,
   type FilterTautan,
 } from "@/lib/api/accurate/price-table"
-import { listUsulanPasangan } from "@/lib/api/accurate/usulan-pasangan"
+import { isKeyakinan, listUsulanPasangan } from "@/lib/api/accurate/usulan-pasangan"
 import { TabelHargaView } from "./tabel-harga-view"
 import { ImportSheetButton } from "./import-sheet-button"
 import { UsulanView } from "./usulan-view"
@@ -64,6 +64,7 @@ export const dynamic = "force-dynamic"
 type Props = {
   searchParams: Promise<{
     tab?: string
+    keyakinan?: string
     q?: string
     kategori?: string
     brand?: string
@@ -239,6 +240,9 @@ async function TabUsulan({ searchParams }: { searchParams: Awaited<Props["search
   const data = await listUsulanPasangan({
     page: Number(searchParams.page ?? 1) || 1,
     q: searchParams.q,
+    // Nilai dari alamat divalidasi di sini; `?keyakinan=apa-saja` jatuh ke
+    // "semua", bukan menampilkan daftar kosong yang terbaca seperti habis.
+    keyakinan: isKeyakinan(searchParams.keyakinan) ? searchParams.keyakinan : "",
   })
   return <UsulanView data={data} q={searchParams.q?.trim() ?? ""} />
 }

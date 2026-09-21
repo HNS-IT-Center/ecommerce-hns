@@ -42,21 +42,37 @@ export type BarisUsulan = {
 
 export type HasilUsulan = {
   rows: BarisUsulan[]
+  /** Jumlah baris SESUDAH penyaring keyakinan diterapkan. */
   total: number
+  /** Jumlah seluruh antrean sebelum penyaring keyakinan — untuk keterangan. */
+  totalSemua: number
   page: number
   pageCount: number
   perPage: number
-  /** Jumlah per tingkat keyakinan di SELURUH antrean, bukan halaman ini. */
+  /**
+   * Jumlah per tingkat keyakinan, dihitung SEBELUM penyaring keyakinan.
+   *
+   * Sengaja begitu: angka di lencana penyaring harus tetap menunjukkan ada
+   * berapa di tiap tingkat, termasuk tingkat yang sedang tidak dipilih. Kalau
+   * ikut tersaring, memilih "Jelas" akan membuat dua lencana lain menjadi nol
+   * dan tampak seolah pekerjaannya habis.
+   */
   rekap: Record<Keyakinan, number>
+  keyakinan: Keyakinan | ""
 }
 
 const PER_PAGE = 25
 
 const URUTAN: Record<Keyakinan, number> = { tinggi: 0, sedang: 1, rendah: 2 }
 
+export function isKeyakinan(nilai: string | undefined): nilai is Keyakinan {
+  return nilai === "tinggi" || nilai === "sedang" || nilai === "rendah"
+}
+
 export async function listUsulanPasangan(opsi: {
   page?: number
   q?: string
+  keyakinan?: Keyakinan | ""
 }): Promise<HasilUsulan> {
   const prisma = getPrisma()
 
@@ -135,10 +151,24 @@ export async function listUsulanPasangan(opsi: {
     return a.namaBarang.localeCompare(b.namaBarang, "id-ID")
   })
 
-  const total = semua.length
+  // Penyaring keyakinan diterapkan SESUDAH rekap dihitung — lihat catatan pada
+  // `rekap` di atas.
+  const keyakinan = opsi.keyakinan || ""
+  const terpilih = keyakinan ? semua.filter((b) => b.keyakinan === keyakinan) : semua
+
+  const total = terpilih.length
   const pageCount = Math.max(1, Math.ceil(total / PER_PAGE))
   const page = Math.min(Math.max(1, opsi.page ?? 1), pageCount)
-  const rows = semua.slice((page - 1) * PER_PAGE, page * PER_PAGE)
+  const rows = terpilih.slice((page - 1) * PER_PAGE, page * PER_PAGE)
 
-  return { rows, total, page, pageCount, perPage: PER_PAGE, rekap }
+  return {
+    rows,
+    total,
+    totalSemua: semua.length,
+    page,
+    pageCount,
+    perPage: PER_PAGE,
+    rekap,
+    keyakinan,
+  }
 }
