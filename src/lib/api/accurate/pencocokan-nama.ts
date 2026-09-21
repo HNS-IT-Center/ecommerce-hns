@@ -209,6 +209,38 @@ export function peringkatKandidat(
  * Yang membedakan justru token varian — dan token itu sering TIDAK muncul di
  * nama Accurate sama sekali, jadi mesin memang tidak punya dasar untuk memilih.
  */
+export type Keyakinan = "tinggi" | "sedang" | "rendah"
+
+/**
+ * Seberapa yakin mesin atas kandidat teratasnya — untuk MENGURUTKAN antrean,
+ * bukan untuk memutuskan.
+ *
+ * Sengaja disusun dari hal yang bisa dijelaskan, bukan dari ambang skor: staff
+ * yang bertanya "kenapa ini di atas?" harus bisa dijawab dengan kalimat, dan
+ * "skornya 7,42" bukan kalimat. Tiga tingkat, tiga alasan:
+ *
+ *   tinggi  — kandidat teratas cocok pada kode model, dan kandidat kedua
+ *             cocok pada token yang BERBEDA. Kode model jarang dan hampir
+ *             menentukan sendirian.
+ *   sedang  — cocok pada kode model tapi kandidat-kandidatnya kembar (varian
+ *             yang sama model), ATAU tanpa kode model tapi banyak token cocok.
+ *   rendah  — sisanya, termasuk yang tidak punya kandidat sama sekali.
+ *
+ * Gunanya satu: staff menyelesaikan yang jelas lebih dulu. Konsekuensinya harus
+ * disadari — begitu yang mudah habis, yang tersisa semuanya sulit, dan antrean
+ * akan terasa berhenti maju. Itu bukan kemunduran, itu memang sisa
+ * pekerjaannya.
+ */
+export function tingkatKeyakinan(kandidat: Kandidat[]): Keyakinan {
+  if (kandidat.length === 0) return "rendah"
+  const kembar = kandidatKembar(kandidat)
+  const teratas = kandidat[0]!
+
+  if (teratas.adaKodeModel) return kembar ? "sedang" : "tinggi"
+  if (teratas.alasan.length >= 3) return "sedang"
+  return "rendah"
+}
+
 export function kandidatKembar(kandidat: Kandidat[]): boolean {
   if (kandidat.length < 2) return false
   const a = [...kandidat[0]!.alasan].sort().join("|")

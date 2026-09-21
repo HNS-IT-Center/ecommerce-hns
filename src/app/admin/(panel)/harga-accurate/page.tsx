@@ -1,3 +1,5 @@
+import Link from "next/link"
+
 import { requirePageView } from "@/lib/auth"
 import { bisaAkses } from "@/lib/auth/permissions"
 import {
@@ -7,30 +9,50 @@ import {
   type ArahUrut,
   type FilterTautan,
 } from "@/lib/api/accurate/price-table"
+import { listUsulanPasangan } from "@/lib/api/accurate/usulan-pasangan"
 import { TabelHargaView } from "./tabel-harga-view"
 import { ImportSheetButton } from "./import-sheet-button"
+import { UsulanView } from "./usulan-view"
 
 /**
- * Halaman harga Accurate — satu layar: daftar seluruh barang Accurate beserta
- * tiga harganya. SRP hanya dibaca; harga jual, modal (CP) & dealer disunting di
- * sini. Modal & dealer angka internal, tidak pernah tampil ke pelanggan.
+ * Dua tab, dua pekerjaan yang benar-benar berbeda.
  *
- * Tab kedua ("Sinkronisasi") DIHAPUS 20 September 2026. Isinya sudah cuma kotak
- * pemberitahuan sejak penerapan harga Accurate dimatikan sehari sebelumnya —
- * tab yang diklik lalu tidak menghasilkan apa pun. Mesinnya sendiri utuh:
- * `HargaAccurateView` di ./view.tsx, `terapkanHargaAction` di ./actions.ts,
- * dan penjaga `PENERAPAN_SP_AKTIF` yang menolak di sisi server. Cara
- * menghidupkannya kembali ada di docs/13 §3 — dan yang harus benar lebih dulu
- * adalah hulunya: harus ada jalur yang membuat SP Accurate menyusul harga web,
- * bukan sebaliknya.
+ * Tab "Sinkronisasi" yang lama dihapus 20 September karena isinya tidak bisa
+ * dikerjakan apa pun. Yang ini bukan pengembaliannya: kolomnya bukan harga
+ * melainkan kandidat pasangan, alasan kecocokan, dan tombol tautkan. Itu yang
+ * membenarkan sebuah tab — layar yang beda isinya, bukan baris yang sama
+ * dengan penyaring berbeda. Kalau cuma perlu "yang sudah tertaut", penyaring
+ * "Sudah ada di web" di Daftar Harga sudah melakukannya.
+ */
+const TABS = [
+  { key: "daftar", label: "Daftar Harga" },
+  { key: "usulan", label: "Usulan Pasangan" },
+] as const
+
+/**
+ * Halaman harga Accurate.
  *
- * Alamat lama `?tab=sinkronisasi` tidak lagi dibaca. Parameternya diabaikan
- * dan halaman tampil apa adanya, jadi bookmark lama tidak patah.
+ * **Daftar Harga** — seluruh barang Accurate beserta tiga harganya. SRP hanya
+ * dibaca; harga jual, modal (CP) & dealer disunting di sini. Modal & dealer
+ * angka internal, tidak pernah tampil ke pelanggan.
  *
- * Impor data dari Google Sheet TIDAK ikut mati bersama tab itu — ia sekarang
- * berdiri sendiri sebagai tombol di kepala halaman (./import-sheet-button.tsx).
- * Ia mengisi data barang, bukan harga, jadi memang tidak punya urusan dengan
- * penerapan SP yang dimatikan.
+ * **Usulan Pasangan** — antrean penautan beserta kandidat dari pencocok nama.
+ * Aturannya di docs/13 §5: mesin mengurutkan, tidak pernah memilih.
+ *
+ * Tab lama "Sinkronisasi" DIHAPUS 20 September 2026 karena isinya sudah tidak
+ * bisa dikerjakan apa pun sejak penerapan harga Accurate dimatikan sehari
+ * sebelumnya. Mesinnya utuh: `HargaAccurateView` di ./view.tsx,
+ * `terapkanHargaAction` di ./actions.ts, dan penjaga `PENERAPAN_SP_AKTIF` yang
+ * menolak di sisi server. Cara menghidupkannya ada di docs/13 §3 — dan yang
+ * harus benar lebih dulu adalah hulunya: harus ada jalur yang membuat SP
+ * Accurate menyusul harga web, bukan sebaliknya.
+ *
+ * Alamat lama `?tab=sinkronisasi` tidak dikenali dan jatuh ke Daftar Harga,
+ * jadi bookmark lama tidak patah.
+ *
+ * Impor data dari Google Sheet berdiri sendiri sebagai tombol di kepala halaman
+ * (./import-sheet-button.tsx), melayani kedua tab. Ia mengisi data barang,
+ * bukan harga — tidak punya urusan dengan penerapan SP yang dimatikan.
  */
 export const metadata = {
   title: "Update Harga",
@@ -41,6 +63,7 @@ export const dynamic = "force-dynamic"
 
 type Props = {
   searchParams: Promise<{
+    tab?: string
     q?: string
     kategori?: string
     brand?: string
@@ -62,6 +85,7 @@ export default async function HargaAccuratePage({ searchParams }: Props) {
   const bolehEditModal = bisaAkses(izin, "harga-modal", "edit")
 
   const sp = await searchParams
+  const tab = TABS.some((t) => t.key === sp.tab) ? sp.tab : "daftar"
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -88,13 +112,36 @@ export default async function HargaAccuratePage({ searchParams }: Props) {
         {bolehEdit && <ImportSheetButton />}
       </div>
 
+      <div className="mt-6 flex items-center gap-2 border-b border-border">
+        {TABS.map((t) => {
+          const aktif = tab === t.key
+          return (
+            <Link
+              key={t.key}
+              href={`/admin/harga-accurate?tab=${t.key}`}
+              className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+                aktif
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
+              }`}
+            >
+              {t.label}
+            </Link>
+          )
+        })}
+      </div>
+
       <div className="mt-6">
-        <TabDaftar
-          searchParams={sp}
-          bolehEdit={bolehEdit}
-          bolehLihatModal={bolehLihatModal}
-          bolehEditModal={bolehEditModal}
-        />
+        {tab === "usulan" ? (
+          <TabUsulan searchParams={sp} />
+        ) : (
+          <TabDaftar
+            searchParams={sp}
+            bolehEdit={bolehEdit}
+            bolehLihatModal={bolehLihatModal}
+            bolehEditModal={bolehEditModal}
+          />
+        )}
       </div>
     </div>
   )
@@ -178,4 +225,20 @@ async function TabDaftar({
       arah={arah}
     />
   )
+}
+
+/**
+ * Tab Usulan Pasangan.
+ *
+ * Izinnya sengaja TIDAK diteruskan sebagai prop: seluruh aksinya
+ * (`tautkanKodeAction`, `abaikanKodeAction`) sudah menuntut izin "edit" di sisi
+ * server. Peran yang cuma boleh melihat tetap bisa membaca antreannya — dan
+ * kalau ia menekan tombolnya, yang menolak adalah server, bukan tampilan.
+ */
+async function TabUsulan({ searchParams }: { searchParams: Awaited<Props["searchParams"]> }) {
+  const data = await listUsulanPasangan({
+    page: Number(searchParams.page ?? 1) || 1,
+    q: searchParams.q,
+  })
+  return <UsulanView data={data} q={searchParams.q?.trim() ?? ""} />
 }
