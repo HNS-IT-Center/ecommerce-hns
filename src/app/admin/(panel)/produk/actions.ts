@@ -13,7 +13,7 @@ import {
   updateProduct,
   type BulkCategoryMode,
 } from "@/lib/api/woocommerce/products"
-import { tautkanKode } from "@/lib/api/accurate/price-table"
+import { periksaKode, tautkanKode } from "@/lib/api/accurate/price-table"
 import type { BulkApplyState, BulkPreviewState } from "./state"
 import { getPrisma } from "@/lib/prisma/client"
 import { buildProductLogEntries, diffProductChanges } from "@/lib/logs/product-log"
@@ -490,6 +490,40 @@ export async function updateStockDisplayModeAction(mode: StockDisplayMode) {
  *               `db-mapper.ts`), dan `tautkanKode` mencocokkan `WHERE woo_id`.
  *               Keduanya sepakat; jangan salah satu diubah sendirian.
  */
+/**
+ * Periksa kode Accurate sebelum produknya ada — untuk formulir produk BARU.
+ *
+ * Tidak menulis apa pun, jadi izinnya cukup "view": ia hanya menjawab apakah
+ * kode yang diketik akan diterima nanti. Penautan sesungguhnya tetap lewat
+ * `tautkanKodeAccurateAction` yang menuntut izin "edit".
+ *
+ * Jawabannya sengaja menyertakan nama barang di Accurate. Kode yang sah pun
+ * bisa salah kode — nama yang muncul di bawah isian membuat staff melihat
+ * barang apa yang sebenarnya akan ditambatkan, sebelum produknya dibuat.
+ */
+export async function periksaKodeAccurateAction(input: {
+  kode: string
+}): Promise<{ ok: boolean; alasan: string | null; namaBarang: string | null }> {
+  try {
+    await requirePermission("produk", "view")
+  } catch (error) {
+    const pesan =
+      error instanceof UnauthorizedError
+        ? error.message
+        : "Anda tidak punya izin memeriksa kode Accurate."
+    return { ok: false, alasan: pesan, namaBarang: null }
+  }
+
+  try {
+    const hasil = await periksaKode(input.kode)
+    return hasil.ok
+      ? { ok: true, alasan: null, namaBarang: hasil.namaBarang }
+      : { ok: false, alasan: hasil.alasan, namaBarang: null }
+  } catch {
+    return { ok: false, alasan: "Gagal memeriksa kode Accurate.", namaBarang: null }
+  }
+}
+
 export async function tautkanKodeAccurateAction(input: {
   wooId: number
   kode: string | null
