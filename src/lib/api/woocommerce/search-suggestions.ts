@@ -25,10 +25,14 @@ const MAX_VARIANTS = 6;
 
 /**
  * Batas percobaan kueri. Tiap percobaan = satu `getProductsPaginated` (masih
- * lewat `unstable_cache`), dan ini hanya berjalan di jalur nol-hasil, jadi
- * empat sudah lebih dari cukup untuk menahan biayanya.
+ * lewat `unstable_cache`), dan ini hanya berjalan di jalur nol-hasil.
+ *
+ * Angkanya 6, bukan 4: dengan 4, urutan percobaan untuk kata kunci berfilter
+ * terpotong tepat sebelum tahap yang paling sering berhasil — "kata kunci
+ * longgar TANPA filter". Diuji dengan `?q=G614JV&maxPrice=1000000`: batas 4
+ * membuat halaman itu tidak memberi satu pun saran, padahal G614PH ada.
  */
-const MAX_ATTEMPTS = 4;
+const MAX_ATTEMPTS = 6;
 
 /**
  * Token seperti "G614JV", "RTX4060", "P2426H" — campuran huruf & angka.
