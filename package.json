@@ -16,7 +16,8 @@
     "db:logs": "docker compose -f docker-compose.dev.yml logs -f mariadb",
     "db:shell": "docker compose -f docker-compose.dev.yml exec mariadb mariadb -u hns -phns ecommerce_hns",
     "db:reset": "docker compose -f docker-compose.dev.yml down -v",
-    "db:tarik-produksi": "tsx scripts/tarik-data-produksi.mts"
+    "db:tarik-produksi": "tsx scripts/tarik-data-produksi.mts",
+    "env:cek": "tsx scripts/cek-env.mts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1101.0",

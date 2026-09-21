@@ -188,7 +188,10 @@ Setiap commit harus lolos checklist berikut:
 - [ ] Tidak ada credential/secret di dalam kode.
 - [ ] Komponen baru sudah responsive (mobile → desktop).
 - [ ] Perubahan API sudah didokumentasikan di `docs/05-data-fetching.md`.
-- [ ] Perubahan env var sudah ditambahkan di `.env.example` DAN `docs/07-environment-variables.md`.
+- [ ] Perubahan env var sudah ditambahkan di `.env.example`, `.env.production.example`, DAN
+      `docs/07-environment-variables.md`. Jalankan `npm run env:cek` — CI memblokir kalau
+      ada variabel yang dipakai kode tapi belum terdaftar. Variabel yang hanya hidup di
+      `.env.local` seseorang akan tayang tanpa nilai di produksi, dan gagalnya sering diam.
 
 ---
 
