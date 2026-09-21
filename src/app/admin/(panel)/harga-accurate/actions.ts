@@ -12,7 +12,10 @@ import {
   cariProdukWeb,
   tautkanKode,
   abaikanKode,
+  abaikanKodeMassal,
   batalkanAbaikan,
+  batalkanAbaikanMassal,
+  type HasilMassal,
   type PerubahanHarga,
   type HasilSimpan,
   type CalonProdukWeb,
@@ -385,6 +388,61 @@ export async function batalkanAbaikanAction(kode: string): Promise<HasilTaut> {
     return {
       ok: false,
       alasan: error instanceof Error ? error.message : "Gagal membatalkan penandaan.",
+    }
+  }
+}
+
+/**
+ * Tandai banyak barang sekaligus "tidak dijual di web".
+ *
+ * Mengembalikan hasil PER KODE, bukan satu ok/gagal borongan. Aksi massal yang
+ * cuma menjawab "berhasil" menyembunyikan barang yang dilewati — dan yang
+ * dilewati di sini justru yang paling perlu diketahui: barang yang masih
+ * tertaut ke produk web.
+ */
+export async function abaikanKodeMassalAction(input: {
+  kodes: string[]
+}): Promise<{ hasil: HasilMassal | null; error: string | null }> {
+  let oleh = "Admin"
+  try {
+    const authUser = await requirePermission("harga-accurate", "edit")
+    if (authUser && typeof authUser === "object" && "name" in authUser) {
+      oleh = String(authUser.name)
+    }
+  } catch {
+    return { hasil: null, error: "Anda tidak punya izin menandai barang." }
+  }
+
+  try {
+    const hasil = await abaikanKodeMassal(input.kodes, oleh)
+    if (hasil.berhasil.length > 0) revalidatePath("/admin/harga-accurate")
+    return { hasil, error: null }
+  } catch (error) {
+    return {
+      hasil: null,
+      error: error instanceof Error ? error.message : "Gagal menandai barang.",
+    }
+  }
+}
+
+/** Batalkan penandaan banyak barang sekaligus. Lihat `abaikanKodeMassalAction`. */
+export async function batalkanAbaikanMassalAction(input: {
+  kodes: string[]
+}): Promise<{ hasil: HasilMassal | null; error: string | null }> {
+  try {
+    await requirePermission("harga-accurate", "edit")
+  } catch {
+    return { hasil: null, error: "Anda tidak punya izin membatalkan penandaan." }
+  }
+
+  try {
+    const hasil = await batalkanAbaikanMassal(input.kodes)
+    if (hasil.berhasil.length > 0) revalidatePath("/admin/harga-accurate")
+    return { hasil, error: null }
+  } catch (error) {
+    return {
+      hasil: null,
+      error: error instanceof Error ? error.message : "Gagal membatalkan penandaan.",
     }
   }
 }

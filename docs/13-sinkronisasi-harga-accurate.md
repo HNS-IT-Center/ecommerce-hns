@@ -188,6 +188,29 @@ berhasil padahal harganya tidak pernah ditulis.
 Penautannya **sehat dan tidak boleh dibongkar.** Yang rusak harganya, bukan
 tautannya — dugaan "lepas saja semua tautan" sudah diperiksa dan salah.
 
+### Di mana staff menautkan
+
+| Tempat | Untuk |
+|---|---|
+| Dialog penautan di `/admin/harga-accurate` | Mengerjakan antrean dari sisi barang Accurate |
+| Quick Edit di `/admin/produk` | Menautkan produk yang sudah ada |
+| Formulir produk (`/admin/produk/baru` & edit) | **Sejak 21 September 2026** — supaya barang baru ditautkan saat dibuat, bukan menunggu dikerjakan belakangan |
+
+Ketiganya bermuara ke `tautkanKode`, jadi penjaganya sama: kodenya harus ada di
+Accurate, dan tidak boleh sudah menambat produk lain.
+
+**Formulir produk BARU menempuh urutan terbalik**, dan itu bukan pilihan:
+`tautkanKode` mencocokkan `WHERE woo_id`, sedangkan produk yang belum tersimpan
+belum punya satu pun. Jadi kodenya cuma **diperiksa** saat isian ditinggalkan
+(`periksaKode`, baca-saja), lalu ditautkan sesudah produknya tersimpan. Kalau
+penautan tetap gagal di detik terakhir, produknya tetap jadi — staff dibawa ke
+halaman edit produk itu, karena di sanalah kolomnya bisa langsung diisi ulang.
+Mengulang simpan hanya akan membuat produk kedua.
+
+`periksaKode` adalah pemeriksaan, **bukan jaminan**: antara diperiksa dan
+ditautkan, orang lain bisa memakai kode yang sama. Penjaga sesungguhnya tetap di
+`tautkanKode`.
+
 ### Penambatnya: `products.accurate_code`
 
 Kolom `@unique`, nullable. Sekali ditautkan manusia, tepat selamanya — tidak ada
@@ -243,6 +266,37 @@ ada di web, atau belum.
 Karena itu tabel Update Harga punya penanda status per baris. Gunanya dua: staff
 tahu barang mana yang percuma diurus harganya karena belum ada di katalog, dan
 daftar "belum ada di web" itu sendiri menjadi antrean kerja penautan.
+
+**Penandaan massal, sejak 21 September 2026.** Dengan antrean ribuan baris, yang
+melelahkan bukan menekan tombolnya melainkan menjawab dialog konfirmasi satu per
+satu. Tabel Update Harga sekarang punya centang per baris dan "pilih semua yang
+bisa dipilih di halaman ini", mengikuti pola yang sudah dipakai daftar produk.
+
+Empat hal yang dijaga, semuanya sengaja:
+
+- **Baris yang masih tertaut tidak bisa dicentang.** Menandai "tidak dijual di
+  web" untuk sesuatu yang sedang dijual di web adalah dua pernyataan yang
+  bertentangan — `abaikanKode` memang menolaknya, tapi mematikan centangnya
+  sejak awal mencegah orang memilih 50 baris lalu menerima laporan bahwa
+  separuhnya dilewati.
+- **Dua query untuk berapa pun jumlahnya**, bukan perulangan versi satuan. Satu
+  SELECT memvalidasi seluruh kode, satu INSERT multi-baris menulisnya. Mengulang
+  `abaikanKode` berarti 3 query per kode, dan sambungan database di Hostinger
+  bukan sumber daya yang berlimpah.
+- **Pembatalan juga massal.** Kalau menandai bisa borongan sedangkan
+  membatalkannya harus satu per satu, salah centang 200 baris berarti 200 kali
+  klik untuk membereskannya — dan orang akan membiarkannya.
+- **Batas 200 kode per aksi** (`BATAS_MASSAL`), dan yang melebihinya **ditolak
+  utuh, bukan dipotong diam-diam**. Memotong berarti sebagian pilihan orang
+  hilang tanpa ia tahu yang mana.
+
+Hasilnya dilaporkan per kode, dikelompokkan menurut sebab: "N ditandai, M
+dilewati (K — masih tertaut ke produk web)". Aksi massal yang cuma menjawab
+"berhasil" menyembunyikan justru bagian yang perlu diketahui.
+
+Diverifikasi di database uji lewat `scripts/uji-abaikan-massal.mts` — 13 uji,
+termasuk kode tertaut yang harus dilewati, duplikat dalam satu permintaan, dan
+penolakan saat melebihi batas.
 
 ### Jebakan yang harus dihadapi rancangan apa pun
 
@@ -306,13 +360,17 @@ Catatan kalau jalur Accurate dihidupkan lagi: `product_logs.product_id` menyimpa
 
 | Pekerjaan | Keterangan |
 |---|---|
-| **Kolom Harga Jual** di `/admin/harga-accurate` | SATU kolom bisa diketik (bukan dua kolom setara). Nilai Accurate muncul **hanya jika terisi DAN berbeda** — 136 barang yang nilainya kosong tidak boleh menampilkan penanda apa pun. Tulis lewat `updateProductPriceAction`. Tampilkan Modal (CP) di sebelahnya, flag visual kalau Harga Jual < Modal. Tiga berkas: `price-table.ts`, `harga-accurate/actions.ts`, `tabel-harga-view.tsx`. Nol migrasi |
 | **Lepas 229 tautan mati** | Skrip siap, uji kering dulu |
 | **Panen 35 pasang SKU** | `sku` = kode Accurate, nol ambigu. Pastikan tidak bersinggungan dengan kasus ZZ TEST |
 | **Ukur ulang laporan per kategori** | Setelah dua poin di atas |
 | **Usulan pasangan** di dialog penautan | Aturan kerasnya di §5. Uji di `u859138789_restore_uji` dulu. Ukur akurasi pakai 863 pasang SKU sebagai kunci jawaban — berapa sering kandidat benar masuk 3 teratas. Catat: kunci jawaban itu **bias** (produk ber-SKU cenderung penamaannya rapi) dan harus dibersihkan dulu dari 229 tautan mati |
 | **Pisahkan nama aksi `SYNC_PRICE`** | §6, menunggu keputusan |
-| **Kolom kode Accurate di formulir `/admin/produk`** | Supaya barang baru ditautkan saat dibuat — satu-satunya cara jumlah belum-tertaut berhenti bertambah |
+
+> **Dua baris dicoret dari daftar ini, 21 September 2026.** *Kolom Harga Jual*
+> sudah selesai di commit `4938722`, lengkap dengan penanda "harga jual di bawah
+> modal" — ia masih tertulis sebagai pekerjaan sampai hari ini, dan daftar yang
+> memuat pekerjaan selesai lama-lama tidak dipercaya seluruhnya. *Kolom kode
+> Accurate di formulir produk* selesai hari yang sama; rinciannya di §5.
 
 ### Menunggu keputusan pemilik project
 

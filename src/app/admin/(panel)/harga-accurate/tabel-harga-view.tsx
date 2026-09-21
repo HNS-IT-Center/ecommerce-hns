@@ -32,8 +32,11 @@ import {
   cariProdukWebAction,
   tautkanKodeAction,
   abaikanKodeAction,
+  abaikanKodeMassalAction,
   batalkanAbaikanAction,
+  batalkanAbaikanMassalAction,
 } from "./actions"
+import type { HasilMassal } from "@/lib/api/accurate/price-table"
 
 /** Kolom harga internal yang bisa disunting di halaman ini. */
 type Medan = "modal" | "dealer"
@@ -151,6 +154,98 @@ export function TabelHargaView({
   const [mengabaikan, setMengabaikan] = React.useState<BarisTabelHarga | null>(null)
   const [pendingAbaikan, startAbaikan] = React.useTransition()
 
+  /**
+   * Kode yang tercentang untuk aksi massal.
+   *
+   * Berkunci `kodeAccurate` — itu yang unik per baris, sedangkan satu produk web
+   * bisa muncul di lebih dari satu baris (lihat catatan `wooId` pada
+   * `lib/services/accurate-price.ts`). Berkunci produk akan membuat mencentang
+   * satu baris ikut mencentang saudaranya.
+   */
+  const [dipilih, setDipilih] = React.useState<Set<string>>(new Set())
+
+  /** Konfirmasi aksi massal yang sedang ditanyakan (null = tidak ada). */
+  const [massal, setMassal] = React.useState<"abaikan" | "batalkan" | null>(null)
+
+  /**
+   * Baris yang BOLEH dicentang: yang belum tertaut ke produk web.
+   *
+   * Barang yang sedang dijual di web tidak bisa dinyatakan "tidak dijual di
+   * web" — `abaikanKode` menolaknya. Mematikan centangnya sejak awal mencegah
+   * orang memilih 50 baris lalu menerima laporan bahwa separuhnya dilewati.
+   */
+  const bolehDipilih = React.useCallback(
+    (baris: BarisTabelHarga) => bolehEdit && baris.produkWeb === null,
+    [bolehEdit],
+  )
+
+  const barisTerpilih = React.useMemo(
+    () => rows.filter((r) => dipilih.has(r.kodeAccurate)),
+    [rows, dipilih],
+  )
+  // Dipisah karena satu seleksi melayani dua aksi yang berlawanan: yang belum
+  // ditandai bisa ditandai, yang sudah bisa dibatalkan. Jumlah di tombolnya
+  // memakai angka ini, bukan `dipilih.size`, supaya tidak menjanjikan lebih
+  // banyak dari yang akan benar-benar berubah.
+  const akanDitandai = barisTerpilih.filter((r) => r.diabaikan === null)
+  const akanDibatalkan = barisTerpilih.filter((r) => r.diabaikan !== null)
+
+  const kandidat = rows.filter(bolehDipilih)
+  const semuaTercentang = kandidat.length > 0 && kandidat.every((r) => dipilih.has(r.kodeAccurate))
+
+  function ubahCentang(kode: string) {
+    setDipilih((sebelum) => {
+      const baru = new Set(sebelum)
+      if (baru.has(kode)) baru.delete(kode)
+      else baru.add(kode)
+      return baru
+    })
+  }
+
+  function centangSemua() {
+    setDipilih(semuaTercentang ? new Set() : new Set(kandidat.map((r) => r.kodeAccurate)))
+  }
+
+  /** Rangkum hasil massal jadi satu kalimat; yang dilewati tidak disembunyikan. */
+  function rangkum(hasil: HasilMassal, kataKerja: string) {
+    const bagian = [`${hasil.berhasil.length} barang ${kataKerja}`]
+    if (hasil.dilewati.length > 0) {
+      // Sebabnya dikelompokkan, bukan didaftar satu per satu: 200 baris yang
+      // gagal karena hal yang sama tidak butuh 200 kalimat.
+      const perSebab = new Map<string, number>()
+      for (const d of hasil.dilewati) perSebab.set(d.alasan, (perSebab.get(d.alasan) ?? 0) + 1)
+      const sebab = [...perSebab.entries()].map(([alasan, n]) => `${n} — ${alasan}`).join("; ")
+      bagian.push(`${hasil.dilewati.length} dilewati (${sebab})`)
+    }
+    return `${bagian.join(", ")}.`
+  }
+
+  const jalankanMassal = React.useCallback(() => {
+    const jenis = massal
+    if (!jenis) return
+    const kodes = (jenis === "abaikan" ? akanDitandai : akanDibatalkan).map((r) => r.kodeAccurate)
+    if (kodes.length === 0) return
+
+    startAbaikan(async () => {
+      const res =
+        jenis === "abaikan"
+          ? await abaikanKodeMassalAction({ kodes })
+          : await batalkanAbaikanMassalAction({ kodes })
+
+      if (res.error || !res.hasil) {
+        setPesan(null)
+        setError(res.error ?? "Gagal menjalankan aksi massal.")
+        return
+      }
+      setError(null)
+      setPesan(
+        rangkum(res.hasil, jenis === "abaikan" ? "ditandai tidak dijual di web" : "kembali ke daftar penautan"),
+      )
+      setDipilih(new Set())
+      router.refresh()
+    })
+  }, [massal, akanDitandai, akanDibatalkan, router])
+
   const batalkanAbaikan = React.useCallback(
     (baris: BarisTabelHarga) => {
       startAbaikan(async () => {
@@ -205,6 +300,11 @@ export function TabelHargaView({
    *  perpindahan berdebounce, dan tombol Kembali tidak seharusnya menelusuri
    *  tiap potongan kata yang sempat singgah di alamat. */
   function navigasi(url: string) {
+    // Seleksi dibuang setiap kali daftarnya berpindah. Barisnya berganti tanpa
+    // terlihat, dan centang yang tertinggal dari halaman sebelumnya akan
+    // menandai barang yang sudah tidak ada di layar — orangnya menekan tombol
+    // sambil melihat baris yang lain sama sekali.
+    setDipilih(new Set())
     router.replace(url)
   }
 
@@ -406,6 +506,41 @@ export function TabelHargaView({
         </p>
       )}
 
+      {/* Bilah aksi massal — muncul hanya saat ada yang tercentang, mengikuti
+          pola yang sudah dipakai daftar produk. Dua tombol karena satu seleksi
+          melayani dua arah, dan masing-masing menyebut jumlahnya sendiri. */}
+      {dipilih.size > 0 && (
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 p-3">
+          <span className="text-sm font-medium">{dipilih.size} dipilih</span>
+          <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pendingAbaikan || akanDitandai.length === 0}
+              onClick={() => setMassal("abaikan")}
+            >
+              Tandai tidak dijual {akanDitandai.length > 0 ? `(${akanDitandai.length})` : ""}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pendingAbaikan || akanDibatalkan.length === 0}
+              onClick={() => setMassal("batalkan")}
+            >
+              Batalkan penandaan {akanDibatalkan.length > 0 ? `(${akanDibatalkan.length})` : ""}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={pendingAbaikan}
+              onClick={() => setDipilih(new Set())}
+            >
+              Bersihkan
+            </Button>
+          </div>
+        </div>
+      )}
+
       {rows.length === 0 ? (
         <p className="mt-6 rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
           Tidak ada barang yang cocok dengan pencarian ini.
@@ -418,7 +553,24 @@ export function TabelHargaView({
           <ul className="mt-4 space-y-3 lg:hidden">
             {rows.map((r) => (
               <li key={r.kodeAccurate} className="rounded-2xl border border-border bg-background p-4">
-                <Produk baris={r} />
+                <div className="flex items-start gap-3">
+                  {bolehEdit && (
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4 shrink-0 rounded border-input disabled:opacity-40"
+                      checked={dipilih.has(r.kodeAccurate)}
+                      disabled={!bolehDipilih(r)}
+                      onChange={() => ubahCentang(r.kodeAccurate)}
+                      aria-label={`Pilih ${r.namaBarang ?? r.kodeAccurate}`}
+                      title={
+                        bolehDipilih(r) ? undefined : "Masih tertaut ke produk web — lepaskan dulu"
+                      }
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <Produk baris={r} />
+                  </div>
+                </div>
                 <dl className="mt-3 space-y-2">
                   <div className="flex items-start justify-between gap-3">
                     <dt className="mt-1 shrink-0 text-xs text-muted-foreground">Harga Jual</dt>
@@ -462,6 +614,21 @@ export function TabelHargaView({
             <table className="w-full text-sm">
               <thead className="border-b border-border bg-muted/50 text-left">
                 <tr>
+                  {bolehEdit && (
+                    <th scope="col" className="w-10 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-input disabled:opacity-40"
+                        checked={semuaTercentang}
+                        disabled={kandidat.length === 0}
+                        onChange={centangSemua}
+                        // Sengaja menyebut "yang bisa dipilih", bukan "semua":
+                        // baris yang masih tertaut memang tidak ikut, dan label
+                        // "semua" akan mengaku lebih dari yang dikerjakannya.
+                        aria-label="Pilih semua barang yang bisa dipilih di halaman ini"
+                      />
+                    </th>
+                  )}
                   <KepalaUrut kolom="nama" urut={urut} arah={arah} onUrut={urutkan}>
                     Produk
                   </KepalaUrut>
@@ -487,6 +654,23 @@ export function TabelHargaView({
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.kodeAccurate} className="border-b border-border last:border-0">
+                    {bolehEdit && (
+                      <td className="px-4 py-3 align-top">
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-4 w-4 rounded border-input disabled:opacity-40"
+                          checked={dipilih.has(r.kodeAccurate)}
+                          disabled={!bolehDipilih(r)}
+                          onChange={() => ubahCentang(r.kodeAccurate)}
+                          aria-label={`Pilih ${r.namaBarang ?? r.kodeAccurate}`}
+                          title={
+                            bolehDipilih(r)
+                              ? undefined
+                              : "Masih tertaut ke produk web — lepaskan dulu"
+                          }
+                        />
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       <Produk baris={r} />
                     </td>
@@ -612,6 +796,35 @@ export function TabelHargaView({
           ) : null
         }
         onConfirm={abaikan}
+      />
+
+      {/* Konfirmasi aksi massal. Judulnya menyebut ANGKANYA, bukan "barang
+          terpilih": yang dicentang bisa saja tidak sama dengan yang diingat
+          orangnya, dan angka di judul adalah kesempatan terakhir melihatnya. */}
+      <ConfirmDialog
+        open={massal !== null}
+        onOpenChange={(open) => {
+          if (!open) setMassal(null)
+        }}
+        confirmLabel={massal === "batalkan" ? "Batalkan penandaan" : "Tandai"}
+        title={
+          massal === "batalkan"
+            ? `Kembalikan ${akanDibatalkan.length} barang ke daftar penautan?`
+            : `Tandai ${akanDitandai.length} barang tidak dijual di web?`
+        }
+        description={
+          <span className="block space-y-2 text-left">
+            <span className="block text-xs">
+              {massal === "batalkan"
+                ? "Barang-barang ini kembali muncul sebagai pekerjaan penautan yang tersisa."
+                : "Barangnya tetap ada di tabel harga dan tidak dihapus dari Accurate. Yang berubah hanya kedudukannya di daftar kerja penautan."}
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              Bisa dibalik kapan saja lewat tombol satunya.
+            </span>
+          </span>
+        }
+        onConfirm={jalankanMassal}
       />
     </div>
   )
