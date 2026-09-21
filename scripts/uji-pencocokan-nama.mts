@@ -25,45 +25,10 @@ import { config } from "dotenv"
 config({ path: ".env.local", quiet: true })
 
 const { getPrisma } = await import("../src/lib/prisma/client")
+const { tokenNama: token, berkodeModel, bangunIndeks, peringkatKandidat } = await import(
+  "../src/lib/api/accurate/pencocokan-nama"
+)
 const prisma = getPrisma()
-
-/**
- * Pecah nama jadi token.
- *
- * Tanda hubung dipertahankan DI DALAM token karena kode model memang memuatnya
- * (`H510M-B`, `AL14-51M-59YA`) — tapi pecahannya juga ikut dikeluarkan, dan itu
- * bukan kerapian: dua sumber ini menulis kode yang sama dengan pemisah berbeda.
- *
- *     ACC: RYZEN 7 5700G      ->  "7", "5700G"
- *     WEB: RYZEN 7-5700G      ->  "7-5700G"
- *
- * Tanpa mengeluarkan pecahannya, dua nama yang jelas-jelas barang yang sama
- * tidak berbagi satu token pun pada bagian yang paling menentukan. Ini bukan
- * dugaan — lima contoh gagal pertama pada pengukuran sebelumnya, tiga di
- * antaranya persis kasus ini.
- */
-function token(nama: string): string[] {
-  const kasar = nama
-    .toUpperCase()
-    .replace(/[^A-Z0-9.\-]+/g, " ")
-    .split(/\s+/)
-    .map((t) => t.replace(/^[.\-]+|[.\-]+$/g, ""))
-    .filter((t) => t.length >= 2)
-
-  const hasil = new Set<string>()
-  for (const t of kasar) {
-    hasil.add(t)
-    if (t.includes("-")) {
-      for (const bagian of t.split("-")) {
-        if (bagian.length >= 2) hasil.add(bagian)
-      }
-    }
-  }
-  return [...hasil]
-}
-
-/** Token yang memuat huruf DAN angka — ciri kode model. */
-const berkodeModel = (t: string) => /[A-Z]/.test(t) && /[0-9]/.test(t)
 
 try {
   const produk = await prisma.$queryRawUnsafe<
@@ -77,44 +42,20 @@ try {
 
   const namaBarang = new Map(barang.map((b) => [b.kode, b.nama ?? ""]))
 
-  // --- Korpus & IDF dari sisi web -------------------------------------------
-  const tokenProduk = produk.map((p) => token(p.nama))
-  const df = new Map<string, number>()
-  for (const ts of tokenProduk) for (const t of ts) df.set(t, (df.get(t) ?? 0) + 1)
-  const N = produk.length
-  const idf = (t: string) => Math.log(N / (1 + (df.get(t) ?? 0)))
-
-  // Indeks terbalik: token -> indeks produk. Tanpa ini tiap barang harus
-  // dibandingkan ke 5.000+ produk satu per satu.
-  const indeks = new Map<string, number[]>()
-  tokenProduk.forEach((ts, i) => {
-    for (const t of ts) {
-      const arr = indeks.get(t)
-      if (arr) arr.push(i)
-      else indeks.set(t, [i])
-    }
-  })
-
-  /** Peringkat kandidat produk web untuk satu nama barang Accurate. */
-  function peringkat(namaAcc: string, batas = 5) {
-    const ts = token(namaAcc)
-    const skor = new Map<number, number>()
-    for (const t of ts) {
-      const bobot = idf(t)
-      // Token yang muncul di > 20% katalog tidak membedakan apa pun.
-      if ((df.get(t) ?? 0) > N * 0.2) continue
-      for (const i of indeks.get(t) ?? []) skor.set(i, (skor.get(i) ?? 0) + bobot)
-    }
-    return [...skor.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, batas)
-      .map(([i, s]) => ({ i, skor: s }))
-  }
+  /**
+   * Indeks dibangun oleh FUNGSI YANG SAMA dengan yang nanti dipakai panel
+   * (`lib/api/accurate/pencocokan-nama.ts`). Itu syaratnya angka di bawah
+   * berlaku untuk apa pun: kalau skrip ini memakai salinan logikanya sendiri,
+   * yang terukur adalah salinan itu, bukan yang benar-benar dijalankan staff.
+   */
+  const katalog = bangunIndeks(produk.map((p) => ({ wooId: p.wooId, nama: p.nama })))
+  const df = katalog.df
+  const N = katalog.total
 
   // --- Kunci jawaban ---------------------------------------------------------
-  const kunci = produk
-    .map((p, i) => ({ ...p, i }))
-    .filter((p) => p.kode && p.sku && p.sku.trim() === p.kode.trim() && namaBarang.get(p.kode!))
+  const kunci = produk.filter(
+    (p) => p.kode && p.sku && p.sku.trim() === p.kode.trim() && namaBarang.get(p.kode!),
+  )
 
   console.log(`\nProduk web         : ${produk.length.toLocaleString("id-ID")}`)
   console.log(`Barang Accurate    : ${barang.length.toLocaleString("id-ID")}`)
@@ -134,8 +75,8 @@ try {
     const bersamaKode = [...tAcc].some((t) => berkodeModel(t) && tWeb.has(t))
     if (bersamaKode) berbagiKodeModel++
 
-    const hasil = peringkat(namaAcc, 5)
-    const posisi = hasil.findIndex((h) => h.i === k.i)
+    const hasil = peringkatKandidat(namaAcc, katalog, 5)
+    const posisi = hasil.findIndex((h) => h.wooId === k.wooId)
     if (posisi === 0) di1++
     if (posisi >= 0 && posisi < 3) di3++
     if (posisi >= 0 && posisi < 5) di5++
