@@ -8,6 +8,7 @@ import {
   previewBulkAssignCategory,
   deleteProduct,
   invalidateProductCaches,
+  periksaLonjakanHarga,
   tolakHargaKatalog,
   updateProduct,
   type BulkCategoryMode,
@@ -181,7 +182,7 @@ export async function updateProductPriceAction(
   id: number,
   regularPrice: number,
   salePrice?: number | null,
-  opsi?: { priceAction?: string },
+  opsi?: { priceAction?: string; konfirmasiLonjakan?: boolean },
 ) {
   try {
     const authUser = await requirePermission("produk", "edit")
@@ -208,6 +209,38 @@ export async function updateProductPriceAction(
     const prisma = getPrisma()
     const product = await prisma.product.findUnique({ where: { wooId: id } })
     if (!product) throw new Error("Produk tidak ditemukan")
+
+    /**
+     * Peringatan lonjakan harga — perlu satu konfirmasi, bukan penolakan.
+     *
+     * Diletakkan di sini dan bukan di formulir karena alasan yang sama dengan
+     * penjaga Rp 1.000 di atas: ini satu-satunya jalur tulis harga katalog,
+     * jadi ambangnya cukup hidup di satu tempat dan setiap pemanggil ikut
+     * terjaga tanpa menuliskannya ulang.
+     *
+     * Bentuk kembaliannya sengaja mengisi `error` DAN `perluKonfirmasi`.
+     * Kalau hanya `perluKonfirmasi` yang diisi, pemanggil lama yang cuma
+     * memeriksa `error` akan menyimpulkan penyimpanan berhasil padahal harganya
+     * tidak pernah ditulis — gagal senyap, persis yang ingin dicegah. Dengan
+     * `error` terisi, pemanggil yang belum tahu soal konfirmasi tetap aman: ia
+     * menampilkan pesannya, dan orangnya membaca alasan yang benar.
+     */
+    if (!opsi?.konfirmasiLonjakan) {
+      const lamaRegular = product.regularPrice === null ? null : Number(product.regularPrice)
+      const lamaSale = product.salePrice === null ? null : Number(product.salePrice)
+
+      const lonjakan = [
+        periksaLonjakanHarga(lamaRegular, regularPrice, "Harga normal"),
+        salePrice === undefined ? null : periksaLonjakanHarga(lamaSale, salePrice, "Harga obral"),
+      ].filter((x): x is NonNullable<typeof x> => x !== null)
+
+      if (lonjakan.length > 0) {
+        return {
+          error: lonjakan.map((l) => l.pesan).join(" "),
+          perluKonfirmasi: lonjakan,
+        }
+      }
+    }
 
     const updatePayload: ProductInput = {
       name: product.name,

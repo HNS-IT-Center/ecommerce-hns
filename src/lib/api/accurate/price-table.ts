@@ -47,11 +47,23 @@ export type BarisTabelHarga = {
   /**
    * Produk web yang tertaut lewat `products.accurate_code`, atau null.
    *
-   * Permintaan pemilik project (docs/13 §8.2): barang tanpa produk web TIDAK
+   * Permintaan pemilik project (docs/13 §5): barang tanpa produk web TIDAK
    * dibuatkan draft — yang dibutuhkan cuma keterangan ada atau belum. Daftar
    * yang belum tertaut sekaligus menjadi antrean kerja penautan.
    */
-  produkWeb: { wooId: number; nama: string } | null
+  produkWeb: {
+    wooId: number
+    nama: string
+    /**
+     * Harga jual yang BERLAKU di katalog — inilah yang disunting kolom Harga
+     * Jual, dan inilah yang dibandingkan dengan `srp` untuk penanda selisih.
+     *
+     * `null` berarti produknya belum berharga, bukan berharga nol.
+     */
+    hargaJual: number | null
+    /** Harga obral kalau ada. Ditampilkan, tidak disunting dari sini. */
+    hargaObral: number | null
+  } | null
   /**
    * Terisi kalau barang ini sengaja dinyatakan tidak dijual lewat web.
    *
@@ -77,6 +89,10 @@ const KOLOM_URUT = {
   nama: "a.`NAMA BARANG`",
   kode: "a.`Kode Accurate`",
   srp: "CAST(a.`SP` AS DECIMAL(18,0))",
+  // Kolom "Harga Jual" di layar mengurutkan harga KATALOG WEB, bukan `SP`.
+  // Keduanya tetap ada karena keduanya memang angka berbeda — `srp` masih
+  // dipakai kalau suatu saat perlu melihat urutan salinan Accurate.
+  hargaJual: "p.regular_price",
   modal: "CAST(a.`CP` AS DECIMAL(18,0))",
   dealer: "CAST(a.`PRICE` AS DECIMAL(18,0))",
   stok: "a.`Stok Sistem`",
@@ -98,6 +114,9 @@ export type ArahUrut = "asc" | "desc"
  */
 const SUMBER_KOSONG: Partial<Record<KolomUrut, string>> = {
   srp: "(a.`SP` IS NULL OR a.`SP` = '' OR CAST(a.`SP` AS DECIMAL(18,0)) <= 0)",
+  // Belum tertaut ATAU belum berharga: dua-duanya tampil "—", jadi dua-duanya
+  // ke bawah. `p.woo_id IS NULL` ikut karena LEFT JOIN-nya bisa tak berpasangan.
+  hargaJual: "(p.woo_id IS NULL OR p.regular_price IS NULL OR p.regular_price <= 0)",
   modal: "(a.`CP` IS NULL OR a.`CP` = '' OR CAST(a.`CP` AS DECIMAL(18,0)) <= 0)",
   dealer: "(a.`PRICE` IS NULL OR a.`PRICE` = '' OR CAST(a.`PRICE` AS DECIMAL(18,0)) <= 0)",
   nama: "(a.`NAMA BARANG` IS NULL OR a.`NAMA BARANG` = '')",
@@ -155,6 +174,9 @@ type RawRow = {
   stok: string | number | null
   wooId: number | bigint | null
   namaProdukWeb: string | null
+  // Decimal(14,2) dari Prisma: bisa datang sebagai objek Decimal, bukan number.
+  hargaJualWeb: unknown
+  hargaObralWeb: unknown
   diabaikanKode: string | null
   diabaikanAlasan: string | null
   diabaikanOleh: string | null
@@ -303,6 +325,8 @@ export async function listHargaAccurate(filter: FilterTabelHarga): Promise<Hasil
        a.\`Stok Sistem\`   AS stok,
        p.woo_id            AS wooId,
        p.name              AS namaProdukWeb,
+       p.regular_price     AS hargaJualWeb,
+       p.sale_price        AS hargaObralWeb,
        ig.kode_accurate    AS diabaikanKode,
        ig.alasan           AS diabaikanAlasan,
        ig.ditandai_oleh    AS diabaikanOleh,
@@ -332,7 +356,12 @@ export async function listHargaAccurate(filter: FilterTabelHarga): Promise<Hasil
       produkWeb:
         r.wooId === null
           ? null
-          : { wooId: Number(r.wooId), nama: r.namaProdukWeb ?? "(tanpa nama)" },
+          : {
+              wooId: Number(r.wooId),
+              nama: r.namaProdukWeb ?? "(tanpa nama)",
+              hargaJual: r.hargaJualWeb === null ? null : Number(r.hargaJualWeb),
+              hargaObral: r.hargaObralWeb === null ? null : Number(r.hargaObralWeb),
+            },
       // `diabaikanKode` yang menentukan ada-tidaknya baris penanda, bukan
       // `alasan` — alasan boleh kosong dan barisnya tetap sah.
       diabaikan:

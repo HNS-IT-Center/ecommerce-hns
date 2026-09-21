@@ -33,6 +33,25 @@ import {
  */
 
 /**
+ * Penerapan SP Accurate ke harga katalog — DIMATIKAN 19 September 2026.
+ *
+ * Tanda tunggal untuk seluruh jalur ini. UI-nya sudah tidak ada sama sekali
+ * sejak tab Sinkronisasi dihapus 20 September 2026, tapi server action tetap
+ * bisa dipanggil langsung oleh siapa pun yang tahu namanya — menghilangkan
+ * tombol bukan mematikan fitur.
+ *
+ * Alasannya ada di `./page.tsx` dan `docs/13`: harga kini
+ * ditetapkan di web, sedangkan `accurate_products.SP` beku sejak 28 Agustus
+ * 2026 karena Sheet gudang sengaja tidak memuat kolom harga. Menerapkannya
+ * menimpa harga hidup dengan angka lama.
+ *
+ * Menghidupkan kembali: ubah tanda ini jadi `true` DAN kembalikan tab beserta
+ * `<HargaAccurateView />` di `./page.tsx` (langkahnya di docs/13 §3).
+ * Dua-duanya, supaya tidak ada jalur yang menyala tanpa disadari.
+ */
+const PENERAPAN_SP_AKTIF = false
+
+/**
  * Impor data barang dari Google Sheet ke accurate_products. Upsert yang TIDAK
  * menyentuh harga (lihat import-sheet.ts). Dipakai tombol "Import Data".
  */
@@ -84,6 +103,19 @@ export async function terapkanHargaAction(
   items: TerapkanItem[],
 ): Promise<TerapkanHasil> {
   const hasil: TerapkanHasil = { berhasil: 0, gagal: [] }
+
+  // Penjaga pertama, sebelum izin dan sebelum menyentuh apa pun: jalur ini
+  // dimatikan. Setiap baris ditolak dengan alasannya sendiri — bukan gagal
+  // senyap — supaya yang memanggilnya tahu kenapa, bukan mengira datanya kosong.
+  if (!PENERAPAN_SP_AKTIF) {
+    for (const item of items) {
+      hasil.gagal.push({
+        wooId: item.wooId,
+        alasan: "penerapan harga Accurate dimatikan — harga ditetapkan di panel web",
+      })
+    }
+    return hasil
+  }
 
   // Penjaga izin: role tanpa "edit" di halaman ini tak boleh menerapkan harga
   // (§2.7). Kalau ditolak, seluruh item gagal dengan alasan izin — bukan
@@ -146,6 +178,45 @@ export async function terapkanHargaAction(
  * Harga jual (`SP`/SRP) TIDAK bisa disentuh dari sini — §2.7 menaruhnya di
  * jalur katalog ber-audit-log.
  */
+/**
+ * Simpan HARGA JUAL satu produk web dari tab Daftar Harga.
+ *
+ * Ini kebalikan arah dari `terapkanHargaAction` yang sudah dimatikan: bukan
+ * memindahkan angka Accurate ke katalog, melainkan menetapkan harga di web —
+ * satu-satunya tempat harga ditetapkan sejak 19 September 2026 (docs/13 §1).
+ *
+ * Lewat `updateProductPriceAction`, bukan tulis langsung, karena jalur itu yang
+ * punya audit log, revalidate, penjaga Rp 1.000, dan peringatan lonjakan 50%.
+ * Menulis sendiri di sini berarti dua jalur harga yang cepat atau lambat
+ * berselisih — dan yang satu tanpa penjaga.
+ *
+ * `konfirmasiLonjakan` diteruskan apa adanya: keputusan "ya, harganya benar"
+ * milik orang di depan layar, bukan milik lapisan ini.
+ */
+export async function simpanHargaJualAction(input: {
+  wooId: number
+  hargaJual: number
+  konfirmasiLonjakan?: boolean
+}): Promise<{
+  error: string | null
+  perluKonfirmasi?: { label: string; lama: number; baru: number; persen: number }[]
+}> {
+  try {
+    await requirePermission("harga-accurate", "edit")
+  } catch {
+    return { error: "Anda tidak punya izin mengubah harga di halaman ini." }
+  }
+
+  // Harga obral sengaja `undefined`, BUKAN null: null berarti "kosongkan
+  // obralnya", dan kolom ini tidak pernah bermaksud menyentuh obral.
+  const res = await updateProductPriceAction(input.wooId, input.hargaJual, undefined, {
+    konfirmasiLonjakan: input.konfirmasiLonjakan,
+  })
+
+  revalidatePath("/admin/harga-accurate")
+  return res
+}
+
 export async function simpanHargaInternalAction(
   perubahan: PerubahanHarga[],
 ): Promise<{ hasil: HasilSimpan | null; error: string | null }> {

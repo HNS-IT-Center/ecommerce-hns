@@ -129,7 +129,8 @@ function AccurateCodeField({ wooId, kode }: { wooId: number; kode: string | null
         <p className="mt-1 text-[11px] text-success">Tautan tersimpan.</p>
       ) : (
         <p className="mt-1 text-[11px] text-muted-foreground">
-          Penambat harga ke Accurate. Tersimpan sendiri, di luar tombol Simpan.
+          Kode barang di kasir Accurate — penyambung harga, bukan SKU. Tersimpan
+          sendiri, di luar tombol Simpan.
         </p>
       )}
     </div>
@@ -517,7 +518,8 @@ export function QuickEditModal({
                           <p className="mt-1 text-[11px] text-destructive">{errors.sku.message}</p>
                         )}
                         <p className="mt-1 text-[11px] text-muted-foreground">
-                          Harus unik antar produk & varian. Bukan Kode Accurate.
+                          Kode internal katalog web. Harus unik antar produk & varian. Bukan
+                          Kode Accurate.
                         </p>
                       </div>
                     )}

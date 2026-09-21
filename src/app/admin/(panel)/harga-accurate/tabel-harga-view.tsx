@@ -28,6 +28,7 @@ import type {
 } from "@/lib/api/accurate/price-table"
 import {
   simpanHargaInternalAction,
+  simpanHargaJualAction,
   cariProdukWebAction,
   tautkanKodeAction,
   abaikanKodeAction,
@@ -225,7 +226,9 @@ export function TabelHargaView({
     if (gabung.urut) sp.set("urut", gabung.urut)
     if (gabung.urut && gabung.arah) sp.set("arah", gabung.arah)
     const qs = sp.toString()
-    return `/admin/harga-accurate?tab=daftar${qs ? `&${qs}` : ""}`
+    // `tab` tidak lagi disertakan: tabnya dihapus 20 September 2026 dan
+    // halaman tidak membacanya lagi.
+    return `/admin/harga-accurate${qs ? `?${qs}` : ""}`
   }
 
   /**
@@ -417,10 +420,10 @@ export function TabelHargaView({
               <li key={r.kodeAccurate} className="rounded-2xl border border-border bg-background p-4">
                 <Produk baris={r} />
                 <dl className="mt-3 space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <dt className="text-xs text-muted-foreground">Harga SRP</dt>
-                    <dd className="text-sm font-medium">
-                      {r.srp.nilai === null ? "—" : formatRupiah(r.srp.nilai)}
+                  <div className="flex items-start justify-between gap-3">
+                    <dt className="mt-1 shrink-0 text-xs text-muted-foreground">Harga Jual</dt>
+                    <dd className="w-44">
+                      <SelHargaJual baris={r} bolehEdit={bolehEdit} />
                     </dd>
                   </div>
                   {bolehLihatModal && (
@@ -462,8 +465,8 @@ export function TabelHargaView({
                   <KepalaUrut kolom="nama" urut={urut} arah={arah} onUrut={urutkan}>
                     Produk
                   </KepalaUrut>
-                  <KepalaUrut kolom="srp" urut={urut} arah={arah} onUrut={urutkan} kanan>
-                    Harga SRP
+                  <KepalaUrut kolom="hargaJual" urut={urut} arah={arah} onUrut={urutkan} kanan>
+                    Harga Jual
                   </KepalaUrut>
                   {bolehLihatModal && (
                     <KepalaUrut kolom="modal" urut={urut} arah={arah} onUrut={urutkan} kanan>
@@ -487,12 +490,8 @@ export function TabelHargaView({
                     <td className="px-4 py-3">
                       <Produk baris={r} />
                     </td>
-                    <td className="px-4 py-3 text-right align-top whitespace-nowrap">
-                      {r.srp.nilai === null ? (
-                        <span className="text-muted-foreground">—</span>
-                      ) : (
-                        formatRupiah(r.srp.nilai)
-                      )}
+                    <td className="w-[190px] px-4 py-3 align-top">
+                      <SelHargaJual baris={r} bolehEdit={bolehEdit} />
                     </td>
                     {bolehLihatModal && (
                       <td className="w-[150px] px-4 py-3 align-top">
@@ -1127,6 +1126,230 @@ function SelHarga({
       {harga.catatan && <Catatan teks={harga.catatan} />}
     </div>
   )
+}
+
+/**
+ * Kolom **Harga Jual** — satu kolom yang bisa diketik, bukan dua kolom setara.
+ *
+ * Yang disunting adalah harga di KATALOG WEB (`produkWeb.hargaJual`), bukan
+ * `SP` Accurate. Sejak 19 September 2026 harga ditetapkan di web dan Accurate
+ * adalah salinannya (docs/13 §1), jadi menyandingkan dua kolom setara akan
+ * menyajikan satu angka sebagai dua harga yang seolah sama sahnya.
+ *
+ * Nilai Accurate muncul sebagai KETERANGAN, dan hanya kalau ia benar-benar
+ * memberi kabar — lihat `PenandaSelisihAccurate`.
+ *
+ * Menyimpannya lewat `simpanHargaJualAction` -> `updateProductPriceAction`,
+ * jadi penjaga Rp 1.000 dan peringatan lonjakan 50% ikut berlaku di sini tanpa
+ * ditulis ulang.
+ */
+function SelHargaJual({ baris, bolehEdit }: { baris: BarisTabelHarga; bolehEdit: boolean }) {
+  const router = useRouter()
+  const [menyunting, setMenyunting] = React.useState(false)
+  const [draft, setDraft] = React.useState("")
+  const [pending, mulaiTransisi] = React.useTransition()
+  const [galat, setGalat] = React.useState<string | null>(null)
+  const [lonjakan, setLonjakan] = React.useState<
+    { label: string; lama: number; baru: number; persen: number }[] | null
+  >(null)
+  const [nilaiTertahan, setNilaiTertahan] = React.useState<number | null>(null)
+
+  const web = baris.produkWeb
+
+  function simpan(wooId: number, nilai: number, konfirmasiLonjakan?: boolean) {
+    mulaiTransisi(async () => {
+      const res = await simpanHargaJualAction({ wooId, hargaJual: nilai, konfirmasiLonjakan })
+      if (res.perluKonfirmasi && res.perluKonfirmasi.length > 0) {
+        setNilaiTertahan(nilai)
+        setLonjakan(res.perluKonfirmasi)
+        return
+      }
+      if (res.error) {
+        setGalat(res.error)
+        return
+      }
+      setMenyunting(false)
+      setLonjakan(null)
+      setNilaiTertahan(null)
+      router.refresh()
+    })
+  }
+
+  // Belum tertaut: tidak ada harga web untuk disunting. Barisnya tetap tampil —
+  // daftar "belum ada di web" itu sendiri antrean kerja penautan (docs/13 §5).
+  if (web === null) {
+    return (
+      <div className="text-right text-xs text-muted-foreground">
+        <span className="block">—</span>
+        <span className="block text-[10px]">belum ada di web</span>
+      </div>
+    )
+  }
+
+  const wooId = web.wooId
+
+  if (menyunting) {
+    return (
+      <div className="flex w-full flex-col gap-1">
+        <input
+          type="text"
+          autoFocus
+          inputMode="numeric"
+          aria-label={`Harga jual untuk ${web.nama}`}
+          value={draft}
+          onChange={(e) => setDraft(formatKetikan(e.target.value))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              const n = bacaAngka(draft)
+              if (n !== null) simpan(wooId, n)
+            }
+            if (e.key === "Escape") {
+              setMenyunting(false)
+              setGalat(null)
+            }
+          }}
+          disabled={pending}
+          className="w-full rounded border border-input bg-background px-2 py-1 text-right text-xs tabular-nums"
+        />
+        <div className="flex gap-1">
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => {
+              const n = bacaAngka(draft)
+              if (n !== null) simpan(wooId, n)
+            }}
+            className="flex-1 rounded bg-primary py-1 text-[10px] text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {pending ? "…" : "OK"}
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => {
+              setMenyunting(false)
+              setGalat(null)
+            }}
+            className="flex-1 rounded bg-muted py-1 text-[10px] text-muted-foreground hover:bg-muted/80 disabled:opacity-50"
+          >
+            Batal
+          </button>
+        </div>
+        {galat && <p className="text-left text-[10px] text-destructive">{galat}</p>}
+        {lonjakan && (
+          <div className="rounded border border-warning/50 bg-warning/10 p-2 text-left text-[10px]">
+            {lonjakan.map((l) => (
+              <p key={l.label} className="text-foreground">
+                {l.label} {l.persen > 0 ? "naik" : "turun"} {Math.abs(l.persen)}% —{" "}
+                {formatRupiah(l.lama)} <span aria-hidden="true">&rarr;</span>{" "}
+                <strong>{formatRupiah(l.baru)}</strong>
+              </p>
+            ))}
+            <p className="mt-1 text-muted-foreground">
+              Perubahan sebesar ini sering berarti jumlah nolnya keliru.
+            </p>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => nilaiTertahan !== null && simpan(wooId, nilaiTertahan, true)}
+              className="mt-1 w-full rounded bg-warning py-1 text-[10px] font-medium text-warning-foreground disabled:opacity-50"
+            >
+              Ya, harganya benar
+            </button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const angka =
+    web.hargaJual === null ? (
+      <span className="text-muted-foreground">—</span>
+    ) : (
+      <span className="font-medium tabular-nums">{formatRupiah(web.hargaJual)}</span>
+    )
+
+  function mulaiSunting() {
+    setDraft(web === null || web.hargaJual === null ? "" : formatKetikan(String(web.hargaJual)))
+    setGalat(null)
+    setLonjakan(null)
+    setMenyunting(true)
+  }
+
+  const isi = bolehEdit ? (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={mulaiSunting}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          mulaiSunting()
+        }
+      }}
+      title="Klik untuk ubah harga jual"
+      className="group -m-1 flex cursor-pointer items-center justify-end gap-1 rounded border-b border-dashed border-muted-foreground/50 p-1 transition-colors hover:bg-muted/50"
+    >
+      {angka}
+      <Pencil className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+    </div>
+  ) : (
+    <div className="text-right">{angka}</div>
+  )
+
+  return (
+    <div>
+      {isi}
+      <PenandaSelisihAccurate srp={baris.srp.nilai} hargaWeb={web.hargaJual} />
+      <PenandaDiBawahModal hargaWeb={web.hargaJual} modal={baris.modal.nilai} />
+    </div>
+  )
+}
+
+/**
+ * Keterangan "Accurate masih sekian" — menyala HANYA kalau memberi kabar.
+ *
+ * Syaratnya DUA-duanya: nilai Accurate **terisi** DAN **berbeda** dari harga
+ * web. Menulisnya sebagai `srp !== hargaWeb` saja adalah jebakan yang nyata:
+ * `null !== 18600000` bernilai benar, sehingga penanda menyala untuk barang
+ * yang justru TIDAK punya angka Accurate — tepat pada 136 barang yang nilainya
+ * baru dikosongkan 18 September 2026 karena rusak. Mereka tidak punya selisih
+ * untuk ditandai.
+ *
+ * Harga web yang belum ada juga tidak ditandai: tidak ada yang bisa
+ * dibandingkan, dan "Accurate masih X" pada produk tanpa harga cuma kebisingan.
+ */
+function PenandaSelisihAccurate({ srp, hargaWeb }: { srp: number | null; hargaWeb: number | null }) {
+  if (srp === null || hargaWeb === null) return null
+  if (srp === hargaWeb) return null
+
+  return (
+    <p className="mt-1 text-left text-[10px] text-muted-foreground">
+      {srp < hargaWeb ? (
+        <>Accurate masih {formatRupiah(srp)} — salinan kasir belum disusulkan</>
+      ) : (
+        <>Accurate {formatRupiah(srp)} — web lebih rendah, periksa mana yang benar</>
+      )}
+    </p>
+  )
+}
+
+/**
+ * Penanda "harga jual di bawah modal" — flag, BUKAN blokir.
+ *
+ * Menjual di bawah modal kadang disengaja (cuci gudang, barang display), jadi
+ * yang dibutuhkan mata yang melihat, bukan pintu yang terkunci.
+ */
+function PenandaDiBawahModal({
+  hargaWeb,
+  modal,
+}: {
+  hargaWeb: number | null
+  modal: number | null
+}) {
+  if (hargaWeb === null || modal === null) return null
+  if (hargaWeb >= modal) return null
+  return <Catatan teks={`Di bawah modal (${formatRupiah(modal)})`} />
 }
 
 function Catatan({ teks }: { teks: string }) {

@@ -362,6 +362,17 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
     newRegular: number, 
     newSale: number | null
   } | null>(null)
+  /**
+   * Tahap kedua: harga lolos konfirmasi biasa, tapi lonjakannya melewati ambang
+   * di `periksaLonjakanHarga`. Ditahan di sini sampai orangnya menegaskan sekali
+   * lagi — dialog pertama cuma menanyakan "ubah harga?", yang ini menanyakan
+   * "yakin sebesar ini?" dan menyebutkan persennya.
+   */
+  const [lonjakanHarga, setLonjakanHarga] = useState<{
+    muatan: { id: number; newRegular: number; newSale: number | null }
+    peringatan: { label: string; lama: number; baru: number; persen: number }[]
+  } | null>(null)
+  const [galatHarga, setGalatHarga] = useState<string | null>(null)
 
   // Selection
   const [selected, setSelected] = useState<Set<number>>(new Set())
@@ -655,7 +666,7 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
                   "kode barang" dan staff bisa mengisi yang satu mengira sedang
                   mengisi yang lain. Penyuntingannya ada di Quick Edit.
                   Kolomnya tetap hidup di database dan tetap menambat harga
-                  kasir ke produk web (docs/13 §3.5) — hanya tidak dipajang. */}
+                  kasir ke produk web (docs/13 §5) — hanya tidak dipajang. */}
               <th
                 className="px-4 py-3 font-semibold cursor-pointer hover:bg-muted/50 transition-colors w-[100px]"
                 onClick={() => handleSort("sku")}
@@ -1137,15 +1148,95 @@ export function ProductDataTable({ products, rawCategories, attributeOptions, ro
               onClick={(e) => {
                 e.preventDefault()
                 if (confirmPriceProduct) {
+                  const muatan = {
+                    id: confirmPriceProduct.id,
+                    newRegular: confirmPriceProduct.newRegular,
+                    newSale: confirmPriceProduct.newSale,
+                  }
                   startTransition(async () => {
-                    await updateProductPriceAction(confirmPriceProduct.id, confirmPriceProduct.newRegular, confirmPriceProduct.newSale)
+                    // Hasilnya DIBACA. Sebelum ini kembaliannya diabaikan, jadi
+                    // harga yang ditolak penjaga (mis. di bawah Rp 1.000) tampak
+                    // tersimpan padahal tidak — dialognya menutup, dan tidak ada
+                    // yang memberitahu.
+                    const res = await updateProductPriceAction(muatan.id, muatan.newRegular, muatan.newSale)
                     setConfirmPriceProduct(null)
+                    if (res?.perluKonfirmasi && res.perluKonfirmasi.length > 0) {
+                      setLonjakanHarga({ muatan, peringatan: res.perluKonfirmasi })
+                    } else if (res?.error) {
+                      setGalatHarga(res.error)
+                    }
                   })
                 }
               }}
             >
               Simpan Harga
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Peringatan lonjakan harga — tahap kedua, butuh satu penegasan lagi */}
+      <AlertDialog open={!!lonjakanHarga} onOpenChange={(open) => !open && setLonjakanHarga(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Perubahan harganya besar — yakin?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="mb-3 block">
+                Perubahan sebesar ini sering berarti jumlah nolnya keliru. Periksa angkanya
+                sekali lagi sebelum melanjutkan.
+              </span>
+              {lonjakanHarga?.peringatan.map((p) => (
+                <span
+                  key={p.label}
+                  className="mt-2 block rounded-md border border-warning/40 bg-warning/5 p-3 text-sm"
+                >
+                  <span className="block font-medium text-foreground">{p.label}</span>
+                  <span className="block">
+                    {formatRupiah(p.lama)} <span aria-hidden="true">&rarr;</span>{" "}
+                    <strong className="text-foreground">{formatRupiah(p.baru)}</strong>{" "}
+                    <span className={p.persen > 0 ? "text-green-600" : "text-destructive"}>
+                      ({p.persen > 0 ? "+" : ""}
+                      {p.persen}%)
+                    </span>
+                  </span>
+                </span>
+              ))}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal, saya periksa lagi</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                const tertahan = lonjakanHarga
+                if (!tertahan) return
+                startTransition(async () => {
+                  const res = await updateProductPriceAction(
+                    tertahan.muatan.id,
+                    tertahan.muatan.newRegular,
+                    tertahan.muatan.newSale,
+                    { konfirmasiLonjakan: true },
+                  )
+                  setLonjakanHarga(null)
+                  if (res?.error) setGalatHarga(res.error)
+                })
+              }}
+            >
+              Ya, harganya benar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Harga ditolak penjaga — ditampilkan, bukan ditelan */}
+      <AlertDialog open={!!galatHarga} onOpenChange={(open) => !open && setGalatHarga(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Harga tidak disimpan</AlertDialogTitle>
+            <AlertDialogDescription>{galatHarga}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setGalatHarga(null)}>Mengerti</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

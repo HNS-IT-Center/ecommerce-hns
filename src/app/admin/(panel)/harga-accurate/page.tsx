@@ -1,6 +1,3 @@
-import Link from "next/link"
-
-import { buildAccuratePricePreview } from "@/lib/services/accurate-price"
 import { requirePageView } from "@/lib/auth"
 import { bisaAkses } from "@/lib/auth/permissions"
 import {
@@ -10,22 +7,30 @@ import {
   type ArahUrut,
   type FilterTautan,
 } from "@/lib/api/accurate/price-table"
-import { HargaAccurateView } from "./view"
 import { TabelHargaView } from "./tabel-harga-view"
+import { ImportSheetButton } from "./import-sheet-button"
 
 /**
- * Halaman harga Accurate, dua tab dengan dua urusan berbeda:
+ * Halaman harga Accurate — satu layar: daftar seluruh barang Accurate beserta
+ * tiga harganya. SRP hanya dibaca; harga jual, modal (CP) & dealer disunting di
+ * sini. Modal & dealer angka internal, tidak pernah tampil ke pelanggan.
  *
- * - **Daftar Harga** — seluruh barang Accurate beserta tiga harganya. SRP hanya
- *   dibaca; modal (CP) & dealer disunting di sini. Keduanya angka internal.
- * - **Sinkronisasi** — pratinjau selisih harga Accurate vs katalog lalu
- *   menerapkannya. Inilah satu-satunya tab yang menyentuh harga pelanggan.
+ * Tab kedua ("Sinkronisasi") DIHAPUS 20 September 2026. Isinya sudah cuma kotak
+ * pemberitahuan sejak penerapan harga Accurate dimatikan sehari sebelumnya —
+ * tab yang diklik lalu tidak menghasilkan apa pun. Mesinnya sendiri utuh:
+ * `HargaAccurateView` di ./view.tsx, `terapkanHargaAction` di ./actions.ts,
+ * dan penjaga `PENERAPAN_SP_AKTIF` yang menolak di sisi server. Cara
+ * menghidupkannya kembali ada di docs/13 §3 — dan yang harus benar lebih dulu
+ * adalah hulunya: harus ada jalur yang membuat SP Accurate menyusul harga web,
+ * bukan sebaliknya.
  *
- * Dipisah karena dipakai orang berbeda pada waktu berbeda: mengisi harga modal
- * barang yang baru datang adalah pekerjaan harian, sedangkan menerapkan harga
- * ke katalog adalah keputusan yang ditinjau. Menaruh keduanya dalam satu layar
- * membuat tombol yang mengubah harga pelanggan berada sejengkal dari kolom yang
- * diketik ratusan kali sehari.
+ * Alamat lama `?tab=sinkronisasi` tidak lagi dibaca. Parameternya diabaikan
+ * dan halaman tampil apa adanya, jadi bookmark lama tidak patah.
+ *
+ * Impor data dari Google Sheet TIDAK ikut mati bersama tab itu — ia sekarang
+ * berdiri sendiri sebagai tombol di kepala halaman (./import-sheet-button.tsx).
+ * Ia mengisi data barang, bukan harga, jadi memang tidak punya urusan dengan
+ * penerapan SP yang dimatikan.
  */
 export const metadata = {
   title: "Update Harga",
@@ -34,14 +39,8 @@ export const metadata = {
 // Selalu segar: harga di Accurate berubah, dan pratinjau basi menyesatkan.
 export const dynamic = "force-dynamic"
 
-const TABS = [
-  { key: "daftar", label: "Daftar Harga" },
-  { key: "sinkronisasi", label: "Sinkronisasi" },
-] as const
-
 type Props = {
   searchParams: Promise<{
-    tab?: string
     q?: string
     kategori?: string
     brand?: string
@@ -63,51 +62,39 @@ export default async function HargaAccuratePage({ searchParams }: Props) {
   const bolehEditModal = bisaAkses(izin, "harga-modal", "edit")
 
   const sp = await searchParams
-  const tab = TABS.some((t) => t.key === sp.tab) ? (sp.tab as (typeof TABS)[number]["key"]) : "daftar"
 
   return (
     <div className="mx-auto max-w-6xl">
-      <div>
-        <h1 className="text-2xl font-bold">Update Harga</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Harga modal &amp; dealer adalah angka internal — tidak pernah tampil ke pelanggan.
-          Harga jual (SRP) hanya berubah lewat tab Sinkronisasi.
-        </p>
-      </div>
-
-      <div className="mt-6 flex items-center gap-2 border-b border-border">
-        {TABS.map((t) => {
-          // Penyaring & halaman sengaja TIDAK dibawa saat berpindah tab: keduanya
-          // milik daftar harga, dan menyeretnya ke tab sinkronisasi hanya
-          // menyisakan parameter yang tak berarti di alamat.
-          const aktif = tab === t.key
-          return (
-            <Link
-              key={t.key}
-              href={`/admin/harga-accurate?tab=${t.key}`}
-              className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-                aktif
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
-              }`}
-            >
-              {t.label}
-            </Link>
-          )
-        })}
+      {/* Judul & tombol impor berdampingan di layar lebar, bertumpuk di ponsel
+          — tombolnya tidak boleh mendesak judul sampai terpotong. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Update Harga</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Harga modal &amp; dealer adalah angka internal — tidak pernah tampil ke pelanggan.
+            Harga jual ditetapkan di sini; Accurate adalah salinan yang menyusul.
+          </p>
+          {/* Sisa tab Sinkronisasi yang dihapus. Staff yang dulu rutin
+              menerapkan harga dari Accurate perlu tahu fiturnya DIMATIKAN, bukan
+              rusak — tanpa itu yang dicari berikutnya adalah jalan lain yang
+              tidak terpantau. Sengaja menyebut PENERAPAN HARGA, bukan
+              "sinkronisasi" polos: impor data dari Sheet justru masih jalan. */}
+          <p className="mt-1 text-xs text-muted-foreground">
+            Penerapan harga otomatis dari Accurate dimatikan 19 September 2026.
+          </p>
+        </div>
+        {/* Menulis ke accurate_products, jadi ikut izin edit halaman ini —
+            peran yang cuma boleh melihat tidak diberi tombolnya. */}
+        {bolehEdit && <ImportSheetButton />}
       </div>
 
       <div className="mt-6">
-        {tab === "daftar" ? (
-          <TabDaftar
-            searchParams={sp}
-            bolehEdit={bolehEdit}
-            bolehLihatModal={bolehLihatModal}
-            bolehEditModal={bolehEditModal}
-          />
-        ) : (
-          <TabSinkronisasi />
-        )}
+        <TabDaftar
+          searchParams={sp}
+          bolehEdit={bolehEdit}
+          bolehLihatModal={bolehLihatModal}
+          bolehEditModal={bolehEditModal}
+        />
       </div>
     </div>
   )
@@ -190,18 +177,5 @@ async function TabDaftar({
       urut={urut}
       arah={arah}
     />
-  )
-}
-
-async function TabSinkronisasi() {
-  const preview = await buildAccuratePricePreview()
-  return (
-    <>
-      <p className="mb-4 text-sm text-muted-foreground">
-        Membandingkan harga jual di Accurate dengan katalog. Centang baris yang ingin diterapkan,
-        lalu simpan — hanya yang kamu pilih yang berubah.
-      </p>
-      <HargaAccurateView initial={preview} />
-    </>
   )
 }

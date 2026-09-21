@@ -1,363 +1,352 @@
-# 13. Sinkronisasi Harga Accurate → Web
+# 13. Harga Accurate ↔ Web
 
-> **Status: BRIEF — belum ada kode.** Disusun 8 September 2026 setelah keputusan
-> ruang lingkup dari pemilik project. Baca ini sebelum menyentuh pencocokan
-> barang Accurate ↔ produk web.
-
----
-
-## 1. Masalah yang sedang dipecahkan
-
-Database Accurate yang dipakai kasir **tidak terhubung** ke web. Tidak ada API,
-tidak ada replikasi — jembatannya ekspor manual harian: barang baru datang ke
-toko → ekspor dari Accurate → impor ke sistem lewat **Import Data Sheet** di
-`/admin/harga-accurate` (sudah jalan, mengisi tabel `accurate_products`).
-
-Yang belum ada: **cara memindahkan harga jual dari barang Accurate ke produk
-web yang bersangkutan.** Dan penghalangnya bukan mekanisme pemindahannya,
-melainkan pertanyaan yang lebih mendasar — *barang Accurate ini produk web yang
-mana?*
+> **Status: arah data DIBALIK, 19 September 2026.** Dokumen ini ditulis ulang
+> dari nol, bukan ditambal — versi sebelumnya berjudul "Sinkronisasi Harga
+> Accurate → Web" dan seluruh isinya berdiri di atas premis yang sekarang salah.
+> Baca ini sebelum menyentuh harga, penautan, atau `/admin/harga-accurate`.
 
 ---
 
-## 2. Keadaan data (diukur 8 September 2026)
+## 1. Keputusan yang membalik segalanya
 
-| | Jumlah | Catatan |
-|---|---|---|
-| Barang di `accurate_products` | **7.041** | dari ekspor harian |
-| Produk di `products` (web) | **5.415** | katalog |
-| Baris di `accurate_woo_mapping` | 4.707 | pemetaan hasil pencocokan lama |
-| Pemetaan bertanda layak dipercaya | 2.068 | `needs_review=0` DAN `confidence_score>=90` |
-| — di antaranya menunjuk `woo_product_id = 0` | **1.092** | **produk hantu, lihat §2.1** |
-| **Barang Accurate yang benar-benar tertaut** | **976 (13,9%)** | menunjuk produk web yang sungguh ada |
-| Produk web punya `sku` | 1.401 (26%) | terlalu kosong untuk jadi kunci |
-| Barang Accurate punya `barcode_ean` | 3.562 (51%) | — |
-| Produk web punya kolom barcode | **TIDAK ADA** | kolomnya belum pernah dibuat |
+**Harga jual ditetapkan di panel web. Accurate adalah salinannya.**
 
-**Kesimpulannya: 86% barang Accurate tidak punya kaitan ke produk web.**
-Pemetaan yang ada lahir dari pencocokan nama berskor, dan salah pasang berarti
-harga produk A pindah ke produk B.
+Keputusan pemilik project, 19 September 2026: Google Sheet gudang **sengaja**
+tidak diberi kolom harga, *"karena pengaturan harganya di web, bukan di sheet"*.
 
-### 2.1 Cacat yang harus dibersihkan lebih dulu: pemetaan ke produk hantu
+Itu bukan kendala teknis yang menunggu diperbaiki. Itu pembagian wewenang —
+gudang mengirim **data barang** (nama, kategori, brand, status, stok), web
+menetapkan **harga**.
 
-**1.092 baris di `accurate_woo_mapping` menunjuk `woo_product_id = 0`.** Tidak
-ada produk ber-`woo_id` 0 di katalog — angka itu bukan penunjuk ke apa pun,
-melainkan nilai kosong yang tertulis sebagai nol.
+### Apa yang gugur karena keputusan ini
 
-Yang membuatnya berbahaya: seluruh 1.092 baris itu bertanda `needs_review = 0`
-dan `confidence_score = 100`. Menurut ukuran apa pun yang dipakai kode sekarang,
-mereka **pemetaan paling tepercaya di seluruh tabel** — dan semuanya menunjuk ke
-ketiadaan.
-
-Kekeliruan ini sempat masuk ke versi pertama dokumen ini: angka tertaut ditulis
-1.980 (28%), karena `woo_product_id IS NOT NULL` menganggap nol sebagai
-penunjuk yang sah. Angka sebenarnya 976, hampir setengahnya.
-
-**Konsekuensinya untuk Fase 1:** jangan mengisi kolom penambat dari
-`accurate_woo_mapping` apa adanya. Saring `woo_product_id > 0` **dan** pastikan
-produknya benar-benar ada lewat join ke `products` — bukan sekadar percaya pada
-skornya.
-
----
-
-## 3. Keputusan yang sudah diambil
-
-### 3.1 Ruang lingkup: HARGA JUAL DULU, STOK BELAKANGAN
-
-Yang disinkronkan **hanya harga jual (SRP)**. Stok tidak ikut.
-
-Alasannya dari pemilik project: stok disinkronkan dengan **cek fisik di
-lapangan**, bukan dari angka Accurate. Angka `Stok Sistem` di ekspor sering jauh
-dari kenyataan rak, jadi memindahkannya ke web justru menyesatkan pembeli —
-menampilkan "tersedia" untuk barang yang sudah tidak ada lebih buruk daripada
-tidak menampilkan apa-apa.
-
-### 3.2 Kode berawalan 2 yang dipakai, bukan yang berawalan 1
-
-**Aturan dari pemilik project:** barang di Accurate punya dua skema kode. Yang
-dipakai adalah **yang berawalan `2`**.
-
-Diperiksa terhadap data, dan datanya mendukung dengan jelas:
-
-| | Awalan `1` (6 digit) | Awalan `2` (10 digit) |
-|---|---|---|
-| Jumlah | 1.474 | 5.517 |
-| Ditandai **tidak aktif** (`STATUS = YA`) | **1.052 (71%)** | 51 (0,9%) |
-| Punya stok | 157 (11%) | 2.138 (39%) |
-| Punya harga jual (`SP`) | **112 (8%)** | **2.188 (40%)** |
-
-Awalan `1` adalah skema lama yang sebagian besar isinya sudah mati: tujuh dari
-sepuluh ditandai tidak aktif, dan hanya delapan dari seratus yang punya harga
-jual. Awalan `2` yang hidup — 99% aktif, dan empat dari sepuluh berharga.
-Kodenya sendiri tampak memuat tahun-bulan (`2507…` = Juli 2025, `2603…` = Maret
-2026), yang menjelaskan kenapa ia bertambah terus sementara yang lama tidak.
-
-Dari 976 tautan yang benar-benar sah, **806 (83%) sudah berawalan `2`** — jadi
-aturannya bukan pembalikan arah, melainkan penegasan yang sudah berjalan.
-
-**Yang TIDAK terbukti, dan sebaiknya tidak diandalkan:** keterangan awal
-menyebut "banyak nama dobel karena ada dua SKU". Di dalam `accurate_products`
-hanya ada **7** kelompok nama kembar, dan **nol** di antaranya mencampur awalan
-`1` dengan `2` — yang kembar justru dua-duanya berawalan `2` dari bulan berbeda.
-Di sisi pemetaan, hanya **6** produk web yang tertaut ke kedua skema sekaligus.
-
-Artinya duplikasi lintas-skema bukan masalah besar dalam data yang kita punya.
-Aturan "pakai yang berawalan 2" tetap dipakai, tapi alasannya yang benar adalah
-**awalan 1 sudah mati**, bukan karena ada banyak kembaran yang harus dipilih.
-Membedakan keduanya penting: kalau nanti ada barang yang HANYA punya kode
-berawalan `1` dan masih hidup, ia tidak boleh ikut terbuang.
-
-**Penerapannya:**
-- Saat menautkan otomatis, dahulukan kode berawalan `2`.
-- Kalau satu produk web tertaut ke kedua skema, **yang berawalan `2` yang
-  menang**, dan yang berawalan `1` dilepas.
-- Barang berawalan `1` yang masih aktif dan berharga (157 berstok, 112 berharga)
-  **tidak dibuang** — ia tetap boleh ditautkan kalau memang tidak ada padanan
-  berawalan `2`.
-
-### 3.3 Yang tidak punya harga jual, tidak ikut
-
-**Saringannya satu: barang wajib punya `SP`.** Tidak ada daftar kategori yang
-dikecualikan, dan itu disengaja.
-
-Pemilik project menyebut lima kelompok yang tidak perlu disinkronkan — jasa,
-PC rakitan pesanan, tas/backpack, sparepart, dan baterai. Diperiksa ke data,
-kelimanya ternyata punya satu benang merah:
-
-| Kelompok | Jumlah | Punya `SP` |
-|---|---|---|
-| JASA | 3 | **0** |
-| RAKITAN / SET PC | 42 | **3** |
-| Kategori BACKPACK/TAS | 30 | **1** |
-| Kategori SPAREPART | 71 | **1** |
-| Kategori BATERAI | 56 | **1** |
-
-Dari 202 barang, hanya **6** yang punya harga jual. Itu masuk akal: harga jasa
-menyatu dengan servis dan tidak dipisahkan di Accurate; PC rakitan dibuat per
-pesanan — namanya bahkan nama pelanggan (`PC RAKITAN BP NANDA`,
-`PC RAKITAN HARAPAN BUNDA`, `PC RAKITAN PT WONDER MOBILITAS BATAM`); sparepart
-dan baterai dipakai memperbaiki, bukan dijual di web.
-
-Karena yang disinkronkan adalah harga jual, **barang tanpa harga jual tidak
-punya apa pun untuk dikirim.** Ia tersaring dengan sendirinya.
-
-**Kenapa bukan daftar kategori:** daftar harus dirawat. Kategori baru yang lupa
-didaftarkan akan diam-diam ikut tersinkron, dan tidak ada yang tahu sampai
-harganya sudah tampil di web. Saringan "punya harga jual" tidak pernah basi.
-
-Konsekuensi yang diterima: 6 barang dari kelompok di atas yang kebetulan
-berharga akan tetap ikut. Kalau suatu saat itu mengganggu, penanda per-barang
-lebih tepat daripada memblokir sekategori.
-
-### 3.4 Berapa yang benar-benar bisa disinkronkan hari ini
-
-Saringan di atas ditumpuk berurutan:
-
-| Tahap | Jumlah |
+| Yang dulu benar | Keadaan sekarang |
 |---|---|
-| Semua barang Accurate | 7.041 |
-| Punya harga jual (`SP`) | 2.312 |
-| + harganya angka wajar (≥ 1.000) | 2.067 |
-| **+ tertaut ke produk web yang sungguh ada** | **479** |
-
-**479.** Itu angka yang jujur untuk hari ini, dan ia menunjukkan di mana
-hambatannya: bukan di harga — 2.067 barang sudah siap dari sisi harga — melainkan
-di **penautan**. Fase 2 yang menentukan, bukan Fase 3.
-
-Selisih 2.312 → 2.067 (245 barang) adalah harga yang angkanya tidak wajar,
-seperti `145` untuk barang ratusan ribu. Barang itu **tidak dibuang dan tidak
-ditebak** — ia ditandai untuk dilihat manusia, sesuai §5.
-
-### 3.5 Penautan: KOLOM KODE ACCURATE DI PRODUK
-
-Tabel `products` mendapat kolom baru berisi kode Accurate barang itu. Sekali
-ditautkan, tautannya tepat selamanya — tidak ada pencocokan ulang berdasarkan
-kemiripan nama, tidak ada skor kepercayaan yang harus ditafsirkan.
-
-Ini juga yang dimaksud pemilik project sejak awal: *"kalo misalkan di upload dia
-masukkan kode accurate itu dia enggak usah pairing ulang"*.
-
-**Kenapa bukan yang lain:**
-- **`sku`** — cuma 26% produk web mengisinya. Kunci yang tiga perempatnya kosong
-  bukan kunci.
-- **`barcode`** — 51% barang Accurate punya, tapi produk web **tidak punya
-  kolomnya sama sekali**. Memakai jalur ini berarti menambah kolom DAN mengisi
-  5.415 baris, dengan hasil akhir tetap di bawah cakupan kode Accurate.
-- **Kemiripan nama** — sudah dicoba, hasilnya `accurate_woo_mapping` yang 56%
-  isinya perlu ditinjau manusia.
+| "Accurate sumber harga, web menyusul" | **Terbalik.** Web sumbernya |
+| Tab Sinkronisasi menerapkan SP ke katalog | **Dimatikan** — §3 |
+| Parser harga dari Sheet | **Dihapus** — Sheet tidak akan punya kolom harga |
+| Rencana "perbaikan hulu" | **Tidak ada lagi hulu** untuk diperbaiki |
+| "Dahulukan yang berharga, langsung berbuah saat disinkronkan" | Gugur — §5 |
 
 ---
 
-## 4. Rencana bertahap
+## 2. Keadaan `accurate_products.SP`
 
-### Fase 1 — Kolom penambat
+**Beku sejak 28 Agustus 2026.** Tidak ada satu pun kode yang menulisnya:
 
-Tambah kolom kode Accurate di `products`, unik dan nullable (mayoritas produk
-belum tertaut, dan itu keadaan normal, bukan galat).
+- Google Sheet sumber tidak punya kolom harga — headernya `NO`, `KODE ACCURATE`,
+  `NAMA BARANG`, `UPC/BARCODE`, `NAMA KATEGORI`, `NAMA BRAND`, `STATUS`, `STOK`.
+- `import-sheet.ts` menulis tujuh kolom, **tidak satu pun harga** — memang
+  disengaja, dan sekarang justru sejalan dengan §1.
+- Tab Daftar Harga hanya menyunting Modal (`CP`) dan Dealer (`PRICE`).
 
-Lewat prosedur `docs/08` — **`migrate dev` dan `db push` dua-duanya dilarang.**
-Tulis `migration.sql`-nya, baca SQL-nya, baru `migrate deploy`.
+Menekan "Import dari Google Sheet" berapa kali pun tidak menyegarkan harga.
 
-Isi awalnya dari **976 tautan yang benar-benar sah**, supaya pekerjaan
-pencocokan lama tidak dibuang percuma. Saringannya wajib `woo_product_id > 0`
-**dan** join ke `products` — bukan sekadar `needs_review=0` dan skor tinggi,
-karena 1.092 baris berskor 100 justru menunjuk produk hantu (§2.1). Kalau satu
-produk web punya kedua skema kode, ambil yang berawalan `2` (§3.2).
-
-### Fase 2 — Layar penautan
-
-Tempat staff menautkan barang Accurate yang belum punya pasangan. Bentuk yang
-diusulkan: daftar barang Accurate belum tertaut, dengan pencarian produk web di
-sebelahnya, dan tombol pasangkan.
-
-Ini pekerjaan mencicil — 5.061 barang tidak akan selesai dalam sehari, dan tidak
-perlu. Barang yang paling sering terjual ditautkan lebih dulu.
-
-**Usul yang perlu dipertimbangkan:** letakkan juga kolom kode Accurate di
-formulir produk (`/admin/produk`), supaya barang baru ditautkan saat dibuat —
-bukan sebagai pekerjaan susulan. Itu satu-satunya cara jumlah yang belum
-tertaut berhenti bertambah.
-
-### Fase 3 — Penerapan harga
-
-Setelah penambatnya ada, penerapan harga tinggal mengikuti tautan yang pasti,
-bukan skor kepercayaan.
-
-**Tab Sinkronisasi yang sudah ada TIDAK dibuang.** Pola pratinjau → centang →
-terapkan itu justru fitur keselamatan, bukan keterbatasan — lihat §5.
+**`SP` masih berguna, tapi sebagai penanda, bukan sebagai angka.** Barang yang
+pernah punya harga adalah barang yang benar-benar dijual — bukan jasa, bukan
+entri mati. Memakai **ada/tidaknya** untuk memilih urutan pekerjaan itu sah;
+memakai **nilainya** tidak.
 
 ---
 
-## 5. Yang harus dijaga (CLAUDE.md §2.7)
+## 3. Penerapan SP ke katalog: DIMATIKAN
 
-Harga jual adalah **harga yang dilihat pelanggan**. Semua yang di bawah ini
-bukan selera, melainkan syarat:
+Sejak 19 September 2026, tab Sinkronisasi diganti pemberitahuan dan
+`terapkanHargaAction` menolak semua permintaan.
 
-- **Penerapan harga TIDAK BOLEH otomatis tanpa persetujuan manusia.** Satu
-  ekspor Accurate yang cacat — kolom bergeser, angka ribuan terpotong — akan
-  mengubah ribuan harga sekaligus, dan pembeli melihatnya sebelum ada yang
-  sempat sadar. Pratinjau lalu pilih adalah pagarnya.
-- **Angka mencurigakan tetap ditandai, bukan dikoreksi diam-diam.**
-  `parseHargaAccurate` sudah menolak menebak: harga `145` untuk barang ratusan
-  ribu diberi catatan, tidak dikalikan seribu. Jangan "perbaiki" itu.
-- **Penerapan wajib lewat `updateProductPriceAction`**, bukan tulis langsung ke
-  tabel. Jalur itu sudah punya audit log (`product_logs`), revalidate, dan cek
-  izin. Jalur kedua berarti dua jalur harga yang cepat atau lambat berselisih.
+### Kenapa dimatikan, dengan angkanya
+
+Diukur 18 September 2026 terhadap 527 baris tertaut yang punya `SP` terbaca —
+seandainya "Terapkan semua" ditekan hari itu:
+
+| | Jumlah | Jumlah selisih |
+|---|---|---|
+| Harga web **turun** | **298** | Rp 378.842.000 |
+| Harga web naik | 71 | Rp 19.723.000 |
+| Tidak berubah | 158 | — |
+
+Angka Rp 378 juta itu jumlah selisih per unit di 298 produk, bukan proyeksi
+kerugian. Tapi arahnya jelas: satu klik mengembalikan harga ratusan produk
+terbit ke angka tiga pekan lalu, dan tercatat rapi sebagai `SYNC_PRICE` sehingga
+tampak sah.
+
+Contoh nyata, semuanya produk yang dilihat pelanggan:
+
+```
+VGA MSI GTX 1650 VENTUS XS OCV3    3.000.000 -> 2.700.000
+PRINTER CANON MG2570S AIO            850.000 ->   700.000
+HEADSET FANTECH ALTO 7.1 HG26        680.000 ->   510.000
+PROCESSOR RYZEN 7-5700G            4.150.000 -> 3.885.000
+```
+
+### Apakah tombol itu pernah ditekan?
+
+**Tidak ada jejak yang berciri demikian.** Diperiksa ke `product_logs`,
+19 September 2026. `SYNC_PRICE` memang ada 1.069 entri, tapi seluruhnya berasal
+dari **sinkronisasi WooCommerce**, bukan Accurate — lihat §6.
+
+Bukti bahwa 1.069 itu bukan penerapan Accurate:
+
+1. Kalau tombol Accurate ditekan, `new_value` **pasti persis `SP`** — begitu cara
+   kerjanya. Yang cocok cuma 1, 1, dan 2 entri dari ledakan 489/242/338.
+2. Mayoritas produknya **belum tertaut** ke Accurate; tombol itu hanya bisa
+   menyentuh yang tertaut.
+3. Arahnya naik (888 naik vs 103 turun) — penerapan Accurate justru menurunkan.
+4. `SYNC_IMPORT`, yang hanya ditulis importer WooCommerce, muncul di ledakan
+   waktu yang sama.
+
+Jadi mematikannya **mencegah**, bukan menghentikan.
+
+Satu kehati-hatian: karena dua fitur berbagi nama aksi yang sama, yang bisa
+dinyatakan adalah "tidak ada entri berciri penerapan Accurate" — bukan
+"mustahil pernah ditekan".
+
+### Cara menghidupkannya kembali
+
+Kodenya sengaja utuh — `view.tsx`, `buildAccuratePricePreview`, dan
+`terapkanHargaAction` tidak pernah dihapus. Dua tempat, dan harus dua-duanya:
+
+1. `harga-accurate/page.tsx` — kembalikan deretan tab beserta pembacaan
+   `?tab=`, kembalikan import `buildAccuratePricePreview` dan
+   `HargaAccurateView`, lalu render `<HargaAccurateView initial={preview} />`
+   pada tab kedua.
+2. `harga-accurate/actions.ts` — `PENERAPAN_SP_AKTIF = true`.
+
+Sengaja dua tempat supaya tidak ada jalur yang menyala tanpa disadari.
+
+> **Perubahan 20 September 2026:** tab "Sinkronisasi" beserta kotak
+> pemberitahuannya **dihapus dari panel** — isinya sudah tidak bisa dikerjakan
+> apa pun, dan tab yang diklik lalu tidak menghasilkan apa-apa hanya mengundang
+> pertanyaan. Yang tersisa di layar cuma satu baris di bawah judul halaman
+> Update Harga: *"Penerapan harga otomatis dari Accurate dimatikan 19 September
+> 2026."* Bentuk lama tab itu bisa dilihat di riwayat git. Mesinnya sendiri
+> tidak tersentuh, termasuk penjaga `PENERAPAN_SP_AKTIF` di sisi server.
+> Alamat lama `?tab=sinkronisasi` tidak patah: parameternya diabaikan.
+>
+> **Yang ikut terbawa mati tanpa disengaja, dan sudah dipulihkan:** tombol
+> **Import dari Google Sheet** dulu hidup di dalam `view.tsx` — satu komponen
+> dengan mesin penerapan harga. Begitu `view.tsx` berhenti dirender pada
+> 19 September, tombol impor ikut lenyap dari layar, padahal impor data barang
+> tidak punya hubungan apa pun dengan penerapan harga. Sejak 20 September ia
+> berdiri sendiri di `import-sheet-button.tsx` sebagai tombol di kepala
+> halaman, di balik izin `edit`. Pemisahan itu sekaligus mencegah kejadian
+> yang sama terulang.
+
+**Tapi sebelum itu**, yang harus benar lebih dulu adalah arahnya: harus ada
+jalur yang membuat `SP` Accurate menyusul harga web, bukan sebaliknya.
+
+---
+
+## 4. Yang dipakai sebagai gantinya
+
+| Kebutuhan | Tempatnya |
+|---|---|
+| Menetapkan harga jual | `/admin/produk`, dan kolom Harga Jual di `/admin/harga-accurate` (belum dibangun — §7) |
+| Menetapkan modal & dealer | `/admin/harga-accurate` tab Daftar Harga |
+| Menautkan barang Accurate ke produk web | `/admin/harga-accurate` tab Daftar Harga, dialog penautan |
+| Memperbarui data barang dari gudang | Tombol **Import dari Google Sheet** di kepala `/admin/harga-accurate` (butuh izin `edit`) |
+
+### Penjaga harga yang berlaku di semua jalur
+
+Keduanya hidup di `lib/api/woocommerce/products.ts`, dipasang di
+`updateProductPriceAction` — satu-satunya jalur tulis harga katalog:
+
+- **`tolakHargaKatalog()`** — menolak harga di bawah Rp 1.000. Penolakan, bukan
+  peringatan. Diukur: nol produk sah di bawah ambang itu, termurah Rp 5.000.
+- **`periksaLonjakanHarga()`** — meminta satu konfirmasi kalau harga bergeser
+  lebih dari 50%. **Peringatan, bukan blokir**: harga turun separuh memang
+  terjadi (obral besar, barang display), dan memblokirnya membuat staff mencari
+  jalan lain yang tidak terpantau.
+
+Ambang 50% diukur dari kesalahan yang benar-benar terjadi, bukan dipilih karena
+bulat. Dari log aktivitas web 2 Juli – 9 September 2026, salah jumlah nol adalah
+kesalahan **rutin** — enam kasus, semuanya tertangkap staff sendiri tapi hanya
+karena kebetulan ada yang melihat:
+
+```
+15.500.000 -> 1.660.000     (-89%)   HP Victus FA2716TX
+ 8.800.000 ->   900.000     (-90%)   IdeaPad Slim 14AMN8
+   670.000 ->    70.000     (-90%)   Gamepad Rexus Ezoth
+   850.000 ->       950    (-100%)   Processor i7 4790
+17.300.000 -> 173.000.000  (+900%)   Lenovo LOQ 15IRX9
+31.999.000 -> 319.990.000  (+900%)   VGA Zotac RTX 5080
+```
+
+Keenamnya tertangkap ambang 50%; hanya satu (`-> 950`) yang juga kena penjaga
+Rp 1.000. Perubahan sah terjauh di log yang sama +37%, jadi tidak ada harga
+wajar yang terhalang.
+
+Bentuk kembalian `updateProductPriceAction` saat lonjakan terdeteksi mengisi
+**`error` DAN `perluKonfirmasi`**. Itu disengaja: kalau hanya `perluKonfirmasi`,
+pemanggil lama yang cuma memeriksa `error` akan menyimpulkan penyimpanan
+berhasil padahal harganya tidak pernah ditulis.
+
+---
+
+## 5. Penautan Accurate ↔ produk web
+
+Penautannya **sehat dan tidak boleh dibongkar.** Yang rusak harganya, bukan
+tautannya — dugaan "lepas saja semua tautan" sudah diperiksa dan salah.
+
+### Penambatnya: `products.accurate_code`
+
+Kolom `@unique`, nullable. Sekali ditautkan manusia, tepat selamanya — tidak ada
+pencocokan ulang berdasarkan kemiripan nama, tidak ada skor kepercayaan.
+
+Kenapa bukan yang lain:
+
+- **`sku`** — hanya 26% produk web mengisinya. Menariknya, 899 di antaranya
+  **berisi kode Accurate**, dan 863 sudah tertaut lewat jalur itu. Sisanya 35
+  pasang masih bisa dipanen (§7).
+- **`barcode_ean`** — 51% barang Accurate punya, tapi produk web **tidak punya
+  kolomnya sama sekali**.
+- **Kemiripan nama** — sudah dicoba, hasilnya `accurate_woo_mapping` yang 1.092
+  barisnya berskor 100 justru menunjuk `woo_product_id = 0`, produk yang tidak
+  ada. **Skor tinggi di tabel itu bukan tanda benar.** Jangan hidupkan lagi jalur
+  itu untuk harga.
+
+### Keadaan, 18–19 September 2026
+
+| | Jumlah |
+|---|---|
+| Barang di `accurate_products` | 7.189 |
+| — aktif | 6.032 |
+| — tertaut ke produk web | 984 |
+| — **di antaranya tautan mati** (Accurate nonaktif atau produk web ditutup) | **229** |
+| — tertaut & sehat | **755** |
+| Antrean kerja (aktif, belum tertaut) | 5.163 |
+| — di antaranya pernah punya harga | 1.606 |
+
+**229 tautan mati itu belum dilepas.** Skripnya sudah ada dan bawaannya uji
+kering: `scripts/lepas-tautan-accurate-mati.mts`. Angka 231 yang pernah beredar
+sudah usang.
+
+### Cara mengerjakan sisanya: kategori mempersempit, nama memutuskan
+
+Harga **tidak dipakai sama sekali** untuk mencocokkan.
+
+| Lapisan | Perannya |
+|---|---|
+| **Kategori** | mempersempit ruang cari dari 5.475 produk jadi puluhan, dan staff punya konteks |
+| **Nama** | yang memutuskan pasangannya di dalam ruang sempit itu |
+| **Harga/SP** | hanya penanda "barang ini nyata" untuk memilih urutan kerja (§2) |
+
+Laporan kemajuannya: `scripts/laporan-tautan-per-kategori.mts` (baca saja, aman
+diulang).
+
+### Barang Accurate tanpa produk web: cukup ditandai
+
+Keputusan pemilik project yang masih berlaku: barang Accurate yang tidak punya
+produk web **tidak dibuatkan produk draft**. Yang dibutuhkan cuma keterangan —
+ada di web, atau belum.
+
+Karena itu tabel Update Harga punya penanda status per baris. Gunanya dua: staff
+tahu barang mana yang percuma diurus harganya karena belum ada di katalog, dan
+daftar "belum ada di web" itu sendiri menjadi antrean kerja penautan.
+
+### Jebakan yang harus dihadapi rancangan apa pun
+
+Nama persis **tidak menolong**: dari ~1.600 barang antrean, yang namanya sama
+persis dengan produk web cuma **1**. Penulisannya beda dunia:
+
+```
+ACC: Mouse Logitech M171 Wireless Mouse - Grey
+WEB: MOUSE LOGITECH M171 WIRELESS - GREY
+```
+
+Dan yang lebih berbahaya: web punya M171 varian `- GREY`, `- BLUE`,
+`- BLUEGREY`, `- OFFWHITE`, `- RED`. Nama Accurate itu mirip ke **kelimanya**.
+Mesin akan memilih salah warna, dan akibatnya bukan "gagal" — melainkan harga
+barang A menempel di barang B, tanpa galat, tanpa suara.
+
+**Karena itu: mesin boleh mengurutkan, tidak pernah memilih.** Aturan keras
+untuk fitur usulan pasangan (belum dibangun, §7):
+
+- Nol pra-centang, termasuk kandidat teratas.
+- Mesin tidak pernah menulis tautan sendiri.
+- Tidak ada tombol "terima semua usulan".
+- Tampilkan **semua** kandidat yang lolos ambang, bukan satu tebakan terbaik.
+- Varian model yang sama ditampilkan berdampingan dengan pembedanya disorot.
+- Tampilkan **alasan** tiap kandidat (token mana yang cocok), **bukan skor**.
+- Peringatan eksplisit saat ≥2 kandidat hanya beda di token varian.
+
+---
+
+## 6. Jebakan: `SYNC_PRICE` dipakai dua fitur
+
+**`product_logs.action = 'SYNC_PRICE'` ditulis oleh dua jalur yang berbeda:**
+
+| Penulis | Berkas |
+|---|---|
+| Sinkronisasi WooCommerce | `lib/api/woocommerce/sync/apply.ts` |
+| Penerapan Accurate (kini mati) | `admin/(panel)/harga-accurate/actions.ts` |
+
+Labelnya di `lib/logs/actions.ts` bahkan berbunyi `"Sinkron Harga (WooCommerce)"`.
+
+### Akibatnya: penjaga "suntingan manusia menang" bocor
+
+`lib/services/accurate-price.ts` menentukan "harga ini milik manusia" dengan
+membandingkan `MAX(UPDATE_PRICE)` vs `MAX(SYNC_PRICE)` per produk. Karena
+1.069 entri WooCommerce menyamar sebagai jejak sinkronisasi, produk yang
+harganya disunting manusia lalu tersentuh sinkronisasi WooCommerce akan dianggap
+"milik sync" dan **kehilangan perlindungannya**.
+
+Gejalanya senyap — tidak ada galat, harga hanya kembali ke angka lama.
+
+**Belum diperbaiki.** Yang dibutuhkan pemisahan nama aksi (misal
+`SYNC_PRICE_ACCURATE`), bukan mempensiunkan `SYNC_PRICE` — satu pemakainya punya
+1.069 baris sejarah. Menunggu keputusan apakah entri lama ikut dilabeli ulang.
+
+Catatan kalau jalur Accurate dihidupkan lagi: `product_logs.product_id` menyimpan
+**wooId**, bukan `products.id`.
+
+---
+
+## 7. Yang belum dikerjakan
+
+| Pekerjaan | Keterangan |
+|---|---|
+| **Kolom Harga Jual** di `/admin/harga-accurate` | SATU kolom bisa diketik (bukan dua kolom setara). Nilai Accurate muncul **hanya jika terisi DAN berbeda** — 136 barang yang nilainya kosong tidak boleh menampilkan penanda apa pun. Tulis lewat `updateProductPriceAction`. Tampilkan Modal (CP) di sebelahnya, flag visual kalau Harga Jual < Modal. Tiga berkas: `price-table.ts`, `harga-accurate/actions.ts`, `tabel-harga-view.tsx`. Nol migrasi |
+| **Lepas 229 tautan mati** | Skrip siap, uji kering dulu |
+| **Panen 35 pasang SKU** | `sku` = kode Accurate, nol ambigu. Pastikan tidak bersinggungan dengan kasus ZZ TEST |
+| **Ukur ulang laporan per kategori** | Setelah dua poin di atas |
+| **Usulan pasangan** di dialog penautan | Aturan kerasnya di §5. Uji di `u859138789_restore_uji` dulu. Ukur akurasi pakai 863 pasang SKU sebagai kunci jawaban — berapa sering kandidat benar masuk 3 teratas. Catat: kunci jawaban itu **bias** (produk ber-SKU cenderung penamaannya rapi) dan harus dibersihkan dulu dari 229 tautan mati |
+| **Pisahkan nama aksi `SYNC_PRICE`** | §6, menunggu keputusan |
+| **Kolom kode Accurate di formulir `/admin/produk`** | Supaya barang baru ditautkan saat dibuat — satu-satunya cara jumlah belum-tertaut berhenti bertambah |
+
+### Menunggu keputusan pemilik project
+
+- **Asus TUF F16 (`2605000073`, FX607VJB)** — web Rp 18.600.000, Accurate
+  Rp 21.900.000, modal Rp 14.800.000. Tautannya sudah diperiksa dan **benar**,
+  jadi ini beda harga sungguhan, bukan salah pasang. Menurut §1 web yang
+  berlaku, tapi konsekuensinya perlu disadari: pembeli yang melihat 18,6jt di
+  web akan ditagih 21,9jt oleh kasir. **Jangan ubah sebelum dikonfirmasi.**
+
+---
+
+## 8. Cara mengerjakannya
+
+- **Semua percobaan di database uji dulu**, bukan produksi:
+  `u859138789_restore_uji`, env `RESTORE_UJI_DATABASE_URL` di `.env.local`
+  (lokal saja).
+- **Semua skrip tulis ke produksi**: uji kering + pratinjau + backup pemulihan,
+  lalu pemilik project yang menjalankan `--tulis`.
+- **Jangan menebak nilai harga yang rusak.** Angka mencurigakan ditandai, tidak
+  dikoreksi diam-diam.
+- **Pertahankan audit log** di `updateProductPriceAction`.
 - **Harga modal (CP) & dealer tidak pernah ikut ke web.** Keduanya internal, dan
-  sejak 7 Sep 2026 modal bahkan punya izin sendiri (`harga-modal`).
-
----
-
-## 6. Suntingan di web menang atas sinkronisasi
-
-**Kalau harga sudah diubah orang di panel web, sinkronisasi berikutnya TIDAK
-boleh menimpanya.** Keputusan pemilik project.
-
-Alasannya berdiri sendiri: orang yang mengubah harga di panel melakukannya
-dengan sengaja dan tahu konteksnya — promo, harga khusus proyek, koreksi atas
-angka Accurate yang salah. Sinkronisasi yang menimpanya diam-diam membuat
-pekerjaan itu hilang tanpa ada yang merasa membatalkannya, dan yang paling buruk
-ia terjadi tanpa suara: tidak ada galat, harga cuma kembali ke angka lama.
-
-### 6.1 Cara membedakannya
-
-**Datanya sudah ada, tidak perlu kolom baru.** `product_logs` mencatat tiap
-perubahan harga beserta pelakunya, dan aksinya sudah terpisah:
-
-| Aksi | Artinya |
-|---|---|
-| `UPDATE_PRICE` | seseorang mengubah harga lewat panel |
-| `SYNC_PRICE` | harga datang dari penerapan Accurate |
-
-Jadi aturannya bisa dibaca dari riwayat: **kalau `UPDATE_PRICE` terakhir untuk
-sebuah produk lebih baru daripada `SYNC_PRICE` terakhirnya, harga itu milik
-manusia** — sinkronisasi melewatinya.
-
-Alternatifnya kolom penanda di `products` (mis. waktu sinkronisasi terakhir),
-yang lebih murah dibaca massal tapi menambah keadaan yang harus dijaga tetap
-benar. Pilih saat implementasi; yang penting aturannya, bukan mekanismenya.
-
-### 6.2 Tetap ditampilkan, bukan disembunyikan
-
-Baris yang dilewati **tetap muncul di pratinjau**, ditandai bahwa harganya
-disunting manusia dan karena itu tidak ikut terpilih. Menyembunyikannya akan
-menimbulkan pertanyaan yang lebih buruk — *kenapa barang ini tidak muncul?* —
-dan staff yang memang ingin mengembalikannya ke harga Accurate harus tetap
-bisa, dengan mencentangnya sendiri secara sadar.
-
----
-
-## 7. Cara mengerjakannya: uji di database terpisah dulu
-
-**Semua percobaan dilakukan di database uji, bukan produksi.** Baru setelah
-caranya terbukti, ia dipakai di database sebenarnya. Keputusan pemilik project.
-
-Databasenya **sudah ada dan siap pakai** — tidak perlu membuat yang baru:
-
-| | |
-|---|---|
-| Nama | `u859138789_restore_uji` |
-| Env | `RESTORE_UJI_DATABASE_URL` di `.env.local` (**lokal saja**, jangan masuk env produksi) |
-| Isi | `products` 5.415 · `accurate_products` 7.041 — **sama persis dengan produksi** |
-| Tabel | `products`, `accurate_products`, `accurate_woo_mapping`, `product_logs` |
-
-Dibuat saat migrasi Satu Login (5 Sep 2026) dan ternyata masih segar. Kalau
-suatu saat terasa basi, segarkan dengan ekspor ulang dari produksi — prosedurnya
-sama seperti waktu itu.
-
-**Yang wajib diuji di sana sebelum menyentuh produksi:**
-- Pengisian awal kolom penambat, termasuk saringan `woo_product_id > 0` (§2.1)
-- Aturan awalan `2` menang atas `1` (§3.2)
-- Bahwa harga yang disunting manusia benar-benar dilewati (§6)
-- Bahwa barang tanpa harga jual tidak ikut (§3.3)
-
----
-
-## 8. Pembagian wewenang, dan kapan sinkronisasi dijalankan
-
-Ketiga pertanyaan yang semula terbuka sudah dijawab pemilik project (8 September
-2026).
-
-### 8.1 PIC memegang harganya, tim web memegang sinkronisasinya
-
-**Isi harga sepenuhnya wewenang PIC.** Tim web tidak menentukan berapa harga
-sebuah barang — ia menentukan **kapan** harga itu berpindah ke katalog, dan
-memegang kendali penuh untuk menjalankannya ulang.
-
-Dua wewenang berbeda yang tidak saling menimpa, dan itu sebabnya §6 berlaku:
-harga yang sudah disunting di panel web tidak ditimpa sinkronisasi berikutnya.
-Kalau memang harus dikembalikan ke angka Accurate, tim web menjalankan
-sinkronisasi ulang **dengan sengaja** — sebuah tindakan, bukan efek samping.
-
-### 8.2 Barang tanpa produk web: cukup diberitahu, tidak dibuatkan
-
-Barang Accurate yang tidak punya produk web **tidak dibuatkan produk draft**.
-Yang dibutuhkan cuma keterangan: **ada di web, atau belum**.
-
-Maka tabel Update Harga mendapat penanda status per baris — sesuatu yang
-langsung terbaca, bukan angka yang harus ditafsirkan. Gunanya dua: staff tahu
-barang mana yang percuma diurus harganya karena belum ada di katalog, dan daftar
-"belum ada di web" itu sendiri menjadi antrean kerja untuk Fase 2.
-
-### 8.3 Dijalankan saat barang baru datang, bukan terjadwal
-
-Sinkronisasi **tidak berjalan sendiri**. Ia dijalankan saat ada unit baru masuk
-gudang — alurnya sudah berjalan begitu di lapangan:
-
-1. Tim gudang menyiapkan filternya di Google Sheet saat barang datang.
-2. Tim web menarik dari Sheet itu (**Import Data Sheet**, sudah ada).
-3. Tim web meninjau pratinjau lalu menerapkan harga.
-
-Konsekuensinya untuk rancangan: **tidak perlu penjadwal, tidak perlu proses
-latar.** Menambahkannya justru melawan §5 — sinkronisasi terjadwal berarti harga
-pelanggan berubah tanpa ada yang menekan tombol.
+  modal punya izinnya sendiri (`harga-modal`) sejak 7 September 2026.
 
 ---
 
 ## 9. Rujukan
 
-- `docs/08-database-migrations.md` — prosedur wajib untuk Fase 1
-- `docs/12-kendala-terbuka.md` — kendala sinkronisasi WooCommerce yang masih ada
-- `src/lib/api/accurate/` — impor Sheet, akses `accurate_products`
-- `src/lib/services/accurate-price.ts` — pratinjau harga yang sudah berjalan
+- `docs/08-database-migrations.md` — prosedur migrasi (`migrate dev` dan
+  `db push` dua-duanya dilarang)
+- `docs/12-kendala-terbuka.md` — kendala yang masih terbuka
+- `src/lib/api/accurate/` — impor Sheet, akses `accurate_products`, tabel harga
+- `src/lib/api/woocommerce/products.ts` — `tolakHargaKatalog`,
+  `periksaLonjakanHarga`
+- `scripts/laporan-tautan-per-kategori.mts`,
+  `scripts/lepas-tautan-accurate-mati.mts`
 - CLAUDE.md §2.2 (Prisma sumber tunggal produk) & §2.7 (aturan harga)
