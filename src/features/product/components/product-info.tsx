@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Shield, Truck, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp";
@@ -400,12 +401,12 @@ export function ProductInfo({
           <Truck className="h-4 w-4 shrink-0 text-brand-green md:h-5 md:w-5" />
           <span>
             Gratis ongkir Batam (syarat berlaku) —{" "}
-            <a
+            <Link
               href="/kebijakan/pengiriman"
               className="underline hover:text-brand-green"
             >
               lihat kebijakan
-            </a>
+            </Link>
           </span>
         </div>
       </div>

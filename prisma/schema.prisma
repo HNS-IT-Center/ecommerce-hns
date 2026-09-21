@@ -284,11 +284,32 @@ model StoreHours {
 }
 
 model PolicyPage {
-  slug      String   @id
-  title     String
-  content   String   @db.Text // HTML, dirender lewat .prose + dangerouslySetInnerHTML
+  slug    String @id
+  title   String
+  content String @db.Text // HTML, dirender lewat .prose + dangerouslySetInnerHTML
+
+  /// Ringkasan satu kalimat. Dipakai DUA kali: teks kartu di /kebijakan dan
+  /// `metadata.description` halamannya sendiri. Sengaja satu kolom, bukan dua:
+  /// halaman baru yang dibuat staff tanpa ringkasan akan tayang ke Google tanpa
+  /// meta description sama sekali, dan meminta dua ringkasan yang nyaris sama
+  /// hanya membuat keduanya dikosongkan.
+  description String? @db.VarChar(255)
+
+  sortOrder Int @default(0) @map("sort_order")
+
+  /// Kebijakan bawaan yang alamatnya ditaut dari kode — footer, halaman produk,
+  /// dan dari dalam isi kebijakan lain. Baris bertanda ini tidak bisa dihapus
+  /// lewat panel admin, hanya disunting. Menghapusnya membuat tautan-tautan itu
+  /// 404 tanpa ada satu pun yang memberi tahu staff.
+  isSystem Boolean @default(false) @map("is_system")
+
+  // Lihat catatan pada FaqItem — alasan dan bentuknya sama.
+  deletedAt DateTime? @map("deleted_at")
+  deletedBy String?   @map("deleted_by") @db.VarChar(191)
+
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@index([deletedAt])
   @@map("policy_pages")
 }
 

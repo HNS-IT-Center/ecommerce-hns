@@ -2,6 +2,7 @@ import Link from "next/link"
 import { FileText } from "lucide-react"
 
 import { PolicyPageLayout } from "@/components/layout/policy-page-layout"
+import { getPolicyPages } from "@/lib/api/policy"
 
 export const metadata = {
   title: "Kebijakan",
@@ -17,36 +18,19 @@ export const metadata = {
  * crawler yang menelusuri naik sama-sama menabrak halaman kosong atas nama
  * domain HNS.
  *
- * Judulnya sengaja ditulis di sini, bukan diambil dari DB seperti isi tiap
- * kebijakan. Menariknya dari DB berarti empat query hanya untuk merender
- * daftar tautan, dan halaman anaknya sendiri sudah menulis `metadata.title`
- * secara literal — jadi ini mengikuti kebiasaan yang sudah ada, bukan
- * membuat pola baru.
+ * Daftarnya sekarang dari database, bukan lagi array di berkas ini. Sejak
+ * kebijakan bisa ditambah staff lewat /admin/kebijakan, daftar yang ditulis di
+ * kode berarti halaman baru tayang di alamatnya sendiri tapi tidak pernah
+ * muncul di sini — ada, tapi tidak bisa ditemukan.
+ *
+ * `metadata.description` di atas tetap ditulis harfiah: ia menyebut keempat
+ * kebijakan bawaan, dan menyusunnya dari data berarti satu query lagi hanya
+ * untuk merangkai kalimat yang akan makin panjang tiap kali staff menambah
+ * halaman.
  */
-const KEBIJAKAN = [
-  {
-    slug: "pengembalian-barang",
-    label: "Kebijakan Pengembalian Barang",
-    ringkas: "Syarat, tenggat, dan kondisi barang yang bisa dikembalikan.",
-  },
-  {
-    slug: "pengembalian-dana",
-    label: "Kebijakan Pengembalian Dana",
-    ringkas: "Cara dan lama proses pengembalian dana setelah pengajuan disetujui.",
-  },
-  {
-    slug: "pembatalan-pesanan",
-    label: "Kebijakan Pembatalan Pesanan",
-    ringkas: "Sampai kapan pesanan bisa dibatalkan dan apa akibatnya.",
-  },
-  {
-    slug: "pengiriman",
-    label: "Kebijakan Pengiriman",
-    ringkas: "Area layanan, estimasi waktu, dan pilihan ambil di toko.",
-  },
-] as const
+export default async function KebijakanIndexPage() {
+  const kebijakan = await getPolicyPages()
 
-export default function KebijakanIndexPage() {
   return (
     <PolicyPageLayout title="Kebijakan" breadcrumbLabel="Kebijakan">
       <p className="not-prose text-muted-foreground">
@@ -55,7 +39,7 @@ export default function KebijakanIndexPage() {
       </p>
 
       <ul className="not-prose mt-8 grid gap-3 sm:grid-cols-2">
-        {KEBIJAKAN.map(({ slug, label, ringkas }) => (
+        {kebijakan.map(({ slug, title, description }) => (
           <li key={slug}>
             <Link
               href={`/kebijakan/${slug}`}
@@ -63,8 +47,15 @@ export default function KebijakanIndexPage() {
             >
               <FileText className="mt-0.5 h-5 w-5 shrink-0 text-brand-green" aria-hidden="true" />
               <span>
-                <span className="block font-bold text-foreground">{label}</span>
-                <span className="mt-1 block text-sm text-muted-foreground">{ringkas}</span>
+                <span className="block font-bold text-foreground">{title}</span>
+                {/*
+                  Kartu tanpa ringkasan tetap tampil rapi — kebijakan yang
+                  dibuat staff boleh saja belum punya ringkasan, dan itu bukan
+                  alasan untuk menyisakan baris kosong di bawah judulnya.
+                */}
+                {description && (
+                  <span className="mt-1 block text-sm text-muted-foreground">{description}</span>
+                )}
               </span>
             </Link>
           </li>
