@@ -69,6 +69,40 @@ export function berkodeModel(token: string): boolean {
 
 export type ProdukRingkas = { wooId: number; nama: string }
 
+/**
+ * KATEGORI DAN BRAND SENGAJA TIDAK DIPAKAI — dua-duanya sudah dicoba dan
+ * DIUKUR MEMPERBURUK. Ini hasil percobaan, bukan kelalaian; jangan diulang
+ * tanpa membawa angka yang membantahnya.
+ *
+ * **Kategori (24,1% sepadan).** Kategori Accurate sama persis dengan salah satu
+ * kategori web hanya pada 118 dari 489 pasangan kunci yang kedua sisinya
+ * terisi. Dua sistem memakai kosakata berbeda: Accurate menulis kelompok besar
+ * seperti "KOMPONEN PC / NB", web memecahnya jadi "Motherboard", "RAM", "PSU".
+ * Menyaring menurut kategori akan membuang sekitar tiga perempat jawaban yang
+ * benar — dan kegagalannya TIDAK KELIHATAN, karena yang terbuang tidak pernah
+ * muncul di layar untuk dipertanyakan siapa pun.
+ *
+ * **Brand (96,2% sepadan, tapi tetap merugikan).** Angka kesepadanannya tinggi,
+ * jadi dugaan awalnya ia akan menolong. Diukur, dua-duanya justru menurunkan:
+ *
+ *   tanpa brand sama sekali      : posisi-1 81,0%   3-teratas 93,1%
+ *   menghukum brand yang berbeda : posisi-1 80,4%   3-teratas 91,8%
+ *   memberi nilai saat brand sama: posisi-1 59,7%   3-teratas 87,9%
+ *
+ * Sebabnya kelengkapan data, bukan kesepadanannya: brand di sisi web banyak
+ * yang kosong. Menghukum yang berbeda menjatuhkan 3,8% pasangan sah yang
+ * brandnya ditulis lain; memberi nilai tambah justru mengangkat produk LAIN
+ * bermerek sama di atas produk yang benar tapi brandnya kosong.
+ *
+ * Pelajaran yang lebih umum: dua kolom boleh sangat sepadan DI TEMPAT IA ADA,
+ * dan tetap merusak begitu dipakai menilai baris yang tidak punya nilainya.
+ *
+ * docs/13 §5 menulis "kategori mempersempit, nama memutuskan". Itu tetap benar
+ * untuk MANUSIA — staff memetakan kosakata di kepalanya sendiri. Mesin yang
+ * membandingkan dua string tidak bisa. Aturan yang sama berlaku berbeda
+ * tergantung siapa yang menjalankannya.
+ */
+
 export type Kandidat = {
   wooId: number
   nama: string

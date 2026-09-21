@@ -36,11 +36,35 @@ try {
   >(
     "SELECT woo_id AS wooId, name AS nama, sku, accurate_code AS kode FROM products WHERE name IS NOT NULL",
   )
-  const barang = await prisma.$queryRawUnsafe<{ kode: string; nama: string | null }[]>(
-    "SELECT `Kode Accurate` AS kode, `NAMA BARANG` AS nama FROM accurate_products",
+  const barang = await prisma.$queryRawUnsafe<
+    { kode: string; nama: string | null; kategori: string | null; brand: string | null }[]
+  >(
+    "SELECT `Kode Accurate` AS kode, `NAMA BARANG` AS nama, `KATEGORI` AS kategori, `NAMA BRAND` AS brand FROM accurate_products",
   )
 
   const namaBarang = new Map(barang.map((b) => [b.kode, b.nama ?? ""]))
+  const infoBarang = new Map(barang.map((b) => [b.kode, b]))
+
+  /**
+   * Kategori & brand sisi web. Satu produk bisa berada di beberapa kategori,
+   * jadi dikumpulkan jadi daftar — kecocokan dihitung kalau kategori Accurate
+   * menyamai SALAH SATU di antaranya.
+   *
+   * `product_categories.product_id` menunjuk `products.id` INTERNAL, bukan
+   * `woo_id`. Dua ruang id itu bertabrakan di project ini, jadi join-nya lewat
+   * `p.id` dan hasilnya baru dipetakan ke wooId.
+   */
+  const meta = await prisma.$queryRawUnsafe<
+    { wooId: number; brand: string | null; kategori: string | null }[]
+  >(
+    `SELECT p.woo_id AS wooId, b.name AS brand, GROUP_CONCAT(c.name SEPARATOR '||') AS kategori
+       FROM products p
+       LEFT JOIN brands b               ON b.id = p.brand_id
+       LEFT JOIN product_categories pc  ON pc.product_id = p.id
+       LEFT JOIN categories c           ON c.id = pc.category_id
+      GROUP BY p.woo_id, b.name`,
+  )
+  const metaWeb = new Map(meta.map((m) => [m.wooId, m]))
 
   /**
    * Indeks dibangun oleh FUNGSI YANG SAMA dengan yang nanti dipakai panel
@@ -117,6 +141,42 @@ try {
   }
 
   const pct = (n: number) => `${((n / kunci.length) * 100).toFixed(1)}%`
+
+  /**
+   * Apakah kosakata kategori & brand di dua sistem sepadan?
+   *
+   * Ini HARUS diukur sebelum penyempitan kategori dipakai. Kalau Accurate
+   * menulis "KOMPONEN PC / NB" sedangkan web menulis "Motherboard", menyaring
+   * kandidat menurut kategori justru membuang jawaban yang benar — dan
+   * kegagalannya tidak kelihatan, karena yang hilang tidak pernah muncul.
+   */
+  const samakan = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]+/g, "")
+  let katCocok = 0
+  let katAda = 0
+  let brandCocok = 0
+  let brandAda = 0
+
+  for (const k of kunci) {
+    const acc = infoBarang.get(k.kode!)
+    const web = metaWeb.get(k.wooId)
+    if (acc?.kategori && web?.kategori) {
+      katAda++
+      const daftar = web.kategori.split("||").map(samakan)
+      if (daftar.includes(samakan(acc.kategori))) katCocok++
+    }
+    if (acc?.brand && web?.brand) {
+      brandAda++
+      if (samakan(acc.brand) === samakan(web.brand)) brandCocok++
+    }
+  }
+
+  console.log("=== Sepadan tidaknya kategori & brand antar sistem ===")
+  console.log(
+    `  kategori sama persis : ${katCocok}/${katAda} (${katAda ? ((katCocok / katAda) * 100).toFixed(1) : "—"}%)`,
+  )
+  console.log(
+    `  brand sama persis    : ${brandCocok}/${brandAda} (${brandAda ? ((brandCocok / brandAda) * 100).toFixed(1) : "—"}%)\n`,
+  )
 
   console.log("=== Hipotesis: kode model ada di kedua nama ===")
   console.log(`  berbagi token berkode model : ${berbagiKodeModel} (${pct(berbagiKodeModel)})\n`)
