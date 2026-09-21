@@ -35,18 +35,19 @@ import {
 /**
  * Penerapan SP Accurate ke harga katalog — DIMATIKAN 19 September 2026.
  *
- * Tanda tunggal untuk seluruh jalur ini. UI-nya sudah diganti pemberitahuan di
- * `./page.tsx`, tapi server action tetap bisa dipanggil langsung oleh siapa pun
- * yang tahu namanya — menghilangkan tombol bukan mematikan fitur.
+ * Tanda tunggal untuk seluruh jalur ini. UI-nya sudah tidak ada sama sekali
+ * sejak tab Sinkronisasi dihapus 20 September 2026, tapi server action tetap
+ * bisa dipanggil langsung oleh siapa pun yang tahu namanya — menghilangkan
+ * tombol bukan mematikan fitur.
  *
- * Alasannya ada di `./page.tsx` (TabSinkronisasi) dan `docs/13`: harga kini
+ * Alasannya ada di `./page.tsx` dan `docs/13`: harga kini
  * ditetapkan di web, sedangkan `accurate_products.SP` beku sejak 28 Agustus
  * 2026 karena Sheet gudang sengaja tidak memuat kolom harga. Menerapkannya
  * menimpa harga hidup dengan angka lama.
  *
- * Menghidupkan kembali: ubah tanda ini jadi `true` DAN kembalikan
- * `<HargaAccurateView />` di `./page.tsx`. Dua-duanya, supaya tidak ada jalur
- * yang menyala tanpa disadari.
+ * Menghidupkan kembali: ubah tanda ini jadi `true` DAN kembalikan tab beserta
+ * `<HargaAccurateView />` di `./page.tsx` (langkahnya di docs/13 §3).
+ * Dua-duanya, supaya tidak ada jalur yang menyala tanpa disadari.
  */
 const PENERAPAN_SP_AKTIF = false
 

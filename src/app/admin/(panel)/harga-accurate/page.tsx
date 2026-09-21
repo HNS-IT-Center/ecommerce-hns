@@ -1,6 +1,3 @@
-import Link from "next/link"
-import { AlertTriangle } from "lucide-react"
-
 import { requirePageView } from "@/lib/auth"
 import { bisaAkses } from "@/lib/auth/permissions"
 import {
@@ -11,20 +8,29 @@ import {
   type FilterTautan,
 } from "@/lib/api/accurate/price-table"
 import { TabelHargaView } from "./tabel-harga-view"
+import { ImportSheetButton } from "./import-sheet-button"
 
 /**
- * Halaman harga Accurate, dua tab dengan dua urusan berbeda:
+ * Halaman harga Accurate — satu layar: daftar seluruh barang Accurate beserta
+ * tiga harganya. SRP hanya dibaca; harga jual, modal (CP) & dealer disunting di
+ * sini. Modal & dealer angka internal, tidak pernah tampil ke pelanggan.
  *
- * - **Daftar Harga** — seluruh barang Accurate beserta tiga harganya. SRP hanya
- *   dibaca; modal (CP) & dealer disunting di sini. Keduanya angka internal.
- * - **Sinkronisasi** — pratinjau selisih harga Accurate vs katalog lalu
- *   menerapkannya. Inilah satu-satunya tab yang menyentuh harga pelanggan.
+ * Tab kedua ("Sinkronisasi") DIHAPUS 20 September 2026. Isinya sudah cuma kotak
+ * pemberitahuan sejak penerapan harga Accurate dimatikan sehari sebelumnya —
+ * tab yang diklik lalu tidak menghasilkan apa pun. Mesinnya sendiri utuh:
+ * `HargaAccurateView` di ./view.tsx, `terapkanHargaAction` di ./actions.ts,
+ * dan penjaga `PENERAPAN_SP_AKTIF` yang menolak di sisi server. Cara
+ * menghidupkannya kembali ada di docs/13 §3 — dan yang harus benar lebih dulu
+ * adalah hulunya: harus ada jalur yang membuat SP Accurate menyusul harga web,
+ * bukan sebaliknya.
  *
- * Dipisah karena dipakai orang berbeda pada waktu berbeda: mengisi harga modal
- * barang yang baru datang adalah pekerjaan harian, sedangkan menerapkan harga
- * ke katalog adalah keputusan yang ditinjau. Menaruh keduanya dalam satu layar
- * membuat tombol yang mengubah harga pelanggan berada sejengkal dari kolom yang
- * diketik ratusan kali sehari.
+ * Alamat lama `?tab=sinkronisasi` tidak lagi dibaca. Parameternya diabaikan
+ * dan halaman tampil apa adanya, jadi bookmark lama tidak patah.
+ *
+ * Impor data dari Google Sheet TIDAK ikut mati bersama tab itu — ia sekarang
+ * berdiri sendiri sebagai tombol di kepala halaman (./import-sheet-button.tsx).
+ * Ia mengisi data barang, bukan harga, jadi memang tidak punya urusan dengan
+ * penerapan SP yang dimatikan.
  */
 export const metadata = {
   title: "Update Harga",
@@ -33,14 +39,8 @@ export const metadata = {
 // Selalu segar: harga di Accurate berubah, dan pratinjau basi menyesatkan.
 export const dynamic = "force-dynamic"
 
-const TABS = [
-  { key: "daftar", label: "Daftar Harga" },
-  { key: "sinkronisasi", label: "Sinkronisasi" },
-] as const
-
 type Props = {
   searchParams: Promise<{
-    tab?: string
     q?: string
     kategori?: string
     brand?: string
@@ -62,51 +62,39 @@ export default async function HargaAccuratePage({ searchParams }: Props) {
   const bolehEditModal = bisaAkses(izin, "harga-modal", "edit")
 
   const sp = await searchParams
-  const tab = TABS.some((t) => t.key === sp.tab) ? (sp.tab as (typeof TABS)[number]["key"]) : "daftar"
 
   return (
     <div className="mx-auto max-w-6xl">
-      <div>
-        <h1 className="text-2xl font-bold">Update Harga</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Harga modal &amp; dealer adalah angka internal — tidak pernah tampil ke pelanggan.
-          Harga jual ditetapkan di sini; Accurate adalah salinan yang menyusul.
-        </p>
-      </div>
-
-      <div className="mt-6 flex items-center gap-2 border-b border-border">
-        {TABS.map((t) => {
-          // Penyaring & halaman sengaja TIDAK dibawa saat berpindah tab: keduanya
-          // milik daftar harga, dan menyeretnya ke tab sinkronisasi hanya
-          // menyisakan parameter yang tak berarti di alamat.
-          const aktif = tab === t.key
-          return (
-            <Link
-              key={t.key}
-              href={`/admin/harga-accurate?tab=${t.key}`}
-              className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-                aktif
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
-              }`}
-            >
-              {t.label}
-            </Link>
-          )
-        })}
+      {/* Judul & tombol impor berdampingan di layar lebar, bertumpuk di ponsel
+          — tombolnya tidak boleh mendesak judul sampai terpotong. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Update Harga</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Harga modal &amp; dealer adalah angka internal — tidak pernah tampil ke pelanggan.
+            Harga jual ditetapkan di sini; Accurate adalah salinan yang menyusul.
+          </p>
+          {/* Sisa tab Sinkronisasi yang dihapus. Staff yang dulu rutin
+              menerapkan harga dari Accurate perlu tahu fiturnya DIMATIKAN, bukan
+              rusak — tanpa itu yang dicari berikutnya adalah jalan lain yang
+              tidak terpantau. Sengaja menyebut PENERAPAN HARGA, bukan
+              "sinkronisasi" polos: impor data dari Sheet justru masih jalan. */}
+          <p className="mt-1 text-xs text-muted-foreground">
+            Penerapan harga otomatis dari Accurate dimatikan 19 September 2026.
+          </p>
+        </div>
+        {/* Menulis ke accurate_products, jadi ikut izin edit halaman ini —
+            peran yang cuma boleh melihat tidak diberi tombolnya. */}
+        {bolehEdit && <ImportSheetButton />}
       </div>
 
       <div className="mt-6">
-        {tab === "daftar" ? (
-          <TabDaftar
-            searchParams={sp}
-            bolehEdit={bolehEdit}
-            bolehLihatModal={bolehLihatModal}
-            bolehEditModal={bolehEditModal}
-          />
-        ) : (
-          <TabSinkronisasi />
-        )}
+        <TabDaftar
+          searchParams={sp}
+          bolehEdit={bolehEdit}
+          bolehLihatModal={bolehLihatModal}
+          bolehEditModal={bolehEditModal}
+        />
       </div>
     </div>
   )
@@ -189,87 +177,5 @@ async function TabDaftar({
       urut={urut}
       arah={arah}
     />
-  )
-}
-
-/**
- * Tab Sinkronisasi — PENERAPAN HARGA DIMATIKAN (19 September 2026).
- *
- * Arah datanya sudah terbalik. Dulu Accurate dianggap sumber harga dan web
- * salinannya; sekarang harga ditetapkan di panel web, dan Google Sheet gudang
- * SENGAJA tidak memuat kolom harga (keputusan pemilik project). Akibatnya
- * `accurate_products.SP` tidak punya jalur pembaruan sama sekali — angkanya
- * beku sejak snapshot 28 Agustus 2026.
- *
- * Menerapkannya ke katalog berarti menimpa harga hidup dengan angka tiga pekan
- * lalu. Diukur 18 September 2026 terhadap 527 baris tertaut yang punya SP
- * terbaca: 298 produk harganya akan TURUN (jumlah selisih Rp 378.842.000) dan
- * 71 naik. Sebagian besar produk terbit yang dilihat pelanggan.
- *
- * `HargaAccurateView` di `./view.tsx` beserta `terapkanHargaAction` SENGAJA
- * TIDAK DIHAPUS. Untuk menghidupkan kembali: kembalikan dua baris import
- * (`buildAccuratePricePreview` dan `HargaAccurateView`), ganti blok
- * pemberitahuan di bawah dengan `<HargaAccurateView initial={preview} />`, dan
- * balik `PENERAPAN_SP_AKTIF` di `./actions.ts` — penjaga server tetap menolak
- * selama tanda itu mati, walau UI-nya sudah kembali.
- *
- * Sebelum menghidupkannya, yang harus benar lebih dulu adalah hulunya: harus
- * ada jalur yang membuat SP Accurate menyusul harga web, bukan sebaliknya.
- */
-async function TabSinkronisasi() {
-  return (
-    <div className="rounded-xl border border-warning/40 bg-warning/5 p-5 sm:p-6">
-      <div className="flex items-start gap-3">
-        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
-        <div className="min-w-0 space-y-3">
-          <h2 className="text-base font-semibold">Penerapan harga Accurate dimatikan</h2>
-
-          <p className="text-sm text-muted-foreground">
-            Harga jual sekarang ditetapkan di panel web ini.{" "}
-            <strong className="text-foreground">Accurate adalah salinannya</strong> — angka di
-            sana perlu disusulkan mengikuti web, bukan sebaliknya.
-          </p>
-
-          <p className="text-sm text-muted-foreground">
-            Karena Google Sheet gudang tidak memuat kolom harga, angka SRP di Accurate tidak
-            pernah diperbarui sejak <strong className="text-foreground">28 Agustus 2026</strong>.
-            Menerapkannya ke katalog berarti mengembalikan harga pelanggan ke angka lama —
-            pada pengukuran terakhir, 298 produk akan turun harganya tanpa ada yang bermaksud
-            menurunkannya.
-          </p>
-
-          <div className="rounded-lg border border-border bg-background p-3">
-            <p className="text-xs font-medium">Yang dipakai sebagai gantinya:</p>
-            <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
-              <li>
-                &middot;{" "}
-                <Link
-                  href="/admin/harga-accurate?tab=daftar"
-                  className="text-primary underline-offset-2 hover:underline"
-                >
-                  Daftar Harga
-                </Link>{" "}
-                — menetapkan harga jual, modal, dan dealer
-              </li>
-              <li>
-                &middot;{" "}
-                <Link
-                  href="/admin/produk"
-                  className="text-primary underline-offset-2 hover:underline"
-                >
-                  Semua Produk
-                </Link>{" "}
-                — mengubah harga satu produk beserta detailnya
-              </li>
-            </ul>
-          </div>
-
-          <p className="text-xs text-muted-foreground">
-            Kodenya masih utuh. Kalau suatu saat ada jalur yang membuat harga Accurate benar-benar
-            mutakhir, tab ini bisa dihidupkan lagi tanpa menulis ulang apa pun.
-          </p>
-        </div>
-      </div>
-    </div>
   )
 }

@@ -226,7 +226,9 @@ export function TabelHargaView({
     if (gabung.urut) sp.set("urut", gabung.urut)
     if (gabung.urut && gabung.arah) sp.set("arah", gabung.arah)
     const qs = sp.toString()
-    return `/admin/harga-accurate?tab=daftar${qs ? `&${qs}` : ""}`
+    // `tab` tidak lagi disertakan: tabnya dihapus 20 September 2026 dan
+    // halaman tidak membacanya lagi.
+    return `/admin/harga-accurate${qs ? `?${qs}` : ""}`
   }
 
   /**

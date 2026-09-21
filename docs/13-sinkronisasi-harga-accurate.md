@@ -103,13 +103,34 @@ dinyatakan adalah "tidak ada entri berciri penerapan Accurate" — bukan
 
 ### Cara menghidupkannya kembali
 
-Kodenya sengaja utuh. Dua tempat, dan harus dua-duanya:
+Kodenya sengaja utuh — `view.tsx`, `buildAccuratePricePreview`, dan
+`terapkanHargaAction` tidak pernah dihapus. Dua tempat, dan harus dua-duanya:
 
-1. `harga-accurate/page.tsx` — kembalikan import `buildAccuratePricePreview` dan
-   `HargaAccurateView`, ganti blok pemberitahuan dengan `<HargaAccurateView />`.
+1. `harga-accurate/page.tsx` — kembalikan deretan tab beserta pembacaan
+   `?tab=`, kembalikan import `buildAccuratePricePreview` dan
+   `HargaAccurateView`, lalu render `<HargaAccurateView initial={preview} />`
+   pada tab kedua.
 2. `harga-accurate/actions.ts` — `PENERAPAN_SP_AKTIF = true`.
 
 Sengaja dua tempat supaya tidak ada jalur yang menyala tanpa disadari.
+
+> **Perubahan 20 September 2026:** tab "Sinkronisasi" beserta kotak
+> pemberitahuannya **dihapus dari panel** — isinya sudah tidak bisa dikerjakan
+> apa pun, dan tab yang diklik lalu tidak menghasilkan apa-apa hanya mengundang
+> pertanyaan. Yang tersisa di layar cuma satu baris di bawah judul halaman
+> Update Harga: *"Penerapan harga otomatis dari Accurate dimatikan 19 September
+> 2026."* Bentuk lama tab itu bisa dilihat di riwayat git. Mesinnya sendiri
+> tidak tersentuh, termasuk penjaga `PENERAPAN_SP_AKTIF` di sisi server.
+> Alamat lama `?tab=sinkronisasi` tidak patah: parameternya diabaikan.
+>
+> **Yang ikut terbawa mati tanpa disengaja, dan sudah dipulihkan:** tombol
+> **Import dari Google Sheet** dulu hidup di dalam `view.tsx` — satu komponen
+> dengan mesin penerapan harga. Begitu `view.tsx` berhenti dirender pada
+> 19 September, tombol impor ikut lenyap dari layar, padahal impor data barang
+> tidak punya hubungan apa pun dengan penerapan harga. Sejak 20 September ia
+> berdiri sendiri di `import-sheet-button.tsx` sebagai tombol di kepala
+> halaman, di balik izin `edit`. Pemisahan itu sekaligus mencegah kejadian
+> yang sama terulang.
 
 **Tapi sebelum itu**, yang harus benar lebih dulu adalah arahnya: harus ada
 jalur yang membuat `SP` Accurate menyusul harga web, bukan sebaliknya.
@@ -123,7 +144,7 @@ jalur yang membuat `SP` Accurate menyusul harga web, bukan sebaliknya.
 | Menetapkan harga jual | `/admin/produk`, dan kolom Harga Jual di `/admin/harga-accurate` (belum dibangun — §7) |
 | Menetapkan modal & dealer | `/admin/harga-accurate` tab Daftar Harga |
 | Menautkan barang Accurate ke produk web | `/admin/harga-accurate` tab Daftar Harga, dialog penautan |
-| Memperbarui data barang dari gudang | Tombol Import dari Google Sheet |
+| Memperbarui data barang dari gudang | Tombol **Import dari Google Sheet** di kepala `/admin/harga-accurate` (butuh izin `edit`) |
 
 ### Penjaga harga yang berlaku di semua jalur
 
