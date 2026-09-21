@@ -302,8 +302,14 @@ export async function tautkanKodeAction(input: {
   /** Isi `products.sku` dengan kode Accurate kalau SKU-nya masih kosong. */
   isiSku?: boolean
 }): Promise<HasilTaut> {
+  // Namanya dipakai jejak audit penautan di `tautkanKode` — siapa yang
+  // menautkan sama pentingnya dengan apa yang ditautkan.
+  let oleh = "Admin"
   try {
-    await requirePermission("harga-accurate", "edit")
+    const authUser = await requirePermission("harga-accurate", "edit")
+    if (authUser && typeof authUser === "object" && "name" in authUser) {
+      oleh = String(authUser.name)
+    }
   } catch {
     return { ok: false, alasan: "Anda tidak punya izin menautkan produk." }
   }
@@ -313,7 +319,7 @@ export async function tautkanKodeAction(input: {
   }
 
   try {
-    const hasil = await tautkanKode(input.wooId, input.kode, { isiSku: input.isiSku })
+    const hasil = await tautkanKode(input.wooId, input.kode, oleh, { isiSku: input.isiSku })
     if (hasil.ok) {
       revalidatePath("/admin/harga-accurate")
       // Daftar produk ikut disegarkan kalau SKU-nya berubah — kolom SKU di

@@ -244,6 +244,41 @@ Kenapa bukan yang lain:
 kering: `scripts/lepas-tautan-accurate-mati.mts`. Angka 231 yang pernah beredar
 sudah usang.
 
+### Jejak audit penautan
+
+**Sejak 21 September 2026, setiap penautan dan pelepasan tercatat di
+`product_logs`** — aksi `LINK_ACCURATE` dan `UNLINK_ACCURATE`, dengan kode lama,
+kode baru, siapa pelakunya, dan kapan.
+
+Sebelumnya tidak ada jejak sama sekali. Timpang: penandaan "tidak dijual di web"
+mencatat `ditandai_oleh` sejak awal, padahal penautanlah yang menentukan **ke
+produk mana harga kasir mendarat**, dan salah pasang gagal tanpa galat dan tanpa
+suara. Kalau suatu hari ada harga mendarat di barang yang keliru, sekarang ada
+cara menelusurinya.
+
+Empat hal yang disengaja:
+
+- **Dicatat di dalam `tautkanKode`, bukan di tiap pemanggil.** Dialog penautan,
+  Quick Edit, dan formulir produk semuanya bermuara ke sana — begitu pula
+  pemanggil yang belum ada. Tidak ada jalur yang bisa menautkan tanpa tercatat.
+- **`product_id` yang dicatat adalah `wooId`**, mengikuti baris log lain di
+  project ini. Dua ruang id itu bertabrakan pada 158 dari 5.470 produk, jadi
+  mencampurnya membuat riwayat menunjuk barang yang salah — bukan sekadar tidak
+  ketemu.
+- **Gagal mencatat tidak membatalkan penautan.** Tautannya sudah tertulis dan
+  benar; melempar galat di situ hanya membuat pemakainya mengira penautannya
+  gagal lalu mengulanginya.
+- **Tidak masuk `PRICE_ACTIONS`.** Ia bukan perubahan harga, dan memasukkannya
+  akan menyelipkan baris tanpa angka ke tengah riwayat harga sebuah produk.
+
+Nol migrasi: `product_logs.action` memang kolom teks bebas, jadi kosakata baru
+tidak menyentuh skema. Labelnya ditambahkan di `lib/logs/actions.ts` supaya
+tidak tampil mentah di layar Logs.
+
+Diverifikasi `scripts/uji-jejak-penautan.mts` — 11 uji di database uji, termasuk
+dua sisi yang sama pentingnya: menautkan ulang ke kode yang sama **tidak**
+menambah baris, dan penautan yang gagal **tidak** meninggalkan jejak.
+
 ### Awalan kode: dahulukan `2`, awalan `1` skema lama
 
 **Diukur 21 September 2026** (`scripts/laporan-awalan-kode.mts`, baca-saja):

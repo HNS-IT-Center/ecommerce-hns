@@ -528,8 +528,13 @@ export async function tautkanKodeAccurateAction(input: {
   wooId: number
   kode: string | null
 }): Promise<{ error: string | null }> {
+  // Namanya dipakai jejak audit penautan di `tautkanKode`.
+  let oleh = "Admin"
   try {
-    await requirePermission("produk", "edit")
+    const authUser = await requirePermission("produk", "edit")
+    if (authUser && typeof authUser === "object" && "name" in authUser) {
+      oleh = String(authUser.name)
+    }
   } catch (error) {
     if (error instanceof UnauthorizedError) {
       return { error: error.message }
@@ -547,7 +552,7 @@ export async function tautkanKodeAccurateAction(input: {
   const kode = input.kode === null || input.kode.trim() === "" ? null : input.kode.trim()
 
   try {
-    const hasil = await tautkanKode(input.wooId, kode)
+    const hasil = await tautkanKode(input.wooId, kode, oleh)
     if (!hasil.ok) return { error: hasil.alasan }
 
     // Daftar produk dilayani `unstable_cache` dengan revalidate 300 detik.

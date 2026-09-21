@@ -471,6 +471,7 @@ export type HasilTaut =
 export async function tautkanKode(
   wooId: number,
   kode: string | null,
+  oleh: string,
   opsi?: { isiSku?: boolean },
 ): Promise<HasilTaut> {
   const prisma = getPrisma()
@@ -497,12 +498,61 @@ export async function tautkanKode(
     }
   }
 
+  /**
+   * Keadaan sebelum diubah, untuk jejak audit di bawah. Diambil SEBELUM UPDATE
+   * — sesudahnya kode lamanya sudah tidak ada di mana pun.
+   */
+  const sebelum = await prisma.$queryRawUnsafe<{ nama: string; kodeLama: string | null }[]>(
+    "SELECT name AS nama, accurate_code AS kodeLama FROM products WHERE woo_id = ?",
+    wooId,
+  )
+
   const terpengaruh = await prisma.$executeRawUnsafe(
     "UPDATE products SET accurate_code = ? WHERE woo_id = ?",
     kode,
     wooId,
   )
   if (terpengaruh === 0) return { ok: false, alasan: "Produk web tidak ditemukan." }
+
+  /**
+   * Jejak audit penautan — DI SINI, di lapisan data, bukan di tiap pemanggil.
+   *
+   * Penautan menentukan ke produk mana harga kasir mendarat, dan salah pasang
+   * gagal tanpa galat dan tanpa suara (docs/13 §5). Sampai 21 September 2026
+   * perbuatan itu tidak meninggalkan jejak sama sekali — padahal penandaan
+   * "tidak dijual di web", keputusan yang jauh lebih ringan, mencatat siapa dan
+   * kapan sejak awal.
+   *
+   * Ditaruh di dalam fungsi ini supaya tidak ada jalur yang bisa menautkan
+   * tanpa tercatat: dialog penautan di Update Harga, Quick Edit, dan formulir
+   * produk semuanya bermuara ke sini, begitu pula pemanggil yang belum ada.
+   *
+   * Gagal mencatat TIDAK membatalkan penautannya. Tautannya sudah tertulis dan
+   * benar; melemparkan galat di sini hanya akan membuat pemakainya mengira
+   * penautannya gagal lalu mengulanginya.
+   */
+  const kodeLama = sebelum[0]?.kodeLama ?? null
+  if (kodeLama !== kode) {
+    try {
+      await prisma.productLog.create({
+        data: {
+          userName: oleh,
+          // `wooId`, mengikuti baris log lain di project ini — bukan
+          // `Product.id` internal. Dua ruang id itu bertabrakan (158 dari
+          // 5.470 produk), jadi mencampurnya membuat riwayat menunjuk barang
+          // yang salah, bukan sekadar tidak ketemu.
+          productId: wooId,
+          productName: sebelum[0]?.nama ?? `Produk ${wooId}`,
+          action: kode === null ? "UNLINK_ACCURATE" : "LINK_ACCURATE",
+          fieldAffected: "accurate_code",
+          oldValue: kodeLama,
+          newValue: kode,
+        },
+      })
+    } catch {
+      // Sengaja ditelan — lihat alasan di atas.
+    }
+  }
 
   // Penautannya sudah selesai di atas. Pengisian SKU di bawah ini tambahan —
   // apa pun hasilnya, tautannya tetap berdiri.

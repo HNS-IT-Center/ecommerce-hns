@@ -40,6 +40,12 @@ const ACTION_LABELS: Record<string, string> = {
   DELETE: "Hapus Produk",
   BULK_STATUS: "Massal: Status",
   BULK_STOCK_STATUS: "Massal: Stok",
+  // Penautan ke kasir Accurate. Sengaja TIDAK masuk `PRICE_ACTIONS`: ia bukan
+  // perubahan harga, dan memasukkannya akan menyelipkan baris tanpa angka ke
+  // tengah riwayat harga sebuah produk. Ia menentukan ke mana harga kasir
+  // mendarat — itu soal lain, dan itu sebabnya ia dicatat.
+  LINK_ACCURATE: "Tautkan Kode Accurate",
+  UNLINK_ACCURATE: "Lepas Tautan Accurate",
 }
 
 export function actionLabel(action: string) {
@@ -56,6 +62,8 @@ export function actionBadgeClass(action: string) {
     case "QUICK_EDIT": return "bg-purple-100 text-purple-800"
     case "UPLOAD_PRODUCTS": return "bg-green-100 text-green-800"
     case "DELETE": return "bg-red-100 text-red-800"
+    case "LINK_ACCURATE": return "bg-indigo-100 text-indigo-800"
+    case "UNLINK_ACCURATE": return "bg-slate-200 text-slate-900"
     default: return "bg-slate-100 text-slate-800"
   }
 }
