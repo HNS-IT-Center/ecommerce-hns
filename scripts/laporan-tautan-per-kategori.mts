@@ -122,7 +122,10 @@ if (!KATEGORI) {
   console.log("=== ANTREAN KERJA PER KATEGORI ===")
   console.log("Perlu       = barang AKTIF, belum tertaut, belum diabaikan")
   console.log("Perlu+Harga = di antaranya yang SUDAH punya harga jual di Accurate")
-  console.log("              (menautkan yang tanpa harga belum menghasilkan apa-apa)\n")
+  // "Punya harga" dipakai sebagai PENANDA barang nyata, bukan janji hasil.
+  // Penerapan harga Accurate ke katalog sudah dimatikan 19 September 2026
+  // (docs/13 §1 & §3), jadi menautkan tidak lagi "berbuah saat disinkronkan".
+  console.log("              (penanda barang yang benar-benar dijual — BUKAN janji harga tersinkron)\n")
   console.log("  KATEGORI                         Total   Aktif  Tertaut  Diabaikan    Perlu  Perlu+Harga")
   console.log("  " + "-".repeat(91))
 
@@ -141,9 +144,11 @@ if (!KATEGORI) {
   )
 
   console.log("\n=== SARAN URUTAN PENGERJAAN ===")
-  console.log("Dahulukan yang barangnya sudah punya harga — itu yang langsung berbuah\n")
-  console.log("saat disinkronkan. Kategori kecil lebih dulu supaya ada yang benar-benar")
-  console.log("SELESAI, bukan banyak yang setengah jalan.\n")
+  console.log("Dahulukan yang barangnya pernah punya harga — itu tanda barang yang")
+  console.log("benar-benar dijual, bukan jasa atau entri mati. Harganya sendiri TIDAK")
+  console.log("ikut ke web: penerapan harga Accurate dimatikan 19 September 2026.")
+  console.log("Kategori kecil lebih dulu supaya ada yang benar-benar SELESAI,")
+  console.log("bukan banyak yang setengah jalan.\n")
   const layak = [...rekap].filter((r) => Number(r.perluBerharga) > 0)
   const kecilDulu = [...layak].sort((a, b) => Number(a.perluBerharga) - Number(b.perluBerharga))
   console.log("  -- paling cepat selesai --")
@@ -182,9 +187,10 @@ if (!KATEGORI) {
        AND (a.\`STATUS\` <> 'YA' OR a.\`STATUS\` IS NULL)
        AND p.woo_id IS NULL AND ig.kode_accurate IS NULL
      ORDER BY
-       -- Yang PUNYA harga lebih dulu: menautkannya langsung berbuah saat
-       -- disinkronkan. Yang tanpa harga tetap perlu ditautkan suatu saat,
-       -- tapi mendahulukannya berarti bekerja tanpa hasil yang terlihat.
+       -- Yang PUNYA harga lebih dulu — sebagai PENANDA, bukan karena harganya
+       -- akan dipakai: barang yang pernah berharga adalah barang yang benar-benar
+       -- dijual, bukan jasa atau entri mati (docs/13 §2). Penerapan harga
+       -- Accurate ke katalog sendiri sudah dimatikan 19 September 2026.
        (a.\`SP\` IS NULL OR a.\`SP\` = '' OR CAST(a.\`SP\` AS DECIMAL(18,0)) <= 0),
        -- Lalu yang berstok: barang yang ada di gudang lebih mungkin dicari
        -- pembeli hari ini daripada yang stoknya nol.

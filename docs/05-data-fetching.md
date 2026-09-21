@@ -1601,3 +1601,59 @@ memanggil `revalidateTag(STORES_CACHE_TAG, "max")`. Halaman ISR yang merender
 footer ikut segar lewat tag itu — tidak perlu (dan tidak mungkin) mendaftar
 `revalidatePath` untuk setiap halaman. Aksi baru yang mengubah tabel `stores`
 wajib lewat fungsi itu juga.
+
+## 23. Halaman kebijakan: daftar halamannya ikut data (21 September 2026)
+
+`/kebijakan/*` dulu empat folder route statis, masing-masing dengan `metadata`
+yang ditulis harfiah, sementara **isinya** sudah lama datang dari tabel
+`policy_pages`. Yang tertinggal di kode hanya daftar alamatnya — dan daftar itulah
+yang membuat staff tidak bisa menambah kebijakan baru tanpa deploy.
+
+Sekarang satu route dinamis `app/kebijakan/[slug]/page.tsx` melayani semuanya, dan
+panel `/admin/kebijakan` punya Tambah/Edit/Hapus penuh.
+
+### Fungsi di `lib/api/policy.ts`
+
+| Fungsi | Untuk | Fallback ke `POLICY_PAGES`? |
+|---|---|---|
+| `getPolicyPage(slug)` | Halaman publik `/kebijakan/[slug]` | Ya — kecuali baris itu memang dihapus |
+| `getPolicyPages()` | Daftar `/kebijakan` + peta situs | Ya, saat tabel kosong atau query gagal |
+| `getAdminPolicyPages()` | Daftar di panel admin | **Tidak** |
+| `getAdminPolicyPage(slug)` | Formulir sunting | **Tidak** |
+| `createPolicyPage(input)` | Server action Tambah | — |
+| `savePolicyPage(input)` | Server action Simpan | — |
+| `softDeletePolicyPage(slug, by)` | Server action Hapus | — |
+
+Panel admin sengaja tanpa fallback: panel yang menampilkan konten bawaan membuat
+staff menyunting baris yang tidak ada. Alasan yang sama dengan `getAdminFaqItems()`.
+
+### Halaman yang dihapus TIDAK jatuh ke konten bawaan
+
+`getPolicyPage()` membedakan "belum pernah di-seed" dari "sudah dihapus" lewat satu
+`count()` tambahan, dan itu hanya jalan pada kasus nol hasil. Tanpa pembedaan itu,
+kebijakan yang dihapus staff akan terbit kembali dari konstanta di alamatnya sendiri
+— hilang dari panel, tetap terbaca pelanggan.
+
+### Kolom baru di `policy_pages`
+
+`description` (ringkasan kartu **dan** `metadata.description` — satu kolom, bukan
+dua, supaya tidak ada yang dikosongkan), `sort_order`, `is_system`, serta
+`deleted_at`/`deleted_by`. Halaman bertanda `is_system` tidak bisa dihapus: alamat
+keempatnya ditaut dari kode yang tidak tahu apa-apa soal isi tabel. Penjaganya ada
+di `softDeletePolicyPage()` (`where: { isSystem: false }`), bukan cuma di UI.
+
+### Pembuangan cache
+
+`revalidatePolicyPages()` di `app/admin/(panel)/kebijakan/actions.ts` memakai
+`revalidatePath("/kebijakan/[slug]", "page")` — menyegarkan seluruh halaman di route
+dinamis itu, berapa pun jumlahnya — plus `/kebijakan`, `/faq`, dan `/sitemap.xml`.
+Mendaftar path satu per satu seperti dulu berarti halaman yang baru dibuat tidak
+pernah ikut disegarkan.
+
+### Slug tidak bisa diubah setelah dibuat
+
+Formulir sunting menampilkannya sebagai teks, dan `updatePolicyPage` mengambil slug
+dari medan tersembunyi alih-alih menurunkannya ulang dari judul. Staff yang
+memperbaiki judul tidak sedang meminta alamat halamannya berpindah — kalau ia
+berpindah, setiap tautan yang sudah beredar mati tanpa ada yang memberi tahu.
+Slug `baru` dan `faq` ditolak: keduanya sudah jadi segmen statis di `/admin/kebijakan/`.

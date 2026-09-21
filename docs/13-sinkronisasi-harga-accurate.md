@@ -228,21 +228,39 @@ Kenapa bukan yang lain:
   ada. **Skor tinggi di tabel itu bukan tanda benar.** Jangan hidupkan lagi jalur
   itu untuk harga.
 
-### Keadaan, 18–19 September 2026
+### Keadaan, 21 September 2026
+
+Diukur ulang **sesudah** 254 tautan mati dilepas
+(`scripts/laporan-tautan-per-kategori.mts`, baca-saja):
 
 | | Jumlah |
 |---|---|
 | Barang di `accurate_products` | 7.189 |
 | — aktif | 6.032 |
-| — tertaut ke produk web | 984 |
-| — **di antaranya tautan mati** (Accurate nonaktif atau produk web ditutup) | **229** |
-| — tertaut & sehat | **755** |
-| Antrean kerja (aktif, belum tertaut) | 5.163 |
-| — di antaranya pernah punya harga | 1.606 |
+| — tertaut ke produk web | **987** |
+| — **di antaranya tautan mati** | **0** |
+| — ditandai tidak dijual di web | 202 |
+| Antrean kerja (aktif, belum tertaut, belum diabaikan) | **5.034** |
+| — di antaranya punya harga di Accurate | 1.526 |
 
-**229 tautan mati itu belum dilepas.** Skripnya sudah ada dan bawaannya uji
-kering: `scripts/lepas-tautan-accurate-mati.mts`. Angka 231 yang pernah beredar
-sudah usang.
+**254 tautan mati sudah DILEPAS, 21 September 2026** lewat
+`scripts/lepas-tautan-accurate-mati.mts --tulis`. Yang sehat tidak disentuh, dan
+pemeriksaan bawaan skripnya melaporkan nol sisa "sakit" dan nol tautan
+menggantung sesudahnya.
+
+Angka yang pernah beredar untuk pekerjaan ini — 231, lalu 229, lalu 250 pada uji
+kering beberapa menit sebelum eksekusi — semuanya usang. Ia memang terus
+bergerak: tiap produk yang ditutup dan tiap barang yang dihentikan di kasir
+menambah satu. **Ukur, jangan kutip.**
+
+Berkas pemulihannya (`backup/accurate-dilepas-*.sql`) memuat satu `UPDATE` per
+baris yang dilepas. Perhatikan: `backup/` di luar git, jadi berkas itu hanya ada
+di laptop yang menjalankan skripnya.
+
+**Pelepasan lewat skrip ini TIDAK tercatat sebagai `UNLINK_ACCURATE`.** Jejak
+audit penautan hidup di `tautkanKode`, sedangkan skrip ini menulis `UPDATE`
+langsung ke tabel. Jadi jangan mencari 254 baris log itu lalu menyimpulkan
+lognya rusak — jejaknya ada, di berkas pemulihan.
 
 ### Jejak audit penautan
 
@@ -290,8 +308,9 @@ menambah baris, dan penautan yang gagal **tidak** meninggalkan jejak.
 | lainnya | 50 | 45 | 2 | 4 |
 
 Kolom **Tertaut** di atas menghitung seluruh baris tanpa memandang `STATUS`,
-jadi jangan langsung dibandingkan dengan tabel "Keadaan, 18–19 September 2026"
-di bawah — keduanya memakai penyebut yang berbeda.
+jadi jangan langsung dibandingkan dengan tabel "Keadaan, 21 September 2026"
+di atas — keduanya memakai penyebut yang berbeda. Angka di tabel awalan ini juga
+diukur **sebelum** 254 tautan mati dilepas.
 
 Awalan `1` adalah penomoran skema lama. Schema.prisma mencatat 71% tidak aktif
 saat kolom `accurate_code` dibuat (8 September); ukur ulang dua pekan kemudian
@@ -307,8 +326,11 @@ Yang justru bernilai dari angka ini dua hal lain:
 - **354 barang berawalan `1` yang masih aktif** di antrean. Kandidat kuat untuk
   ditandai "tidak dijual di web" — tapi harus dilihat manusia dulu, karena
   "berkode lama" tidak otomatis berarti "barang mati".
-- **164 produk web sudah tertaut ke kode berawalan `1`.** Sebagian kemungkinan
-  termasuk 229 tautan mati yang menunggu dilepas.
+- **164 produk web sudah tertaut ke kode berawalan `1`** — dan **113 di antaranya
+  (69%) ternyata tautan mati**, ikut terlepas pada 21 September. Dari 254 yang
+  dilepas, 113 berawalan `1` dan 135 berawalan `2`. Jadi membersihkan tautan mati
+  sekaligus membereskan sebagian besar warisan skema lama, tanpa perlu aturan
+  khusus soal awalan.
 
 **Klausa yang dicabut.** Komentar `schema.prisma` dulu juga menyatakan: *"kalau
 satu produk punya padanan berawalan 1 dan 2, yang dipakai berawalan 2"*. Dicari
