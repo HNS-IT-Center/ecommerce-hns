@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { getProductsForSitemap } from "@/lib/api/woocommerce/products";
 import { getCategories } from "@/lib/api/woocommerce/categories";
+import { getPcPrebuildConfig } from "@/lib/pc-prebuild/config";
 import { resolveSiteUrl } from "@/lib/utils/site-url";
 import { isIndexableRequest } from "@/lib/utils/indexable-host";
 
@@ -58,6 +59,10 @@ const STATIC_ROUTES: Array<{
   { path: "/contact", changeFrequency: "monthly", priority: 0.6 },
   { path: "/support", changeFrequency: "monthly", priority: 0.5 },
   { path: "/faq", changeFrequency: "monthly", priority: 0.5 },
+  // Halaman induk kebijakan. Keempat anaknya sudah lama ada di sini sementara
+  // induknya tidak — padahal itulah alamat yang ditaut dari footer setiap
+  // halaman, dan satu-satunya yang menampilkan keempat kebijakan sekaligus.
+  { path: "/kebijakan", changeFrequency: "yearly", priority: 0.4 },
   { path: "/kebijakan/pengiriman", changeFrequency: "yearly", priority: 0.3 },
   { path: "/kebijakan/pengembalian-barang", changeFrequency: "yearly", priority: 0.3 },
   { path: "/kebijakan/pengembalian-dana", changeFrequency: "yearly", priority: 0.3 },
@@ -108,11 +113,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // membuat SELURUH peta hilang, termasuk halaman yang sebetulnya baik-baik saja.
   let productEntries: MetadataRoute.Sitemap = [];
   let categoryEntries: MetadataRoute.Sitemap = [];
+  let prebuildEntries: MetadataRoute.Sitemap = [];
 
   try {
-    const [products, categories] = await Promise.all([
+    const [products, categories, prebuild] = await Promise.all([
       getProductsForSitemap(MAX_PRODUCTS),
       getCategories({ hideEmpty: true, perPage: 500 }),
+      getPcPrebuildConfig(),
     ]);
 
     productEntries = products.map((product) => ({
@@ -132,9 +139,40 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "weekly" as const,
       priority: 0.8,
     }));
+
+    /**
+     * PC Prebuild ikut peta situs HANYA saat fiturnya menyala.
+     *
+     * Ini bukan kehati-hatian berlebih: saat `enabled` mati, `/pc-prebuild`
+     * dan setiap halaman paketnya me-redirect ke `/build-pc`
+     * (lihat app/pc-prebuild/page.tsx). Mengumumkan alamat yang selalu
+     * melempar ke tempat lain membuat crawler menilai isinya duplikat
+     * `/build-pc`, dan itu merugikan halaman yang dituju, bukan cuma yang
+     * mengalihkan.
+     *
+     * Karena itu pula ia ada di sini, bukan di `STATIC_ROUTES`: daftar itu
+     * dikirim apa adanya bahkan ketika database tidak terjangkau, sedangkan
+     * yang satu ini butuh jawaban dari database untuk tahu ia boleh tampil.
+     */
+    if (prebuild.enabled) {
+      prebuildEntries = [
+        {
+          url: `${baseUrl}/pc-prebuild`,
+          lastModified: now,
+          changeFrequency: "weekly" as const,
+          priority: 0.9,
+        },
+        ...prebuild.presets.map((preset) => ({
+          url: `${baseUrl}/pc-prebuild/${encodeURIComponent(preset.id)}`,
+          lastModified: now,
+          changeFrequency: "weekly" as const,
+          priority: 0.8,
+        })),
+      ];
+    }
   } catch (error) {
-    console.error("Sitemap: gagal memuat produk/kategori", error);
+    console.error("Sitemap: gagal memuat produk/kategori/prebuild", error);
   }
 
-  return [...staticEntries, ...categoryEntries, ...productEntries];
+  return [...staticEntries, ...prebuildEntries, ...categoryEntries, ...productEntries];
 }

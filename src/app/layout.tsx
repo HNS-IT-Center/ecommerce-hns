@@ -87,7 +87,58 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
   },
   icons: {
+    /**
+     * PNG 192×192 didaftarkan DI SAMPING `favicon.ico` (yang dipasang Next
+     * sendiri dari src/app/favicon.ico), bukan menggantikannya.
+     *
+     * Alasannya ikon di hasil pencarian Google: favicon situs ini 256×256,
+     * sementara Google meminta sisi kelipatan 48 piksel. Per 21 September 2026
+     * hasil pencarian hnsitcenter.id masih menampilkan ikon bola dunia bawaan.
+     * Berkas .ico tetap dipertahankan karena itu yang dipakai tab browser lama.
+     *
+     * Berkasnya dipinjam dari ikon PWA — satu sumber, bukan salinan kedua yang
+     * bisa berbeda diam-diam saat logo berganti.
+     */
+    icon: [{ url: "/icons/icon-192.png", type: "image/png", sizes: "192x192" }],
     apple: "/icons/apple-touch-icon.png",
+  },
+  /**
+   * Pratinjau tautan saat alamat HNS dibagikan di WhatsApp, Facebook, atau X.
+   *
+   * Sebelum ini TIDAK ADA sama sekali, dan akibatnya setiap tautan yang
+   * dibagikan CS maupun pelanggan tampil sebagai baris teks polos tanpa gambar
+   * — bentuk yang paling sering dilewati orang di percakapan grup.
+   *
+   * Nilai di sini adalah BAWAAN yang diwarisi seluruh halaman. Halaman produk
+   * sudah menyusun Open Graph-nya sendiri (foto produk, harga), dan itu tetap
+   * menang karena metadata anak menimpa induk.
+   *
+   * `og-image.png` dihasilkan `scripts/generate-og-image.mts`; jangan
+   * menyuntingnya langsung.
+   */
+  openGraph: {
+    type: "website",
+    locale: "id_ID",
+    siteName: env.NEXT_PUBLIC_SITE_NAME,
+    url: env.NEXT_PUBLIC_SITE_URL,
+    title: "HNS IT Center Batam — Toko Komputer, Laptop & Aksesoris Terlengkap",
+    description:
+      "Jual Desktop PC, Gaming PC, Laptop, komponen, dan aksesoris komputer di Batam. Tersedia layanan rakit PC, service, dan upgrade hardware.",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "HNS IT Center Batam",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "HNS IT Center Batam — Toko Komputer, Laptop & Aksesoris Terlengkap",
+    description:
+      "Jual Desktop PC, Gaming PC, Laptop, komponen, dan aksesoris komputer di Batam. Tersedia layanan rakit PC, service, dan upgrade hardware.",
+    images: ["/og-image.png"],
   },
 };
 
