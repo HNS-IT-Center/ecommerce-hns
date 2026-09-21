@@ -94,6 +94,7 @@ export default async function AdminProdukEditPage({ params, searchParams }: Prop
           attributeOptions={attributeOptions}
           brands={brands}
           productId={product.id}
+          accurateCode={product.accurate_code}
           returnQuery={returnQuery}
           defaultImages={existingImages}
           defaultValues={{

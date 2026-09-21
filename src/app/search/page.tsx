@@ -15,7 +15,9 @@ import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper"
 import { getStockDisplayMode } from "@/lib/api/stock-display"
 import { collectCategoryAndDescendantIds } from "@/lib/utils/category-tree"
 import { ShopFilterBubble } from "@/features/shop/components/shop-filter-bubble"
+import { SearchEmptyState } from "@/features/search/components/search-empty-state"
 import { countActiveShopFilters } from "@/lib/utils/shop-filters"
+import { env } from "@/config/env"
 import type { GetProductsParams } from "@/types/woocommerce"
 
 const PER_PAGE = 30
@@ -107,20 +109,28 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     brand,
   })
 
-  const { products: wooProducts, totalPages, total } = q
-    ? await getProductsPaginated({
-        search: q,
-        category: categoryIds,
-        brand,
-        onSale,
-        minPrice,
-        maxPrice,
-        orderby,
-        order,
-        page,
-        perPage: PER_PAGE,
-      })
-    : { products: [], totalPages: 0, total: 0 }
+  /**
+   * Tanpa kata kunci, halaman ini menampilkan katalog seperti `/shop` — BUKAN
+   * daftar kosong.
+   *
+   * Sebelumnya `q` kosong memaksa hasilnya jadi array kosong, sementara
+   * sidebar kategori/merek/harga tetap digambar. Pelanggan yang menghapus kata
+   * kuncinya, atau yang mencentang kategori dari halaman ini, melihat filter
+   * yang tampak bisa ditekan tapi tidak pernah menghasilkan apa pun. Filternya
+   * memang berfungsi; yang tidak ada cuma produk untuk disaring.
+   */
+  const { products: wooProducts, totalPages, total } = await getProductsPaginated({
+    search: q || undefined,
+    category: categoryIds,
+    brand,
+    onSale,
+    minPrice,
+    maxPrice,
+    orderby,
+    order,
+    page,
+    perPage: PER_PAGE,
+  })
 
   const stockDisplayMode = await getStockDisplayMode()
   const products = wooProducts.map((p) => mapWooProductToUI(p, stockDisplayMode))
@@ -161,10 +171,10 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
             <h1 className="text-3xl font-extrabold tracking-tight">
               {q ? `Hasil Pencarian: "${q}"` : "Pencarian"}
             </h1>
+            {/* Jumlahnya dicetak juga saat kata kunci kosong: halaman itu
+                sekarang berisi katalog, bukan layar tunggu. */}
             <div className="mt-2 text-sm text-muted-foreground">
-              {q
-                ? `Menampilkan ${products.length} dari total ${total} produk`
-                : "Masukkan kata kunci pencarian."}
+              {`Menampilkan ${products.length} dari total ${total} produk`}
             </div>
           </div>
 
@@ -208,14 +218,12 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
                   <ShopPagination currentPage={page} totalPages={totalPages} basePath={basePath} />
                 </>
               ) : (
-                <div className="flex h-64 flex-col items-center justify-center rounded-xl border bg-card border-dashed p-8 text-center mt-4">
-                  <p className="text-lg font-medium text-muted-foreground">
-                    {q ? "Produk tidak ditemukan." : "Ketik sesuatu di kotak pencarian untuk mulai mencari."}
-                  </p>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Coba ubah filter atau kata kunci pencarian Anda.
-                  </p>
-                </div>
+                <SearchEmptyState
+                  query={q}
+                  filters={{ category: categoryIds, brand, onSale, minPrice, maxPrice }}
+                  hasActiveFilters={activeFilterCount > 0}
+                  whatsappNumber={env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER}
+                />
               )}
             </div>
           </div>

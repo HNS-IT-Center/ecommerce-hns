@@ -471,6 +471,7 @@ export type HasilTaut =
 export async function tautkanKode(
   wooId: number,
   kode: string | null,
+  oleh: string,
   opsi?: { isiSku?: boolean },
 ): Promise<HasilTaut> {
   const prisma = getPrisma()
@@ -497,12 +498,61 @@ export async function tautkanKode(
     }
   }
 
+  /**
+   * Keadaan sebelum diubah, untuk jejak audit di bawah. Diambil SEBELUM UPDATE
+   * — sesudahnya kode lamanya sudah tidak ada di mana pun.
+   */
+  const sebelum = await prisma.$queryRawUnsafe<{ nama: string; kodeLama: string | null }[]>(
+    "SELECT name AS nama, accurate_code AS kodeLama FROM products WHERE woo_id = ?",
+    wooId,
+  )
+
   const terpengaruh = await prisma.$executeRawUnsafe(
     "UPDATE products SET accurate_code = ? WHERE woo_id = ?",
     kode,
     wooId,
   )
   if (terpengaruh === 0) return { ok: false, alasan: "Produk web tidak ditemukan." }
+
+  /**
+   * Jejak audit penautan — DI SINI, di lapisan data, bukan di tiap pemanggil.
+   *
+   * Penautan menentukan ke produk mana harga kasir mendarat, dan salah pasang
+   * gagal tanpa galat dan tanpa suara (docs/13 §5). Sampai 21 September 2026
+   * perbuatan itu tidak meninggalkan jejak sama sekali — padahal penandaan
+   * "tidak dijual di web", keputusan yang jauh lebih ringan, mencatat siapa dan
+   * kapan sejak awal.
+   *
+   * Ditaruh di dalam fungsi ini supaya tidak ada jalur yang bisa menautkan
+   * tanpa tercatat: dialog penautan di Update Harga, Quick Edit, dan formulir
+   * produk semuanya bermuara ke sini, begitu pula pemanggil yang belum ada.
+   *
+   * Gagal mencatat TIDAK membatalkan penautannya. Tautannya sudah tertulis dan
+   * benar; melemparkan galat di sini hanya akan membuat pemakainya mengira
+   * penautannya gagal lalu mengulanginya.
+   */
+  const kodeLama = sebelum[0]?.kodeLama ?? null
+  if (kodeLama !== kode) {
+    try {
+      await prisma.productLog.create({
+        data: {
+          userName: oleh,
+          // `wooId`, mengikuti baris log lain di project ini — bukan
+          // `Product.id` internal. Dua ruang id itu bertabrakan (158 dari
+          // 5.470 produk), jadi mencampurnya membuat riwayat menunjuk barang
+          // yang salah, bukan sekadar tidak ketemu.
+          productId: wooId,
+          productName: sebelum[0]?.nama ?? `Produk ${wooId}`,
+          action: kode === null ? "UNLINK_ACCURATE" : "LINK_ACCURATE",
+          fieldAffected: "accurate_code",
+          oldValue: kodeLama,
+          newValue: kode,
+        },
+      })
+    } catch {
+      // Sengaja ditelan — lihat alasan di atas.
+    }
+  }
 
   // Penautannya sudah selesai di atas. Pengisian SKU di bawah ini tambahan —
   // apa pun hasilnya, tautannya tetap berdiri.
@@ -529,6 +579,57 @@ export async function tautkanKode(
 
   await prisma.$executeRawUnsafe("UPDATE products SET sku = ? WHERE woo_id = ?", kode, wooId)
   return { ok: true, skuDiisi: kode }
+}
+
+/** Hasil pemeriksaan kode Accurate sebelum apa pun ditulis. */
+export type HasilPeriksaKode =
+  | { ok: true; namaBarang: string }
+  | { ok: false; alasan: string }
+
+/**
+ * Periksa satu kode Accurate TANPA menulis apa pun.
+ *
+ * Dipakai formulir produk BARU. Di sana penautan tidak bisa terjadi saat kode
+ * diketik: `tautkanKode` mencocokkan lewat `products.woo_id`, dan produk yang
+ * belum tersimpan belum punya satu pun. Urutannya memang terbalik dari Quick
+ * Edit — produknya dibuat dulu, tautannya menyusul.
+ *
+ * Tanpa pemeriksaan ini, kode yang salah ketik baru ketahuan SESUDAH produknya
+ * terlanjur dibuat, dan yang tersisa adalah produk setengah jadi yang harus
+ * dibereskan orang di layar lain. Memeriksanya di muka membuat kegagalan itu
+ * muncul selagi staff masih menatap isiannya.
+ *
+ * Memeriksa dua hal yang sama persis dengan yang dijaga `tautkanKode`, dan
+ * sengaja memakai kalimat alasan yang sama — pesan di muka yang berbeda dari
+ * pesan saat gagal sungguhan akan terbaca seperti dua masalah berlainan.
+ *
+ * Ini pemeriksaan, BUKAN jaminan: antara diperiksa dan ditautkan, orang lain
+ * bisa saja memakai kode yang sama. Penjaga yang sesungguhnya tetap di
+ * `tautkanKode`; yang ini hanya mencegah kekeliruan yang lazim.
+ */
+export async function periksaKode(kode: string): Promise<HasilPeriksaKode> {
+  const prisma = getPrisma()
+  const bersih = kode.trim()
+  if (bersih === "") return { ok: false, alasan: "Kode Accurate tidak dikenali." }
+
+  const barang = await prisma.$queryRawUnsafe<{ nama: string | null }[]>(
+    "SELECT `NAMA BARANG` AS nama FROM accurate_products WHERE `Kode Accurate` = ? LIMIT 1",
+    bersih,
+  )
+  if (barang.length === 0) return { ok: false, alasan: "Kode Accurate tidak ditemukan." }
+
+  const dipakai = await prisma.$queryRawUnsafe<{ nama: string }[]>(
+    "SELECT name AS nama FROM products WHERE accurate_code = ? LIMIT 1",
+    bersih,
+  )
+  if (dipakai.length > 0) {
+    return {
+      ok: false,
+      alasan: `Kode ini sudah menambat produk lain: ${dipakai[0]!.nama}. Lepaskan dari sana dulu.`,
+    }
+  }
+
+  return { ok: true, namaBarang: barang[0]?.nama ?? bersih }
 }
 
 /**
@@ -588,6 +689,156 @@ export async function abaikanKode(
     oleh,
   )
   return { ok: true }
+}
+
+/** Hasil satu aksi massal: yang berhasil, dan yang dilewati beserta sebabnya. */
+export type HasilMassal = {
+  berhasil: string[]
+  dilewati: { kode: string; alasan: string }[]
+}
+
+/**
+ * Batas kode per satu aksi massal.
+ *
+ * Bukan angka keramat, tapi bukan pula tebakan: satu halaman tabel paling
+ * banyak 100 baris, jadi 200 memberi ruang lebih dari cukup untuk seleksi satu
+ * halaman sambil menahan permintaan yang menggantung terlalu lama. Pemanggil
+ * yang melewatinya ditolak, bukan dipotong diam-diam — memotong berarti
+ * sebagian pilihan orang hilang tanpa ia tahu yang mana.
+ */
+export const BATAS_MASSAL = 200
+
+/**
+ * Tandai banyak barang Accurate sekaligus sebagai "tidak dijual lewat web".
+ *
+ * **Dua query untuk berapa pun jumlahnya**, bukan perulangan `abaikanKode`.
+ * Mengulang versi satuan berarti 3 query per kode — 200 kode jadi 600 query,
+ * dan sambungan database di Hostinger bukan sumber daya yang berlimpah.
+ *
+ * Menjaga syarat yang sama persis dengan versi satuan, dengan sebab yang
+ * dilaporkan per kode, bukan satu kegagalan borongan:
+ *
+ *  - kode yang tidak ada di `accurate_products` dilewati;
+ *  - kode yang MASIH TERTAUT ke produk web dilewati — menandai "tidak dijual di
+ *    web" untuk sesuatu yang sedang dijual di web adalah dua pernyataan yang
+ *    bertentangan.
+ *
+ * Yang lolos ditulis dalam SATU `INSERT` multi-baris dengan `ON DUPLICATE KEY`
+ * yang sama, jadi menandai ulang barang yang sudah ditandai tetap memperbarui
+ * pencatatnya alih-alih gagal. `alasan` selalu null dari panel dan `COALESCE`
+ * menjaga keterangan lama — alasan lengkapnya ada pada `abaikanKode`.
+ */
+export async function abaikanKodeMassal(kodes: string[], oleh: string): Promise<HasilMassal> {
+  const prisma = getPrisma()
+
+  // Duplikat dibuang lebih dulu supaya `VALUES` tidak memuat baris kembar.
+  const bersih = [...new Set(kodes.map((k) => k.trim()).filter((k) => k !== ""))]
+  if (bersih.length === 0) return { berhasil: [], dilewati: [] }
+  if (bersih.length > BATAS_MASSAL) {
+    return {
+      berhasil: [],
+      dilewati: bersih.map((kode) => ({
+        kode,
+        alasan: `Sekali tandai paling banyak ${BATAS_MASSAL} barang.`,
+      })),
+    }
+  }
+
+  const tanya = bersih.map(() => "?").join(",")
+
+  /**
+   * Satu query menjawab dua syarat sekaligus untuk seluruh kode: barangnya ada,
+   * dan sedang tertaut ke produk web atau tidak. Kode yang tidak muncul di
+   * hasilnya berarti tidak ada di Accurate.
+   */
+  const keadaan = await prisma.$queryRawUnsafe<{ kode: string; produk: string | null }[]>(
+    `SELECT a.\`Kode Accurate\` AS kode, p.name AS produk
+       FROM accurate_products a
+       LEFT JOIN products p ON p.accurate_code = a.\`Kode Accurate\`
+      WHERE a.\`Kode Accurate\` IN (${tanya})`,
+    ...bersih,
+  )
+
+  const diketahui = new Map(keadaan.map((r) => [r.kode, r.produk]))
+  const berhasil: string[] = []
+  const dilewati: { kode: string; alasan: string }[] = []
+
+  for (const kode of bersih) {
+    if (!diketahui.has(kode)) {
+      dilewati.push({ kode, alasan: "Kode Accurate tidak ditemukan." })
+      continue
+    }
+    const produk = diketahui.get(kode) ?? null
+    if (produk !== null) {
+      dilewati.push({ kode, alasan: `Masih tertaut ke produk web: ${produk}.` })
+      continue
+    }
+    berhasil.push(kode)
+  }
+
+  if (berhasil.length > 0) {
+    const baris = berhasil.map(() => "(?, NULL, ?)").join(", ")
+    const params = berhasil.flatMap((kode) => [kode, oleh])
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO accurate_ignored (kode_accurate, alasan, ditandai_oleh)
+       VALUES ${baris}
+       ON DUPLICATE KEY UPDATE
+         alasan = COALESCE(VALUES(alasan), alasan),
+         ditandai_oleh = VALUES(ditandai_oleh)`,
+      ...params,
+    )
+  }
+
+  return { berhasil, dilewati }
+}
+
+/**
+ * Batalkan penandaan banyak barang sekaligus — satu `DELETE`.
+ *
+ * Ada supaya biaya kesalahan seimbang dengan kemudahannya: kalau menandai bisa
+ * massal sedangkan membatalkannya harus satu per satu, salah centang 200 baris
+ * berarti 200 kali klik untuk membereskannya, dan orang akan membiarkannya.
+ *
+ * Kode yang memang tidak sedang ditandai bukan kegagalan — hasil akhirnya sama
+ * dengan yang diminta. Ia dilaporkan sebagai "dilewati" supaya jumlah yang
+ * disebut di layar tidak mengaku lebih banyak dari yang benar-benar berubah.
+ */
+export async function batalkanAbaikanMassal(kodes: string[]): Promise<HasilMassal> {
+  const prisma = getPrisma()
+
+  const bersih = [...new Set(kodes.map((k) => k.trim()).filter((k) => k !== ""))]
+  if (bersih.length === 0) return { berhasil: [], dilewati: [] }
+  if (bersih.length > BATAS_MASSAL) {
+    return {
+      berhasil: [],
+      dilewati: bersih.map((kode) => ({
+        kode,
+        alasan: `Sekali batalkan paling banyak ${BATAS_MASSAL} barang.`,
+      })),
+    }
+  }
+
+  const tanya = bersih.map(() => "?").join(",")
+  const ditandai = await prisma.$queryRawUnsafe<{ kode: string }[]>(
+    `SELECT kode_accurate AS kode FROM accurate_ignored WHERE kode_accurate IN (${tanya})`,
+    ...bersih,
+  )
+
+  const adaTandanya = new Set(ditandai.map((r) => r.kode))
+  const berhasil = bersih.filter((k) => adaTandanya.has(k))
+  const dilewati = bersih
+    .filter((k) => !adaTandanya.has(k))
+    .map((kode) => ({ kode, alasan: "Tidak sedang ditandai." }))
+
+  if (berhasil.length > 0) {
+    const tanyaHapus = berhasil.map(() => "?").join(",")
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM accurate_ignored WHERE kode_accurate IN (${tanyaHapus})`,
+      ...berhasil,
+    )
+  }
+
+  return { berhasil, dilewati }
 }
 
 /** Batalkan penandaan — barang kembali masuk daftar kerja penautan. */

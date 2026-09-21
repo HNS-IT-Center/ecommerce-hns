@@ -34,6 +34,8 @@ import { VideoUploader } from "./video-uploader"
 import { RichTextEditor } from "@/components/admin/rich-text-editor"
 import { VariationEditor } from "./variation-editor"
 import { listHref } from "./list-url"
+import { AccurateCodeField } from "./accurate-code-field"
+import { tautkanKodeAccurateAction } from "./actions"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -61,6 +63,12 @@ type ProdukFormProps = {
   attributeOptions: ProductAttributeTaxonomy[]
   brands: Brand[]
   productId?: number
+  /**
+   * Kode Accurate tersimpan (`products.accurate_code`). Sengaja prop sendiri,
+   * bukan bagian `defaultValues`: ia tidak ikut payload produk saat menyimpan
+   * dan punya jalur tulisnya sendiri — lihat `AccurateCodeField`.
+   */
+  accurateCode?: string | null
   defaultValues?: Partial<ProductFormValues>
   defaultImages?: ProductImageItem[]
   /**
@@ -112,6 +120,7 @@ export function ProdukForm({
   attributeOptions,
   brands,
   productId,
+  accurateCode = null,
   defaultValues,
   defaultImages,
   returnQuery = "",
@@ -123,6 +132,22 @@ export function ProdukForm({
   const [isFormatting, setIsFormatting] = useState(false)
   const [isGeneratingShort, setIsGeneratingShort] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  /**
+   * Kode Accurate untuk produk BARU, ditahan sampai produknya tersimpan.
+   *
+   * Hanya terisi lewat `AccurateCodeField` mode "tunda", dan hanya kalau
+   * pemeriksaannya lolos — kode yang ditolak dikembalikan sebagai null, supaya
+   * yang tidak sah tidak ikut terbawa ke penautan setelah produk dibuat.
+   */
+  const [kodeAccurate, setKodeAccurate] = useState<string | null>(accurateCode)
+  /**
+   * Galat pemeriksaan kode Accurate yang belum dibereskan, untuk produk BARU.
+   *
+   * Dibawa sampai ke dialog konfirmasi. Tanpa ini, staff yang kodenya ditolak
+   * bisa menekan "Buat Produk" dan mendapat produk tanpa tautan — merasa sudah
+   * mengisi kode, tanpa satu pun hal yang membantahnya.
+   */
+  const [galatKodeAccurate, setGalatKodeAccurate] = useState<string | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [pendingValues, setPendingValues] = useState<ProductFormValues | null>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -399,6 +424,38 @@ export function ProdukForm({
       // pertama, sedangkan daftar asal bisa saja halaman 3 atau urut A–Z dan
       // produk barunya tidak kelihatan di sana.
       const savedId = isEdit ? productId : (data as { id?: number }).id
+
+      /**
+       * Penautan Accurate untuk produk BARU dikerjakan di sini, sesudah
+       * produknya ada — `tautkanKode` mencocokkan `WHERE woo_id`, jadi tidak
+       * mungkin lebih awal. Produk yang disunting tidak lewat sini: kolomnya
+       * menyimpan sendiri saat ditinggalkan.
+       *
+       * Kalau penautannya gagal, produknya TETAP jadi — mengulang simpan hanya
+       * akan membuat produk kedua. Yang berubah cuma tujuannya: staff dibawa ke
+       * halaman edit produk itu, bukan ke daftar, karena di sanalah kolom Kode
+       * Accurate bisa langsung diisi ulang. Toast di project ini hilang sendiri
+       * setelah beberapa detik, jadi ia dipakai untuk MENJELASKAN, bukan sebagai
+       * satu-satunya jejak pekerjaan yang belum selesai.
+       *
+       * Menelannya diam-diam akan meninggalkan produk yang dikira tertaut
+       * padahal tidak — dan itu baru ketahuan jauh kemudian, saat harganya tidak
+       * pernah cocok dengan kasir.
+       */
+      if (!isEdit && kodeAccurate && savedId) {
+        const hasilTaut = await tautkanKodeAccurateAction({ wooId: savedId, kode: kodeAccurate })
+        if (hasilTaut.error) {
+          toastManager.add({
+            title: "Produk dibuat, tapi kode Accurate belum tertaut",
+            description: `${hasilTaut.error} Isi ulang kolom Kode Accurate di halaman ini.`,
+            data: { variant: "danger" },
+          })
+          router.push(`/admin/produk/${savedId}`)
+          router.refresh()
+          return
+        }
+      }
+
       router.push(listHref(isEdit ? returnQuery : "", savedId))
       router.refresh()
     } catch (error) {
@@ -621,11 +678,29 @@ export function ProdukForm({
                       <p className="mt-1 text-[11px] text-destructive">{errors.sku.message}</p>
                     )}
                     <p className="mt-1 text-[11px] text-muted-foreground">
-                      Harus unik — tidak boleh sama dengan SKU produk atau varian lain. Bukan
-                      Kode Accurate; kode itu kolom terpisah untuk penautan harga.
+                      Kode internal katalog web. Harus unik — tidak boleh sama dengan SKU produk
+                      atau varian lain. Bukan Kode Accurate; kode itu kolom terpisah untuk
+                      penautan harga.
                     </p>
                   </div>
                 )}
+
+                {/* Kode Accurate berlaku untuk produknya, bukan per varian —
+                    yang ditambatkan ke kasir adalah satu barang katalog. Sama
+                    seperti di Quick Edit, isian ini di luar react-hook-form:
+                    yang tersimpan bukan bagian dari produk melainkan tautannya,
+                    dan ia menempuh pemeriksaan sendiri. */}
+                <AccurateCodeField
+                  {...(isEdit && productId
+                    ? { mode: "simpan" as const, wooId: productId, kode: accurateCode }
+                    : {
+                        mode: "tunda" as const,
+                        kode: accurateCode,
+                        onUbah: setKodeAccurate,
+                        onGalat: setGalatKodeAccurate,
+                      })}
+                  id="accurate-code"
+                />
 
                 <div>
                   <Label className="mb-2">Status</Label>
@@ -1149,10 +1224,31 @@ export function ProdukForm({
             </dl>
           )}
 
+          {/* Kode Accurate yang ditolak disebut DI SINI, bukan cuma di bawah
+              isiannya. Orang yang sudah sampai ke dialog ini sedang menatap
+              ringkasan, bukan formulir di belakangnya — dan produk yang jadi
+              tanpa tautan tidak mengeluh apa pun sesudahnya. */}
+          {!isEdit && galatKodeAccurate && (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs">
+              <p className="font-medium text-destructive">Kode Accurate tidak jadi ditautkan</p>
+              <p className="mt-1 text-muted-foreground">{galatKodeAccurate}</p>
+              <p className="mt-1.5 text-muted-foreground">
+                Produknya tetap bisa dibuat, tapi harganya tidak akan tersambung ke kasir sampai
+                kodenya ditautkan lewat Quick Edit.
+              </p>
+            </div>
+          )}
+
           <AlertDialogFooter>
-            <AlertDialogCancel>Periksa Lagi</AlertDialogCancel>
+            <AlertDialogCancel>
+              {!isEdit && galatKodeAccurate ? "Kembali Betulkan" : "Periksa Lagi"}
+            </AlertDialogCancel>
             <AlertDialogAction onClick={saveProduct}>
-              {isEdit ? "Ya, Simpan" : "Ya, Buat Produk"}
+              {isEdit
+                ? "Ya, Simpan"
+                : galatKodeAccurate
+                  ? "Buat Tanpa Tautan"
+                  : "Ya, Buat Produk"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

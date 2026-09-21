@@ -394,14 +394,27 @@ model Product {
   /// UNIK: satu kode Accurate hanya boleh menambat satu produk. Tanpa itu, satu
   /// barang Accurate bisa mengirim harganya ke beberapa produk sekaligus — dan
   /// itu bukan kekhawatiran teoretis, `accurate_woo_mapping` yang lama memang
-  /// memuat satu "produk" yang menyerap 1.092 kode (docs/13 §2.1). Multiple
+  /// memuat satu "produk" yang menyerap 1.092 kode (docs/13 §5). Multiple
   /// NULL tetap sah di MariaDB, jadi keunikan ini tidak menghalangi produk yang
   /// belum tertaut.
   ///
   /// Dipilih menggantikan `sku` (cuma 26% terisi) dan barcode (produk web tidak
-  /// punya kolomnya). Kalau satu produk punya padanan berawalan `1` dan `2`,
-  /// yang dipakai berawalan `2` — awalan `1` skema lama yang 71% isinya sudah
-  /// tidak aktif (docs/13 §3.2).
+  /// punya kolomnya).
+  ///
+  /// AWALAN KODE — dahulukan yang berawalan `2`. Awalan `1` skema lama:
+  /// diukur ulang 21 September 2026, **72,0% isinya sudah tidak aktif**
+  /// (1.061 dari 1.474), sedangkan awalan `2` cuma 0,9% (51 dari 5.665).
+  /// Rinciannya di docs/13 §5, dan angkanya bisa diukur ulang kapan saja
+  /// lewat `scripts/laporan-awalan-kode.mts`.
+  ///
+  /// Komentar ini dulu menambahkan: "kalau satu produk punya padanan berawalan
+  /// `1` dan `2`, yang dipakai berawalan `2`". **Klausa itu dicabut — tidak
+  /// terverifikasi.** Dicari 21 September 2026 lewat nama persis antar baris
+  /// `accurate_products`: NOL pasangan semacam itu. Nama persis memang
+  /// instrumen yang lemah, jadi ini bukan bukti bahwa pasangannya tidak ada —
+  /// tapi aturan yang tidak bisa ditunjukkan contohnya tidak layak dipakai
+  /// memutuskan penautan. Kalau suatu saat pasangan itu ditemukan, tulis
+  /// kembali beserta contohnya.
   accurateCode String? @unique @map("accurate_code") @db.VarChar(50)
 
   name String @db.VarChar(500)
