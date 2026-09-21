@@ -244,6 +244,45 @@ Kenapa bukan yang lain:
 kering: `scripts/lepas-tautan-accurate-mati.mts`. Angka 231 yang pernah beredar
 sudah usang.
 
+### Awalan kode: dahulukan `2`, awalan `1` skema lama
+
+**Diukur 21 September 2026** (`scripts/laporan-awalan-kode.mts`, baca-saja):
+
+| Awalan | Total | Tidak aktif | Tertaut | Sisa antrean |
+|---|---|---|---|---|
+| **2** | 5.665 | 51 (**0,9%**) | 1.058 | **4.555** |
+| **1** | 1.474 | 1.061 (**72,0%**) | 164 | 354 |
+| lainnya | 50 | 45 | 2 | 4 |
+
+Kolom **Tertaut** di atas menghitung seluruh baris tanpa memandang `STATUS`,
+jadi jangan langsung dibandingkan dengan tabel "Keadaan, 18–19 September 2026"
+di bawah — keduanya memakai penyebut yang berbeda.
+
+Awalan `1` adalah penomoran skema lama. Schema.prisma mencatat 71% tidak aktif
+saat kolom `accurate_code` dibuat (8 September); ukur ulang dua pekan kemudian
+memberi **72,0%** — angkanya bertahan, bukan kebetulan sesaat.
+
+**Akibatnya untuk urutan kerja: hampir tidak ada yang perlu diatur.** Dari 4.913
+sisa antrean, **4.555 (93%) sudah berawalan `2`**. Mendahulukan awalan `2`
+terjadi dengan sendirinya — tidak perlu penyaring khusus, dan menambahkannya
+hanya akan jadi tombol yang nyaris tidak mengubah apa pun.
+
+Yang justru bernilai dari angka ini dua hal lain:
+
+- **354 barang berawalan `1` yang masih aktif** di antrean. Kandidat kuat untuk
+  ditandai "tidak dijual di web" — tapi harus dilihat manusia dulu, karena
+  "berkode lama" tidak otomatis berarti "barang mati".
+- **164 produk web sudah tertaut ke kode berawalan `1`.** Sebagian kemungkinan
+  termasuk 229 tautan mati yang menunggu dilepas.
+
+**Klausa yang dicabut.** Komentar `schema.prisma` dulu juga menyatakan: *"kalau
+satu produk punya padanan berawalan 1 dan 2, yang dipakai berawalan 2"*. Dicari
+lewat nama persis antar baris `accurate_products`: **nol pasangan**. Nama persis
+instrumen yang lemah — jadi ini bukan bukti pasangannya tidak ada — tapi aturan
+yang tidak bisa ditunjukkan satu pun contohnya tidak layak dipakai memutuskan
+penautan. Kalau pasangan itu suatu saat ditemukan, tulis kembali beserta
+contohnya.
+
 ### Cara mengerjakan sisanya: kategori mempersempit, nama memutuskan
 
 Harga **tidak dipakai sama sekali** untuk mencocokkan.
