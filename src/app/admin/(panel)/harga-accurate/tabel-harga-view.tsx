@@ -508,9 +508,23 @@ export function TabelHargaView({
 
       {/* Bilah aksi massal — muncul hanya saat ada yang tercentang, mengikuti
           pola yang sudah dipakai daftar produk. Dua tombol karena satu seleksi
-          melayani dua arah, dan masing-masing menyebut jumlahnya sendiri. */}
+          melayani dua arah, dan masing-masing menyebut jumlahnya sendiri.
+
+          MENEMPEL saat digulir, dan itu bukan hiasan: satu halaman memuat 50
+          baris, jadi mencentang baris di bagian bawah membuat bilah yang diam
+          di atas tabel hilang dari layar — tombolnya lenyap persis ketika
+          dibutuhkan.
+
+          `top-0` untuk semua ukuran layar: yang menggulir di panel admin adalah
+          `<main class="overflow-auto">`, sedangkan topbar ponsel berada DI LUAR
+          container itu. Memberi offset setinggi topbar hanya akan menyisakan
+          celah kosong yang tidak pernah ditempati siapa pun.
+
+          Latarnya WAJIB pekat (`bg-background`, bukan `bg-primary/5` saja):
+          bilah tembus pandang yang dilewati baris-baris tabel di belakangnya
+          membuat angka "12 dipilih" terbaca bertumpuk dengan nama barang. */}
       {dipilih.size > 0 && (
-        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 p-3">
+        <div className="sticky top-0 z-30 mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-background p-3 shadow-sm">
           <span className="text-sm font-medium">{dipilih.size} dipilih</span>
           <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
             <Button
