@@ -33,6 +33,7 @@ import { ImageUploader, type ProductImageItem } from "./image-uploader"
 import { VideoUploader } from "./video-uploader"
 import { RichTextEditor } from "@/components/admin/rich-text-editor"
 import { VariationEditor } from "./variation-editor"
+import { listHref } from "./list-url"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -62,6 +63,12 @@ type ProdukFormProps = {
   productId?: number
   defaultValues?: Partial<ProductFormValues>
   defaultImages?: ProductImageItem[]
+  /**
+   * Query daftar `/admin/produk` asal (saringan, urutan, halaman). Setelah
+   * MENYUNTING, staff dikembalikan ke daftar yang sama. Produk BARU sengaja
+   * tidak memakainya — lihat `onSubmit`.
+   */
+  returnQuery?: string
 }
 
 const STATUS_OPTIONS = [
@@ -107,6 +114,7 @@ export function ProdukForm({
   productId,
   defaultValues,
   defaultImages,
+  returnQuery = "",
 }: ProdukFormProps) {
   const router = useRouter()
   const toastManager = useToastManager()
@@ -386,7 +394,12 @@ export function ProdukForm({
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "Gagal menyimpan produk")
 
-      router.push("/admin/produk")
+      // Edit kembali ke daftar asal, dengan saringannya. Produk baru ke daftar
+      // polos: urutan bawaan "terbaru di atas" menjamin ia ada di baris
+      // pertama, sedangkan daftar asal bisa saja halaman 3 atau urut A–Z dan
+      // produk barunya tidak kelihatan di sana.
+      const savedId = isEdit ? productId : (data as { id?: number }).id
+      router.push(listHref(isEdit ? returnQuery : "", savedId))
       router.refresh()
     } catch (error) {
       setUploadProgress(null)

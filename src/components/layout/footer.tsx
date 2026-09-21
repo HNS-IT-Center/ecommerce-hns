@@ -10,6 +10,7 @@ import WhatsappIcon from "@/components/icons/whatsapp-icon"
 import { env } from "@/config/env"
 import { getThemeSettings } from "@/lib/theme/settings"
 import { ChristmasFooterDecor, ChristmasFooterPattern } from "@/components/theme/christmas-decor"
+import { InstallAppButton } from "@/features/pwa/components/install-app-button"
 
 export async function Footer() {
   const waUrl = buildWhatsAppUrl(
@@ -153,6 +154,9 @@ export async function Footer() {
                   yang sebelumnya justru 404, padahal keempat anaknya ditaut dari
                   setiap halaman situs. */}
               <li><Link href="/kebijakan" className="hover:text-white hover:underline">Kebijakan Pembelian</Link></li>
+              {/* Renders nothing when the browser cannot install the site or
+                  it is already installed — see docs/14-pwa.md. */}
+              <li><InstallAppButton variant="footer" /></li>
             </ul>
           </div>
 

@@ -9,6 +9,7 @@ import { listSavedBuilds } from "@/lib/api/saved-pc-builds";
 import { SavedBuildCard } from "@/features/account/components/saved-build-card";
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp";
 import { env } from "@/config/env";
+import { InstallAppButton } from "@/features/pwa/components/install-app-button";
 import { customerLogoutAction } from "./actions";
 
 export const metadata = {
@@ -103,6 +104,9 @@ export default async function Page() {
               </div>
             )}
           </div>
+
+          {/* Hidden automatically when not installable or already installed. */}
+          <InstallAppButton variant="card" />
 
           {/* Bukan tombol hapus, bukan alur self-service — penghapusan akun
               hanya dieksekusi staff. Baris ini tetap harus ada: aplikasi ini

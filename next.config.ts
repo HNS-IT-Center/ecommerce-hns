@@ -90,6 +90,24 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+
+  /**
+   * Service worker PWA (lihat `docs/14-pwa.md`). `no-cache` wajib: browser
+   * memeriksa pembaruan `sw.js` sendiri, dan kalau berkas ini ikut di-cache
+   * oleh CDN/proxy, perbaikan service worker bisa tertahan berhari-hari di HP
+   * pelanggan.
+   */
+  async headers() {
+    return [
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

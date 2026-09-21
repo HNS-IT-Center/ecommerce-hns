@@ -1,4 +1,6 @@
+import Link from "next/link"
 import { notFound } from "next/navigation"
+import { ArrowLeft } from "lucide-react"
 import {
   getProductByIdFresh,
   getProductAttributes,
@@ -7,13 +9,17 @@ import {
 import { getAllCategories } from "@/lib/api/woocommerce/categories"
 import { getBrands } from "@/lib/api/woocommerce/brands"
 import { ProdukForm } from "../produk-form"
+import { BACK_PARAM, listHref, sanitizeListQuery } from "../list-url"
 
 type Props = {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ [BACK_PARAM]?: string }>
 }
 
-export default async function AdminProdukEditPage({ params }: Props) {
+export default async function AdminProdukEditPage({ params, searchParams }: Props) {
   const { id } = await params
+  // Saringan daftar asal, dipakai tombol Kembali dan redirect setelah simpan.
+  const returnQuery = sanitizeListQuery((await searchParams)[BACK_PARAM])
   const productId = Number(id)
 
   const [product, categories, attributeOptions, brands] = await Promise.all([
@@ -74,6 +80,13 @@ export default async function AdminProdukEditPage({ params }: Props) {
 
   return (
     <div className="mx-auto max-w-6xl pb-12">
+      <Link
+        href={listHref(returnQuery)}
+        className="mb-3 inline-flex min-h-9 items-center gap-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Kembali ke daftar produk
+      </Link>
       <h1 className="text-2xl font-bold">Edit Produk — {product.name}</h1>
       <div className="mt-6">
         <ProdukForm
@@ -81,6 +94,7 @@ export default async function AdminProdukEditPage({ params }: Props) {
           attributeOptions={attributeOptions}
           brands={brands}
           productId={product.id}
+          returnQuery={returnQuery}
           defaultImages={existingImages}
           defaultValues={{
             name: product.name,
