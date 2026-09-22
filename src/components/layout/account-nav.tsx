@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { useCustomer } from "@/hooks/use-customer"
+import { useCustomer, useSessionActions } from "@/components/providers/session-provider"
 
 type AccountNavProps = {
   logoutAction: () => Promise<void>
@@ -37,6 +37,35 @@ type AccountNavProps = {
 export function AccountNav({ logoutAction }: AccountNavProps) {
   const router = useRouter()
   const { loading, customer } = useCustomer()
+  const { refresh, announce } = useSessionActions()
+
+  /**
+   * Keluar, dengan urutan yang disengaja.
+   *
+   * Dulu barisnya cuma `void logoutAction()`. Cookie-nya memang tercabut, tapi
+   * aksi itu mengantar ke beranda — halaman yang sering kali SEDANG dibuka —
+   * sehingga tidak ada satu pun komponen yang unmount, dan menu ini terus
+   * menampilkan nama orang yang baru saja keluar sampai ia berpindah halaman
+   * sendiri. Itulah keluhan "sudah ke-logout tapi seolah belum".
+   *
+   * 1. `await` sampai server benar-benar mencabut cookie. Menanyakan status
+   *    lebih cepat dari ini akan dijawab "masih masuk" — jawaban yang benar
+   *    pada saat itu, dan salah sedetik kemudian.
+   * 2. `refresh()` — tab ini bertanya ulang dan header berganti seketika.
+   * 3. `announce()` — tab lain menyusul tanpa menunggu orangnya berpindah ke
+   *    sana.
+   * 4. Baru berpindah ke beranda, menggantikan `redirect()` yang dulu
+   *    dikerjakan server action (lihat `customerLogoutActionForClient`).
+   *    `replace`, bukan `push`: halaman yang baru ditinggalkan bisa saja
+   *    halaman yang kini tidak boleh lagi dibuka, dan tombol Back tidak
+   *    seharusnya mengantar orang kembali ke sana.
+   */
+  async function keluar() {
+    await logoutAction()
+    await refresh(true)
+    announce()
+    router.replace("/")
+  }
 
   // Selama fetch /api/auth/me belum selesai, JANGAN merender "Masuk".
   //
@@ -153,7 +182,7 @@ export function AccountNav({ logoutAction }: AccountNavProps) {
         <DropdownMenuItem
           variant="destructive"
           onClick={() => {
-            void logoutAction()
+            void keluar()
           }}
         >
           <LogOut className="h-4 w-4" />

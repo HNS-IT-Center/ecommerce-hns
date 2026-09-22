@@ -96,7 +96,12 @@ export function PrebuildDetail({ view, games }: Props) {
       </Link>
 
       <div className="grid gap-8 lg:grid-cols-2 lg:gap-10">
-        <div className="lg:sticky lg:top-24 lg:self-start">
+        {/* `min-w-0`: butir grid bawaannya tidak boleh menyusut di bawah lebar
+            intrinsik isinya, dan galeri di dalamnya membawa kanvas selebar
+            layar. Tanpa ini, kolom yang memaksa dirinya lebih lebar dari grid
+            akan terpotong diam-diam oleh `overflow-x-clip` di html/body —
+            kolom kanan sudah memilikinya sejak awal. */}
+        <div className="min-w-0 lg:sticky lg:top-24 lg:self-start">
           {galeri.length > 0 ? (
             <ProductGallery images={galeri} />
           ) : (
@@ -111,9 +116,9 @@ export function PrebuildDetail({ view, games }: Props) {
 
         <div className="min-w-0 space-y-6">
           <div>
-            <h1 className="text-2xl font-extrabold tracking-tight md:text-3xl">{view.name}</h1>
+            <h1 className="text-2xl font-extrabold tracking-tight break-words md:text-3xl">{view.name}</h1>
             {view.summary && (
-              <p className="mt-2 text-justify text-sm leading-relaxed text-muted-foreground hyphens-auto md:text-base">
+              <p className="mt-2 text-justify text-sm leading-relaxed text-muted-foreground break-words hyphens-auto md:text-base">
                 {view.summary}
               </p>
             )}

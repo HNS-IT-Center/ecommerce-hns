@@ -6,6 +6,7 @@ import { Toaster } from "@/components/layout/toaster";
 import { FloatingWhatsAppButton } from "@/components/layout/floating-whatsapp-button";
 import { MobileDock } from "@/components/layout/mobile-dock";
 import { FlyToCartProvider } from "@/components/providers/fly-to-cart-provider";
+import { SessionProvider } from "@/components/providers/session-provider";
 import { JsonLd } from "@/components/seo/json-ld";
 import { env } from "@/config/env";
 import { CS_EMAIL } from "@/lib/constants/contact";
@@ -247,17 +248,26 @@ export default async function RootLayout({
             terbatas dan tingginya hanya 4rem, sedangkan salju harus jatuh ke
             area di bawahnya. */}
         {isChristmas && <ChristmasSnow />}
-        <FlyToCartProvider>
-          <Toast limit={1}>
-            {children}
-            <Toaster />
-          </Toast>
-          {/* Keduanya membawa `print:hidden` sendiri supaya tidak ikut masuk ke
-              PDF quotation (/build-pc/print). */}
-          <FloatingWhatsAppButton whatsappNumber={env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER} />
-          <MobileDock isChristmas={isChristmas} />
-          <InstallChip />
-        </FlyToCartProvider>
+        {/* `SessionProvider` membungkus SELURUH isi halaman, bukan cuma header.
+
+            Yang basi setelah peran diubah bukan hanya nama di pojok kanan atas:
+            `/verify` dan `/profile/quotation` hidup di luar panel admin dan
+            tidak punya pengawas izin sendiri. Pengawas yang tinggal di dalam
+            header hanya akan menyegarkan halaman yang kebetulan merender header
+            — dan `/build-pc` di ponsel justru menyembunyikannya. */}
+        <SessionProvider>
+          <FlyToCartProvider>
+            <Toast limit={1}>
+              {children}
+              <Toaster />
+            </Toast>
+            {/* Keduanya membawa `print:hidden` sendiri supaya tidak ikut masuk
+                ke PDF quotation (/build-pc/print). */}
+            <FloatingWhatsAppButton whatsappNumber={env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER} />
+            <MobileDock isChristmas={isChristmas} />
+            <InstallChip />
+          </FlyToCartProvider>
+        </SessionProvider>
         <PwaRegister />
         <StandaloneLinkHandler />
       </body>

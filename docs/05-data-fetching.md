@@ -1674,3 +1674,79 @@ Peran pelanggan (`roleId`/`roleName`) kini ikut dibaca `listCustomers` lewat
 relasi `roleRef`. Sebelumnya `manajemen-user/page.tsx` memanggil `getPrisma()`
 sendiri untuk itu — melanggar CLAUDE.md §2.5, dan sekaligus membuat pengurutan
 per peran mustahil karena yang mengurutkan tidak tahu kolomnya ada.
+
+## 27. Status login di klien: `SessionProvider` & `GET /api/auth/me` (22 September 2026)
+
+`/api/auth/me` bukan endpoint baru, tapi dua hal berubah: isinya bertambah satu
+medan, dan yang memanggilnya sekarang satu provider, bukan hook yang menyala
+sekali lalu diam.
+
+| Endpoint | Guna | Balasan |
+|---|---|---|
+| `GET /api/auth/me` | "Siapa yang sedang masuk di peramban ini, dan apakah aksesnya masih sama?" | `{ customer: CurrentCustomer \| null }` |
+
+`CurrentCustomer` kini membawa `permissionVersion` — cap izin sesi ADMIN di
+peramban itu, `null` untuk pelanggan biasa. Rumusnya satu dengan cap di §25
+(`capIzin()` di `lib/auth/permissions.ts`), dan dihitung tanpa query tambahan:
+`roleRef.updatedAt` ikut diambil di `ACCOUNT_SELECT` yang memang sudah membaca
+baris itu.
+
+Pemanggilnya lewat `fetchSession()` di `lib/api/session.ts` — bukan `fetch()`
+mentah di dalam komponen (CLAUDE.md §2.5). Berkas itu satu-satunya di
+`lib/api/` yang berjalan di peramban; ia tidak menyentuh Prisma.
+
+### Yang diperbaiki: tiga keluhan, satu sebab
+
+Status login dulu dibaca sekali saat komponen mount (`hooks/use-customer.ts`,
+kini dihapus) lalu disimpan di `useState` dan tidak pernah ditanyakan lagi.
+Akibatnya:
+
+1. **Keluar tidak terlihat sampai pindah halaman.** Aksi keluar mengantar ke
+   beranda — kerap halaman yang sedang dibuka — jadi tidak ada komponen yang
+   unmount dan header tetap menampilkan nama orang yang sudah keluar.
+2. **Tab lain masih terlihat masuk.** Tidak ada jalur yang memberi tahu tab
+   sebelah.
+3. **Perubahan peran "harus relog".** `PermissionWatcher` (§25) hanya hidup di
+   dalam panel admin. Di luar sana — menu akun, `/verify`,
+   `/profile/quotation` — tidak ada yang memantau izin.
+
+`SessionProvider` (`components/providers/session-provider.tsx`) dipasang di root
+layout dan menanyakan ulang pada setiap momen di mana status MUNGKIN sudah
+berubah: tab kembali terlihat (`visibilitychange`/`focus`), halaman kembali dari
+bfcache (`pageshow` + `persisted`), tab lain memberi aba-aba
+(`BroadcastChannel`), dan saat aplikasi sendiri baru mengubahnya (keluar). Kalau
+sidiknya berbeda dari yang terakhir diketahui, ia memanggil `router.refresh()`
+supaya komponen server ikut dihitung ulang dengan izin yang baru.
+
+**Tidak ada polling berkala di sini**, berbeda dari §25. Situs toko dibuka ribuan
+pengunjung, dan peristiwanya terjadi beberapa kali sehari; timer berarti ribuan
+permintaan untuk menunggu sesuatu yang nyaris tidak pernah terjadi. Di dalam
+`/admin` provider ini juga sengaja TIDAK memanggil `router.refresh()` —
+`PermissionWatcher` yang mengurus panel, dan ia memunculkan toast lebih dulu
+supaya halaman tidak berkedip tanpa keterangan.
+
+### Aba-aba antar tab tidak membawa status
+
+Pesan `BroadcastChannel` kosong; artinya "tanyakan ulang", bukan "kamu sudah
+keluar". Tab penerima bertanya sendiri ke server, jadi aba-aba yang salah kirim
+pun tidak bisa membuat tab lain salah menampilkan status. Peramban tanpa
+`BroadcastChannel` tidak kehilangan perbaikannya, hanya kecepatannya — ia
+menyusul lewat `visibilitychange`.
+
+### Dua aksi keluar, dan itu disengaja
+
+`app/profile/actions.ts` mengekspor dua fungsi di atas satu helper `cabutSesi()`:
+
+- `customerLogoutAction()` — ber-`redirect("/")`, untuk `<form action={...}>` di
+  `/profile` yang tidak punya kode klien sesudahnya.
+- `customerLogoutActionForClient()` — **tanpa** `redirect()`, untuk menu akun di
+  header. `redirect()` bekerja dengan melempar, jadi apa yang terjadi pada kode
+  klien sesudah `await` bergantung pada cara Next menangani lemparan itu —
+  padahal tiga langkah sesudahnya (segarkan tab ini, beri aba-aba ke tab lain,
+  pindah halaman) terlalu penting untuk digantungkan pada perilaku yang tidak
+  dijanjikan.
+
+### Status login tetap tidak menyentuh harga
+
+Ia hanya menentukan nama di header dan tautan mana yang tampil. CLAUDE.md §2.7
+berlaku penuh: tidak ada harga yang berubah karena seseorang masuk.

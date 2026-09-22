@@ -278,6 +278,32 @@ export function isMaster(user: Pick<AdminUser, "email">): boolean {
 }
 
 /**
+ * "Cap izin": satu string yang berubah persis ketika akses seseorang berubah.
+ *
+ * Bukan izinnya sendiri, dan tidak bisa dipakai memutuskan apa pun — ia hanya
+ * untuk DIBANDINGKAN dengan cap sebelumnya. Klien yang melihat capnya berbeda
+ * tahu tampilannya sudah basi dan harus meminta ulang ke server; keputusan
+ * "boleh atau tidak" tetap sepenuhnya di server, tiap permintaan.
+ *
+ * Rumusnya tinggal di sini, bukan di pemanggil, karena sekarang ada DUA yang
+ * memakainya: `getPermissionVersion()` untuk panel admin, dan
+ * `getCurrentCustomer()` untuk seluruh halaman di luar panel. Dua salinan
+ * rumus berarti dua definisi "berubah" yang pelan-pelan berbeda — dan yang
+ * satu akan berhenti mendeteksi hal yang masih dideteksi yang lain, tanpa
+ * gejala apa pun sampai ada staff yang mengeluh aksesnya belum berubah.
+ *
+ * Alasan tiap bagian (dan alasan `users.updatedAt` TIDAK ikut) ada di
+ * `getPermissionVersion()` di `lib/api/admin-users.ts`.
+ */
+export function capIzin(row: {
+  role: string
+  roleId: string | null
+  roleUpdatedAt: Date | null | undefined
+}): string {
+  return [row.role, row.roleId ?? "-", row.roleUpdatedAt?.getTime() ?? "-"].join("|")
+}
+
+/**
  * Kumpulan izin satu user, sudah dihitung — peta halaman → level.
  *
  * Sengaja dimuat SEKALI (satu query) lalu dicek berkali-kali secara sinkron,

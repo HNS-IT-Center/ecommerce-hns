@@ -8,7 +8,7 @@
  */
 import { getPrisma } from "@/lib/prisma/client"
 import { parseAdminRole, type AdminRole } from "@/lib/auth/roles"
-import { isMaster } from "@/lib/auth/permissions"
+import { capIzin, isMaster } from "@/lib/auth/permissions"
 
 export type AdminUserRow = {
   id: string
@@ -320,5 +320,12 @@ export async function getPermissionVersion(userId: string): Promise<string | nul
   })
   if (!row) return null
 
-  return [row.role, row.roleId ?? "-", row.roleRef?.updatedAt.getTime() ?? "-"].join("|")
+  // Rumusnya di `lib/auth/permissions.ts` — dipakai bersama halaman di luar
+  // panel (lihat `capIzin`), supaya "berubah" berarti hal yang sama di
+  // kedua tempat.
+  return capIzin({
+    role: row.role,
+    roleId: row.roleId,
+    roleUpdatedAt: row.roleRef?.updatedAt,
+  })
 }
