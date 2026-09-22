@@ -92,12 +92,12 @@ export default async function VerifyBuildPage({
   const quotes = await listRecentQuotes(sort, RECENT_LIMIT)
 
   return (
-    <div className="flex min-h-screen flex-col bg-page">
+    <div className="flex min-h-dvh flex-col bg-page">
       <Header />
       <Breadcrumb
         items={[{ label: "Beranda", href: "/" }, { label: "Cek Rakitan PC" }]}
       />
-      <main className="flex-1 bg-muted/20">
+      <main className="min-h-content flex-1 bg-muted/20">
         {/* Area kerja kasir setinggi satu layar (100dvh) di desktop: judul &
             pencarian tetap di tempat, hanya grid yang menggulir. Di HP halaman
             menggulir biasa — gulir-di-dalam-gulir di layar sempit menjebak. */}

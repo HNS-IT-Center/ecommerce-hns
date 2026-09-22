@@ -2,13 +2,27 @@ import type { Metadata } from "next"
 import Link from "next/link"
 
 import { requirePageView } from "@/lib/auth"
-import { bisaAkses, ADMIN_PAGES, ADMIN_PAGE_DESCRIPTIONS, type AdminPage } from "@/lib/auth/permissions"
+import {
+  bisaAkses,
+  adalahIzinLuarPanel,
+  ADMIN_PAGE_AUDIENCE,
+  ADMIN_PAGE_DESCRIPTIONS,
+  ADMIN_PAGE_LEVEL_MODE,
+  ADMIN_PERMISSION_TREE,
+  type PermissionNode,
+} from "@/lib/auth/permissions"
 import { listRoles } from "@/lib/api/roles"
 import { listAdminUsers, listSalesUsersWithDisplayName } from "@/lib/api/admin-users"
-import { listCustomers } from "@/lib/api/customers"
+import {
+  CUSTOMER_PAGE_SIZE,
+  isCustomerSortField,
+  isSortDirection,
+  listCustomers,
+} from "@/lib/api/customers"
 import { isDatabaseConfigured } from "@/lib/prisma/client"
+import { AdminPagination } from "@/components/admin/admin-pagination"
 
-import { ManajemenUserView } from "./view"
+import { ManajemenUserView, type IzinNode } from "./view"
 import { SalesNames } from "./sales-names"
 import { AdminRoleList } from "../akun/admin-role-list"
 import { CustomerList } from "../pelanggan/customer-list"
@@ -21,7 +35,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic"
 
 type Props = {
-  searchParams: Promise<{ tab?: string; q?: string; page?: string }>
+  searchParams: Promise<{ tab?: string; q?: string; page?: string; sort?: string; dir?: string }>
 }
 
 const TABS = [
@@ -34,7 +48,7 @@ export default async function ManajemenUserPage({ searchParams }: Props) {
   const { user, izin } = await requirePageView("manajemen-user")
   const bolehEdit = bisaAkses(izin, "manajemen-user", "edit")
 
-  const { tab: tabRaw, q, page } = await searchParams
+  const { tab: tabRaw, q, page, sort, dir } = await searchParams
   const tab = TABS.some((t) => t.key === tabRaw) ? (tabRaw as (typeof TABS)[number]["key"]) : "peran"
 
   return (
@@ -67,28 +81,60 @@ export default async function ManajemenUserPage({ searchParams }: Props) {
       <div className="mt-6">
         {tab === "peran" && <TabPeran bolehEdit={bolehEdit} />}
         {tab === "admin" && (
-          <TabAdmin currentUserId={user.id} canManage={user.role === "owner"} bolehEdit={bolehEdit} />
+          <TabAdmin
+            currentUserId={user.id}
+            // Master ikut dihitung owner — kolom `role`-nya sering "pelanggan"
+            // karena akunnya juga dipakai belanja, dan tanpa ini ia melihat
+            // daftar admin tanpa satu pun tombol kelola. Penjaganya sendiri ada
+            // di `requireOwner()`, yang kini juga menghormati master.
+            canManage={user.role === "owner" || izin.isMaster}
+            bolehEdit={bolehEdit}
+          />
         )}
-        {tab === "pelanggan" && <TabPelanggan q={q} page={page} canDelete={user.role === "owner"} />}
+        {tab === "pelanggan" && (
+          <TabPelanggan
+            q={q}
+            page={page}
+            sort={sort}
+            dir={dir}
+            canDelete={bisaAkses(izin, "pelanggan", "edit")}
+            canManageRole={bolehEdit}
+          />
+        )}
       </div>
     </div>
   )
 }
 
+/**
+ * Pohon izin diubah menjadi data biasa untuk komponen klien.
+ *
+ * `ADMIN_PERMISSION_TREE` hidup di `permissions.ts` yang `server-only`, jadi ia
+ * tidak bisa diimpor editor peran. Keterangan, saran pekerjaan, mode tingkat,
+ * dan penanda "di luar panel" semuanya ditempelkan DI SINI — supaya editor
+ * tidak perlu tahu satu pun aturannya, cukup menampilkan apa yang diberikan.
+ */
+function keIzinNode(nodes: readonly PermissionNode[]): IzinNode[] {
+  return nodes.map((n) => ({
+    key: n.key ?? null,
+    label: n.label,
+    description: n.key ? ADMIN_PAGE_DESCRIPTIONS[n.key] : null,
+    audience: n.key ? ADMIN_PAGE_AUDIENCE[n.key] : null,
+    mode: n.key ? ADMIN_PAGE_LEVEL_MODE[n.key] : null,
+    luarPanel: n.key ? adalahIzinLuarPanel(n.key) : false,
+    children: n.children ? keIzinNode(n.children) : undefined,
+  }))
+}
+
 async function TabPeran({ bolehEdit }: { bolehEdit: boolean }) {
   const roles = await listRoles()
-  const pages = Object.entries(ADMIN_PAGES).map(([key, label]) => ({
-    key,
-    label,
-    description: ADMIN_PAGE_DESCRIPTIONS[key as AdminPage],
-  }))
   return (
     <>
       <p className="mb-4 text-sm text-muted-foreground">
-        Buat peran dan atur apa yang boleh diakses tiap peran — per halaman, dengan tingkat{" "}
-        <strong>lihat</strong>, <strong>edit</strong>, atau <strong>tak ada</strong>.
+        Buat peran dan atur apa yang boleh diakses tiap peran. Izin dikelompokkan mengikuti menu
+        panel — mengatur induknya sekaligus mengatur seluruh isinya.
       </p>
-      <ManajemenUserView roles={roles} pages={pages} bolehEdit={bolehEdit} />
+      <ManajemenUserView roles={roles} tree={keIzinNode(ADMIN_PERMISSION_TREE)} bolehEdit={bolehEdit} />
     </>
   )
 }
@@ -146,11 +192,19 @@ async function TabAdmin({
 async function TabPelanggan({
   q,
   page,
+  sort,
+  dir,
   canDelete,
+  canManageRole,
 }: {
   q?: string
   page?: string
+  sort?: string
+  dir?: string
+  /** Boleh MENGHAPUS akun pelanggan — izin `pelanggan: edit`. */
   canDelete: boolean
+  /** Boleh menempelkan peran ke akun — izin `manajemen-user: edit`. */
+  canManageRole: boolean
 }) {
   if (!isDatabaseConfigured()) {
     return (
@@ -161,27 +215,18 @@ async function TabPelanggan({
   }
   const query = q?.trim() ?? ""
   const halaman = Number(page ?? 1) || 1
-  const { rows, total, pageCount } = await listCustomers({ query, page: halaman })
+  // Parameter urutan datang dari URL, jadi divalidasi sebelum menyentuh query —
+  // nilai karangan jatuh ke urutan bawaan, bukan ke halaman error.
+  const urut = isCustomerSortField(sort) ? sort : undefined
+  const arah = isSortDirection(dir) ? dir : undefined
 
-  // Peran tiap pelanggan (dari `users`, id sama) + daftar peran yang bisa
-  // diberikan. Sejak Satu Login pelanggan adalah baris di `users`.
-  const { getPrisma } = await import("@/lib/prisma/client")
-  const ids = rows.map((r) => r.id)
-  const [roleRows, roleOptions] = await Promise.all([
-    ids.length
-      ? getPrisma().user.findMany({
-          where: { id: { in: ids } },
-          select: { id: true, roleId: true, roleRef: { select: { name: true } } },
-        })
-      : Promise.resolve([]),
+  // Peran tiap pelanggan kini ikut dibaca `listCustomers` (lihat CustomerRow) —
+  // sebelumnya halaman ini memanggil `getPrisma()` sendiri, yang melanggar §2.5
+  // sekaligus membuat pengurutan per peran tidak mungkin.
+  const [{ rows, total, pageCount }, roleOptions] = await Promise.all([
+    listCustomers({ query, page: halaman, sort: urut, dir: arah }),
     listRoles(),
   ])
-  const roleById = new Map(roleRows.map((r) => [r.id, { roleId: r.roleId, roleName: r.roleRef?.name ?? null }]))
-
-  const linkHal = (h: number) => {
-    const sp = new URLSearchParams({ tab: "pelanggan", ...(query && { q: query }), page: String(h) })
-    return `/admin/manajemen-user?${sp.toString()}`
-  }
 
   return (
     <>
@@ -190,6 +235,11 @@ async function TabPelanggan({
       </p>
       <form method="GET" className="mb-4 flex gap-2">
         <input type="hidden" name="tab" value="pelanggan" />
+        {/* Urutan yang sedang dipilih ikut dibawa saat mencari. Tanpa ini,
+            formulir GET menulis ulang seluruh query string dan pencarian
+            diam-diam mengembalikan urutan ke bawaan. */}
+        {urut && <input type="hidden" name="sort" value={urut} />}
+        {arah && <input type="hidden" name="dir" value={arah} />}
         <input
           type="search"
           name="q"
@@ -208,39 +258,21 @@ async function TabPelanggan({
           // Date tidak bisa menyeberang ke Client Component apa adanya.
           emailVerifiedAt: c.emailVerifiedAt?.toISOString() ?? null,
           createdAt: c.createdAt.toISOString(),
-          roleId: roleById.get(c.id)?.roleId ?? null,
-          roleName: roleById.get(c.id)?.roleName ?? null,
         }))}
         canDelete={canDelete}
         roleOptions={roleOptions.map((r) => ({ id: r.id, name: r.name }))}
-        canManageRole={canDelete}
+        canManageRole={canManageRole}
+        sort={urut}
+        dir={arah}
       />
 
-      {pageCount > 1 && (
-        <div className="mt-6 flex items-center justify-between gap-4">
-          <p className="text-sm text-muted-foreground">
-            Halaman {halaman} dari {pageCount}
-          </p>
-          <div className="flex gap-2">
-            {halaman > 1 && (
-              <Link
-                href={linkHal(halaman - 1)}
-                className="rounded-md border border-input px-3 py-1.5 text-sm font-medium hover:bg-muted"
-              >
-                ← Sebelumnya
-              </Link>
-            )}
-            {halaman < pageCount && (
-              <Link
-                href={linkHal(halaman + 1)}
-                className="rounded-md border border-input px-3 py-1.5 text-sm font-medium hover:bg-muted"
-              >
-                Berikutnya →
-              </Link>
-            )}
-          </div>
-        </div>
-      )}
+      <AdminPagination
+        page={halaman}
+        pageCount={pageCount}
+        total={total}
+        pageSize={CUSTOMER_PAGE_SIZE}
+        labelBaris="akun"
+      />
     </>
   )
 }

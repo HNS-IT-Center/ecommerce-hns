@@ -26,7 +26,6 @@ import {
 } from "./customer-session"
 import { SESSION_COOKIE, isIssuedBeforeRevocation, verifySession } from "./session"
 import { bisaAkses, muatIzinUser } from "./permissions"
-import { parseAdminRole } from "./roles"
 
 export {
   CUSTOMER_SESSION_COOKIE,
@@ -130,7 +129,7 @@ export async function getCurrentCustomer(): Promise<CurrentCustomer | null> {
   // Pelanggan biasa tidak memicu query izin apa pun.
   const canVerify = adminAccount
     ? bisaAkses(
-        await muatIzinUser({ ...adminAccount, role: parseAdminRole(adminAccount.role) }),
+        await muatIzinUser(adminAccount),
         "verify",
         "view"
       )

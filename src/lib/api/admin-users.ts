@@ -272,3 +272,53 @@ export async function setSalesDisplayName(
   })
   return count > 0
 }
+
+/**
+ * "Cap" izin satu akun — satu string yang berubah setiap kali hak akses orang
+ * itu berubah, apa pun bentuk perubahannya.
+ *
+ * Dipakai `PermissionWatcher` di panel: klien menyimpan cap yang berlaku saat
+ * halamannya dimuat, lalu menanyakannya lagi secara berkala. Begitu capnya
+ * berbeda, artinya ada yang mengubah aksesnya dan tampilan yang sedang dilihat
+ * sudah tidak sesuai dengan yang sebenarnya berlaku di server.
+ *
+ * Tiga bagian, masing-masing menangkap perubahan yang tidak tertangkap yang
+ * lain:
+ *
+ *   1. `role` — owner↔staff, dan penurunan menjadi "pelanggan" (akses panel
+ *      dicabut sama sekali).
+ *   2. `roleId` — peran dinamis ditautkan atau dilepas. Bagian ini juga yang
+ *      menangkap PENGHAPUSAN sebuah peran: kolomnya dikosongkan oleh database
+ *      lewat `onDelete: SetNull`, tanpa Prisma pernah menulis baris user itu.
+ *   3. `updatedAt` peran — izin per halaman peran itu disunting. `updateRole`
+ *      ikut menulis baris `roles` di transaksi yang sama, jadi capnya bergerak
+ *      walau yang berubah hanya matriks izinnya.
+ *
+ * `users.updatedAt` sengaja TIDAK ikut, walau sekilas terlihat seperti penanda
+ * paling lengkap. Kolom itu bergerak untuk SETIAP penulisan ke baris user —
+ * termasuk staff yang mengubah nama tampilan sales miliknya sendiri. Kalau ia
+ * ikut, orang itu akan melihat toast "Peran diperbarui" dan halamannya dimuat
+ * ulang padahal tidak satu pun izinnya berubah. Cap yang berbohong sesekali
+ * akan diabaikan, dan sesudah itu ia tidak lagi berguna saat benar-benar
+ * penting. Ketiga bagian di atas sudah mencakup semua jalur yang benar-benar
+ * mengubah akses.
+ *
+ * `null` berarti akunnya sudah tidak ada — dan itu juga perubahan yang perlu
+ * disampaikan, bukan kesalahan yang perlu didiamkan.
+ *
+ * SATU query, kunci primer + join kunci primer. Dipanggil berkala oleh tiap
+ * panel yang terbuka, jadi ia memang harus semurah ini.
+ */
+export async function getPermissionVersion(userId: string): Promise<string | null> {
+  const row = await getPrisma().user.findUnique({
+    where: { id: userId },
+    select: {
+      role: true,
+      roleId: true,
+      roleRef: { select: { updatedAt: true } },
+    },
+  })
+  if (!row) return null
+
+  return [row.role, row.roleId ?? "-", row.roleRef?.updatedAt.getTime() ?? "-"].join("|")
+}

@@ -36,9 +36,9 @@ export default async function RakitanTersimpanPage() {
   const builds = await listSavedBuilds(user.id)
 
   return (
-    <div className="flex min-h-screen flex-col bg-page">
+    <div className="flex min-h-dvh flex-col bg-page">
       <Header />
-      <main className="flex-1 p-4 py-10 sm:px-6 lg:px-8">
+      <main className="min-h-content flex-1 p-4 py-10 sm:px-6 lg:px-8">
         <div className="mx-auto w-full max-w-4xl space-y-6">
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight">Rakitan Tersimpan</h1>

@@ -11,7 +11,6 @@ import { createCustomerSession } from "@/lib/auth/customer"
 import { createSession } from "@/lib/auth"
 import { findUserByIdentifier } from "@/lib/auth/identity"
 import { isMaster, landingPathFor, muatIzinUser } from "@/lib/auth/permissions"
-import { parseAdminRole } from "@/lib/auth/roles"
 import { verifyPassword as verifyPasswordUser } from "@/lib/auth/password"
 import { createVerificationToken, consumeVerificationToken } from "@/lib/auth/verification-token"
 import { sendEmail } from "@/lib/email/send"
@@ -90,7 +89,7 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
    * ke dashboard berarti setiap hari dimulai dari halaman kosong yang harus
    * mereka tinggalkan sendiri.
    */
-  redirect(landingPathFor(await muatIzinUser({ ...user, role: parseAdminRole(user.role) })))
+  redirect(landingPathFor(await muatIzinUser(user)))
 }
 
 function resetPasswordEmailText(link: string): string {

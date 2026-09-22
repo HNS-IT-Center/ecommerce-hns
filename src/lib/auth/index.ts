@@ -105,6 +105,31 @@ export async function getCurrentUser(): Promise<AdminUser | null> {
     return null
   }
 
+  /**
+   * Akun berperan "pelanggan" BUKAN admin, walau cookie adminnya masih sah.
+   *
+   * Diperiksa dari nilai MENTAH di database, bukan hasil `parseAdminRole()` di
+   * bawah — dan justru itu seluruh intinya. Fungsi itu memetakan apa pun yang
+   * bukan "owner" menjadi "staff" (jatuh ke izin terkecil kalau datanya rusak),
+   * sehingga "pelanggan" pun terbaca sebagai staff. Digabung dengan `roleId`
+   * yang di-NULL-kan saat penurunan, `muatIzinUser()` lalu jatuh ke fallback
+   * owner/staff lama dan memberi `edit` atas hampir seluruh panel.
+   *
+   * Akibatnya terbalik dari maksudnya: menurunkan staff berperan terbatas
+   * menjadi pelanggan justru MENAMBAH izinnya sampai cookienya kedaluwarsa
+   * (tujuh hari), karena jalur penurunan tidak mencabut sesi. Ditutup di sini —
+   * satu pintu yang dilewati seluruh penjaga panel dan setiap server action.
+   *
+   * Master dikecualikan dengan sengaja: alamat developer biasanya memang
+   * berperan "pelanggan" karena ikut memakai situs sebagai pembeli (lihat
+   * catatan di `src/app/login/actions.ts`), dan menguncinya di sini berarti
+   * mengunci pagar terakhir kalau owner tak sengaja mencabut izinnya sendiri.
+   */
+  if (user.role === "pelanggan") {
+    const { isMaster } = await import("./permissions")
+    if (!isMaster({ email: user.email })) return null
+  }
+
   // Dibentuk ulang secara eksplisit, bukan disebar dengan spread: `AdminUser`
   // adalah yang dilihat seluruh panel, dan `passwordChangedAt` tidak ada
   // urusannya di sana.
@@ -149,7 +174,25 @@ export async function requireAuth(): Promise<AdminUser> {
  */
 export async function requireOwner(): Promise<AdminUser> {
   const user = await requireAuth()
-  if (user.role !== "owner") throw new ForbiddenError()
+
+  /**
+   * MASTER ikut lolos, walau kolom `role`-nya bukan "owner".
+   *
+   * Master adalah pagar terakhir kalau owner tak sengaja mengunci dirinya
+   * sendiri — tapi tanpa baris ini, akun penyelamat itu justru tidak bisa
+   * melakukan satu-satunya tindakan penyelamatan yang dibutuhkan: menetapkan
+   * role orang lain. Seluruh lapisan izin lain sudah menghormatinya
+   * (`muatIzinUser()` memeriksa `isMaster` lebih dulu dan memberi `edit` atas
+   * segalanya); penjaga inilah satu-satunya yang tertinggal.
+   *
+   * Nyata, bukan teoretis: alamat developer biasanya berperan "pelanggan" di
+   * database karena ikut dipakai belanja (lihat catatan di
+   * `src/app/login/actions.ts`), dan `parseAdminRole()` memetakannya menjadi
+   * "staff". Jadi master yang paling berkuasa di sistem izin adalah juga yang
+   * ditolak di sini.
+   */
+  const { isMaster } = await import("./permissions")
+  if (user.role !== "owner" && !isMaster(user)) throw new ForbiddenError()
   return user
 }
 

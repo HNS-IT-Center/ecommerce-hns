@@ -1,9 +1,25 @@
 "use client"
 
 import { useEffect, useState, useTransition } from "react"
-import { CheckCircle2, Cpu, Mail, Phone, ShieldAlert, Trash2, X, Check } from "lucide-react"
+import Link from "next/link"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  CheckCircle2,
+  Cpu,
+  Mail,
+  Phone,
+  ShieldAlert,
+  Trash2,
+  X,
+  Check,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { RoleTag } from "@/components/admin/role-tag"
+import type { CustomerSortField, SortDirection } from "@/lib/api/customers"
 
 import { DeleteCustomerDialog } from "./delete-customer-dialog"
 import { setCustomerRoleAction } from "./actions"
@@ -39,6 +55,10 @@ type Props = {
   roleOptions: RoleOption[]
   /** Boleh mengubah peran pelanggan (owner-only). Klik-kanan hanya aktif bila true. */
   canManageRole: boolean
+  /** Kolom yang sedang dipakai mengurutkan, dari URL. */
+  sort?: CustomerSortField
+  /** Arah urutan yang sedang berlaku, dari URL. */
+  dir?: SortDirection
 }
 
 /** Menu klik-kanan: posisi + sasaran pelanggan. */
@@ -52,7 +72,20 @@ function formatDate(iso: string): string {
   })
 }
 
-export function CustomerList({ customers, canDelete, roleOptions, canManageRole }: Props) {
+export function CustomerList({ customers, canDelete, roleOptions, canManageRole, sort, dir }: Props) {
+  const router = useRouter()
+
+  /**
+   * Urutan yang BENAR-BENAR berlaku, bukan sekadar yang tertulis di URL.
+   *
+   * Tanpa parameter apa pun, `listCustomers` mengurutkan pendaftar terbaru di
+   * atas — jadi "Terdaftar, menurun" memang sedang aktif. Kalau header tetap
+   * digambar netral dalam keadaan itu, tabelnya terlihat tidak terurut sama
+   * sekali, dan tekanan pertama pada "Terdaftar" akan terasa tidak mengubah apa
+   * pun (karena memang tidak) — seolah tombolnya rusak.
+   */
+  const urutAktif: CustomerSortField = sort ?? "createdAt"
+  const arahAktif: SortDirection = dir ?? (sort === undefined ? "desc" : "asc")
   const [target, setTarget] = useState<CustomerItem | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -84,7 +117,9 @@ export function CustomerList({ customers, canDelete, roleOptions, canManageRole 
         setError(res.error)
         return
       }
-      window.location.reload()
+      // Action-nya sudah `revalidatePath`; cukup ambil ulang pohon RSC-nya.
+      // Muat ulang penuh akan membuang tab, kata pencarian, dan posisi gulir.
+      router.refresh()
     })
   }
 
@@ -141,6 +176,11 @@ export function CustomerList({ customers, canDelete, roleOptions, canManageRole 
                   <Mail className="h-3.5 w-3.5 shrink-0" />
                   {c.email}
                 </p>
+                {c.roleName && (
+                  <RoleTag roleId={c.roleId} className="mt-1.5">
+                    {c.roleName}
+                  </RoleTag>
+                )}
               </div>
               {!c.emailVerifiedAt && (
                 <span className="shrink-0 rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning">
@@ -193,11 +233,20 @@ export function CustomerList({ customers, canDelete, roleOptions, canManageRole 
         <table className="w-full text-sm">
           <thead className="border-b border-border bg-muted/50 text-left">
             <tr>
-              <th className="px-4 py-3 font-semibold">Nama</th>
-              <th className="px-4 py-3 font-semibold">Email</th>
+              <HeaderUrut kolom="name" label="Nama" sort={urutAktif} dir={arahAktif} />
+              <HeaderUrut kolom="email" label="Email" sort={urutAktif} dir={arahAktif} />
+              <HeaderUrut kolom="role" label="Peran" sort={urutAktif} dir={arahAktif} />
               <th className="px-4 py-3 font-semibold">Nomor HP</th>
+              {/*
+                "Rakitan" tidak bisa diurutkan, dan itu keputusan sadar — bukan
+                yang terlupa. Angkanya dihitung di aplikasi untuk satu halaman
+                saja (lihat `listCustomers`), jadi mengurutkannya cuma akan
+                menyusun ulang 25 baris yang kebetulan terbuka sambil TERLIHAT
+                seperti menyusun seluruh pelanggan. Header yang diam lebih jujur
+                daripada urutan yang salah.
+              */}
               <th className="px-4 py-3 text-center font-semibold">Rakitan</th>
-              <th className="px-4 py-3 font-semibold">Terdaftar</th>
+              <HeaderUrut kolom="createdAt" label="Terdaftar" sort={urutAktif} dir={arahAktif} />
               {canDelete && <th className="px-4 py-3 text-right font-semibold">Aksi</th>}
             </tr>
           </thead>
@@ -220,16 +269,18 @@ export function CustomerList({ customers, canDelete, roleOptions, canManageRole 
                   {c.username && (
                     <span className="block text-xs text-muted-foreground">@{c.username}</span>
                   )}
-                  {c.roleName && (
-                    <span className="mt-0.5 inline-block rounded bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
-                      {c.roleName}
-                    </span>
-                  )}
                 </td>
                 <td className="px-4 py-3">
                   <span className="break-all">{c.email}</span>
                   {!c.emailVerifiedAt && (
                     <span className="mt-0.5 block text-xs text-warning">Belum verifikasi</span>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  {c.roleName ? (
+                    <RoleTag roleId={c.roleId}>{c.roleName}</RoleTag>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Pelanggan</span>
                   )}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">{c.phoneNumber ?? "—"}</td>
@@ -317,5 +368,66 @@ export function CustomerList({ customers, canDelete, roleOptions, canManageRole 
         </div>
       )}
     </>
+  )
+}
+
+/**
+ * Header tabel yang bisa ditekan untuk mengurutkan.
+ *
+ * Pengurutannya dikerjakan SERVER lewat parameter URL, bukan di klien. Menyusun
+ * ulang di klien hanya menyentuh 25 baris yang sedang terbuka, sehingga
+ * "urutkan nama A→Z" akan menampilkan nama yang diawali huruf S di baris
+ * pertama hanya karena kebetulan itu isi halaman ini. Lewat URL, urutannya juga
+ * ikut saat alamatnya ditempel ke rekan.
+ *
+ * Menekan kolom yang sedang aktif membalik arahnya; kolom lain selalu mulai
+ * dari `asc`. `page` dibuang setiap kali, karena "halaman 7" dari urutan lama
+ * tidak menunjuk apa pun setelah urutannya berganti.
+ */
+function HeaderUrut({
+  kolom,
+  label,
+  sort,
+  dir,
+}: {
+  kolom: CustomerSortField
+  label: string
+  sort?: CustomerSortField
+  dir: SortDirection
+}) {
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const aktif = sort === kolom
+  const arahBerikut: SortDirection = aktif && dir === "asc" ? "desc" : "asc"
+
+  const sp = new URLSearchParams(searchParams.toString())
+  sp.set("sort", kolom)
+  sp.set("dir", arahBerikut)
+  sp.delete("page")
+
+  const Ikon = !aktif ? ArrowUpDown : dir === "asc" ? ArrowUp : ArrowDown
+
+  return (
+    <th
+      scope="col"
+      aria-sort={aktif ? (dir === "asc" ? "ascending" : "descending") : "none"}
+      className="px-4 py-3 font-semibold"
+    >
+      <Link
+        href={`${pathname}?${sp.toString()}`}
+        scroll={false}
+        className={`inline-flex items-center gap-1.5 rounded transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+          aktif ? "text-primary" : ""
+        }`}
+      >
+        {label}
+        <Ikon className={`h-3.5 w-3.5 ${aktif ? "" : "opacity-40"}`} aria-hidden="true" />
+        <span className="sr-only">
+          {aktif
+            ? `— sedang diurutkan ${dir === "asc" ? "menaik" : "menurun"}, tekan untuk membalik`
+            : "— tekan untuk mengurutkan"}
+        </span>
+      </Link>
+    </th>
   )
 }

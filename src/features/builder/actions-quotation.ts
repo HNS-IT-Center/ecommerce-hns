@@ -122,10 +122,10 @@ export async function issueQuotationAction(
     return { ok: false, error: "Nama pelanggan wajib diisi." };
   }
 
-  const adalahSales = bisaAkses(izin, "quotation-sales", "edit");
   const owner = await resolveOwner({
     user,
-    adalahSales,
+    adalahSales: bisaAkses(izin, "quotation-sales", "edit"),
+    bolehOper: bisaAkses(izin, "quotation-oper", "edit"),
     salesUserId: data.salesUserId,
   });
   if ("error" in owner) return { ok: false, error: owner.error };
@@ -142,51 +142,62 @@ export async function issueQuotationAction(
  * Siapa yang akan memegang quotation ini, dan nama siapa yang tercetak.
  *
  * Diputuskan DI SERVER dari izin, bukan dari apa yang dikirim klien. Dialog di
- * builder hanya menentukan apa yang terlihat; yang menahan CS agar tidak bisa
- * menuliskan dirinya sebagai Sales — atau mengoper ke akun yang bukan Sales —
- * adalah pemeriksaan di sini.
+ * builder hanya menentukan apa yang terlihat; yang menahan orang agar tidak
+ * bisa menuliskan dirinya sebagai Sales — atau mengoper ke akun yang bukan
+ * Sales — adalah pemeriksaan di sini.
+ *
+ * Dua izin, dua pertanyaan berbeda:
+ *
+ * - `bolehOper` (`quotation-oper`) — boleh melempar quotation ke orang lain.
+ * - `adalahSales` (`quotation-sales`) — namanya pantas tercetak sebagai "Sales:".
+ *
+ * Dulu keduanya satu: yang bukan sales dianggap CS dan otomatis boleh mengoper.
+ * Aturan tersirat itu tidak pernah terlihat di panel, dan ia mengunci rangkap
+ * tugas yang biasa di toko kecil — sales yang sesekali menerima telepon CS
+ * tidak punya cara mengoper selain berhenti menjadi sales.
  */
 async function resolveOwner({
   user,
   adalahSales,
+  bolehOper,
   salesUserId,
 }: {
   user: { id: string; name: string }
   adalahSales: boolean
+  bolehOper: boolean
   salesUserId?: string
 }): Promise<
   | { value: Pick<QuotationOwner, "ownerUserId" | "salesName" | "createdByUserId"> }
   | { error: string }
 > {
-  // Sales menerbitkan untuk dirinya sendiri. Pilihan operan diabaikan — sales
-  // memindahkan quotation ke sales lain bukan alur yang ada hari ini.
-  if (adalahSales) {
-    return {
-      value: {
-        ownerUserId: user.id,
-        salesName: (await getSalesDisplayName(user.id)) ?? user.name,
-        createdByUserId: user.id,
-      },
-    };
-  }
+  /**
+   * Quotation menjadi miliknya sendiri.
+   *
+   * `salesName` hanya terisi kalau ia memang Sales. Untuk yang bukan, baris
+   * "Sales:" TIDAK tercetak sama sekali di PDF — menuliskan namanya di situ
+   * akan salah menyatakan siapa yang melayani penjualan.
+   */
+  const milikSendiri = async () => ({
+    value: {
+      ownerUserId: user.id,
+      salesName: adalahSales ? ((await getSalesDisplayName(user.id)) ?? user.name) : null,
+      createdByUserId: user.id,
+    },
+  });
 
-  // CS. Wajib memilih: salah satu sales, atau "tidak oper" secara eksplisit.
-  // Tidak ada bawaan — menebak di sini berarti quotation mendarat di riwayat
-  // orang yang tidak pernah memintanya.
+  // Tidak boleh mengoper: pilihan operan yang ikut terkirim diabaikan, bukan
+  // ditolak — yang mengirimnya tanpa izin bukan orang yang salah isi formulir,
+  // melainkan seseorang yang memanggil action ini langsung.
+  if (!bolehOper) return milikSendiri();
+
+  // Boleh mengoper. Wajib memilih: salah satu sales, atau "tidak oper" secara
+  // eksplisit. Tidak ada bawaan — menebak di sini berarti quotation mendarat di
+  // riwayat orang yang tidak pernah memintanya.
   if (!salesUserId) {
     return { error: "Pilih Sales tujuan, atau pilih “Tidak oper”." };
   }
 
-  if (salesUserId === TIDAK_OPER) {
-    /**
-     * CS memegangnya sendiri. `salesName` NULL — baris "Sales:" tidak tercetak
-     * di PDF sama sekali, karena CS memang bukan sales dan menuliskan namanya
-     * di situ akan salah menyatakan siapa yang melayani penjualan.
-     */
-    return {
-      value: { ownerUserId: user.id, salesName: null, createdByUserId: user.id },
-    };
-  }
+  if (salesUserId === TIDAK_OPER) return milikSendiri();
 
   // Daftar yang sama yang dipakai dialog — diambil ulang, bukan dipercaya dari
   // klien. Ia juga sudah membuang master dan diri sendiri.

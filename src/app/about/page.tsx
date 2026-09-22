@@ -49,9 +49,9 @@ export default async function AboutPage() {
   const stores = await getActiveStores();
   const utama = stores[0] ?? null;
   return (
-    <div className="flex min-h-screen flex-col bg-page">
+    <div className="flex min-h-dvh flex-col bg-page">
       <Header />
-      <main className="flex-1">
+      <main className="min-h-content flex-1">
         {/* HERO SECTION */}
         <section className="container mx-auto px-4 py-12 md:px-6 md:py-20">
           <div className="grid gap-12 lg:grid-cols-2 lg:items-center">

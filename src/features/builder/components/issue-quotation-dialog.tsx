@@ -33,10 +33,10 @@ type Props = {
   open: boolean
   onOpenChange: (open: boolean) => void
   /**
-   * `"sales"` — pemiliknya dirinya sendiri, tanpa pilihan operan.
-   * `"cs"`    — wajib memilih Sales tujuan atau "Tidak oper".
+   * `"sendiri"` — pemiliknya dirinya sendiri, tanpa pilihan operan.
+   * `"oper"`    — wajib memilih Sales tujuan atau "Tidak oper".
    */
-  mode: "sales" | "cs"
+  mode: "sendiri" | "oper"
   salesOptions: SalesOption[]
   onSubmit: (values: QuotationFormValues) => Promise<{ ok: boolean; error?: string }>
 }
@@ -72,7 +72,7 @@ export function IssueQuotationDialog({
   const [error, setError] = useState<string | null>(null)
 
   const namaValid = customerName.trim().length >= 2
-  const operanValid = mode === "sales" || salesUserId.length > 0
+  const operanValid = mode === "sendiri" || salesUserId.length > 0
   const bisaKirim = namaValid && operanValid && !submitting
 
   const reset = () => {
@@ -92,7 +92,7 @@ export function IssueQuotationDialog({
         customerName: customerName.trim(),
         customerPhone: customerPhone.trim(),
         internalNote: internalNote.trim(),
-        ...(mode === "cs" ? { salesUserId } : {}),
+        ...(mode === "oper" ? { salesUserId } : {}),
       })
       if (!hasil.ok) {
         setError(hasil.error ?? "Gagal menerbitkan quotation.")
@@ -184,7 +184,7 @@ export function IssueQuotationDialog({
             </p>
           </div>
 
-          {mode === "cs" && (
+          {mode === "oper" && (
             <div>
               <label className="mb-1 block text-sm font-semibold" htmlFor="quotationSales">
                 Oper ke Sales <span className="text-destructive">*</span>

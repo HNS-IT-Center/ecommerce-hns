@@ -5,10 +5,12 @@ import { Search } from "lucide-react"
 import { requirePageView } from "@/lib/auth"
 import { bisaAkses } from "@/lib/auth/permissions"
 import {
+  ADMIN_QUOTATION_PAGE_SIZE,
   listQuotationOwners,
   listQuotationsForAdmin,
   summarizeSalesByMonth,
 } from "@/lib/api/pc-build-quotes"
+import { AdminPagination } from "@/components/admin/admin-pagination"
 import { formatRupiah } from "@/lib/utils"
 import { formatJakartaPeriod, jakartaPeriod } from "@/lib/utils/timezone"
 import { formatQuoteDateTime } from "@/app/verify/format"
@@ -28,6 +30,7 @@ type Props = {
     periode?: string
     sales?: string
     status?: string
+    page?: string
   }>
 }
 
@@ -45,14 +48,18 @@ export default async function AdminQuotationPage({ searchParams }: Props) {
   const { izin } = await requirePageView("quotation")
   const bolehBatalkan = bisaAkses(izin, "quotation", "edit")
 
-  const { q, periode: periodeRaw, sales, status } = await searchParams
+  const { q, periode: periodeRaw, sales, status, page } = await searchParams
   const periode = /^\d{6}$/.test(periodeRaw ?? "") ? periodeRaw! : jakartaPeriod(new Date())
+  // `?page=abc` dan `?page=0` sama-sama jatuh ke halaman 1 — bukan ke `skip`
+  // negatif yang membuat Prisma melempar dan seluruh halaman gagal dirender.
+  const halaman = Math.max(1, Number(page ?? 1) || 1)
 
-  const [rows, rekap, owners] = await Promise.all([
-    listQuotationsForAdmin({ q, ownerUserId: sales, status }),
+  const [daftar, rekap, owners] = await Promise.all([
+    listQuotationsForAdmin({ q, ownerUserId: sales, status, page: halaman }),
     summarizeSalesByMonth(periode),
     listQuotationOwners(),
   ])
+  const rows = daftar.rows
 
   const totalRekap = rekap.reduce((acc, r) => acc + r.total, 0)
   const unitRekap = rekap.reduce((acc, r) => acc + r.unit, 0)
@@ -97,7 +104,11 @@ export default async function AdminQuotationPage({ searchParams }: Props) {
         )}
       </section>
 
-      {/* ---------- Saringan ---------- */}
+      {/* ---------- Saringan ----------
+          Formulir GET ini sengaja TIDAK membawa `page`: menyaring ulang selalu
+          mengembalikan ke halaman pertama. "Halaman 7" dari hasil saringan lama
+          tidak menunjuk apa pun setelah saringannya berganti. Pemilih periode
+          di atas merakit parameternya sendiri dengan alasan yang sama. */}
       <form action="/admin/quotation" className="mt-6 flex flex-wrap gap-2">
         <input type="hidden" name="periode" value={periode} />
         <div className="relative min-w-[220px] flex-1">
@@ -243,6 +254,14 @@ export default async function AdminQuotationPage({ searchParams }: Props) {
           </tbody>
         </table>
       </div>
+
+      <AdminPagination
+        page={daftar.page}
+        pageCount={daftar.pageCount}
+        total={daftar.total}
+        pageSize={ADMIN_QUOTATION_PAGE_SIZE}
+        labelBaris="quotation"
+      />
     </div>
   )
 }

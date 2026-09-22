@@ -1,7 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
-import { ForbiddenError, UnauthorizedError, requireOwner } from "@/lib/auth"
+import { ForbiddenError, UnauthorizedError, requirePermission } from "@/lib/auth"
 import {
   CustomerNotFoundError,
   deleteCustomerPermanently,
@@ -12,23 +12,29 @@ import { MAX_REASON_LENGTH, MIN_REASON_WORDS, type CustomerActionState } from ".
 
 /**
  * Beri/ubah peran seorang pelanggan (naikkan jadi tim, atau kembalikan jadi
- * pelanggan biasa). OWNER-ONLY — menaikkan seseorang jadi punya akses panel
- * adalah kuasa sensitif, sama seperti menghapus akun pelanggan (§2.8), jadi
- * tidak setiap admin boleh. `roleId` kosong = kembalikan jadi pelanggan.
+ * pelanggan biasa). `roleId` kosong = kembalikan jadi pelanggan.
+ *
+ * Dijaga izin `manajemen-user: edit` — bukan lagi role `owner` yang dipatok.
+ * Izin itu memang sudah membolehkan pemiliknya menyusun peran beserta seluruh
+ * izinnya, jadi menempelkan sebuah peran ke satu akun adalah kuasa yang LEBIH
+ * KECIL dari yang sudah ia pegang. Mematoknya ke `owner` juga berarti satu
+ * tombol di panel masih menurut sistem peran lama, padahal seluruh sisanya
+ * sudah pindah — dan ketidakselarasan seperti itu yang membuat orang mengira
+ * izinnya rusak.
  */
 export async function setCustomerRoleAction(input: {
   userId: string
   roleId: string
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    await requireOwner()
+    await requirePermission("manajemen-user", "edit")
     if (!input.userId) return { ok: false, error: "Akun tidak dikenali." }
     await setCustomerRole(input.userId, input.roleId === "" ? null : input.roleId)
     revalidatePath("/admin/manajemen-user")
     return { ok: true }
   } catch (error) {
     if (error instanceof UnauthorizedError || error instanceof ForbiddenError) {
-      return { ok: false, error: "Hanya owner yang bisa mengubah peran pelanggan." }
+      return { ok: false, error: "Akun Anda tidak berhak mengubah peran pelanggan." }
     }
     if (error instanceof Error) return { ok: false, error: error.message }
     return { ok: false, error: "Terjadi kesalahan." }
@@ -38,7 +44,7 @@ export async function setCustomerRoleAction(input: {
 /**
  * Hapus akun pelanggan secara permanen.
  *
- * `requireOwner()` dipanggil DI DALAM action ini, bukan diandalkan dari layout
+ * `requirePermission()` dipanggil DI DALAM action ini, bukan diandalkan dari layout
  * atau middleware. Server action adalah endpoint HTTP tersendiri: ia bisa
  * dipanggil langsung tanpa pernah memuat halaman yang menyembunyikan tombolnya.
  * Menyembunyikan tombol di UI cuma menyembunyikan tombol — yang benar-benar
@@ -53,7 +59,16 @@ export async function deleteCustomer(
   formData: FormData,
 ): Promise<CustomerActionState> {
   try {
-    const actor = await requireOwner()
+    /**
+     * Izin `pelanggan: edit`, bukan role `owner`.
+     *
+     * Penghapusan akun pelanggan bersifat PERMANEN (CLAUDE.md §2.8) — karena
+     * itu ia tetap tingkat `edit`, bukan `view`, dan tetap butuh pengetikan
+     * ulang email di formulirnya. Yang berubah hanya SIAPA yang menentukan:
+     * peran yang disusun di Manajemen User, bukan kolom `role` lama yang
+     * tidak bisa dilihat maupun diatur dari panel.
+     */
+    const actor = await requirePermission("pelanggan", "edit")
 
     const customerId = String(formData.get("customerId") ?? "").trim()
     const reason = String(formData.get("reason") ?? "").trim()

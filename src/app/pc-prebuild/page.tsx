@@ -39,12 +39,7 @@ export default async function PcPrebuildPage() {
   return (
     <div className="flex min-h-dvh flex-col bg-page">
       <Header />
-      {/* `min-h-dvh` ada di SINI juga, bukan cuma di pembungkus luar. Yang di
-          luar hanya menjamin footer tidak naik ke tengah layar saat paketnya
-          sedikit; yang di sini menjamin area isinya sendiri setinggi satu layar
-          penuh. Konsekuensinya disengaja: halaman selalu bisa digulir sedikit
-          melewati layar, sepanjang header + footer. */}
-      <main className="min-h-dvh flex-1">
+      <main className="min-h-content flex-1">
         <div className="mx-auto max-w-7xl px-4 py-8 md:px-6 md:py-12">
           <header className="mb-8 max-w-2xl">
             <h1 className="text-2xl font-extrabold tracking-tight md:text-3xl">

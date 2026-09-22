@@ -69,6 +69,29 @@ export function Toaster() {
 
   const viewportClassName = `no-print print:hidden ${positionClassName}`.trim()
 
+  /**
+   * Toast TUMBUH KE ATAS dari titik jangkarnya, bukan ke bawah.
+   *
+   * `ToastViewport` adalah kotak setinggi NOL (isinya diposisikan absolut), dan
+   * `ToastRoot` bawaannya `absolute inset-x-0 bottom-0` — jadi tepi BAWAH toast
+   * yang menempel di jangkar, lalu badannya memanjang ke atas. Untuk posisi
+   * bawaan (kanan bawah) itu memang yang diinginkan.
+   *
+   * Di panel admin jangkarnya dipindah ke KIRI ATAS (`!top-4`), dan di situ
+   * perilaku yang sama jadi merugikan: tepi bawah toast duduk di y=16px,
+   * sehingga toast setinggi 60-an px terpotong di luar tepi atas jendela.
+   * Gejalanya persis seperti yang dilaporkan — kotak hijau yang "keluar dari
+   * web" dan tidak sempat terbaca isinya.
+   *
+   * Karena itu di panel admin jangkarnya dibalik: tepi ATAS toast yang
+   * menempel, dan badannya memanjang ke bawah — ke arah ruang kosong.
+   *
+   * `/build-pc` sengaja TIDAK diubah. Jangkarnya `top-[140px]`, cukup jauh dari
+   * tepi atas sehingga toast tetap utuh di layar; membalik arahnya di sana cuma
+   * akan menggeser posisi yang sudah dikenal sales tanpa memperbaiki apa pun.
+   */
+  const rootPositionClassName = isAdmin ? "!top-0 !bottom-auto" : ""
+
   return (
     <ToastPortal>
       <ToastViewport className={viewportClassName}>
@@ -94,10 +117,10 @@ export function Toaster() {
               ? VARIANT_STYLES[variant]
               : null
           return (
-          <ToastRoot 
-            key={toast.id} 
+          <ToastRoot
+            key={toast.id}
             toast={toast}
-            className={styles?.root ?? ""}
+            className={`${rootPositionClassName} ${styles?.root ?? ""}`.trim()}
           >
             <ToastContent className={styles?.content ?? ""}>
               <div className="flex min-w-0 flex-1 flex-col gap-0">

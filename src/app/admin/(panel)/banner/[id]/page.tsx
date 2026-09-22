@@ -1,3 +1,4 @@
+import { requirePageView } from "@/lib/auth"
 import { notFound } from "next/navigation"
 
 import { getBanner } from "@/lib/api/banners"
@@ -10,6 +11,8 @@ type Props = {
 }
 
 export default async function AdminBannerEditPage({ params }: Props) {
+  await requirePageView("banner")
+
   const { id } = await params
   const [banner, batches] = await Promise.all([getBanner(id), getBatchOptions()])
 

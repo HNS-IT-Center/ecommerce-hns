@@ -285,3 +285,41 @@ toast-nya — operannya tidak hilang, ia menunggu.
    admin. Sudah dikecualikan — jangan dikembalikan.
 5. **`window.open` sesudah `await` diblokir popup blocker.** Tab disiapkan lebih dulu di dalam
    gestur klik lewat `prepareInternalOpen()`.
+
+---
+
+## Tab "PC Build Logs" dihapus dari `/admin/logs` (22 September 2026)
+
+`/admin/logs` dulu punya tab ketiga yang membaca `pc_build_quotes` — tabel yang
+sama dengan `/admin/quotation`. Isinya sudah seluruhnya tertutup di sana, dan
+halaman Quotation & Penjualan punya yang tidak pernah ada di tab itu: pencarian
+kode/nama/nomor HP, saringan per sales dan status, rekap penjualan bulanan, dan
+pembatalan status Terjual.
+
+Yang menentukan bukan soal mubazir, melainkan **izin**. Kedua halaman dijaga
+kunci berbeda — `logs` dan `quotation`. Selama tab itu ada, siapa pun yang
+diberi izin Logs ikut melihat seluruh nama pelanggan, nama sales, dan nilai
+transaksi tanpa pernah diberi izin `quotation`. Pemisahan yang sengaja dibangun
+jadi bocor lewat pintu samping, dan tidak ada di UI yang memperlihatkan bahwa
+itu terjadi.
+
+`?tab=pc-build` yang masih tersimpan di bookmark jatuh ke tab Produk, bukan ke
+halaman kosong. `pc-build-logs-table.tsx` ikut dihapus.
+
+## `/admin/quotation` berhalaman (22 September 2026)
+
+Tabelnya dulu `take: 100` tanpa pagination. Itu bukan pengaman melainkan
+pemotong senyap: begitu quotation ke-101 terbit, yang paling lama hilang dari
+daftar tanpa satu pun tanda di layar — padahal halaman ini justru tempat orang
+mencari quotation lama saat ada keluhan.
+
+Sekarang `listQuotationsForAdmin()` menerima `page` dan mengembalikan
+`{ rows, total, page, pageCount }`, dengan `ADMIN_QUOTATION_PAGE_SIZE = 25`.
+Urutannya `createdAt desc` **plus `code` sebagai kunci kedua** — quotation yang
+terbit pada detik yang sama (sales menerbitkan beberapa revisi berurutan) bisa
+tersusun berbeda tiap query, dan pada daftar berhalaman itu berarti satu baris
+muncul di dua halaman sementara baris lain tidak pernah muncul.
+
+Formulir saringan dan pemilih periode sengaja tidak membawa `page`: menyaring
+ulang selalu kembali ke halaman pertama, karena "halaman 7" dari saringan lama
+tidak menunjuk apa pun setelah saringannya berganti.

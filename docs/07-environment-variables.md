@@ -53,8 +53,6 @@ import { z } from "zod";
 const EnvSchema = z.object({
   // WooCommerce (WAJIB)
   WOOCOMMERCE_URL: z.string().url(),
-  WOOCOMMERCE_CONSUMER_KEY: z.string().min(1),
-  WOOCOMMERCE_CONSUMER_SECRET: z.string().min(1),
 
   // Site (WAJIB)
   NEXT_PUBLIC_SITE_URL: z.string().url(),
@@ -115,8 +113,13 @@ export const env = EnvSchema.parse(process.env);
 | Variable | Deskripsi | Contoh | Cara Dapatnya |
 |---|---|---|---|
 | `WOOCOMMERCE_URL` | URL base WordPress/WooCommerce (tanpa `/wp-json`) | `https://hnsitcenter.id` | Domain WordPress kamu |
-| `WOOCOMMERCE_CONSUMER_KEY` | API consumer key (Read/Write) | `ck_xxxxxxxxxxxxxxxxxxxxxxx` | wp-admin → WooCommerce → Settings → Advanced → REST API → Add Key |
-| `WOOCOMMERCE_CONSUMER_SECRET` | API consumer secret | `cs_xxxxxxxxxxxxxxxxxxxxxxx` | Dihasilkan bersamaan dengan consumer key |
+
+
+> **`WOOCOMMERCE_CONSUMER_KEY` dan `WOOCOMMERCE_CONSUMER_SECRET` sudah dihapus**
+> (22 September 2026), bersama fitur Sinkronisasi WooCommerce yang jadi
+> satu-satunya pemanggil `/wp-json/wc/v3`. Keduanya tidak lagi ada di
+> `config/env.ts`, jadi mengisinya tidak berpengaruh apa pun. Kunci lamanya
+> masih hidup di wp-admin sampai dicabut — lihat `docs/12` §1.
 | `NEXT_PUBLIC_SITE_URL` | URL Next.js production | `https://hnsitcenter.id` (setelah go-live) | Domain final |
 | `NEXT_PUBLIC_SITE_NAME` | Nama brand untuk metadata | `HNS IT Center` | Fix |
 | `REVALIDATE_SECRET` | Shared secret untuk validasi webhook revalidation | 32+ karakter random | Generate: `openssl rand -hex 32` |
@@ -276,7 +279,7 @@ Tanpa `SMTP_*` terisi, `/register` dan alur lupa-password membalas error yang je
 
 > **Dua env WordPress di atas sudah tidak terpakai.** Dulu dipakai mengunggah
 > foto produk lewat WordPress Media REST API (`/wp-json/wp/v2/media`), yang memang
-> tidak menerima `WOOCOMMERCE_CONSUMER_KEY/SECRET` dan butuh Application Password
+> punya kredensialnya sendiri dan butuh Application Password
 > tersendiri. Sejak upload pindah ke Cloudflare R2 (§2.10), satu-satunya
 > pembacanya adalah `lib/api/wordpress/media.ts` — dan berkas itu sendiri sudah
 > tidak diimpor siapa pun. Aman dikosongkan; hapus dari `.env` setelah `media.ts`

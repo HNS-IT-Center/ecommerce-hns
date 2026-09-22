@@ -47,16 +47,30 @@ export default async function BuildPcPage({
    * memicu satu kueri izin pun.
    */
   const staff = await getCurrentUser()
-  let quotationMode: "anon" | "sales" | "cs" = "anon"
+  let quotationMode: "anon" | "sendiri" | "oper" = "anon"
   let salesOptions: { id: string; displayName: string }[] = []
+  /**
+   * Apakah akun ini TUJUAN operan — dipakai memasang toast notifikasi.
+   *
+   * Dipisah dari `quotationMode`, dan itu perubahan yang perlu: sejak mengoper
+   * punya izinnya sendiri, mode penerbitan tidak lagi menjawab "orang ini sales
+   * atau bukan". Menumpang pada mode akan membuat toast operan muncul untuk CS
+   * dan hilang untuk sales yang merangkap CS — dua-duanya salah orang.
+   */
+  let adalahSales = false
 
   if (staff) {
     const izin = await muatIzinUser(staff)
+    adalahSales = bisaAkses(izin, "quotation-sales", "edit")
     if (bisaAkses(izin, "quotation-terbit", "edit")) {
-      quotationMode = bisaAkses(izin, "quotation-sales", "edit") ? "sales" : "cs"
-      // Daftar operan hanya dibutuhkan CS. Sales tidak bisa memindahkan
-      // quotation ke sales lain, jadi memuatnya untuk mereka cuma kueri sia-sia.
-      if (quotationMode === "cs") salesOptions = await listQuotationSalesUsers(staff.id)
+      // Yang menentukan sekarang izin `quotation-oper`, bukan lagi "bukan
+      // sales". Dulu satu-satunya cara boleh mengoper adalah dengan TIDAK
+      // berperan sales — aturan yang tak pernah terlihat di panel, dan yang
+      // menutup rangkap tugas yang biasa terjadi di toko kecil.
+      quotationMode = bisaAkses(izin, "quotation-oper", "edit") ? "oper" : "sendiri"
+      // Daftar operan hanya dibutuhkan yang boleh mengoper; memuatnya untuk
+      // yang lain cuma kueri sia-sia.
+      if (quotationMode === "oper") salesOptions = await listQuotationSalesUsers(staff.id)
     }
   }
 
@@ -261,11 +275,11 @@ export default async function BuildPcPage({
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-page">
+    <div className="flex min-h-dvh flex-col bg-page">
       <div className="hidden md:block print:hidden">
         <Header />
       </div>
-      <main className="flex-1 bg-muted/20 print:bg-white print:m-0 print:p-0">
+      <main className="min-h-content flex-1 bg-muted/20 print:bg-white print:m-0 print:p-0">
         <div className="mx-auto px-4 py-8 md:px-6 md:py-12 print:max-w-none print:p-8">
           <DynamicBuilderView
             stepsConfig={stepsConfig}
@@ -289,7 +303,7 @@ export default async function BuildPcPage({
             tidak melihat toast sampai ia membuka Rakit PC atau riwayat
             quotation-nya. Operannya tidak hilang — ia menunggu di sana.
           */}
-          {quotationMode === "sales" && <HandoverToast />}
+          {adalahSales && <HandoverToast />}
         </div>
       </main>
       <div className="print:hidden">

@@ -57,7 +57,7 @@ export default async function Page() {
           selalu muat dalam satu layar.
           `pb-24` mengganjal MobileDock (fixed, 60px + safe-area) yang tidak
           ikut dihitung tinggi dokumen. */}
-      <main className="flex flex-1 items-start justify-center p-4 pb-24 pt-12 sm:px-6 md:items-center md:pb-12 lg:px-8">
+      <main className="min-h-content flex flex-1 items-start justify-center p-4 pb-24 pt-12 sm:px-6 md:items-center md:pb-12 lg:px-8">
         <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-sm">
           <h1 className="text-xl font-bold">Daftar Akun</h1>
           <p className="mt-1 text-sm text-muted-foreground">

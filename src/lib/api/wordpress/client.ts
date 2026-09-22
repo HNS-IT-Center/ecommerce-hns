@@ -1,5 +1,20 @@
 import { env } from "@/config/env"
-import type { FetchOptions, WooListMeta } from "@/lib/api/woocommerce/client"
+
+/**
+ * Tipe ini dulu tinggal di `lib/api/woocommerce/client.ts` dan diimpor dari
+ * sini. Klien itu sudah dihapus bersama fitur sinkronisasi — ia satu-satunya
+ * pemakai `WOOCOMMERCE_CONSUMER_KEY/SECRET` — jadi tipenya pindah ke tempat
+ * yang benar-benar memakainya.
+ */
+export type FetchOptions = RequestInit & {
+  next?: { revalidate?: number; tags?: string[] }
+}
+
+/** Jumlah total & halaman, dibaca dari header `x-wp-total`/`x-wp-totalpages`. */
+export type ListMeta = {
+  total: number
+  totalPages: number
+}
 
 export class WordPressApiError extends Error {
   status: number
@@ -22,7 +37,7 @@ export async function wpFetch<T>(path: string, options: FetchOptions = {}): Prom
 export async function wpFetchWithMeta<T>(
   path: string,
   options: FetchOptions = {}
-): Promise<{ data: T; meta: WooListMeta }> {
+): Promise<{ data: T; meta: ListMeta }> {
   // WordPress & WooCommerce satu host yang sama (WooCommerce = plugin di atas WordPress).
   const url = `${env.WOOCOMMERCE_URL}/wp-json/wp/v2${path}`
 
@@ -39,7 +54,7 @@ export async function wpFetchWithMeta<T>(
   }
 
   const data = (await res.json()) as T
-  const meta: WooListMeta = {
+  const meta: ListMeta = {
     total: Number(res.headers.get("x-wp-total") ?? 0),
     totalPages: Number(res.headers.get("x-wp-totalpages") ?? 0),
   }

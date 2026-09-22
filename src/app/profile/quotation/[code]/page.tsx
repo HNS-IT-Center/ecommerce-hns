@@ -54,9 +54,9 @@ export default async function DetailQuotationPage({
   const terjual = quote.status === "closing"
 
   return (
-    <div className="flex min-h-screen flex-col bg-page">
+    <div className="flex min-h-dvh flex-col bg-page">
       <Header />
-      <main className="flex-1 p-4 py-10 sm:px-6 lg:px-8">
+      <main className="min-h-content flex-1 p-4 py-10 sm:px-6 lg:px-8">
         <div className="mx-auto w-full max-w-3xl space-y-6">
           <Link
             href="/profile/quotation"

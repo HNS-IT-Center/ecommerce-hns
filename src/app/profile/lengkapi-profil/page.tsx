@@ -30,9 +30,9 @@ export default async function Page({
   const nextPath = sanitizeNextPath(next);
 
   return (
-    <div className="flex min-h-screen flex-col bg-page">
+    <div className="flex min-h-dvh flex-col bg-page">
       <Header />
-      <main className="flex flex-1 items-center justify-center p-4 py-12 sm:px-6 lg:px-8">
+      <main className="min-h-content flex flex-1 items-center justify-center p-4 py-12 sm:px-6 lg:px-8">
         <div className="w-full max-w-sm space-y-6 rounded-2xl border bg-card p-8 shadow-sm">
           <div className="text-center">
             <h1 className="text-xl font-bold">Lengkapi Profil</h1>

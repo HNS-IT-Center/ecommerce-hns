@@ -1,3 +1,4 @@
+import { requirePageView } from "@/lib/auth"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 
@@ -22,6 +23,8 @@ export const metadata = {
  * `lib/pc-prebuild/config.ts`.
  */
 export default async function PrebuildGamesPage() {
+  await requirePageView("pc-prebuild")
+
   const games = await getPcPrebuildGames()
 
   return (

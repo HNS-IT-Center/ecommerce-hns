@@ -1,3 +1,4 @@
+import { requirePageView } from "@/lib/auth"
 import { notFound } from "next/navigation"
 import { getPrisma } from "@/lib/prisma/client"
 import { POLICY_PAGES } from "@/lib/constants/policy-content"
@@ -8,6 +9,8 @@ type Props = {
 }
 
 export default async function AdminKebijakanEditPage({ params }: Props) {
+  await requirePageView("kebijakan")
+
   const { slug } = await params
   const fallback = POLICY_PAGES.find((page) => page.slug === slug)
   if (!fallback) notFound()

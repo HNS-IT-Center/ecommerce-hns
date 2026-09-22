@@ -1,5 +1,23 @@
 # Kendala Terbuka — Sinkronisasi WooCommerce
 
+> **Fiturnya sudah DIHAPUS pada 22 September 2026.** Halaman
+> `/admin/sinkronisasi`, tiga route `/api/admin/sync/*`, seluruh
+> `lib/api/woocommerce/sync/`, klien REST `/wp-json/wc/v3`, dan kunci
+> `WOOCOMMERCE_CONSUMER_KEY/SECRET` tidak ada lagi di repo — rinciannya di
+> `docs/05`, bagian "Sinkronisasi WooCommerce — DIHAPUS".
+>
+> Berkas ini TIDAK ikut dihapus, karena tidak semua isinya ikut selesai:
+>
+> - **§1 (cabut kunci REST)** — masih terbuka, dan sekarang justru tanpa
+>   halangan: tidak ada satu baris kode pun yang memakai kunci itu lagi.
+> - **§2 (berkas gambar di host media)** — masih terbuka; tidak ada
+>   hubungannya dengan sinkronisasi katalog.
+> - **§3 (varian)** — GUGUR bersama fiturnya. Lihat catatan di bagiannya.
+> - **§4 (rapikan-rapikan)** — masih terbuka; `check.yml` menunjuk ke sini
+>   untuk ketujuh error ESLint.
+> - **§5 (`CLAUDE.md` §2.2)** — masih terbuka, dan taruhannya BERUBAH. Lihat
+>   catatan di bagiannya.
+
 > Dicatat 29 Agustus 2026, setelah fitur sinkronisasi WooCommerce selesai dan
 > ter-push ke `team` dan `development` (commit `727cd73`).
 >
@@ -12,6 +30,11 @@
 ---
 
 ## 1. Kunci REST API WooCommerce perlu dicabut — BELUM SELESAI
+
+> **Sejak 22 September 2026 tidak ada lagi kode yang memakainya.** Mencabut
+> kunci ini sekarang tidak akan mematikan apa pun — sebelumnya ia dipakai
+> halaman sinkronisasi, jadi mencabutnya berarti mematikan fitur yang masih
+> berjalan. Halangan itu sudah tidak ada.
 
 **Siapa:** siapa pun yang pegang wp-admin hnsitcenter.id.
 
@@ -59,9 +82,19 @@ benar.
 
 ---
 
-## 3. Varian belum tercakup sinkronisasi
+## 3. ~~Varian belum tercakup sinkronisasi~~ — GUGUR 22 September 2026
 
-**Siapa:** dev.
+> Pekerjaan ini menjadi tidak relevan: fitur sinkronisasinya sendiri sudah
+> dihapus, dan situs WooCommerce yang jadi sumbernya sudah tidak terjangkau.
+> Ke-166 varian yang belum tertarik itu tidak akan pernah tertarik lewat jalur
+> ini. Kalau suatu hari datanya masih dibutuhkan, jalurnya bukan sinkronisasi
+> melainkan impor CSV terdokumentasi (CLAUDE.md §2.2).
+>
+> Isinya ditinggalkan apa adanya di bawah sebagai catatan tentang BENTUK
+> datanya, yang masih berlaku: induk variable tidak punya harga sendiri, dan
+> varian tidak ikut terbawa endpoint daftar produk.
+
+**Siapa:** ~~dev~~ — tidak ada.
 
 Dua celah, keduanya berakar pada hal yang sama: endpoint `/products` WooCommerce
 **tidak pernah mengembalikan varian**, hanya daftar id-nya.
@@ -117,7 +150,13 @@ WooCommerce lama tidak dipakai lagi untuk edit produk. **Data dari 28–29 Agust
 - 170 produk lahir di sana setelah katalog kita diimpor.
 - 489 harga sudah berbeda antara kedua sistem.
 
-Justru itulah sebabnya fitur sinkronisasi ini ada. Pembuka `CLAUDE.md` sendiri
+Saat catatan ini ditulis, justru itulah sebabnya fitur sinkronisasi ada.
+**Sejak 22 September 2026 fitur itu dihapus, dan taruhan bagian ini berubah:**
+kalau staff memang masih menyunting produk di wp-admin, sekarang TIDAK ADA lagi
+jalur apa pun yang mempertemukan kedua sisi — bukan lagi soal dokumentasi yang
+tertinggal, melainkan dua katalog yang berjalan sendiri-sendiri. Yang perlu
+dipastikan pemilik project lebih dulu: apakah pernyataan §2.2 sudah benar
+sekarang (staff 100% di panel baru), atau belum. Pembuka `CLAUDE.md` sendiri
 memperingatkan bahwa aturan usang adalah yang memicu insiden — dan orang
 berikutnya yang membaca §2.2 akan bingung menemukan satu fitur penuh yang
 bertentangan dengannya.

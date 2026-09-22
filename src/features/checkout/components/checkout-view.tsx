@@ -102,7 +102,7 @@ export function CheckoutView() {
 
   if (selectedItems.length === 0) {
     return (
-      <div className="flex min-h-[50vh] flex-col items-center justify-center space-y-4 px-4 text-center">
+      <div className="flex min-h-placeholder flex-col items-center justify-center space-y-4 px-4 text-center">
         <div className="flex h-20 w-20 items-center justify-center rounded-full bg-muted">
           <ShoppingBag className="h-10 w-10 text-muted-foreground" />
         </div>

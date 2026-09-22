@@ -46,6 +46,7 @@ export default async function QuotationSayaPage({
 
   const { q, tab, periode: periodeRaw } = await searchParams
   const adalahSales = bisaAkses(izin, "quotation-sales", "edit")
+  const bolehOper = bisaAkses(izin, "quotation-oper", "edit")
   const lihatOperan = tab === "dioper"
   const periode = /^\d{6}$/.test(periodeRaw ?? "") ? periodeRaw! : jakartaPeriod(new Date())
 
@@ -55,9 +56,9 @@ export default async function QuotationSayaPage({
   ])
 
   return (
-    <div className="flex min-h-screen flex-col bg-page">
+    <div className="flex min-h-dvh flex-col bg-page">
       <Header />
-      <main className="flex-1 p-4 py-10 sm:px-6 lg:px-8">
+      <main className="min-h-content flex-1 p-4 py-10 sm:px-6 lg:px-8">
         <div className="mx-auto w-full max-w-4xl space-y-6">
           <div>
             <h1 className="text-2xl font-extrabold tracking-tight">Quotation Saya</h1>
@@ -90,9 +91,11 @@ export default async function QuotationSayaPage({
             </div>
           </section>
 
-          {/* Tab "Yang saya oper" hanya berarti bagi CS. Sales tidak mengoper
-              ke siapa pun, jadi bagi mereka tab itu selalu kosong. */}
-          {!adalahSales && (
+          {/* Tab "Yang saya oper" hanya berarti bagi yang boleh mengoper.
+              Dulu syaratnya "bukan sales" — tebakan yang meleset begitu ada
+              sales yang merangkap CS: tabnya hilang justru dari orang yang
+              punya operan untuk dilihat. */}
+          {bolehOper && (
             <div className="flex gap-2">
               <FilterLink label="Milik saya" href={hrefDengan({ q, tab: undefined })} aktif={!lihatOperan} />
               <FilterLink label="Yang saya oper" href={hrefDengan({ q, tab: "dioper" })} aktif={lihatOperan} />

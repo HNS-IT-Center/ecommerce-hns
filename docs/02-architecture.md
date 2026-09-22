@@ -285,3 +285,51 @@ Detail penuh ada di `docs/05-data-fetching.md`. Ringkasan:
 - ❌ Membuat komponen "God Component" > 300 baris.
 - ❌ Menaruh logika bisnis (harga, diskon, kompatibilitas) di komponen presentasi.
 - ❌ Menambah dependency berat tanpa diskusi (contoh: seluruh Ant Design, Material UI, jQuery).
+
+---
+
+## Penjagaan izin di panel `/admin` (22 September 2026)
+
+**Setiap halaman baru di bawah `/admin` WAJIB memanggil `requirePageView("<kunci>")`
+sebagai baris pertamanya.** Tidak ada lapisan lain yang akan menangkapnya.
+
+`src/proxy.ts` hanya memastikan ADA sesi admin. Ia berjalan di Edge runtime
+tanpa Prisma, jadi ia tidak bisa membaca `role_permissions` dan tidak pernah
+memeriksa izin per halaman. Layout panel juga tidak — ia hanya menyaring menu
+sidebar, yang sifatnya kosmetik.
+
+Akibat dari mengandalkan keduanya sudah pernah terjadi: sebelas halaman sunting
+(`produk/[id]`, `produk/baru`, `banner/baru`, `banner/[id]`, `toko/baru`,
+`toko/[id]`, `pc-prebuild/[id]`, `pc-prebuild/games`, `kebijakan/[slug]`,
+`kebijakan/faq/baru`, `kebijakan/faq/[id]`) hidup tanpa penjaga apa pun. Siapa
+pun yang punya sesi admin — termasuk peran Kasir yang izinnya cuma `verify` —
+bisa membukanya lewat URL. Server action-nya memang tetap menolak menyimpan
+(`requirePermission` dipanggil di dalam masing-masing), tapi ISI halamannya
+sudah telanjur terbaca. Halaman daftar induknya selama ini dijaga, dan itu yang
+membuat lubangnya tidak kelihatan: tidak ada tautan menuju ke sana bagi yang
+tidak berizin, hanya alamat yang bisa diketik.
+
+### `/admin` (dasbor) menolak akun yang tidak punya urusan di panel
+
+Dasbor sengaja TIDAK memakai `requirePageView` — ia tujuan pengalihan setiap
+halaman yang ditolak, jadi menjaganya dengan satu kunci akan membuat orang
+terlempar berputar. Sebagai gantinya ia memanggil `punyaAksesPanel(izin)`:
+benar kalau ada setidaknya satu halaman `/admin` yang boleh dilihat, di luar
+
+- `PAGES_BUKAN_PANEL` — kunci yang halamannya ada di luar panel (`verify`) atau
+  yang memang bukan halaman (`harga-modal`, `quotation-terbit`,
+  `quotation-sales`), dan
+- `PAGES_SELALU_BOLEH` (`akun`), yang dimiliki setiap admin sehingga tidak
+  pernah bisa jadi alasan seseorang "punya panel".
+
+Yang tidak lolos dipantulkan ke `landingPathFor(izin)` — fungsi yang sama yang
+dipakai sesudah login, jadi Kasir mendarat di `/verify` dan Sales/CS di
+`/profile/quotation`. `landingPathFor()` sendiri sekarang memanggil
+`punyaAksesPanel()` alih-alih menyalin daftar pengecualiannya sendiri; salinan
+lamanya sudah ketinggalan satu kunci (`harga-modal`).
+
+`/admin/akun` tetap terbuka untuk semua admin dan itu disengaja: di situlah
+satu-satunya tempat seorang kasir bisa mengganti passwordnya sendiri. Bagian
+"Role Admin" di halaman itu — daftar seluruh akun admin beserta emailnya —
+hanya dirender untuk owner, dan datanya tidak dibaca sama sekali untuk yang
+lain.

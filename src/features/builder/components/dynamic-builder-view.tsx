@@ -85,20 +85,26 @@ type DynamicBuilderViewProps = {
    */
   presetLoad?: { name: string; selections: Record<string, BuilderSelection[]> } | null
   /**
-   * Peran penerbit quotation, sudah dihitung di server dari izin.
+   * Cara penerbitan quotation, sudah dihitung di server dari izin.
    *
-   * `"anon"` — pengunjung & pelanggan biasa: Print langsung menerbitkan dokumen
-   *            anonim, tanpa dialog, persis seperti sebelumnya.
-   * `"sales"` — dialog identitas pelanggan; pemiliknya dirinya sendiri.
-   * `"cs"`    — dialog yang sama + wajib memilih Sales tujuan atau "Tidak oper".
+   * `"anon"`    — pengunjung & pelanggan biasa: Print langsung menerbitkan
+   *               dokumen anonim, tanpa dialog, persis seperti sebelumnya.
+   * `"sendiri"` — dialog identitas pelanggan; pemiliknya dirinya sendiri.
+   * `"oper"`    — dialog yang sama + wajib memilih Sales tujuan atau
+   *               "Tidak oper". Dibuka izin `quotation-oper`.
+   *
+   * Yang dibedakan di sini BUKAN "sales atau CS", melainkan "boleh mengoper
+   * atau tidak" — dua orang dengan jabatan sama bisa berbeda di sini, dan
+   * seorang sales yang merangkap CS memakai mode `oper` sambil tetap bisa
+   * memilih "Tidak oper" untuk menyimpannya atas namanya sendiri.
    *
    * Ini menentukan APA YANG TERLIHAT saja. Siapa pemilik quotation diputuskan
    * ulang di server (`actions-quotation.ts`) dari izin sesi, karena server
    * action adalah endpoint HTTP tersendiri yang bisa dipanggil tanpa memuat
    * halaman ini.
    */
-  quotationMode?: "anon" | "sales" | "cs"
-  /** Kandidat operan untuk mode `cs`. Kosong untuk mode lain. */
+  quotationMode?: "anon" | "sendiri" | "oper"
+  /** Kandidat operan untuk mode `oper`. Kosong untuk mode lain. */
   salesOptions?: SalesOption[]
   /** Terisi hanya saat `?quotation=` menunjuk quotation yang boleh direvisi. */
   revisionLoad?: RevisionLoad | null
@@ -511,7 +517,7 @@ export function DynamicBuilderView({
 
   if (!mounted) {
     return (
-      <div className="flex items-center justify-center py-32">
+      <div className="flex min-h-placeholder items-center justify-center">
         <Loader2 className="w-10 h-10 animate-spin text-muted-foreground/30" />
       </div>
     )

@@ -38,10 +38,10 @@ function QuoteNotFound({ code, malformed }: { code: string; malformed: boolean }
   const shown = code.length > 24 ? `${code.slice(0, 24)}…` : code
 
   return (
-    <div className="flex min-h-screen flex-col bg-page">
+    <div className="flex min-h-dvh flex-col bg-page">
       <Header />
 
-      <main className="flex-1 bg-muted/20 py-8">
+      <main className="min-h-content flex-1 bg-muted/20 py-8">
         <div className="mx-auto max-w-lg px-4 md:px-6">
           <div className="rounded-2xl border border-border bg-card p-6 text-center shadow-sm md:p-8">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
@@ -158,10 +158,10 @@ export default async function VerifyQuotePage({
   })
 
   return (
-    <div className="flex min-h-screen flex-col bg-page">
+    <div className="flex min-h-dvh flex-col bg-page">
       <Header />
 
-      <main className="flex-1 bg-muted/20 py-8">
+      <main className="min-h-content flex-1 bg-muted/20 py-8">
         <div className="mx-auto max-w-3xl px-4 md:px-6">
           {/* Link biasa, bukan `router.back()`: kasir sering membuka halaman ini
               langsung dari hasil scan/URL, sehingga tidak ada riwayat untuk

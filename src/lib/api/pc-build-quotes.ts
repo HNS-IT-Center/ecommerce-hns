@@ -1144,7 +1144,25 @@ export type AdminQuotationFilter = {
   periode?: string
   ownerUserId?: string
   status?: string
-  take?: number
+  /** Halaman, mulai dari 1. */
+  page?: number
+}
+
+/**
+ * Baris per halaman di `/admin/quotation`.
+ *
+ * Menggantikan `take = 100` yang dulu dipakai tanpa pagination. Batas itu
+ * BUKAN pengaman melainkan pemotong senyap: begitu quotation ke-101 terbit,
+ * yang paling lama hilang dari daftar tanpa satu pun tanda di layar — dan
+ * halaman ini justru tempat orang mencari quotation lama saat ada keluhan.
+ */
+export const ADMIN_QUOTATION_PAGE_SIZE = 25
+
+export type AdminQuotationListResult = {
+  rows: AdminQuotationRow[]
+  total: number
+  page: number
+  pageCount: number
 }
 
 /**
@@ -1161,40 +1179,62 @@ export type AdminQuotationFilter = {
  */
 export async function listQuotationsForAdmin(
   filter: AdminQuotationFilter = {}
-): Promise<AdminQuotationRow[]> {
-  const { q, periode, ownerUserId, status, take = 100 } = filter
+): Promise<AdminQuotationListResult> {
+  const { q, periode, ownerUserId, status } = filter
+  const page = Math.max(1, filter.page ?? 1)
   const term = q?.trim() ?? ""
   const rentang = periode && /^\d{6}$/.test(periode) ? jakartaMonthRange(periode) : null
 
-  const rows = await getPrisma().pcBuildQuote.findMany({
-    where: {
-      ...(rentang ? { createdAt: { gte: rentang.mulai, lt: rentang.sesudah } } : {}),
-      ...(ownerUserId ? { ownerUserId } : {}),
-      ...(status === "terbit" || status === "closing" ? { status } : {}),
-      ...(term.length >= 3
-        ? {
-            OR: [
-              { code: { contains: term.toUpperCase() } },
-              { customerName: { contains: term } },
-              { customerPhone: { contains: term } },
-            ],
-          }
-        : {}),
-    },
-    select: {
-      ...HISTORY_SELECT,
-      internalNote: true,
-      owner: { select: { name: true, salesDisplayName: true } },
-    },
-    orderBy: { createdAt: "desc" },
-    take,
-  })
+  const where = {
+    ...(rentang ? { createdAt: { gte: rentang.mulai, lt: rentang.sesudah } } : {}),
+    ...(ownerUserId ? { ownerUserId } : {}),
+    ...(status === "terbit" || status === "closing" ? { status } : {}),
+    ...(term.length >= 3
+      ? {
+          OR: [
+            { code: { contains: term.toUpperCase() } },
+            { customerName: { contains: term } },
+            { customerPhone: { contains: term } },
+          ],
+        }
+      : {}),
+  }
 
-  return rows.map((row) => ({
-    ...toHistoryRow(row),
-    ownerName: row.owner ? (row.owner.salesDisplayName ?? row.owner.name) : null,
-    internalNote: row.internalNote,
-  }))
+  const prisma = getPrisma()
+  const [total, rows] = await Promise.all([
+    prisma.pcBuildQuote.count({ where }),
+    prisma.pcBuildQuote.findMany({
+      where,
+      select: {
+        ...HISTORY_SELECT,
+        internalNote: true,
+        owner: { select: { name: true, salesDisplayName: true } },
+      },
+      /**
+       * `code` sebagai kunci kedua, bukan `createdAt` saja.
+       *
+       * Quotation yang terbit pada detik yang sama — yang terjadi saat sales
+       * menerbitkan beberapa revisi berurutan — bisa tersusun berbeda tiap
+       * query. Pada daftar berhalaman itu berarti satu baris muncul di dua
+       * halaman sementara baris lain tidak pernah muncul sama sekali, dan yang
+       * tidak pernah muncul itulah yang sedang dicari orang.
+       */
+      orderBy: [{ createdAt: "desc" }, { code: "desc" }],
+      skip: (page - 1) * ADMIN_QUOTATION_PAGE_SIZE,
+      take: ADMIN_QUOTATION_PAGE_SIZE,
+    }),
+  ])
+
+  return {
+    rows: rows.map((row) => ({
+      ...toHistoryRow(row),
+      ownerName: row.owner ? (row.owner.salesDisplayName ?? row.owner.name) : null,
+      internalNote: row.internalNote,
+    })),
+    total,
+    page,
+    pageCount: Math.max(1, Math.ceil(total / ADMIN_QUOTATION_PAGE_SIZE)),
+  }
 }
 
 /**
