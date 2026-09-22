@@ -17,10 +17,10 @@ import {
   Palette,
   Tags,
   ShieldCheck,
-  RefreshCw,
   Coins,
   FileText,
   X,
+  ReceiptText,
 } from "lucide-react"
 
 import {
@@ -68,7 +68,6 @@ const adminNavItems: NavItem[] = [
       { title: "Semua Produk",    url: "/admin/produk",        icon: Package },
       { title: "Kategori",        url: "/admin/kategori",      icon: FolderTree },
       { title: "Atribut & Brand", url: "/admin/atribut-brand", icon: Tags },
-      { title: "Sinkronisasi",   url: "/admin/sinkronisasi",  icon: RefreshCw },
       { title: "Update Harga",    url: "/admin/harga-accurate", icon: Coins },
     ],
   },
@@ -76,6 +75,7 @@ const adminNavItems: NavItem[] = [
   { title: "PC Prebuild",  url: "/admin/pc-prebuild", icon: Cpu },
   { title: "Banner Promo", url: "/admin/banner",   icon: Megaphone },
   { title: "Toko & Lokasi", url: "/admin/toko",    icon: Store },
+  { title: "Quotation & Penjualan", url: "/admin/quotation", icon: ReceiptText },
   { title: "Manajemen User", url: "/admin/manajemen-user", icon: ShieldCheck },
   /*
    * Halamannya sudah ada sejak lama dan izinnya sudah terdaftar
@@ -147,13 +147,17 @@ export function AppSidebar({
   const { open, toggleSidebar, isMobile, setOpenMobile } = useSidebar()
 
   // Saring menu ke halaman yang boleh dilihat. Item "Overview" (url `/admin`)
-  // tanpa segmen halaman selalu tampil. Grup disaring per-anak; grup yang semua
-  // anaknya tersembunyi ikut hilang.
+  // dicocokkan ke izin `overview`, karena urlnya tidak punya segmen halaman.
+  // Grup disaring per-anak; grup yang semua anaknya tersembunyi ikut hilang.
   const allowed = allowedPages ? new Set(allowedPages) : null
   const bolehLihat = (url: string): boolean => {
     if (!allowed) return true
     const seg = pageSegment(url)
-    if (seg === null) return true // /admin (Overview) — tak berhalaman, selalu tampil
+    // `/admin` tidak punya segmen halaman, jadi ia tidak bisa dicocokkan seperti
+    // yang lain. Izinnya bernama `overview` — dulu baris ini mengembalikan
+    // `true` begitu saja, yang berarti menu Overview tetap tampil untuk akun
+    // yang izinnya sudah dicabut, dan menekannya berakhir di pantulan.
+    if (seg === null) return allowed.has("overview")
     return allowed.has(seg)
   }
   const navItems = React.useMemo(() => {

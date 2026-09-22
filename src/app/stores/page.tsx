@@ -59,7 +59,7 @@ export default async function StoresPage() {
   }));
 
   return (
-    <div className="flex min-h-screen flex-col bg-page">
+    <div className="flex min-h-dvh flex-col bg-page">
       {stores.map((store) => (
         <JsonLd
           key={store.id}
@@ -68,7 +68,7 @@ export default async function StoresPage() {
       ))}
 
       <Header />
-      <main className="flex-1">
+      <main className="min-h-content flex-1">
         <section className="bg-brand-green py-12 text-center text-primary-foreground">
           <h1 className="text-3xl font-extrabold tracking-tight md:text-4xl lg:text-5xl">
             TOKO &amp; CABANG KAMI

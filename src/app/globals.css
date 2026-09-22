@@ -336,6 +336,42 @@
 }
 
 
+/* Tinggi minimal AREA ISI sebuah halaman storefront — satu layar penuh, di
+   bawah header.
+
+   Pembungkus terluar tiap halaman sudah `min-h-dvh`, tapi itu hanya menjamin
+   HALAMAN-nya setinggi layar; `<main>` di dalamnya cuma `flex-1`, jadi saat
+   isinya sedikit ia hanya kebagian sisa setelah header dan footer — footer lalu
+   naik ke tengah layar dan halaman terlihat separuh jadi.
+
+   `4rem` = tinggi `HeaderSpacer` (`h-16`). Dikurangkan supaya header + isi
+   berjumlah tepat satu layar: footer mulai persis di bawah lipatan, tanpa
+   menyisakan guliran setinggi header yang tidak berisi apa-apa.
+
+   Angkanya ditaruh di sini, bukan sebagai `min-h-[calc(100dvh-4rem)]` di tiap
+   halaman: kalau tinggi header berubah suatu hari, yang perlu disunting satu
+   baris — bukan tiga puluh berkas yang pasti tidak akan terkejar semua. */
+/* Tinggi minimal sebuah PENGISI halaman — pemuatan dan keadaan kosong yang
+   menjadi satu-satunya isi halaman ("Keranjang Kosong", spinner Rakit PC).
+
+   Bedanya dari `min-h-content`: pengisi selalu duduk di dalam pembungkus
+   berpadding (`py-8 md:py-12`), jadi memakai tinggi penuh area isi akan
+   melebihi layar sebesar padding itu dan memunculkan guliran — persis yang
+   dihindari `min-h-content`. `10rem` = 4rem header + 6rem padding tegak di
+   desktop.
+
+   Disetel agak KURANG, bukan lebih: di ponsel paddingnya cuma `py-8` (4rem),
+   jadi pengisinya 2rem lebih pendek dari ruang yang ada. Akibatnya ia sedikit
+   di atas titik tengah — jauh lebih ringan daripada guliran yang tidak berisi
+   apa-apa. Dipakai bersama `items-center justify-center`. */
+@utility min-h-placeholder {
+  min-height: calc(100dvh - 10rem);
+}
+
+@utility min-h-content {
+  min-height: calc(100dvh - 4rem);
+}
+
 @theme inline {
   --animate-marquee: marquee 25s linear infinite;
   @keyframes marquee {

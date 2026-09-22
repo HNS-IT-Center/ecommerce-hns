@@ -209,8 +209,18 @@ export function VerifySearchForm() {
                     index === activeIndex && "bg-muted"
                   )}
                 >
-                  <span className="font-mono text-sm font-bold">
+                  <span className="flex min-w-0 items-center gap-1.5 font-mono text-sm font-bold">
                     <HighlightedCode code={quote.code} term={term} />
+                    {quote.status === "closing" && (
+                      <span className="shrink-0 rounded-full bg-brand-green/15 px-1.5 py-0.5 font-sans text-[10px] font-bold text-brand-green">
+                        TERJUAL
+                      </span>
+                    )}
+                    {quote.customerName && (
+                      <span className="truncate font-sans text-xs font-normal text-muted-foreground">
+                        {quote.customerName}
+                      </span>
+                    )}
                   </span>
                   <span className="flex items-center gap-3 text-xs">
                     <span className="font-bold tabular-nums text-sale-red">

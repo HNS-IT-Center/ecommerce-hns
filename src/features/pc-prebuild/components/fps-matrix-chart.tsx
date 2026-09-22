@@ -235,11 +235,20 @@ function FilterGroup<T extends string>({
   onChange: (value: T) => void
 }) {
   return (
-    <div className="flex items-center gap-2">
+    /* `flex-wrap`, bukan satu baris kaku.
+
+       Di layar 320px ruang yang tersisa untuk baris ini ±248px, sementara
+       label + tiga tombol berukuran ±230px: muat, tapi cuma karena selisih
+       belasan piksel. Begitu labelnya bertambah panjang atau fontnya sedikit
+       berbeda, kelebihannya TIDAK bisa digeser — html/body memakai
+       `overflow-x-clip`, jadi tombol paling kanan hilang tanpa jejak. Dengan
+       `flex-wrap` kelebihannya turun ke baris berikutnya, dan itu selalu
+       terlihat. */
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
       <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         {label}
       </span>
-      <div className="inline-flex rounded-lg border p-0.5">
+      <div className="inline-flex flex-wrap rounded-lg border p-0.5">
         {options.map((opt) => (
           <button
             key={opt}

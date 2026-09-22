@@ -10,7 +10,7 @@ import {
 import { createCustomerSession } from "@/lib/auth/customer"
 import { createSession } from "@/lib/auth"
 import { findUserByIdentifier } from "@/lib/auth/identity"
-import { isMaster } from "@/lib/auth/permissions"
+import { isMaster, landingPathFor, muatIzinUser } from "@/lib/auth/permissions"
 import { verifyPassword as verifyPasswordUser } from "@/lib/auth/password"
 import { createVerificationToken, consumeVerificationToken } from "@/lib/auth/verification-token"
 import { sendEmail } from "@/lib/email/send"
@@ -78,9 +78,18 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
     redirect(nextPath)
   }
 
-  // Selain "pelanggan" = akun admin (owner/staff/role dinamis) → panel.
+  // Selain "pelanggan" = akun admin (owner/staff/role dinamis).
   await createSession({ id: user.id, email: user.email })
-  redirect("/admin")
+
+  /**
+   * Tujuannya ditentukan izin, bukan dipatok ke `/admin`.
+   *
+   * Kasir dan Sales/CS bekerja di luar panel (`/verify`, `/profile/quotation`),
+   * dan sidebar panel tidak punya satu pun menu untuk mereka. Mengantar mereka
+   * ke dashboard berarti setiap hari dimulai dari halaman kosong yang harus
+   * mereka tinggalkan sendiri.
+   */
+  redirect(landingPathFor(await muatIzinUser(user)))
 }
 
 function resetPasswordEmailText(link: string): string {

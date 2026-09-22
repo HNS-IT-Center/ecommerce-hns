@@ -25,8 +25,7 @@ import {
   type CustomerSessionPayload,
 } from "./customer-session"
 import { SESSION_COOKIE, isIssuedBeforeRevocation, verifySession } from "./session"
-import { bisaAkses, muatIzinUser } from "./permissions"
-import { parseAdminRole } from "./roles"
+import { bisaAkses, capIzin, muatIzinUser } from "./permissions"
 
 export {
   CUSTOMER_SESSION_COOKIE,
@@ -54,6 +53,24 @@ export type CurrentCustomer = {
    * `/verify` tetap menjaga dirinya sendiri lewat `requirePageView`.
    */
   canVerify: boolean
+  /**
+   * Cap izin sesi ADMIN di peramban ini, atau `null` kalau tidak ada.
+   *
+   * BUKAN izin, dan tidak memutuskan apa pun — satu-satunya gunanya adalah
+   * dibandingkan dengan cap sebelumnya oleh `SessionProvider` di klien. Begitu
+   * berbeda, tampilan yang sudah terlanjur dirender dianggap basi dan halaman
+   * disegarkan; server tetap yang memutuskan akses pada setiap permintaan.
+   *
+   * Tanpa ini, perubahan peran hanya terdeteksi di DALAM panel admin (lewat
+   * `PermissionWatcher`). Di luar sana — menu akun di header, `/verify`,
+   * `/profile/quotation` — akses baru tidak terlihat sampai halaman dimuat
+   * ulang penuh, dan satu-satunya cara yang diketahui staff untuk memaksanya
+   * adalah keluar lalu masuk lagi.
+   *
+   * Isinya sama persis dengan yang sudah dikirim panel admin ke peramban lewat
+   * `/api/admin/permission-version`, jadi tidak ada yang baru yang ikut keluar.
+   */
+  permissionVersion: string | null
 }
 
 /** Payload sesi dari cookie, atau null. Tidak menyentuh database. */
@@ -70,6 +87,9 @@ const ACCOUNT_SELECT = {
   phoneNumber: true,
   role: true,
   roleId: true,
+  // Ikut dibaca demi `permissionVersion`. Join kunci primer di baris yang
+  // memang sudah diambil — bukan query tambahan.
+  roleRef: { select: { updatedAt: true } },
   sessionsRevokedAt: true,
   passwordChangedAt: true,
 } as const
@@ -130,7 +150,7 @@ export async function getCurrentCustomer(): Promise<CurrentCustomer | null> {
   // Pelanggan biasa tidak memicu query izin apa pun.
   const canVerify = adminAccount
     ? bisaAkses(
-        await muatIzinUser({ ...adminAccount, role: parseAdminRole(adminAccount.role) }),
+        await muatIzinUser(adminAccount),
         "verify",
         "view"
       )
@@ -146,6 +166,16 @@ export async function getCurrentCustomer(): Promise<CurrentCustomer | null> {
     phoneNumber: account.phoneNumber,
     isAdmin: adminAccount !== null,
     canVerify,
+    // Dari akun ADMIN, sumber yang sama dengan `canVerify` — bukan dari akun
+    // yang kebetulan tampil. Pelanggan biasa tidak punya izin yang bisa
+    // berubah, jadi capnya memang `null`.
+    permissionVersion: adminAccount
+      ? capIzin({
+          role: adminAccount.role,
+          roleId: adminAccount.roleId,
+          roleUpdatedAt: adminAccount.roleRef?.updatedAt,
+        })
+      : null,
   }
 }
 

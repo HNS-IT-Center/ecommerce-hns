@@ -12,9 +12,9 @@ export const metadata = {
 
 export default function Page() {
   return (
-    <div className="flex min-h-screen flex-col bg-page">
+    <div className="flex min-h-dvh flex-col bg-page">
       <Header />
-      <main className="flex flex-1 items-center justify-center p-4 py-12 sm:px-6 lg:px-8">
+      <main className="min-h-content flex flex-1 items-center justify-center p-4 py-12 sm:px-6 lg:px-8">
         <div className="w-full max-w-sm space-y-6 rounded-2xl border bg-card p-8 text-center shadow-sm">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
             <Mail className="h-6 w-6 text-primary" />

@@ -314,7 +314,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-page">
+    <div className="flex min-h-dvh flex-col bg-page">
       <JsonLd data={productJsonLd} />
       {/* Header melayang di atas galeri sampai pembeli menggulir.
 
@@ -340,7 +340,7 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
           <Header />
         </ShareTargetProvider>
       </TransparentHeaderProvider>
-      <main className="flex-1">
+      <main className="min-h-content flex-1">
         {/* Breadcrumb desktop saja. Di mobile ia berdiri persis di tempat yang
             dibutuhkan galeri untuk naik sampai puncak layar, dan jejak navigasi
             itu sendiri sudah diwakili tombol kembali di header. */}

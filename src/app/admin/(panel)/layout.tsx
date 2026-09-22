@@ -5,8 +5,11 @@ import { cookies } from "next/headers"
 import { getCurrentUser } from "@/lib/auth"
 import { halamanTerlihat, muatIzinUser } from "@/lib/auth/permissions"
 
+import { getPermissionVersion } from "@/lib/api/admin-users"
+
 import { AppSidebar } from "@/components/admin/app-sidebar"
 import { AdminMobileBar } from "@/components/admin/admin-mobile-bar"
+import { PermissionWatcher } from "@/components/admin/permission-watcher"
 import { SidebarProvider } from "@/components/ui/sidebar"
 
 export const metadata: Metadata = {
@@ -30,11 +33,18 @@ export default async function AdminLayout({
   const izin = await muatIzinUser(user)
   const pagesTerlihat = [...halamanTerlihat(izin)]
 
+  // Cap izin yang berlaku saat halaman ini dirender. `PermissionWatcher`
+  // membandingkannya dengan cap terbaru dan memuat ulang begitu berbeda —
+  // menu di sidebar yang dihitung tepat di atas ini hidup di Router Cache
+  // peramban, dan tidak ikut berubah hanya karena database berubah.
+  const versiIzin = await getPermissionVersion(user.id)
+
   const cookieStore = await cookies()
   const defaultOpen = cookieStore.get("sidebar_state")?.value !== "false"
 
   return (
-    <div className="bg-muted/40 text-foreground min-h-screen w-full flex font-sans">
+    <div className="bg-muted/40 text-foreground min-h-dvh w-full flex font-sans">
+      <PermissionWatcher versiAwal={versiIzin} />
       <SidebarProvider defaultOpen={defaultOpen} style={{ "--sidebar-width-icon": "4.5rem" } as React.CSSProperties}>
         <AppSidebar user={{ name: user.name, email: user.email }} allowedPages={pagesTerlihat} />
         <div className="flex flex-col flex-1 w-full relative z-10 min-w-0">

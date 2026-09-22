@@ -1,9 +1,13 @@
 "use server"
 
+import { revalidatePath } from "next/cache"
+
 import { getPrisma } from "@/lib/prisma/client"
 import { UnauthorizedError, createSession, requireAuth } from "@/lib/auth"
 import { MIN_PASSWORD_LENGTH, hashPassword, verifyPassword } from "@/lib/auth/password"
-import type { AccountActionState } from "./state"
+import { bisaAkses, muatIzinUser } from "@/lib/auth/permissions"
+import type { AdminRole } from "@/lib/auth/roles"
+import { MAX_SALES_DISPLAY_NAME, type AccountActionState } from "./state"
 
 /**
  * Ganti password akun yang sedang masuk.
@@ -78,5 +82,61 @@ export async function changePasswordAction(
   return {
     error: null,
     ok: "Password berhasil diganti. Sesi di perangkat lain sudah diputus.",
+  }
+}
+
+/**
+ * Atur nama tampilan sales milik sendiri — yang tercetak di PDF quotation.
+ *
+ * Terpisah dari `name` akun, dan bedanya bukan kosmetik: `name` dipakai di
+ * seluruh panel untuk mengenali siapa melakukan apa, sedangkan yang ini dibaca
+ * pelanggan di atas kertas. Sales yang ingin dokumennya bertuliskan "Tyo" tidak
+ * seharusnya ikut mengubah namanya di daftar admin, log produk, dan jejak audit.
+ *
+ * Nilainya TIDAK berlaku surut. Quotation menyimpan salinan nama ini saat
+ * terbit (`pc_build_quotes.sales_name`), jadi mengubahnya di sini hanya
+ * mempengaruhi dokumen yang terbit SESUDAHNYA — PDF yang sudah di tangan
+ * pelanggan tetap apa adanya.
+ */
+export async function updateSalesDisplayNameAction(
+  _prev: AccountActionState,
+  formData: FormData
+): Promise<AccountActionState> {
+  let me: { id: string; email: string; role: AdminRole; roleId: string | null }
+  try {
+    me = await requireAuth()
+  } catch (error) {
+    if (error instanceof UnauthorizedError) return { error: error.message, ok: null }
+    throw error
+  }
+
+  // Ditegakkan di SERVER, bukan cuma dengan menyembunyikan formulirnya: server
+  // action adalah endpoint HTTP tersendiri yang bisa dipanggil tanpa pernah
+  // memuat halamannya.
+  const izin = await muatIzinUser(me)
+  if (!bisaAkses(izin, "quotation-sales", "edit")) {
+    return { error: "Akun Anda tidak berperan sebagai Sales.", ok: null }
+  }
+
+  const raw = String(formData.get("salesDisplayName") ?? "").trim()
+  if (raw.length > MAX_SALES_DISPLAY_NAME) {
+    return { error: `Nama tampilan maksimal ${MAX_SALES_DISPLAY_NAME} karakter.`, ok: null }
+  }
+
+  // Kosong = hapus, lalu `name` akun yang dipakai. Disimpan NULL, bukan string
+  // kosong, supaya "belum diatur" dan "sengaja dikosongkan" tidak jadi dua
+  // keadaan berbeda yang harus dibedakan setiap pembacanya.
+  await getPrisma().user.update({
+    where: { id: me.id },
+    data: { salesDisplayName: raw.length > 0 ? raw : null },
+  })
+
+  revalidatePath("/admin/akun")
+
+  return {
+    error: null,
+    ok: raw.length > 0
+      ? `Quotation berikutnya akan tercetak atas nama "${raw}".`
+      : "Nama tampilan dikosongkan — quotation akan memakai nama akun Anda.",
   }
 }

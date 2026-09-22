@@ -558,14 +558,14 @@ function Bagian({
  * `position: sticky` terikat pada **leluhur penggulir terdekat**, bukan pada
  * jendela. Di panel admin, `main` di `(panel)/layout.tsx` memakai
  * `overflow-auto` — jadi ia yang jadi leluhur penggulir. Tapi induknya
- * `min-h-screen`, BUKAN `h-screen`: tingginya ikut tumbuh mengikuti isi, jadi
+ * `min-h-dvh`, BUKAN `h-dvh`: tingginya ikut tumbuh mengikuti isi, jadi
  * `main` sendiri tidak pernah menggulir. Yang menggulir jendelanya.
  *
  * Akibatnya bilah `sticky` tidak pernah menempel — ia cuma ikut tergulir pergi,
  * karena wadah tempat ia seharusnya menempel memang tidak bergerak. Gejalanya
  * membingungkan justru karena CSS-nya terlihat benar.
  *
- * Memperbaikinya di `layout.tsx` (`min-h-screen` → `h-screen`) memang lebih
+ * Memperbaikinya di `layout.tsx` (`min-h-dvh` → `h-dvh`) memang lebih
  * bersih, tapi itu mengubah cara SELURUH halaman admin menggulir — termasuk
  * halaman yang sudah terlanjur mengandalkan guliran jendela. Perbaikan itu
  * pantas dikerjakan tersendiri, bukan sebagai efek samping halaman ini.

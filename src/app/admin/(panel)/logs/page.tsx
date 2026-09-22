@@ -3,8 +3,7 @@ import { getPrisma } from "@/lib/prisma/client"
 import { requirePageView } from "@/lib/auth"
 import { PRICE_ACTIONS } from "@/lib/logs/actions"
 import { LogsTable } from "./logs-table"
-import { PcBuildLogsTable, type PcBuildQuoteRow } from "./pc-build-logs-table"
-import type { Prisma, ProductLog } from "@prisma/client"
+import type { Prisma } from "@prisma/client"
 
 export const dynamic = 'force-dynamic'
 
@@ -49,8 +48,25 @@ export default async function AdminLogsPage({ searchParams }: Props) {
   await requirePageView("logs")
   const { q, page, sort, order, tab, from, to, action } = await searchParams
 
-  const currentTab =
-    tab === "update-harga" ? "update-harga" : tab === "pc-build" ? "pc-build" : "produk"
+  /**
+   * Dua tab, keduanya membaca `product_logs`.
+   *
+   * Tab ketiga "PC Build Logs" dihapus 22 September 2026. Ia membaca
+   * `pc_build_quotes` — tabel yang sama dengan halaman Quotation & Penjualan —
+   * dan seluruh isinya sudah tertutup di sana, lengkap dengan pencarian,
+   * saringan per sales & status, rekap bulanan, dan pembatalan status Terjual
+   * yang tidak pernah ada di sini.
+   *
+   * Yang menentukan bukan cuma soal mubazir: kedua halaman itu dijaga KUNCI
+   * IZIN BERBEDA (`logs` vs `quotation`). Selama tab ini ada, siapa pun yang
+   * diberi izin Logs ikut melihat seluruh nama pelanggan, nama sales, dan nilai
+   * transaksi tanpa pernah diberi izin `quotation` — pemisahan yang sengaja
+   * dibuat jadi bocor lewat pintu samping.
+   *
+   * `?tab=pc-build` yang masih tersimpan di bookmark seseorang jatuh ke tab
+   * Produk, bukan ke halaman kosong.
+   */
+  const currentTab = tab === "update-harga" ? "update-harga" : "produk"
   // `page` datang dari URL yang bisa diedit bebas. Tanpa penjagaan ini,
   // `?page=abc` menghasilkan NaN dan `?page=0` menghasilkan `skip` negatif —
   // keduanya membuat Prisma melempar error dan seluruh halaman gagal render.
@@ -75,110 +91,79 @@ export default async function AdminLogsPage({ searchParams }: Props) {
 
   const prisma = getPrisma()
 
-  let logs: ProductLog[] = []
-  let quotes: PcBuildQuoteRow[] = []
-  let availableActions: string[] = []
-  let totalItems = 0
-  let currentPage = requestedPage
   const perPage = 25
 
-  if (currentTab === "pc-build") {
-    totalItems = await prisma.pcBuildQuote.count()
+  /**
+   * Dua tab, satu jalur query. Bedanya cuma satu: tab harga membatasi diri
+   * pada `PRICE_ACTIONS`. Menyalin seluruh logikanya untuk perbedaan sekecil
+   * itu berarti penyaring tanggal, urutan, dan penjepitan halaman harus
+   * diperbaiki dua kali setiap kali salah satunya berubah.
+   */
+  const hanyaHarga = currentTab === "update-harga"
 
-    // Minta halaman di luar jangkauan (mis. `?page=999`) dikembalikan ke
-    // halaman terakhir yang ada, bukan tabel kosong tanpa penjelasan.
-    currentPage = Math.min(requestedPage, Math.max(1, Math.ceil(totalItems / perPage)))
+  const fromDate = parseDateBoundary(from, "start")
+  const toDate = parseDateBoundary(to, "end")
 
-    const rows = await prisma.pcBuildQuote.findMany({
-      orderBy: { updatedAt: "desc" },
-      skip: (currentPage - 1) * perPage,
-      take: perPage,
-    })
+  const whereCondition: Prisma.ProductLogWhereInput = {}
 
-    // Decimal & Json milik Prisma tidak bisa diserahkan apa adanya ke Client
-    // Component — dinormalkan ke number/array dulu di sini.
-    quotes = rows.map((row) => ({
-      id: row.id,
-      code: row.code,
-      items: row.items as unknown as PcBuildQuoteRow["items"],
-      total: Number(row.total),
-      itemCount: row.itemCount,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    }))
-  } else if (currentTab === "produk" || currentTab === "update-harga") {
-    /**
-     * Dua tab, satu jalur query. Bedanya cuma satu: tab harga membatasi diri
-     * pada `PRICE_ACTIONS`. Menyalin seluruh logikanya untuk perbedaan sekecil
-     * itu berarti penyaring tanggal, urutan, dan penjepitan halaman harus
-     * diperbaiki dua kali setiap kali salah satunya berubah.
-     */
-    const hanyaHarga = currentTab === "update-harga"
-
-    const fromDate = parseDateBoundary(from, "start")
-    const toDate = parseDateBoundary(to, "end")
-
-    const whereCondition: Prisma.ProductLogWhereInput = {}
-
-    if (q) {
-      whereCondition.OR = [
-        { productName: { contains: q } },
-        { userName: { contains: q } },
-        { action: { contains: q } },
-      ]
-    }
-
-    // Penyaring aksi memakai kecocokan persis, bukan `contains`: "UPDATE_PRICE"
-    // dan "BULK_STATUS" tidak boleh saling menjaring, dan nilainya memang
-    // selalu dipilih dari daftar yang dibangun dari isi tabel itu sendiri.
-    //
-    // Di tab harga, aksi yang dipilih tetap harus berada di dalam PRICE_ACTIONS.
-    // Tanpa penyaringan itu, `?action=DELETE` yang diketik di alamat akan
-    // menembus batas tab dan menampilkan penghapusan produk di riwayat harga.
-    if (hanyaHarga) {
-      whereCondition.action =
-        action && PRICE_ACTIONS.includes(action) ? action : { in: PRICE_ACTIONS }
-    } else if (action) {
-      whereCondition.action = action
-    }
-
-    if (fromDate || toDate) {
-      whereCondition.createdAt = {
-        ...(fromDate ? { gte: fromDate } : {}),
-        ...(toDate ? { lte: toDate } : {}),
-      }
-    }
-
-    // Daftar aksi dibangun dari isi tabel, bukan dari senarai tetap di kode.
-    // Aksi baru yang ditambahkan nanti akan muncul sendiri di penyaring tanpa
-    // ada yang perlu ingat memperbaruinya di sini. Sengaja tidak ikut
-    // tersaring supaya pilihan lain tetap terlihat setelah satu aksi dipilih.
-    //
-    // Di tab harga, pilihannya dibatasi ke aksi harga yang BENAR-BENAR ada
-    // isinya — menawarkan aksi yang nol barisnya hanya mengundang klik yang
-    // berakhir di tabel kosong.
-    const actionGroups = await prisma.productLog.groupBy({
-      by: ["action"],
-      ...(hanyaHarga ? { where: { action: { in: PRICE_ACTIONS } } } : {}),
-      orderBy: { action: "asc" },
-    })
-    availableActions = actionGroups.map((group) => group.action)
-
-    totalItems = await prisma.productLog.count({ where: whereCondition })
-
-    currentPage = Math.min(requestedPage, Math.max(1, Math.ceil(totalItems / perPage)))
-
-    logs = await prisma.productLog.findMany({
-      where: whereCondition,
-      // `id` sebagai pemecah seri. Satu penyimpanan yang mengubah harga
-      // sekaligus field lain menulis dua baris sekaligus dengan `createdAt`
-      // yang sama persis; tanpa kunci kedua, urutan keduanya berubah-ubah
-      // setiap kali halaman dimuat.
-      orderBy: [{ [currentSort]: currentOrder }, { id: "desc" }],
-      skip: (currentPage - 1) * perPage,
-      take: perPage,
-    })
+  if (q) {
+    whereCondition.OR = [
+      { productName: { contains: q } },
+      { userName: { contains: q } },
+      { action: { contains: q } },
+    ]
   }
+
+  // Penyaring aksi memakai kecocokan persis, bukan `contains`: "UPDATE_PRICE"
+  // dan "BULK_STATUS" tidak boleh saling menjaring, dan nilainya memang
+  // selalu dipilih dari daftar yang dibangun dari isi tabel itu sendiri.
+  //
+  // Di tab harga, aksi yang dipilih tetap harus berada di dalam PRICE_ACTIONS.
+  // Tanpa penyaringan itu, `?action=DELETE` yang diketik di alamat akan
+  // menembus batas tab dan menampilkan penghapusan produk di riwayat harga.
+  if (hanyaHarga) {
+    whereCondition.action =
+      action && PRICE_ACTIONS.includes(action) ? action : { in: PRICE_ACTIONS }
+  } else if (action) {
+    whereCondition.action = action
+  }
+
+  if (fromDate || toDate) {
+    whereCondition.createdAt = {
+      ...(fromDate ? { gte: fromDate } : {}),
+      ...(toDate ? { lte: toDate } : {}),
+    }
+  }
+
+  // Daftar aksi dibangun dari isi tabel, bukan dari senarai tetap di kode.
+  // Aksi baru yang ditambahkan nanti akan muncul sendiri di penyaring tanpa
+  // ada yang perlu ingat memperbaruinya di sini. Sengaja tidak ikut
+  // tersaring supaya pilihan lain tetap terlihat setelah satu aksi dipilih.
+  //
+  // Di tab harga, pilihannya dibatasi ke aksi harga yang BENAR-BENAR ada
+  // isinya — menawarkan aksi yang nol barisnya hanya mengundang klik yang
+  // berakhir di tabel kosong.
+  const actionGroups = await prisma.productLog.groupBy({
+    by: ["action"],
+    ...(hanyaHarga ? { where: { action: { in: PRICE_ACTIONS } } } : {}),
+    orderBy: { action: "asc" },
+  })
+  const availableActions = actionGroups.map((group) => group.action)
+
+  const totalItems = await prisma.productLog.count({ where: whereCondition })
+
+  const currentPage = Math.min(requestedPage, Math.max(1, Math.ceil(totalItems / perPage)))
+
+  const logs = await prisma.productLog.findMany({
+    where: whereCondition,
+    // `id` sebagai pemecah seri. Satu penyimpanan yang mengubah harga
+    // sekaligus field lain menulis dua baris sekaligus dengan `createdAt`
+    // yang sama persis; tanpa kunci kedua, urutan keduanya berubah-ubah
+    // setiap kali halaman dimuat.
+    orderBy: [{ [currentSort]: currentOrder }, { id: "desc" }],
+    skip: (currentPage - 1) * perPage,
+    take: perPage,
+  })
 
   const totalPages = Math.ceil(totalItems / perPage)
 
@@ -210,54 +195,35 @@ export default async function AdminLogsPage({ searchParams }: Props) {
         >
           Update Harga Log
         </Link>
-        <Link
-          href={`/admin/logs?tab=pc-build`}
-          className={`px-4 py-2 border-b-2 font-medium text-sm transition-colors ${
-            currentTab === "pc-build"
-              ? "border-primary text-primary"
-              : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"
-          }`}
-        >
-          PC Build Logs
-        </Link>
       </div>
 
-      {currentTab === "pc-build" ? (
-        <PcBuildLogsTable
-          quotes={quotes}
-          totalPages={totalPages}
-          currentPage={currentPage}
-        />
-      ) : (
-        <>
-          {currentTab === "update-harga" && (
-            <p className="mb-4 text-sm text-muted-foreground">
-              Riwayat perubahan harga katalog — penerapan dari Accurate, penyuntingan manual, dan
-              masuknya produk baru. Harga modal &amp; dealer tidak muncul di sini: keduanya angka
-              internal yang disunting di tabel kerja, bukan harga yang dilihat pelanggan.
-            </p>
-          )}
-          {/*
-            Tabel yang sama dengan tab Produk Logs, bukan salinannya. Ia sudah
-            memformat UPDATE_PRICE & SYNC_PRICE sebagai rupiah — termasuk kasus
-            `multiple` yang menyimpan harga normal & obral sebagai JSON — dan
-            sudah punya pencarian, urutan, penyaring tanggal, serta lencana
-            berwarna per aksi. Yang membedakan kedua tab ada di query-nya.
-          */}
-          <LogsTable
-            logs={logs}
-            totalPages={totalPages}
-            currentPage={currentPage}
-            q={q || ""}
-            sort={activeSort}
-            order={activeOrder}
-            from={from || ""}
-            to={to || ""}
-            action={action || ""}
-            availableActions={availableActions}
-          />
-        </>
+      {currentTab === "update-harga" && (
+        <p className="mb-4 text-sm text-muted-foreground">
+          Riwayat perubahan harga katalog — penerapan dari Accurate, penyuntingan manual, dan
+          masuknya produk baru. Harga modal &amp; dealer tidak muncul di sini: keduanya angka
+          internal yang disunting di tabel kerja, bukan harga yang dilihat pelanggan.
+        </p>
       )}
+
+      {/*
+        Tabel yang sama dengan tab Produk Logs, bukan salinannya. Ia sudah
+        memformat UPDATE_PRICE & SYNC_PRICE sebagai rupiah — termasuk kasus
+        `multiple` yang menyimpan harga normal & obral sebagai JSON — dan sudah
+        punya pencarian, urutan, penyaring tanggal, serta lencana berwarna per
+        aksi. Yang membedakan kedua tab ada di query-nya.
+      */}
+      <LogsTable
+        logs={logs}
+        totalPages={totalPages}
+        currentPage={currentPage}
+        q={q || ""}
+        sort={activeSort}
+        order={activeOrder}
+        from={from || ""}
+        to={to || ""}
+        action={action || ""}
+        availableActions={availableActions}
+      />
     </div>
   )
 }

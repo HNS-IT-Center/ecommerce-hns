@@ -156,7 +156,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const activeFilterCount = countActiveShopFilters(resolvedParams)
 
   return (
-    <div className="flex min-h-screen flex-col bg-page">
+    <div className="flex min-h-dvh flex-col bg-page">
       <Header />
       <Breadcrumb
         items={[
@@ -165,7 +165,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           { label: q ? `Hasil Pencarian: "${q}"` : "Pencarian" },
         ]}
       />
-      <main className="flex-1 bg-muted/20 py-8 relative">
+      <main className="min-h-content flex-1 bg-muted/20 py-8 relative">
         <div className="container mx-auto px-4 md:px-6">
           <div className="mb-8">
             <h1 className="text-3xl font-extrabold tracking-tight">

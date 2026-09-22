@@ -10,7 +10,7 @@ import { HeaderMobileBar } from "./header-mobile-bar";
 import { HeaderShell, HeaderSpacer } from "./header-shell";
 import { getCategories } from "@/lib/api/woocommerce/categories";
 import { getThemeSettings } from "@/lib/theme/settings";
-import { customerLogoutAction } from "@/app/profile/actions";
+import { customerLogoutActionForClient } from "@/app/profile/actions";
 import {
   ChristmasHeaderDecor,
   ChristmasHeaderPattern,
@@ -73,7 +73,10 @@ export async function Header() {
             </div>
 
             <nav className="flex items-center gap-2">
-              <AccountNav logoutAction={customerLogoutAction} />
+              {/* Versi tanpa `redirect()`: `AccountNav` yang mengurus urutan sesudah
+                  cookie tercabut (segarkan tab ini, beri aba-aba ke tab lain,
+                  baru pindah halaman). */}
+              <AccountNav logoutAction={customerLogoutActionForClient} />
               <CartBadge />
             </nav>
           </div>

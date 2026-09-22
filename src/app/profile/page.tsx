@@ -1,10 +1,12 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { LayoutDashboard, LogOut, Wrench } from "lucide-react";
+import { FileText, LayoutDashboard, LogOut, Wrench } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { getCurrentCustomer } from "@/lib/auth/customer";
+import { getCurrentUser } from "@/lib/auth";
+import { bisaAkses, muatIzinUser } from "@/lib/auth/permissions";
 import { listSavedBuilds } from "@/lib/api/saved-pc-builds";
 import { SavedBuildCard } from "@/features/account/components/saved-build-card";
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp";
@@ -27,13 +29,35 @@ export default async function Page() {
   const customer = await getCurrentCustomer();
   if (!customer) redirect("/login");
 
-  // Akun Google yang belum melengkapi username/nomor HP tidak boleh memakai
-  // halaman ini dulu — lihat catatan di schema.prisma pada Customer.username.
-  // Akun daftar-manual tidak pernah transit lewat kondisi ini karena
-  // registerAction mewajibkan keduanya sejak awal.
-  if (!customer.username || !customer.phoneNumber) redirect("/profile/lengkapi-profil");
+  /**
+   * Akun Google yang belum melengkapi username/nomor HP tidak boleh memakai
+   * halaman ini dulu — lihat catatan di schema.prisma pada Customer.username.
+   * Akun daftar-manual tidak pernah transit lewat kondisi ini karena
+   * registerAction mewajibkan keduanya sejak awal.
+   *
+   * **Akun STAFF dikecualikan.** `phoneNumber` memang NULL untuk admin
+   * (schema.prisma), jadi tanpa pengecualian ini setiap Sales/CS/kasir yang
+   * membuka /profile terlempar ke formulir lengkapi-profil yang tidak ada
+   * hubungannya dengan pekerjaannya — dan tidak pernah sampai ke riwayat
+   * quotation-nya. Formulir itu memang untuk pelanggan.
+   */
+  if (!customer.isAdmin && (!customer.username || !customer.phoneNumber)) {
+    redirect("/profile/lengkapi-profil");
+  }
 
   const builds = await listSavedBuilds(customer.id);
+
+  /**
+   * Staff penerbit quotation mendapat jalan ke riwayatnya dari sini.
+   *
+   * Dibaca dari sesi ADMIN (`getCurrentUser`), bukan dari `customer.isAdmin`:
+   * yang menentukan izin adalah akun pemilik cookie panel. Pelanggan biasa
+   * tidak memicu satu kueri izin pun.
+   */
+  const staff = await getCurrentUser();
+  const bolehQuotation = staff
+    ? bisaAkses(await muatIzinUser(staff), "quotation-terbit", "edit")
+    : false;
 
   const deleteAccountWaUrl = buildWhatsAppUrl(
     env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER,
@@ -41,9 +65,9 @@ export default async function Page() {
   );
 
   return (
-    <div className="flex min-h-screen flex-col bg-page">
+    <div className="flex min-h-dvh flex-col bg-page">
       <Header />
-      <main className="flex-1 p-4 py-12 sm:px-6 lg:px-8">
+      <main className="min-h-content flex-1 p-4 py-12 sm:px-6 lg:px-8">
         <div className="mx-auto w-full max-w-4xl space-y-8">
           <div className="flex flex-col gap-6 rounded-2xl border bg-card p-8 shadow-sm sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -56,6 +80,15 @@ export default async function Page() {
               {/* Di mobile tidak ada dropdown akun — dock "Profil" mendarat di
                   sini, jadi jalan ke panel untuk admin harus ada di halaman
                   ini juga, bukan hanya di header desktop. */}
+              {bolehQuotation && (
+                <Link
+                  href="/profile/quotation"
+                  className="flex items-center justify-center gap-2 rounded-xl border border-input px-4 py-3 text-sm font-semibold transition-colors hover:bg-muted"
+                >
+                  <FileText className="h-4 w-4" />
+                  Quotation Saya
+                </Link>
+              )}
               {customer.isAdmin && (
                 <Link
                   href="/admin"

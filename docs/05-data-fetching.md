@@ -746,179 +746,46 @@ tapi akan menerbitkan kode baru untuk quotation lama yang isinya tidak berubah.
 
 ---
 
-## Sinkronisasi WooCommerce (`lib/api/woocommerce/sync/`)
+## ~~Sinkronisasi WooCommerce~~ — DIHAPUS 22 September 2026
 
-> Ditambahkan 29 Agustus 2026. Baca ini sebelum menyentuh apa pun di folder itu.
+Seluruh jalurnya sudah tidak ada lagi di repo:
 
-### Kenapa ada folder yang benar-benar memanggil WooCommerce
-
-Sisa `lib/api/woocommerce/` sudah tidak memanggil WooCommerce sama sekali —
-namanya historis, isinya query Prisma (CLAUDE.md §2.2). Folder `sync/` adalah
-**satu-satunya pengecualian**: ia bicara ke WooCommerce lewat HTTP.
-
-Alasannya faktual, bukan warisan: situs WordPress lama **masih dipakai staff
-setiap hari**. Saat fitur ini dibuat, produk terakhir di WooCommerce dimodifikasi
-pada hari yang sama, dan 167 produk lahir di sana setelah katalog kita diimpor.
-
-### Berkas
-
-| Berkas | Tugas |
+| Yang dihapus | Isinya |
 |---|---|
-| `types.ts` | Bentuk data. Murni tipe — aman diimpor Client Component. |
-| `remote.ts` | Mengambil produk dari WooCommerce REST (paginasi, 4 permintaan paralel, batas 80 halaman). |
-| `local.ts` | Satu kueri Prisma untuk seluruh katalog + nama kategori + jejak suntingan harga. |
-| `diff.ts` | **Fungsi murni.** Membandingkan kedua sisi. Tanpa database, tanpa jaringan. |
-| `preview.ts` | Merangkai ketiganya. Tidak menulis apa pun. |
+| `src/app/admin/(panel)/sinkronisasi/` | halaman panel + `sync-view.tsx` |
+| `src/app/api/admin/sync/{preview,apply,import}/` | tiga route handler |
+| `src/lib/api/woocommerce/sync/` | tujuh berkas: preview, diff, apply, import, local, remote, types |
+| `src/lib/api/woocommerce/client.ts` | klien REST `/wp-json/wc/v3` — satu-satunya pemakai `WOOCOMMERCE_CONSUMER_KEY/SECRET`, yang ikut dihapus dari `config/env.ts` |
+| izin `sinkronisasi` | dari `ADMIN_PAGES` & menu sidebar |
 
-### Endpoint
+**Kenapa.** Situs WordPress lama sudah tidak terjangkau dari mana pun — halaman
+ini sendiri sudah dinonaktifkan lebih dulu dengan catatan bahwa pilihannya bukan
+cuma "hidupkan lagi" melainkan juga "pensiunkan sekalian". Migrasi produknya
+sendiri tuntas: 3.326 dari 3.330 produk induk bersumber `WOO`, dan antrean dorong
+balik kosong. Yang tersisa hanyalah kode yang tidak bisa dijalankan, ditambah
+sepasang kunci baca-tulis katalog yang wajib diisi di environment untuk sesuatu
+yang tidak pernah dipanggil.
 
-`POST /api/admin/sync/preview` — dijaga `requireAuth()`, `dynamic = "force-dynamic"`,
-`maxDuration = 60`. Body: `{ modifiedAfter?: string | null }`. **Hanya membaca.**
+**Yang TIDAK ikut dihapus,** dan alasannya:
 
-Memakai POST walaupun sifatnya membaca, supaya hasilnya tidak pernah masuk cache:
-pratinjau yang basi menampilkan selisih harga yang sudah tidak ada.
+- `ProductSource.WOO` beserta kolom `woo_id` — asal-usul tiap produk tetap
+  tercatat, dan itu yang membedakan produk hasil migrasi dari produk buatan
+  sendiri. Lihat catatan `createProductFromSync` di `products.ts`.
+- Antrean dorong-balik (`product_sync_jobs`, `lib/sync/enqueue.ts`) — dipanggil
+  `products.ts` setiap produk berubah. Membuangnya butuh migrasi skema, jadi ia
+  keputusan tersendiri, bukan efek samping penghapusan ini.
+- `lib/sync/constants.ts` (`SYNC_PUSHED`/`SYNC_FAILED`) — sudah nol importer
+  sejak sebelum penghapusan ini; ia bagian dari antrean di atas.
+- `WOOCOMMERCE_URL` — masih dipakai blog (`/wp-json/wp/v2`) dan sebagai host
+  gambar produk lama.
 
-### Dua jebakan yang sudah ditemukan dan ditutup
+**Baris `role_permissions` dengan `page = 'sinkronisasi'`** menjadi yatim. Tidak
+berbahaya — `muatIzinUser()` membuang kunci yang tidak dikenal saat membaca, dan
+editor peran tidak menyalinnya kembali saat peran disunting. Bersihkan lewat
+satu `DELETE` kalau mau rapi.
 
-**1. Induk produk variable tidak punya harga sendiri.** WooCommerce menyimpan
-harga di tiap varian dan membiarkan `regular_price` induknya kosong. Versi
-pertama membandingkannya apa adanya dan melaporkan **1.312** perubahan harga —
-823 di antaranya "ubah menjadi kosong" untuk setiap produk variable yang kita
-punya. Menerapkannya berarti menghapus harga yang tampil ke pelanggan untuk
-seperempat katalog (CLAUDE.md §2.7). Sekarang induk variable dilewati sebelum
-apa pun dibandingkan, jumlahnya dilaporkan lewat `skippedVariableParents`, dan
-angka yang sebenarnya adalah **489**.
-
-Aturan umumnya: **harga kosong di sumber berarti "tidak dinyatakan di sana",
-bukan "harganya nol".** Sinkronisasi tidak pernah mengosongkan harga.
-
-**2. `date_created_gmt`, bukan `date_created`.** WooCommerce mengirim waktu GMT
-tanpa akhiran `Z`; `new Date()` menafsirkannya sebagai waktu lokal dan meleset
-tujuh jam di WIB. Cukup untuk salah mengelompokkan produk yang dibuat pagi hari.
-
-### Yang BELUM tercakup
-
-> Daftar hidup beserta siapa yang memegangnya ada di
-> [`docs/12-kendala-terbuka.md`](./12-kendala-terbuka.md).
-
-- **Harga varian.** Endpoint `/products` tidak mengembalikan varian, dan
-  perubahan harga varian tidak selalu mendorong `date_modified` induknya.
-  Menyusurinya berarti satu permintaan per induk variable (823 saat ini).
-- **Varian yang hilang dari induk yang sudah ada** (±216 saat fitur ini dibuat).
-- **Penghapusan.** Produk yang hilang atau di-trash di WooCommerce tidak
-  disentuh, dan memang tidak akan pernah disentuh oleh fitur ini.
-
-### Penerapan harga (`sync/apply.ts` → `POST /api/admin/sync/apply`)
-
-Body permintaan **hanya berisi daftar `wooId`** — tidak ada harga di dalamnya.
-Harganya diambil ulang dari WooCommerce di dalam `applyPriceChanges`
-(`fetchRemoteProductsByIds`). Dua alasan, keduanya nyata:
-
-1. Endpoint yang menerima harga dari klien berarti siapa pun yang bisa
-   memanggilnya bisa menetapkan harga katalog (CLAUDE.md §2.7).
-2. Pratinjau bisa berumur beberapa menit. Menuliskan angka dari pratinjau
-   berarti menyimpan harga yang mungkin sudah berubah lagi di sumbernya.
-
-**Penjagaan diulang di titik penulisan**, bukan dipercayakan pada pratinjau —
-urutannya: tidak ada di katalog → `source = LOCAL` → tidak ada di WooCommerce →
-induk variable → harga kosong di sumber → harga sudah sama. Sisi kita diperiksa
-lebih dulu dengan sengaja: produk buatan panel umumnya tidak ada di WooCommerce,
-dan kalau urutannya dibalik ia ditolak dengan alasan "terhapus di sana" — benar
-hasilnya, menyesatkan keterangannya.
-
-Ditulis per **50 produk per transaksi**: satu transaksi untuk ratusan baris
-berisiko melewati batas waktu, dan kegagalan di baris ke-400 akan membatalkan
-399 pembaruan yang sudah benar. Setiap potongan tetap utuh — harga dan baris
-lognya tersimpan bersama atau tidak sama sekali.
-
-#### Aksi log `SYNC_PRICE`
-
-Perubahan dari sinkronisasi dicatat sebagai **`SYNC_PRICE`**, bukan
-`UPDATE_PRICE`. Bedanya bukan kosmetik: pratinjau menandai produk yang harganya
-"pernah disunting staff" dengan membaca `product_logs`, jadi kalau penerapannya
-sendiri ikut tercatat sebagai `UPDATE_PRICE`, **seluruh produk akan tertandai
-setelah sekali penerapan** dan tandanya berhenti berarti apa-apa.
-`local.ts` karena itu mengecualikan `SYNC_PRICE` saat menghitung
-`priceEditedWooIds`.
-
-Barisnya tetap disusun lewat `lib/logs/product-log.ts` seperti semua penulis log
-lain (helper itu menerima `priceAction` opsional). `userName` diisi nama admin
-yang menekan tombol — yang memutuskan menerapkan tetap orang.
-
-`logs-table.tsx` mengenali aksi ini: label "Sinkron Harga (WooCommerce)", warna
-badge sendiri, dan nilainya ikut diformat sebagai rupiah.
-
-### Import produk baru (`sync/import.ts` → `POST /api/admin/sync/import`)
-
-**Memakai ulang `createProduct()`** — jalur yang sama dengan form produk di panel
-admin — bukan menulis pembuatan produk versi kedua. Fungsi itu sudah menangani
-kategori (termasuk menandai yang terdalam sebagai kategori utama), gambar,
-upsert atribut ke master data, upsert brand, dan varian.
-
-Bedanya hanya lewat `CreateProductOptions`: nomornya memakai id asli WooCommerce
-dan barisnya ditandai `source = WOO`.
-
-#### Varian harus mewarisi asal-usul induknya
-
-Versi pertama melewatkan ini dan cacatnya baru ketahuan saat pengujian: varian
-hasil import mendapat nomor dari **pita LOCAL** (900000000+) dan ditandai
-`LOCAL`, karena `syncProductVariations` selalu memanggil `nextWooId()` untuk
-varian baru. Akibatnya varian itu tidak akan pernah bisa dicocokkan lagi dengan
-WooCommerce — harga varian berhenti bisa disinkronkan, dan import berikutnya
-menggandakannya alih-alih mengenalinya.
-
-Sekarang `syncProductVariations` menerima `VariationOrigin`. Kosong (bawaan)
-berarti varian lahir di panel admin: pita LOCAL, ditandai `LOCAL`. Importer
-mengoper `WOO`, dan varian memakai id WooCommerce-nya sendiri.
-
-#### Status: ikut WooCommerce, kecuali kategorinya tidak ketemu
-
-Kategori WooCommerce dicocokkan dengan taksonomi kita **berdasarkan nama**
-(`Category` tidak punya `wooId` — taksonominya hasil kurasi berbasis `path`).
-Saat fitur ini dibuat, 161 dari 170 produk cocok.
-
-Yang tidak cocok **tidak ditebak**: produknya turun jadi `draft` apa pun
-statusnya di WooCommerce. Produk tanpa kategori tidak punya rumah di navigasi
-maupun breadcrumb, dan katalog ini sudah menanggung ribuan produk seperti itu.
-
-#### Gambar dipindahkan ke host media sendiri
-
-URL gambar dari WooCommerce ditulis ulang ke `media.hnsitcenter.com` lewat
-`toMediaUrl()`: host media memangkas `/wp-content/uploads`, jadi
-`hnsitcenter.id/wp-content/uploads/2026/08/x.webp` menjadi
-`media.hnsitcenter.com/2026/08/x.webp`. Pemetaan itu bukan tebakan — ia
-mengikuti bentuk 12.832 baris yang sudah ada sejak import katalog pertama.
-URL yang bentuknya di luar dugaan dikembalikan apa adanya, tidak dipaksa.
-
-Baris yang terlanjur tersimpan dengan host lama sudah dipindahkan sekali jalan
-oleh `scripts/archive/rewrite-product-image-host.mjs` (875 baris, 29 Agustus
-2026). Sesudahnya seluruh 13.707 gambar berada di satu host.
-
-> **Yang harus diketahui:** saat pemindahan ini dilakukan, berkas unggahan
-> 2026/08 ke atas **belum ada** di host media dan menjawab **404**, sementara
-> URL WordPress aslinya menjawab 200. Jadi gambar produk hasil import akan
-> kosong sampai sinkronisasi media menyusul — pekerjaan terpisah di luar
-> aplikasi ini. Keputusannya diambil sadar: lebih baik katalog menunjuk satu
-> host dan menunggu berkasnya menyusul daripada bercabang jadi dua host yang
-> harus dijaga selamanya.
-
-Catatan: `NEXT_PUBLIC_IMAGE_DOMAIN` di `config/env.ts` **terlihat** seperti
-tempat host ini seharusnya tinggal, tapi variabel itu kode mati — tidak dibaca
-satu berkas pun, dan isinya masih host WordPress lama. Jangan membangun di
-atasnya sebelum ia dibereskan.
-
-#### Kegagalan setelah commit
-
-`createProduct` membuang cache Next **setelah** transaksinya commit. Kalau
-langkah terakhir itu yang gagal, produknya sudah benar-benar ada — melaporkannya
-sebagai gagal akan membuat staff mengimpornya lagi, dan percobaan kedua menabrak
-`@unique` pada `woo_id` tanpa penjelasan yang masuk akal. Importer karena itu
-memeriksa dulu apakah barisnya ada sebelum menyimpulkan gagal.
-
-#### Aksi log `SYNC_IMPORT`
-
-Setiap produk yang masuk mencatat satu baris `SYNC_IMPORT` dengan `userName`
-admin yang menekan tombol. `logs-table.tsx` mengenalinya.
+Riwayat lengkap fitur ini — pratinjau, diff, penerapan harga, importer produk
+baru — ada di git sampai commit sebelum penghapusan.
 
 ## 15. Banner: kampanye penaung (`banner_batches`) — 31 Agustus 2026
 
@@ -1602,7 +1469,92 @@ footer ikut segar lewat tag itu — tidak perlu (dan tidak mungkin) mendaftar
 `revalidatePath` untuk setiap halaman. Aksi baru yang mengubah tabel `stores`
 wajib lewat fungsi itu juga.
 
-## 23. Halaman kebijakan: daftar halamannya ikut data (21 September 2026)
+---
+
+## 23. Quotation rakitan PC: penerbitan pindah dari GET ke server action (21 September 2026)
+
+> Aturan lengkapnya — peran, kepemilikan, revisi, privasi — ada di
+> [`17-quotation-sales.md`](./17-quotation-sales.md). Bagian ini hanya mencatat
+> yang menyangkut pola pengambilan data.
+
+**Yang berubah, dan ini yang paling penting untuk diingat:** `/build-pc/print`
+dulu MENULIS ke database saat GET. Membuka halaman itu menerbitkan quotation.
+Sekarang ia **hanya membaca** `?kode=` yang sudah tersimpan.
+
+Selama halaman cetak menulis saat GET, setiap refresh tab PDF, setiap
+pra-render, dan setiap bot yang menelusuri tautan ikut menulis. Itu bisa
+ditolerir saat kodenya hash — paling banter baris duplikat — tapi tidak lagi
+sejak kodenya nomor urut: refresh akan memakan nomor.
+
+**Jangan menulis dari sebuah GET.** Kalau sebuah halaman terasa "perlu"
+mencatat sesuatu saat dibuka, yang sebenarnya dibutuhkan adalah aksi yang
+memanggilnya sebelum halaman itu dibuka.
+
+### Jalur baru
+
+| Jalur | Fungsi | Catatan |
+|---|---|---|
+| Terbitkan | `issueQuotationAction` → `issueQuotation()` | Harga dari `priceCartFromCatalog(…, "id")`; klien tidak pernah mengirim rupiah |
+| Revisi | `reviseQuotationAction` → `reviseQuotation()` | Klien mengirim BOOLEAN `useLatestPrices`, bukan harga |
+| Cetak | `/build-pc/print?kode=` | Read-only, dari snapshot `pc_build_quotes.items` |
+| Tandai terjual | `markQuotationClosedAction` | `requirePermission("verify", "edit")` di dalam action |
+| Batalkan terjual | `reopenQuotationAction` | `requirePermission("quotation", "edit")` + alasan wajib |
+| Operan belum dibaca | `GET /api/quotation/operan-baru` | `no-store`; polling 60 dtk |
+
+Halaman cetak sekaligus berhenti memanggil `getPrisma()` langsung di komponen
+(CLAUDE.md §2.5) — seluruh aksesnya kini lewat `lib/api/pc-build-quotes.ts`.
+
+### Dua celah yang ikut tertutup
+
+Halaman cetak dulu membaca produk dengan kuerinya sendiri, dan kueri itu:
+
+- **tidak menyaring `status: PUBLISHED`** — komponen yang sudah ditarik staf
+  dari etalase tetap bisa masuk quotation oleh siapa pun yang menyimpan id-nya;
+- **tidak memeriksa `saleEndDate`** — harga obral yang sudah kedaluwarsa ikut
+  tercetak, dan dokumen itulah yang dibawa pelanggan ke kasir.
+
+Keduanya hilang begitu penerbitan memakai `priceCartFromCatalog`, fungsi yang
+sama yang dipakai checkout dan Konsultasi WA.
+
+### `fetchBuilderProductsByIds` bukan penentu ketersediaan
+
+Ia **tidak** menyaring `status` dan **tidak** memeriksa `saleEndDate` — tugasnya
+menampilkan pilihan, bukan memutuskan apa yang boleh dijual. Jalur mana pun yang
+perlu tahu "barang ini masih bisa ditawarkan?" wajib bertanya ke
+`priceCartFromCatalog`.
+
+Ini pernah menggigit saat membangun Mode Revisi: komponen yang sudah PRIVATE
+tetap termuat ke panel, terlihat normal, lalu baru ditolak saat Simpan — tanpa
+keterangan yang mana.
+
+### `cache()` yang sudah dibuang, dan kenapa jangan dipasang lagi
+
+`recordPcBuildQuote` dulu dibungkus `cache()` untuk menahan render ganda React
+selagi halaman cetak masih menulis pada GET. Sejak penerbitan pindah ke server
+action, tidak ada lagi render yang menulis — dan memasangnya kembali justru
+berbahaya: ia akan diam-diam menyatukan dua penerbitan berbeda yang isinya
+kebetulan sama di dalam satu request.
+
+### `revalidatePath` setelah perubahan status
+
+Menandai/membatalkan terjual mengubah arti **empat** halaman sekaligus, jadi
+empat-empatnya disegarkan: `/verify`, `/verify/[code]`, `/profile/quotation`
+(+ detailnya, karena badge dan rekap bulanannya ikut berubah), dan
+`/admin/quotation`.
+
+### Notifikasi operan TIDAK dipasang di root layout
+
+`src/app/layout.tsx` sengaja tidak menyentuh `cookies()` supaya halaman toko
+bisa tetap statis/ISR. `HandoverToast` karena itu dipasang di `/build-pc` dan
+`/profile/quotation` — halaman yang memang dipakai sales dan sudah dinamis.
+Membaca sesi di root layout demi satu komponen akan membuat SELURUH storefront
+dirender per permintaan.
+
+---
+
+---
+
+## 24. Halaman kebijakan: daftar halamannya ikut data (21 September 2026)
 
 `/kebijakan/*` dulu empat folder route statis, masing-masing dengan `metadata`
 yang ditulis harfiah, sementara **isinya** sudah lama datang dari tabel
@@ -1657,3 +1609,144 @@ dari medan tersembunyi alih-alih menurunkannya ulang dari judul. Staff yang
 memperbaiki judul tidak sedang meminta alamat halamannya berpindah — kalau ia
 berpindah, setiap tautan yang sudah beredar mati tanpa ada yang memberi tahu.
 Slug `baru` dan `faq` ditolak: keduanya sudah jadi segmen statis di `/admin/kebijakan/`.
+
+---
+
+## 25. Cap izin panel: `GET /api/admin/permission-version` (22 September 2026)
+
+Satu endpoint baru di `/api/admin/*` yang TIDAK memanggil AI, jadi ia tidak ikut
+tabel di §10.3.
+
+| Endpoint | Guna | Balasan |
+|---|---|---|
+| `GET /api/admin/permission-version` | "Apakah hak akses saya masih sama seperti saat halaman ini dimuat?" | `{ version: string \| null }` |
+
+Dibaca berkala oleh `PermissionWatcher` di `app/admin/(panel)/layout.tsx`. Cap
+itu dibuat `getPermissionVersion()` di `lib/api/admin-users.ts` dan hanya
+menyangkut akun yang sedang masuk — tidak ada parameter `userId`, supaya tidak
+ada cara memakainya mengintip kapan akses orang lain berubah.
+
+### Masalah yang diselesaikan bukan masalah server
+
+Izin dibaca ulang dari database pada SETIAP permintaan (`getCurrentUser` +
+`muatIzinUser`); tidak ada peran yang ikut ditandatangani di cookie sesi. Yang
+basi adalah **Router Cache peramban**: menu sidebar dirender di layout panel,
+dan selama orangnya cuma berpindah halaman di dalam panel, layout itu tidak
+pernah diambil ulang. Itu sebabnya dulu perlu logout — logout kebetulan memaksa
+muat ulang penuh. Yang dibutuhkan hanya muat ulang itu.
+
+### Route Handler, bukan server action
+
+Server action berjalan di dalam mesin RSC dan berpotensi ikut merender ulang
+pohon halaman yang sedang terbuka. Untuk sesuatu yang ditanyakan tiap 30 detik
+oleh setiap panel yang terbuka, ongkos itu jauh melebihi pekerjaannya — yang cuma
+satu query kunci primer. Pemantaunya berhenti total saat tab tidak terlihat, dan
+bertanya sekali lagi begitu tabnya kembali dibuka.
+
+### `users.updatedAt` sengaja tidak masuk cap
+
+Kolom itu bergerak untuk setiap penulisan ke baris user, termasuk staff yang
+mengubah nama tampilan sales miliknya sendiri — dan orang itu akan melihat toast
+"Peran diperbarui" beserta muat ulang padahal tidak satu pun izinnya berubah.
+Cap yang berbohong sesekali akan diabaikan, dan sesudah itu tidak lagi berguna
+saat benar-benar penting. Yang dipakai: `role`, `roleId`, dan `roles.updated_at`.
+
+## 26. `listCustomers`: pengurutan lewat URL (22 September 2026)
+
+`listCustomers()` (`lib/api/customers.ts`) menerima `sort` (`name` | `email` |
+`createdAt` | `role`) dan `dir` (`asc` | `desc`), dipakai header tabel di
+`/admin/pelanggan` dan tab Pelanggan di `/admin/manajemen-user`. Nilainya datang
+dari query string, jadi divalidasi lewat `isCustomerSortField` /
+`isSortDirection` sebelum menyentuh query — string karangan jatuh ke urutan
+bawaan (`createdAt desc`), bukan ke halaman error.
+
+Dua hal yang perlu diketahui sebelum menambah kolom urut:
+
+- **`id` selalu jadi kunci kedua.** Tanpa itu, baris dengan nilai urut yang sama
+  bisa berpindah susunan antar query, dan pada daftar berhalaman satu baris bisa
+  tampil di dua halaman sementara baris lain tidak pernah tampil.
+- **Kolom "Rakitan" tidak bisa diurutkan, dan itu disengaja.**
+  `savedBuildCount` dihitung di aplikasi lewat `groupBy` untuk satu halaman
+  saja, jadi mengurutkannya hanya akan menyusun ulang 25 baris yang kebetulan
+  terbuka sambil terlihat seperti menyusun seluruh pelanggan.
+
+Peran pelanggan (`roleId`/`roleName`) kini ikut dibaca `listCustomers` lewat
+relasi `roleRef`. Sebelumnya `manajemen-user/page.tsx` memanggil `getPrisma()`
+sendiri untuk itu — melanggar CLAUDE.md §2.5, dan sekaligus membuat pengurutan
+per peran mustahil karena yang mengurutkan tidak tahu kolomnya ada.
+
+## 27. Status login di klien: `SessionProvider` & `GET /api/auth/me` (22 September 2026)
+
+`/api/auth/me` bukan endpoint baru, tapi dua hal berubah: isinya bertambah satu
+medan, dan yang memanggilnya sekarang satu provider, bukan hook yang menyala
+sekali lalu diam.
+
+| Endpoint | Guna | Balasan |
+|---|---|---|
+| `GET /api/auth/me` | "Siapa yang sedang masuk di peramban ini, dan apakah aksesnya masih sama?" | `{ customer: CurrentCustomer \| null }` |
+
+`CurrentCustomer` kini membawa `permissionVersion` — cap izin sesi ADMIN di
+peramban itu, `null` untuk pelanggan biasa. Rumusnya satu dengan cap di §25
+(`capIzin()` di `lib/auth/permissions.ts`), dan dihitung tanpa query tambahan:
+`roleRef.updatedAt` ikut diambil di `ACCOUNT_SELECT` yang memang sudah membaca
+baris itu.
+
+Pemanggilnya lewat `fetchSession()` di `lib/api/session.ts` — bukan `fetch()`
+mentah di dalam komponen (CLAUDE.md §2.5). Berkas itu satu-satunya di
+`lib/api/` yang berjalan di peramban; ia tidak menyentuh Prisma.
+
+### Yang diperbaiki: tiga keluhan, satu sebab
+
+Status login dulu dibaca sekali saat komponen mount (`hooks/use-customer.ts`,
+kini dihapus) lalu disimpan di `useState` dan tidak pernah ditanyakan lagi.
+Akibatnya:
+
+1. **Keluar tidak terlihat sampai pindah halaman.** Aksi keluar mengantar ke
+   beranda — kerap halaman yang sedang dibuka — jadi tidak ada komponen yang
+   unmount dan header tetap menampilkan nama orang yang sudah keluar.
+2. **Tab lain masih terlihat masuk.** Tidak ada jalur yang memberi tahu tab
+   sebelah.
+3. **Perubahan peran "harus relog".** `PermissionWatcher` (§25) hanya hidup di
+   dalam panel admin. Di luar sana — menu akun, `/verify`,
+   `/profile/quotation` — tidak ada yang memantau izin.
+
+`SessionProvider` (`components/providers/session-provider.tsx`) dipasang di root
+layout dan menanyakan ulang pada setiap momen di mana status MUNGKIN sudah
+berubah: tab kembali terlihat (`visibilitychange`/`focus`), halaman kembali dari
+bfcache (`pageshow` + `persisted`), tab lain memberi aba-aba
+(`BroadcastChannel`), dan saat aplikasi sendiri baru mengubahnya (keluar). Kalau
+sidiknya berbeda dari yang terakhir diketahui, ia memanggil `router.refresh()`
+supaya komponen server ikut dihitung ulang dengan izin yang baru.
+
+**Tidak ada polling berkala di sini**, berbeda dari §25. Situs toko dibuka ribuan
+pengunjung, dan peristiwanya terjadi beberapa kali sehari; timer berarti ribuan
+permintaan untuk menunggu sesuatu yang nyaris tidak pernah terjadi. Di dalam
+`/admin` provider ini juga sengaja TIDAK memanggil `router.refresh()` —
+`PermissionWatcher` yang mengurus panel, dan ia memunculkan toast lebih dulu
+supaya halaman tidak berkedip tanpa keterangan.
+
+### Aba-aba antar tab tidak membawa status
+
+Pesan `BroadcastChannel` kosong; artinya "tanyakan ulang", bukan "kamu sudah
+keluar". Tab penerima bertanya sendiri ke server, jadi aba-aba yang salah kirim
+pun tidak bisa membuat tab lain salah menampilkan status. Peramban tanpa
+`BroadcastChannel` tidak kehilangan perbaikannya, hanya kecepatannya — ia
+menyusul lewat `visibilitychange`.
+
+### Dua aksi keluar, dan itu disengaja
+
+`app/profile/actions.ts` mengekspor dua fungsi di atas satu helper `cabutSesi()`:
+
+- `customerLogoutAction()` — ber-`redirect("/")`, untuk `<form action={...}>` di
+  `/profile` yang tidak punya kode klien sesudahnya.
+- `customerLogoutActionForClient()` — **tanpa** `redirect()`, untuk menu akun di
+  header. `redirect()` bekerja dengan melempar, jadi apa yang terjadi pada kode
+  klien sesudah `await` bergantung pada cara Next menangani lemparan itu —
+  padahal tiga langkah sesudahnya (segarkan tab ini, beri aba-aba ke tab lain,
+  pindah halaman) terlalu penting untuk digantungkan pada perilaku yang tidak
+  dijanjikan.
+
+### Status login tetap tidak menyentuh harga
+
+Ia hanya menentukan nama di header dan tautan mana yang tampil. CLAUDE.md §2.7
+berlaku penuh: tidak ada harga yang berubah karena seseorang masuk.

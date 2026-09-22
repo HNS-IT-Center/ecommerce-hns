@@ -21,8 +21,14 @@ export function FloatingWhatsAppButton({ whatsappNumber }: FloatingWhatsAppButto
   // /register dan /login juga disembunyikan: formnya sudah punya tombol aksi
   // sendiri (Daftar/Masuk) yang sempat tertutup bubble ini di layar sempit —
   // bubble WA di sini cuma menambah ramai, bukan menambah jalan yang berguna.
+  //
+  // `/pc-prebuild/` DENGAN garis miring: yang punya bilah aksi sendiri adalah
+  // halaman SATU paket, bukan daftarnya di `/pc-prebuild`. Di halaman paket,
+  // bubble ini duduk di `bottom-[90px]` — tepat di atas `PrebuildActionBar`
+  // yang kini berhenti di 60px — dan menutupi tombol "Masukkan Keranjang".
   const hasOwnWhatsAppCta =
     pathname?.startsWith("/product/") ||
+    pathname?.startsWith("/pc-prebuild/") ||
     pathname?.startsWith("/build-pc") ||
     pathname === "/register" ||
     pathname === "/login" ||

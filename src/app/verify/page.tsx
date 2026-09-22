@@ -41,9 +41,32 @@ function QuoteCard({ quote, sort }: { quote: QuoteSummary; sort: QuoteSort }) {
       href={`/verify/${quote.code}`}
       className="group flex flex-col gap-2 rounded-xl border border-border bg-card p-4 shadow-sm transition-colors hover:border-primary/40 hover:bg-muted/40"
     >
-      <p className="font-mono text-sm font-bold tracking-tight group-hover:text-primary">
-        {quote.code}
-      </p>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <p className="font-mono text-sm font-bold tracking-tight group-hover:text-primary">
+          {quote.code}
+        </p>
+        {quote.revision > 1 && (
+          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground">
+            Rev. {quote.revision}
+          </span>
+        )}
+        {/* Status jual ditandai di kartu supaya kasir melihatnya tanpa membuka
+            satu per satu — yang sudah terjual paling sering dibuka karena
+            dikira belum. */}
+        {quote.status === "closing" && (
+          <span className="rounded-full bg-brand-green/15 px-2 py-0.5 text-[10px] font-bold text-brand-green">
+            TERJUAL
+          </span>
+        )}
+      </div>
+
+      {quote.customerName && (
+        <p className="truncate text-xs font-semibold text-muted-foreground">
+          {quote.customerName}
+          {quote.salesName ? ` · ${quote.salesName}` : ""}
+        </p>
+      )}
+
       <p className="text-lg font-black tabular-nums text-sale-red">
         {formatRupiah(quote.total)}
       </p>
@@ -69,12 +92,12 @@ export default async function VerifyBuildPage({
   const quotes = await listRecentQuotes(sort, RECENT_LIMIT)
 
   return (
-    <div className="flex min-h-screen flex-col bg-page">
+    <div className="flex min-h-dvh flex-col bg-page">
       <Header />
       <Breadcrumb
         items={[{ label: "Beranda", href: "/" }, { label: "Cek Rakitan PC" }]}
       />
-      <main className="flex-1 bg-muted/20">
+      <main className="min-h-content flex-1 bg-muted/20">
         {/* Area kerja kasir setinggi satu layar (100dvh) di desktop: judul &
             pencarian tetap di tempat, hanya grid yang menggulir. Di HP halaman
             menggulir biasa — gulir-di-dalam-gulir di layar sempit menjebak. */}

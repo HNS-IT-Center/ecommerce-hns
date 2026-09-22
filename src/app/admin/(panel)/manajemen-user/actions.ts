@@ -11,6 +11,8 @@ import {
   type RolePermissionRow,
 } from "@/lib/api/roles"
 import { ADMIN_PAGES, type AdminPage, type AccessLevel } from "@/lib/auth/permissions"
+import { setSalesDisplayName } from "@/lib/api/admin-users"
+import { MAX_SALES_DISPLAY_NAME } from "../akun/state"
 
 /**
  * Server actions manajemen peran RBAC.
@@ -103,4 +105,43 @@ function pesanError(e: unknown): string {
   if (e instanceof UnauthorizedError) return e.message
   if (e instanceof Error) return e.message
   return "Terjadi kesalahan."
+}
+
+/**
+ * Setel nama tampilan sales milik user lain.
+ *
+ * Batas panjangnya disamakan dengan yang dipakai sales sendiri di /admin/akun —
+ * diimpor, bukan diketik ulang, supaya tidak ada dua ambang berbeda untuk satu
+ * kolom database.
+ */
+export async function setSalesDisplayNameAction(input: {
+  userId: string
+  displayName: string
+}): Promise<ActionResult> {
+  try {
+    await requirePermission("manajemen-user", "edit")
+  } catch (error) {
+    if (error instanceof ForbiddenError || error instanceof UnauthorizedError) {
+      return { ok: false, error: error.message }
+    }
+    throw error
+  }
+
+  if (typeof input?.userId !== "string" || input.userId.length === 0) {
+    return { ok: false, error: "User tidak dikenali." }
+  }
+
+  const trimmed = String(input.displayName ?? "").trim()
+  if (trimmed.length > MAX_SALES_DISPLAY_NAME) {
+    return { ok: false, error: `Nama tampilan maksimal ${MAX_SALES_DISPLAY_NAME} karakter.` }
+  }
+
+  // Kosong disimpan NULL, bukan string kosong — lihat catatan di
+  // `updateSalesDisplayNameAction` (/admin/akun).
+  const berhasil = await setSalesDisplayName(input.userId, trimmed.length > 0 ? trimmed : null)
+  if (!berhasil) return { ok: false, error: "User tidak ditemukan." }
+
+  revalidatePath("/admin/manajemen-user")
+  revalidatePath("/admin/akun")
+  return { ok: true }
 }

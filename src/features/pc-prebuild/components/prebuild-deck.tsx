@@ -23,7 +23,7 @@ type Props = {
 export function PrebuildDeck({ views, games }: Props) {
   if (views.length === 0) {
     return (
-      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-4 text-center">
+      <div className="flex min-h-placeholder flex-col items-center justify-center gap-4 px-4 text-center">
         <span className="flex h-20 w-20 items-center justify-center rounded-full bg-muted text-muted-foreground">
           <PackageOpen className="h-9 w-9" strokeWidth={1.5} />
         </span>
