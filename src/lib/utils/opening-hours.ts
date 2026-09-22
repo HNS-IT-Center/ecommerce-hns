@@ -8,6 +8,8 @@
  * ada yang menyadarinya.
  */
 
+import { JAKARTA_TIME_ZONE } from "./timezone";
+
 /** 0 Minggu … 6 Sabtu — mengikuti `Date.getDay()`. */
 export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -150,7 +152,6 @@ export type OpenStatus = {
   label: string;
 };
 
-const JAKARTA_TIME_ZONE = "Asia/Jakarta";
 
 /** "Sun"…"Sat" seperti yang dikeluarkan Intl, dipetakan ke `Date.getDay()`. */
 const INTL_WEEKDAY: Record<string, DayOfWeek> = {

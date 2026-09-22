@@ -5,13 +5,15 @@ import { requirePageView } from "@/lib/auth"
 import {
   getQuoteByCode,
   getQuoteProductsCurrentInfo,
+  getQuoteStatusForCashier,
   type QuoteLineItem,
 } from "@/lib/api/pc-build-quotes"
 import { formatRupiah } from "@/lib/utils"
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { ProductImage } from "@/components/ui/product-image"
-import { QUOTE_CODE_PATTERN } from "../format"
+import { QUOTE_CODE_PATTERN, formatQuoteDateTime } from "../format"
+import { CloseQuotationButton } from "../close-quotation-button"
 
 export const dynamic = "force-dynamic"
 
@@ -97,7 +99,9 @@ export default async function VerifyQuotePage({
   params: Promise<{ code: string }>
 }) {
   // Khusus kasir & admin (izin `verify`). Tanpa akses → beranda; lihat src/proxy.ts.
-  await requirePageView("verify", { deniedRedirect: "/" })
+  const { izin } = await requirePageView("verify", { deniedRedirect: "/" })
+  const { bisaAkses } = await import("@/lib/auth/permissions")
+  const bolehClosing = bisaAkses(izin, "verify", "edit")
 
   const { code } = await params
   const requestedCode = decodeURIComponent(code).trim().toUpperCase()
@@ -107,9 +111,14 @@ export default async function VerifyQuotePage({
     return <QuoteNotFound code={requestedCode} malformed />
   }
 
-  const quote = await getQuoteByCode(requestedCode)
+  const [quote, info] = await Promise.all([
+    getQuoteByCode(requestedCode),
+    getQuoteStatusForCashier(requestedCode),
+  ])
 
   if (!quote) return <QuoteNotFound code={requestedCode} malformed={false} />
+
+  const terjual = info?.status === "closing"
 
   const items = quote.items as unknown as QuoteLineItem[]
 
@@ -176,8 +185,26 @@ export default async function VerifyQuotePage({
                 </h1>
                 <p className="mt-1 text-sm text-muted-foreground">Diterbitkan {issued}</p>
               </div>
-              <div className="rounded-full bg-brand-green/10 px-3 py-1.5 text-xs font-bold text-brand-green">
-                ✓ Asli
+              <div className="flex flex-col items-end gap-1.5">
+                <div className="rounded-full bg-brand-green/10 px-3 py-1.5 text-xs font-bold text-brand-green">
+                  ✓ Asli
+                </div>
+                {/* Status jual dipisah dari tanda keaslian: "asli" menjawab
+                    apakah dokumennya benar terbit dari sistem, "terjual"
+                    menjawab apakah ia sudah dipakai bertransaksi. Menggabungkan
+                    keduanya jadi satu lencana membuat kasir menebak. */}
+                {info && (
+                  <div
+                    className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+                      terjual
+                        ? "bg-brand-green text-white"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {terjual ? "TERJUAL" : "Belum terjual"}
+                    {info.revision > 1 && ` · Rev. ${info.revision}`}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -188,6 +215,60 @@ export default async function VerifyQuotePage({
                   Sebagian harga sudah tidak sama dengan saat quotation diterbitkan. Harga
                   yang berlaku adalah harga pada sistem saat transaksi.
                 </p>
+              </div>
+            )}
+
+            {/* Identitas yang BOLEH dilihat kasir: nama pelanggan (untuk
+                mencocokkan orang di depan meja) dan nama sales. Nomor HP dan
+                catatan internal sengaja tidak ikut — lihat
+                `getQuoteStatusForCashier`. */}
+            {(info?.customerName || info?.salesName) && (
+              <dl className="mt-5 grid gap-2 rounded-xl border border-border bg-muted/30 p-4 text-sm sm:grid-cols-2">
+                {info.customerName && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Pelanggan</dt>
+                    <dd className="font-semibold">{info.customerName}</dd>
+                  </div>
+                )}
+                {info.salesName && (
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Sales</dt>
+                    <dd className="font-semibold">{info.salesName}</dd>
+                  </div>
+                )}
+              </dl>
+            )}
+
+            {/* Riwayat revisi. Kasir perlu melihatnya untuk menjawab pelanggan
+                yang membawa cetakan LAMA dari kode yang sama: angkanya berbeda
+                bukan karena ada yang keliru, melainkan karena sudah direvisi. */}
+            {info && info.revisions.length > 1 && (
+              <div className="mt-5 rounded-xl border border-border p-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                  Riwayat Revisi
+                </p>
+                <ul className="mt-2 divide-y divide-border">
+                  {info.revisions.map((rev) => (
+                    <li
+                      key={rev.revision}
+                      className="flex items-center justify-between gap-3 py-1.5 text-sm"
+                    >
+                      <span>
+                        <strong>Rev. {rev.revision}</strong>
+                        {rev.revision === info.revision && (
+                          <span className="ml-1.5 rounded bg-brand-green/15 px-1.5 py-0.5 text-[10px] font-bold text-brand-green">
+                            BERLAKU
+                          </span>
+                        )}
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          {formatQuoteDateTime(rev.createdAt)} · {rev.itemCount} item
+                          {rev.usedLatestPrices ? " · harga terbaru" : ""}
+                        </span>
+                      </span>
+                      <span className="shrink-0 font-semibold">{formatRupiah(Number(rev.total))}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 
@@ -261,6 +342,23 @@ export default async function VerifyQuotePage({
                 </div>
               )}
             </div>
+
+            {/* Hanya kasir berizin `edit`, dan hanya selama belum terjual.
+                Syarat yang sama ditegakkan ulang di dalam server action. */}
+            {info && bolehClosing && !terjual && (
+              <CloseQuotationButton
+                code={quote.code}
+                revision={info.revision}
+                customerName={info.customerName}
+                total={Number(quote.total)}
+              />
+            )}
+
+            {terjual && info?.closedAt && (
+              <p className="mt-4 rounded-xl border border-brand-green/30 bg-brand-green/10 px-4 py-3 text-sm text-brand-green">
+                Sudah ditandai terjual pada {formatQuoteDateTime(info.closedAt)}.
+              </p>
+            )}
           </div>
 
           <p className="mt-4 text-center text-xs text-muted-foreground">

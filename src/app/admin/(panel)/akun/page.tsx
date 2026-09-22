@@ -1,10 +1,12 @@
 import type { Metadata } from "next"
 import { requireAuth } from "@/lib/auth"
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth/password"
-import { listAdminUsers } from "@/lib/api/admin-users"
+import { getSalesDisplayName, listAdminUsers } from "@/lib/api/admin-users"
 import { listRoles } from "@/lib/api/roles"
 import { ADMIN_ROLE_LABELS } from "@/lib/auth/roles"
+import { bisaAkses, muatIzinUser } from "@/lib/auth/permissions"
 import { ChangePasswordForm } from "./change-password-form"
+import { SalesDisplayNameForm } from "./sales-display-name-form"
 import { AdminRoleList } from "./admin-role-list"
 
 export const metadata: Metadata = {
@@ -17,7 +19,17 @@ export default async function AdminAkunPage() {
   // menampilkan email akun — jadi ia butuh datanya sendiri, bukan sekadar
   // kepastian bahwa seseorang sudah masuk.
   const user = await requireAuth()
-  const [admins, roles] = await Promise.all([listAdminUsers(), listRoles()])
+  const [admins, roles, izin] = await Promise.all([
+    listAdminUsers(),
+    listRoles(),
+    muatIzinUser(user),
+  ])
+
+  // Kartu nama tampilan hanya untuk yang memang berperan Sales — bagi yang lain
+  // ia kolom tanpa akibat, dan kolom tanpa akibat di panel selalu berakhir
+  // sebagai pertanyaan ke pengelola.
+  const isSales = bisaAkses(izin, "quotation-sales", "edit")
+  const salesDisplayName = isSales ? await getSalesDisplayName(user.id) : null
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -36,6 +48,19 @@ export default async function AdminAkunPage() {
 
         <ChangePasswordForm minLength={MIN_PASSWORD_LENGTH} />
       </div>
+
+      {isSales && (
+        <div className="mt-6 rounded-2xl border border-border bg-background p-5">
+          <h2 className="font-bold">Nama Sales di Quotation</h2>
+          <p className="mt-1 mb-5 text-sm text-muted-foreground">
+            Nama ini yang tercetak sebagai <strong>Sales</strong> di PDF quotation yang Anda
+            terbitkan. Mengubahnya <strong>tidak</strong> mengubah dokumen yang sudah dicetak
+            sebelumnya.
+          </p>
+
+          <SalesDisplayNameForm current={salesDisplayName} accountName={user.name} />
+        </div>
+      )}
 
       <div className="mt-6 rounded-2xl border border-border bg-background p-5">
         <h2 className="font-bold">Role Admin</h2>

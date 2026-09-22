@@ -170,7 +170,19 @@ export async function requirePermission(
   const user = await requireAuth()
   const { muatIzinUser, bisaAkses } = await import("./permissions")
   const izin = await muatIzinUser(user)
-  if (!bisaAkses(izin, page, minimal)) throw new ForbiddenError()
+  /**
+   * Pesannya disebutkan eksplisit, TIDAK memakai bawaan `ForbiddenError`.
+   *
+   * Bawaannya berbunyi "Tindakan ini hanya untuk akun owner" — benar untuk
+   * `requireOwner`, tapi menyesatkan di sini: yang kurang adalah sebuah IZIN,
+   * dan orang yang membacanya akan mengira ia butuh dinaikkan jadi owner
+   * padahal yang dibutuhkan cuma satu kotak dicentang di Manajemen User.
+   */
+  if (!bisaAkses(izin, page, minimal)) {
+    throw new ForbiddenError(
+      "Akun Anda tidak punya izin untuk tindakan ini. Minta owner menambahkannya lewat Manajemen User → Peran.",
+    )
+  }
   return user
 }
 

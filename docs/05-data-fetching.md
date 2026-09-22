@@ -1601,3 +1601,84 @@ memanggil `revalidateTag(STORES_CACHE_TAG, "max")`. Halaman ISR yang merender
 footer ikut segar lewat tag itu — tidak perlu (dan tidak mungkin) mendaftar
 `revalidatePath` untuk setiap halaman. Aksi baru yang mengubah tabel `stores`
 wajib lewat fungsi itu juga.
+
+---
+
+## 23. Quotation rakitan PC: penerbitan pindah dari GET ke server action (21 September 2026)
+
+> Aturan lengkapnya — peran, kepemilikan, revisi, privasi — ada di
+> [`17-quotation-sales.md`](./17-quotation-sales.md). Bagian ini hanya mencatat
+> yang menyangkut pola pengambilan data.
+
+**Yang berubah, dan ini yang paling penting untuk diingat:** `/build-pc/print`
+dulu MENULIS ke database saat GET. Membuka halaman itu menerbitkan quotation.
+Sekarang ia **hanya membaca** `?kode=` yang sudah tersimpan.
+
+Selama halaman cetak menulis saat GET, setiap refresh tab PDF, setiap
+pra-render, dan setiap bot yang menelusuri tautan ikut menulis. Itu bisa
+ditolerir saat kodenya hash — paling banter baris duplikat — tapi tidak lagi
+sejak kodenya nomor urut: refresh akan memakan nomor.
+
+**Jangan menulis dari sebuah GET.** Kalau sebuah halaman terasa "perlu"
+mencatat sesuatu saat dibuka, yang sebenarnya dibutuhkan adalah aksi yang
+memanggilnya sebelum halaman itu dibuka.
+
+### Jalur baru
+
+| Jalur | Fungsi | Catatan |
+|---|---|---|
+| Terbitkan | `issueQuotationAction` → `issueQuotation()` | Harga dari `priceCartFromCatalog(…, "id")`; klien tidak pernah mengirim rupiah |
+| Revisi | `reviseQuotationAction` → `reviseQuotation()` | Klien mengirim BOOLEAN `useLatestPrices`, bukan harga |
+| Cetak | `/build-pc/print?kode=` | Read-only, dari snapshot `pc_build_quotes.items` |
+| Tandai terjual | `markQuotationClosedAction` | `requirePermission("verify", "edit")` di dalam action |
+| Batalkan terjual | `reopenQuotationAction` | `requirePermission("quotation", "edit")` + alasan wajib |
+| Operan belum dibaca | `GET /api/quotation/operan-baru` | `no-store`; polling 60 dtk |
+
+Halaman cetak sekaligus berhenti memanggil `getPrisma()` langsung di komponen
+(CLAUDE.md §2.5) — seluruh aksesnya kini lewat `lib/api/pc-build-quotes.ts`.
+
+### Dua celah yang ikut tertutup
+
+Halaman cetak dulu membaca produk dengan kuerinya sendiri, dan kueri itu:
+
+- **tidak menyaring `status: PUBLISHED`** — komponen yang sudah ditarik staf
+  dari etalase tetap bisa masuk quotation oleh siapa pun yang menyimpan id-nya;
+- **tidak memeriksa `saleEndDate`** — harga obral yang sudah kedaluwarsa ikut
+  tercetak, dan dokumen itulah yang dibawa pelanggan ke kasir.
+
+Keduanya hilang begitu penerbitan memakai `priceCartFromCatalog`, fungsi yang
+sama yang dipakai checkout dan Konsultasi WA.
+
+### `fetchBuilderProductsByIds` bukan penentu ketersediaan
+
+Ia **tidak** menyaring `status` dan **tidak** memeriksa `saleEndDate` — tugasnya
+menampilkan pilihan, bukan memutuskan apa yang boleh dijual. Jalur mana pun yang
+perlu tahu "barang ini masih bisa ditawarkan?" wajib bertanya ke
+`priceCartFromCatalog`.
+
+Ini pernah menggigit saat membangun Mode Revisi: komponen yang sudah PRIVATE
+tetap termuat ke panel, terlihat normal, lalu baru ditolak saat Simpan — tanpa
+keterangan yang mana.
+
+### `cache()` yang sudah dibuang, dan kenapa jangan dipasang lagi
+
+`recordPcBuildQuote` dulu dibungkus `cache()` untuk menahan render ganda React
+selagi halaman cetak masih menulis pada GET. Sejak penerbitan pindah ke server
+action, tidak ada lagi render yang menulis — dan memasangnya kembali justru
+berbahaya: ia akan diam-diam menyatukan dua penerbitan berbeda yang isinya
+kebetulan sama di dalam satu request.
+
+### `revalidatePath` setelah perubahan status
+
+Menandai/membatalkan terjual mengubah arti **empat** halaman sekaligus, jadi
+empat-empatnya disegarkan: `/verify`, `/verify/[code]`, `/profile/quotation`
+(+ detailnya, karena badge dan rekap bulanannya ikut berubah), dan
+`/admin/quotation`.
+
+### Notifikasi operan TIDAK dipasang di root layout
+
+`src/app/layout.tsx` sengaja tidak menyentuh `cookies()` supaya halaman toko
+bisa tetap statis/ISR. `HandoverToast` karena itu dipasang di `/build-pc` dan
+`/profile/quotation` — halaman yang memang dipakai sales dan sudah dinamis.
+Membaca sesi di root layout demi satu komponen akan membuat SELURUH storefront
+dirender per permintaan.

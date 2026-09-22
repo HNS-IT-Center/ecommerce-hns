@@ -2,13 +2,14 @@ import type { Metadata } from "next"
 import Link from "next/link"
 
 import { requirePageView } from "@/lib/auth"
-import { bisaAkses, ADMIN_PAGES } from "@/lib/auth/permissions"
+import { bisaAkses, ADMIN_PAGES, ADMIN_PAGE_DESCRIPTIONS, type AdminPage } from "@/lib/auth/permissions"
 import { listRoles } from "@/lib/api/roles"
-import { listAdminUsers } from "@/lib/api/admin-users"
+import { listAdminUsers, listSalesUsersWithDisplayName } from "@/lib/api/admin-users"
 import { listCustomers } from "@/lib/api/customers"
 import { isDatabaseConfigured } from "@/lib/prisma/client"
 
 import { ManajemenUserView } from "./view"
+import { SalesNames } from "./sales-names"
 import { AdminRoleList } from "../akun/admin-role-list"
 import { CustomerList } from "../pelanggan/customer-list"
 
@@ -65,7 +66,9 @@ export default async function ManajemenUserPage({ searchParams }: Props) {
 
       <div className="mt-6">
         {tab === "peran" && <TabPeran bolehEdit={bolehEdit} />}
-        {tab === "admin" && <TabAdmin currentUserId={user.id} canManage={user.role === "owner"} />}
+        {tab === "admin" && (
+          <TabAdmin currentUserId={user.id} canManage={user.role === "owner"} bolehEdit={bolehEdit} />
+        )}
         {tab === "pelanggan" && <TabPelanggan q={q} page={page} canDelete={user.role === "owner"} />}
       </div>
     </div>
@@ -74,7 +77,11 @@ export default async function ManajemenUserPage({ searchParams }: Props) {
 
 async function TabPeran({ bolehEdit }: { bolehEdit: boolean }) {
   const roles = await listRoles()
-  const pages = Object.entries(ADMIN_PAGES).map(([key, label]) => ({ key, label }))
+  const pages = Object.entries(ADMIN_PAGES).map(([key, label]) => ({
+    key,
+    label,
+    description: ADMIN_PAGE_DESCRIPTIONS[key as AdminPage],
+  }))
   return (
     <>
       <p className="mb-4 text-sm text-muted-foreground">
@@ -86,8 +93,20 @@ async function TabPeran({ bolehEdit }: { bolehEdit: boolean }) {
   )
 }
 
-async function TabAdmin({ currentUserId, canManage }: { currentUserId: string; canManage: boolean }) {
-  const [admins, roles] = await Promise.all([listAdminUsers(), listRoles()])
+async function TabAdmin({
+  currentUserId,
+  canManage,
+  bolehEdit,
+}: {
+  currentUserId: string
+  canManage: boolean
+  bolehEdit: boolean
+}) {
+  const [admins, roles, salesUsers] = await Promise.all([
+    listAdminUsers(),
+    listRoles(),
+    listSalesUsersWithDisplayName(),
+  ])
   return (
     <>
       <p className="mb-4 text-sm text-muted-foreground">
@@ -107,6 +126,19 @@ async function TabAdmin({ currentUserId, canManage }: { currentUserId: string; c
         roleOptions={roles.map((r) => ({ id: r.id, name: r.name }))}
         canManage={canManage}
       />
+
+      <div className="mt-10">
+        <h2 className="text-lg font-bold">Nama Sales di Quotation</h2>
+        <p className="mb-4 mt-1 text-sm text-muted-foreground">
+          Nama yang tercetak sebagai <strong>Sales</strong> di PDF quotation. Kosongkan untuk
+          memakai nama akun. Mengubahnya <strong>tidak</strong> mengubah quotation yang sudah
+          terbit — hanya yang terbit sesudahnya.
+        </p>
+        <SalesNames
+          rows={salesUsers}
+          bolehEdit={bolehEdit}
+        />
+      </div>
     </>
   )
 }

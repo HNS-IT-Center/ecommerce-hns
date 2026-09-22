@@ -122,10 +122,31 @@ model User {
   roleId String? @map("role_id")
   roleRef Role?  @relation(fields: [roleId], references: [id], onDelete: SetNull)
 
+  /// Nama yang TERCETAK di quotation rakitan, mis. "Tyo" untuk akun bernama
+  /// "Tyo Dwi Prasetyo". Sengaja TERPISAH dari `name`: yang tampil di dokumen
+  /// pelanggan dan yang tampil di panel admin punya pembaca berbeda, dan sales
+  /// harus bisa memperbaiki salah satunya tanpa mengubah yang lain.
+  ///
+  /// NULL = belum diatur, pemakainya jatuh ke `name`. Nilainya TIDAK dibaca
+  /// langsung saat mencetak — ia disalin ke `pc_build_quotes.sales_name` pada
+  /// saat terbit, supaya mengganti nama tampilan tidak mengubah dokumen yang
+  /// sudah ada di tangan pelanggan.
+  salesDisplayName String? @map("sales_display_name") @db.VarChar(60)
+
   /// Relasi milik pelanggan, dibawa ke sini saat Satu Login (FK fisik sudah
   /// diarahkan ke `users`). Kosong untuk akun admin.
   savedBuilds        SavedPcBuild[]
   verificationTokens CustomerVerificationToken[]
+
+  /// Quotation rakitan PC, tiga peran berbeda atas baris yang sama — karena itu
+  /// relasinya diberi nama. Semuanya `onDelete: SetNull` di sisi sana: menghapus
+  /// akun staff tidak boleh ikut menghapus dokumen penawaran yang sudah dicetak
+  /// dan dipegang pelanggan.
+  quotesOwned     PcBuildQuote[] @relation("QuoteOwner")
+  quotesCreated   PcBuildQuote[] @relation("QuoteCreatedBy")
+  quotesClosed    PcBuildQuote[] @relation("QuoteClosedBy")
+  quoteRevisions  PcBuildQuoteRevision[]
+  quoteStatusLogs PcBuildQuoteStatusLog[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -836,24 +857,112 @@ model ProductLog {
 }
 
 /**
- * Quotation rakitan PC yang pernah dicetak dari /build-pc.
- * Satu baris = satu KOMBINASI komponen unik, bukan satu klik Print. Dua orang
- * yang merakit isi yang sama persis akan berbagi baris ini. Tanpa dedupe itu,
- * tabel akan penuh duplikat karena satu orang biasa menekan Print berkali-kali
- * untuk rakitan yang sama.
- * `items` menyimpan snapshot harga saat quotation diterbitkan, supaya halaman
- * verifikasi /q/[code] bisa membandingkannya dengan harga terkini dan
- * menandai kalau ada selisih. `updatedAt` menandai kapan snapshot itu terakhir
- * disegarkan.
+ * Quotation rakitan PC yang diterbitkan dari /build-pc.
+ *
+ * **Satu baris = satu penerbitan**, bukan satu kombinasi komponen. Sampai
+ * 21 September 2026 aturannya kebalikannya: `content_hash` unik, dan dua orang
+ * yang merakit isi sama persis berbagi satu baris. Itu dilepas karena quotation
+ * sekarang punya PEMILIK, nama pelanggan, dan status jual — dua penawaran untuk
+ * dua orang berbeda tidak boleh jadi satu dokumen hanya karena isinya kebetulan
+ * sama. `content_hash` tetap dihitung & diindeks untuk diagnosa, tapi tidak lagi
+ * jadi kunci dedupe.
+ *
+ * Yang menggantikan dedupe sebagai penahan duplikat: nomor hanya terbit lewat
+ * aksi eksplisit, tidak lagi sebagai efek samping GET halaman cetak. Membuka
+ * ulang atau me-refresh tab PDF tidak pernah menerbitkan nomor baru.
+ *
+ * `items`/`subtotal`/`total`/`item_count` di baris ini adalah **cermin revisi
+ * terakhir**, bukan arsip. Riwayat utuh setiap versi ada di
+ * `pc_build_quote_revisions`; kolom di sini ada supaya /verify dan daftar
+ * riwayat cukup satu query. Pola denormalisasi yang sama dengan
+ * `PcBuildSubmission.quoteCode`.
+ *
+ * Catatan lama "snapshot tidak pernah ditimpa" sudah TIDAK berlaku — ia ditimpa
+ * setiap revisi. Yang menjaga dokumen di tangan pelanggan tetap bisa
+ * dipertanggungjawabkan adalah tabel revisi, bukan ketidakberubahan baris ini.
  */
 model PcBuildQuote {
   id          Int    @id @default(autoincrement())
-  // Kode yang dicetak di PDF, mis. "HNSPC-260804-7K3M".
+  /// Kode yang dicetak di PDF. Dua format beredar dan KEDUANYA harus selamanya
+  /// bisa dicek di /verify: "HNSPC-20260921-0001" (nomor urut, sejak 21 Sep
+  /// 2026) dan "HNSPC-260804-7K3M" (warisan, 4 karakter dari hash).
   code        String @unique @db.VarChar(32)
-  // SHA-256 dari daftar `productId:qty` terurut. Inilah kunci dedupe-nya.
-  contentHash String @unique @map("content_hash") @db.VarChar(64)
+  /// SHA-256 dari daftar `productId:qty:harga` terurut. BUKAN lagi kunci unik —
+  /// lihat catatan di atas model.
+  contentHash String @map("content_hash") @db.VarChar(64)
 
-  // Snapshot: [{ productId, name, sku, price, quantity, stepName }]
+  /// Periode penomoran "YYYYMM" menurut **WIB**, mis. "202609". Nomor urut
+  /// di-reset tiap pergantian periode.
+  ///
+  /// NULL = baris berkode format lama, yang memang tidak pernah punya nomor.
+  /// Nullable inilah yang membuat kolom ini bisa ditambahkan ke tabel berisi
+  /// tanpa backfill (docs/08 §3).
+  period   String? @db.Char(6)
+  /// Urutan dalam `period`. Boleh melewati 9999 (jadi 5 digit) — tidak ada
+  /// batas atas, karena kehabisan nomor adalah kegagalan yang jauh lebih buruk
+  /// daripada kode yang lebih panjang satu karakter.
+  sequence Int?
+
+  /// Identitas pelanggan, diisi STAFF dari percakapan langsung — bukan
+  /// dikumpulkan dari pengunjung. NULL untuk cetakan anonim.
+  ///
+  /// `customerName` SENGAJA terlihat di /verify: kasir butuh mencocokkan orang
+  /// yang berdiri di depan meja dengan dokumennya. `customerPhone` dan
+  /// `internalNote` TIDAK — keduanya hanya untuk pemilik quotation dan admin.
+  /// Pembatasan itu ditegakkan di jalur baca (`getQuoteByCode` dan kawan-kawan),
+  /// bukan oleh ketiadaan kolomnya di sini.
+  ///
+  /// Ini TIDAK melonggarkan aturan `PcBuildSubmission` di bawah: relasi
+  /// `submissions` tetap tidak boleh di-`include` pada jalur baca mana pun.
+  customerName  String? @map("customer_name") @db.VarChar(120)
+  customerPhone String? @map("customer_phone") @db.VarChar(20)
+  /// Catatan kerja sales ("masih banding harga", "tunggu gajian"). TIDAK PERNAH
+  /// tercetak di PDF dan tidak terlihat kasir.
+  internalNote  String? @map("internal_note") @db.Text
+
+  /// Siapa yang MEMEGANG quotation ini: sales penerima operan, atau CS sendiri
+  /// kalau ia memilih "tidak oper". Inilah yang menentukan quotation muncul di
+  /// riwayat siapa dan siapa yang boleh merevisinya.
+  ownerUserId String? @map("owner_user_id")
+  owner       User?   @relation("QuoteOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+
+  /// SALINAN nama tampilan pemilik saat terbit — inilah yang dicetak di PDF.
+  /// Sengaja disalin, bukan di-join: mengganti nama tampilan atau menghapus akun
+  /// tidak boleh mengubah dokumen yang sudah dipegang pelanggan.
+  ///
+  /// NULL kalau pemiliknya bukan Sales (mis. CS yang tidak mengoper) atau
+  /// cetakan anonim → baris "Sales:" tidak muncul di PDF sama sekali.
+  salesName String? @map("sales_name") @db.VarChar(60)
+
+  /// Siapa yang MENERBITKAN. Hanya diisi untuk staff — cetakan pelanggan dan
+  /// pengunjung anonim tidak menyimpan id akun sama sekali (data pribadi paling
+  /// aman adalah yang tidak disimpan; CLAUDE.md §2.8).
+  ///
+  /// "Dioper dari CS" diturunkan dari `createdByUserId != ownerUserId`, bukan
+  /// dari kolom penanda tersendiri.
+  createdByUserId String? @map("created_by_user_id")
+  createdBy       User?   @relation("QuoteCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  /// Nomor revisi terakhir. Mulai dari 1; kode TIDAK ikut berubah saat direvisi.
+  revision Int @default(1)
+
+  /// "terbit" | "closing". String union, bukan enum Prisma (docs/06 §1.4).
+  /// `@default("terbit")` membuat seluruh baris lama berstatus terbit — disengaja.
+  status String @default("terbit") @db.VarChar(16)
+
+  closedAt       DateTime? @map("closed_at")
+  closedByUserId String?   @map("closed_by_user_id")
+  closedBy       User?     @relation("QuoteClosedBy", fields: [closedByUserId], references: [id], onDelete: SetNull)
+
+  /// Kapan sales penerima menutup notifikasi operan dari CS. NULL + dioper =
+  /// belum dibaca, dan toast-nya masih akan muncul.
+  ///
+  /// Di SERVER, bukan di localStorage: operan yang datang saat sales belum login
+  /// harus tetap sampai, dan yang sudah dibaca tidak boleh muncul lagi hanya
+  /// karena ia membuka perangkat lain.
+  handoverSeenAt DateTime? @map("handover_seen_at")
+
+  // Snapshot revisi terakhir: [{ productId, name, sku, price, quantity, stepName }]
   items Json
 
   subtotal    Decimal @db.Decimal(14, 2)
@@ -861,6 +970,9 @@ model PcBuildQuote {
   total       Decimal @db.Decimal(14, 2)
 
   itemCount Int @map("item_count")
+
+  revisions  PcBuildQuoteRevision[]
+  statusLogs PcBuildQuoteStatusLog[]
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
@@ -876,9 +988,103 @@ model PcBuildQuote {
   /// tidak menyertakan relasi ini — bukan ketiadaan field-nya.
   submissions PcBuildSubmission[]
 
+  /// Satu nomor per periode. Di MariaDB, unique index mengizinkan banyak NULL —
+  /// jadi seluruh baris berkode format lama (period & sequence NULL) tetap sah
+  /// dan tidak saling bentrok.
+  @@unique([period, sequence])
   @@index([createdAt])
   @@index([updatedAt])
+  @@index([contentHash])
+  @@index([ownerUserId, updatedAt])
+  @@index([createdByUserId, updatedAt])
+  /// Rekap penjualan bulanan per sales dihitung dari `closedAt`, bukan tanggal
+  /// terbit — quotation Agustus yang deal September adalah penjualan September.
+  @@index([status, closedAt])
+  @@index([customerName])
   @@map("pc_build_quotes")
+}
+
+/**
+ * Satu versi isi & harga sebuah quotation. Rev. 1 ditulis bersamaan dengan
+ * penerbitan, supaya riwayatnya lengkap sejak awal dan tidak ada "versi nol"
+ * yang hanya bisa dibaca dari baris induknya.
+ *
+ * Identitas pelanggan SENGAJA tidak ikut diversikan — ia hidup di baris
+ * `pc_build_quotes` saja. Yang direvisi adalah rakitan dan harganya; mengoreksi
+ * salah ketik nama bukan peristiwa yang perlu jejak versi, dan menyalinnya ke
+ * sini berarti nomor HP orang tersimpan berkali-kali tanpa alasan.
+ */
+model PcBuildQuoteRevision {
+  id      Int          @id @default(autoincrement())
+  quoteId Int          @map("quote_id")
+  quote   PcBuildQuote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  revision Int
+
+  items       Json
+  subtotal    Decimal @db.Decimal(14, 2)
+  assemblyFee Decimal @map("assembly_fee") @db.Decimal(14, 2)
+  total       Decimal @db.Decimal(14, 2)
+  itemCount   Int     @map("item_count")
+
+  /// Apakah revisi ini memakai harga katalog terkini, atau mempertahankan harga
+  /// revisi sebelumnya. Disimpan supaya /verify bisa menjelaskan kenapa sebuah
+  /// baris berbeda dari katalog hari ini.
+  usedLatestPrices Boolean @default(false) @map("used_latest_prices")
+
+  createdByUserId String? @map("created_by_user_id")
+  createdBy       User?   @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([quoteId, revision])
+  @@map("pc_build_quote_revisions")
+}
+
+/**
+ * Penghitung nomor urut quotation per periode. Satu baris per bulan.
+ *
+ * Tabel tersendiri, bukan `MAX(sequence) + 1` atas `pc_build_quotes`: MAX tidak
+ * mengunci apa pun, jadi dua penerbitan bersamaan membaca angka yang sama dan
+ * salah satunya gagal pada unique index. Baris di sini dikunci oleh
+ * `INSERT … ON DUPLICATE KEY UPDATE` sampai transaksinya selesai, sehingga
+ * penerbitan yang bersamaan mengantre alih-alih bertabrakan.
+ */
+model PcBuildQuoteCounter {
+  period     String @id @db.Char(6)
+  lastNumber Int    @map("last_number")
+
+  @@map("pc_build_quote_counters")
+}
+
+/**
+ * Jejak perubahan status jual sebuah quotation.
+ *
+ * Alasannya struktural, bukan kerapian. Menandai "terjual" adalah angka
+ * penjualan seorang sales, dan membatalkannya menghapus angka itu. Tanpa tabel
+ * ini, satu-satunya tindakan di seluruh alur yang bisa mengurangi capaian orang
+ * lain justru tidak meninggalkan bekas apa pun — tidak ada cara menjawab
+ * "siapa yang membatalkan closing ini, dan atas dasar apa" sebulan kemudian.
+ */
+model PcBuildQuoteStatusLog {
+  id      Int          @id @default(autoincrement())
+  quoteId Int          @map("quote_id")
+  quote   PcBuildQuote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  fromStatus String @map("from_status") @db.VarChar(16)
+  toStatus   String @map("to_status") @db.VarChar(16)
+
+  byUserId String? @map("by_user_id")
+  by       User?   @relation(fields: [byUserId], references: [id], onDelete: SetNull)
+
+  /// Wajib diisi saat membatalkan closing (dijaga di server action, bukan di
+  /// kolom — menandai closing tidak butuh alasan).
+  reason String? @db.VarChar(255)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([quoteId, createdAt])
+  @@map("pc_build_quote_status_logs")
 }
 
 /**

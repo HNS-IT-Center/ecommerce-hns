@@ -35,6 +35,11 @@ export type PcBuildQuoteRow = {
   itemCount: number
   createdAt: Date
   updatedAt: Date
+  /** "terbit" | "closing". Baris lama berstatus "terbit" (default kolomnya). */
+  status: string
+  customerName: string | null
+  salesName: string | null
+  revision: number
 }
 
 type Props = {
@@ -63,6 +68,9 @@ export function PcBuildLogsTable({ quotes, totalPages, currentPage }: Props) {
           <thead className="border-b border-border bg-muted/40">
             <tr className="text-left text-xs font-bold uppercase tracking-wide text-muted-foreground">
               <th className="px-4 py-3">Kode</th>
+              <th className="px-4 py-3">Pelanggan</th>
+              <th className="px-4 py-3">Sales</th>
+              <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Item</th>
               <th className="px-4 py-3 text-right">Total</th>
               <th className="px-4 py-3">Dibuat</th>
@@ -75,6 +83,28 @@ export function PcBuildLogsTable({ quotes, totalPages, currentPage }: Props) {
               <tr key={quote.id} className="hover:bg-muted/30 transition-colors">
                 <td className="px-4 py-3 font-mono text-xs font-semibold whitespace-nowrap">
                   {quote.code}
+                </td>
+                <td className="px-4 py-3 text-xs whitespace-nowrap">
+                  {quote.customerName ?? <span className="text-muted-foreground">—</span>}
+                </td>
+                <td className="px-4 py-3 text-xs whitespace-nowrap">
+                  {quote.salesName ?? <span className="text-muted-foreground">—</span>}
+                </td>
+                <td className="px-4 py-3 whitespace-nowrap">
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                      quote.status === "closing"
+                        ? "bg-brand-green/15 text-brand-green"
+                        : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {quote.status === "closing" ? "Terjual" : "Terbit"}
+                  </span>
+                  {quote.revision > 1 && (
+                    <span className="ml-1.5 text-[10px] font-semibold text-muted-foreground">
+                      Rev. {quote.revision}
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                   {quote.itemCount} komponen

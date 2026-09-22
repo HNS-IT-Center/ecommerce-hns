@@ -1,11 +1,16 @@
-import { getPrisma } from "@/lib/prisma/client"
+import Link from "next/link"
+
 import {
   getPcBuilderConfig,
   getPcBuilderDisplayConfig,
 } from "@/lib/pc-builder/config"
 import { formatRupiah } from "@/lib/utils"
-import { recordPcBuildQuote } from "@/lib/api/pc-build-quotes"
-import { buildVariationLabel } from "@/lib/utils/variation"
+import {
+  getQuoteByCode,
+  getQuoteProductsCurrentInfo,
+  type QuoteLineItem,
+} from "@/lib/api/pc-build-quotes"
+import { QUOTE_CODE_PATTERN, formatQuoteDateLong } from "@/app/verify/format"
 import { env } from "@/config/env"
 import { resolveSiteUrl } from "@/lib/utils/site-url"
 import { formatWhatsAppNumber } from "@/lib/utils/whatsapp-number"
@@ -16,56 +21,33 @@ export const metadata = {
   title: "Quotation Rakitan PC",
 }
 
-/** Batas wajar kuantitas per item — URL bisa diedit bebas oleh siapa saja. */
-const MAX_QUANTITY_PER_ITEM = 99
-const MAX_ITEMS = 60
-
-type ParsedItem = {
-  stepId: string | null
-  productId: number
-  quantity: number
-}
-
 /**
- * Format `items`: `stepId:productId:qty` dipisah koma. Format lama
- * (`productId:qty`) tetap diterima supaya tautan yang sudah tersebar tidak rusak
- * — bedanya hanya item tidak terkelompok per kategori.
+ * Halaman ini HANYA MEMBACA.
  *
- * Yang diambil dari URL HANYA id & kuantitas. Nama produk, harga, dan gambar
- * selalu dibaca ulang dari database, jadi mengubah harga lewat inspect element
- * di halaman builder tidak berpengaruh apa-apa pada dokumen ini.
+ * Sampai 21 September 2026 ia juga yang menerbitkan quotation: membuka
+ * `?items=…` membaca katalog lalu menulis baris baru. Itu berarti setiap
+ * refresh, setiap pra-render, dan setiap bot yang menelusuri tautan ikut
+ * menulis — kebiasaan yang bisa ditolerir selagi kodenya hash, tapi tidak lagi
+ * sejak kodenya nomor urut: refresh akan memakan nomor.
+ *
+ * Sekarang penerbitan ada di `features/builder/actions-quotation.ts`, dan
+ * halaman ini merender `?kode=` yang sudah tersimpan. Konsekuensi yang
+ * disengaja: **membuka ulang alamat yang sama selalu memberi dokumen yang sama
+ * persis**, sampai ke rupiahnya — itulah yang membuat PDF di tangan pelanggan
+ * bisa dipertanggungjawabkan.
+ *
+ * Yang dirender adalah SNAPSHOT di `pc_build_quotes.items`, bukan katalog hari
+ * ini. Harga yang sudah dicetak tidak boleh berubah sendiri di belakang
+ * pemiliknya; perbandingan dengan harga terkini adalah tugas `/verify/[code]`.
  */
-function parseItemsParam(raw: string): ParsedItem[] {
-  return raw
-    .split(",")
-    .slice(0, MAX_ITEMS)
-    .map((chunk) => {
-      const parts = chunk.split(":")
-      const [stepId, productId, quantity] =
-        parts.length >= 3 ? parts : [null, parts[0], parts[1]]
 
-      return {
-        stepId: stepId || null,
-        productId: Number(productId),
-        quantity: Number(quantity),
-      }
-    })
-    .filter(
-      (item) => Number.isInteger(item.productId) && item.productId > 0 && Number.isFinite(item.quantity)
-    )
-    .map((item) => ({
-      ...item,
-      // Clamp: `?items=5:-999` atau `5:1e9` tidak boleh membuat total ngawur.
-      quantity: Math.min(Math.max(Math.trunc(item.quantity), 1), MAX_QUANTITY_PER_ITEM),
-    }))
-}
-
-function ErrorState({ message }: { message: string }) {
+function ErrorState({ message, action }: { message: string; action?: React.ReactNode }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-white p-8">
       <div className="max-w-md text-center">
-        <p className="text-lg font-bold text-black">Quotation tidak dapat dibuat</p>
+        <p className="text-lg font-bold text-black">Quotation tidak dapat dibuka</p>
         <p className="mt-2 text-sm text-neutral-600">{message}</p>
+        {action && <div className="mt-5">{action}</div>}
       </div>
     </div>
   )
@@ -77,89 +59,89 @@ export default async function PrintPcBuilderPage({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>
 }) {
   const params = await searchParams
-  const itemsParam = typeof params.items === "string" ? params.items : ""
+  const kode = typeof params.kode === "string" ? params.kode.trim().toUpperCase() : ""
 
-  if (!itemsParam) {
-    return <ErrorState message="Tidak ada data komponen yang dikirim." />
+  /**
+   * Tautan lama `?items=…` tidak lagi menerbitkan apa pun.
+   *
+   * Menerbitkan dari isi URL berarti menghidupkan kembali persis jalur yang
+   * ditutup: alamat yang bisa disalin, di-refresh, dan ditelusuri bot, yang
+   * setiap kali memakan satu nomor. Alamat semacam itu juga tidak pernah jadi
+   * dokumen yang stabil — ia merender ulang dari katalog setiap dibuka, jadi
+   * tidak ada yang hilang dengan mengarahkan orang kembali ke builder.
+   */
+  if (!kode) {
+    if (typeof params.items === "string" && params.items.length > 0) {
+      return (
+        <ErrorState
+          message="Tautan cetak versi lama sudah tidak berlaku. Buka lagi rakitan Anda di halaman Rakit PC, lalu tekan Print untuk menerbitkan quotation bernomor."
+          action={
+            <Link
+              href="/build-pc"
+              className="inline-flex h-10 items-center justify-center rounded-lg bg-neutral-900 px-5 text-sm font-semibold text-white hover:bg-neutral-800"
+            >
+              Buka Rakit PC
+            </Link>
+          }
+        />
+      )
+    }
+    return <ErrorState message="Tidak ada kode quotation yang dikirim." />
   }
 
-  const items = parseItemsParam(itemsParam)
-  if (items.length === 0) {
-    return <ErrorState message="Format data komponen tidak valid." />
+  if (!QUOTE_CODE_PATTERN.test(kode)) {
+    return <ErrorState message="Format kode quotation tidak dikenali." />
   }
 
-  const prisma = getPrisma()
-  const [products, stepsConfig, displayConfig] = await Promise.all([
-    prisma.product.findMany({
-      where: { id: { in: items.map((i) => i.productId) } },
-      select: {
-        id: true,
-        name: true,
-        sku: true,
-        regularPrice: true,
-        salePrice: true,
-        images: {
-          orderBy: { position: "asc" },
-          take: 1,
-          select: { url: true },
-        },
-        // Terisi hanya kalau barisnya sebuah varian. Opsi yang dipilih
-        // pelanggan (mis. "1TB · Hitam") HARUS tercetak: quotation yang
-        // menyebut "SSD Samsung 980" tanpa kapasitasnya adalah dokumen yang
-        // tidak bisa dicocokkan dengan barang mana pun di rak.
-        parent: {
-          select: {
-            name: true,
-            images: { orderBy: { position: "asc" }, take: 1, select: { url: true } },
-          },
-        },
-        attributes: { select: { value: { select: { value: true } } } },
-      },
-    }),
+  const quote = await getQuoteByCode(kode)
+  if (!quote) {
+    return <ErrorState message={`Quotation ${kode} tidak ditemukan.`} />
+  }
+
+  /**
+   * `items` bertipe Json di Prisma, jadi bentuknya tidak dijamin tipe. Dibaca
+   * lewat `unknown` dengan penjaga bentuk, bukan `as any` (CLAUDE.md §2.4) —
+   * snapshot lama punya medan yang lebih sedikit daripada yang sekarang, dan
+   * itu memang sah.
+   */
+  const snapshot: QuoteLineItem[] = Array.isArray(quote.items)
+    ? (quote.items as unknown as QuoteLineItem[])
+    : []
+
+  if (snapshot.length === 0) {
+    return <ErrorState message="Isi quotation ini kosong atau rusak." />
+  }
+
+  const [stepsConfig, displayConfig] = await Promise.all([
     getPcBuilderConfig(),
     getPcBuilderDisplayConfig(),
   ])
 
   const showItemPrices = displayConfig.showItemPrices
 
-  // Nama kategori diambil dari konfigurasi di database, bukan dari URL — URL
-  // hanya menyumbang stepId-nya.
-  const stepNameById = new Map(stepsConfig.map((step) => [step.id, step.name]))
+  /**
+   * Cadangan gambar untuk snapshot lama.
+   *
+   * Medan `image` baru ada belakangan, jadi quotation yang dicetak sebelum itu
+   * tidak memilikinya. Dikuerikan HANYA kalau memang ada yang kosong — dokumen
+   * baru tidak perlu membayar kueri ini sama sekali.
+   */
+  const missingImages = snapshot.filter((item) => !item.image).map((item) => item.productId)
+  const imageFallback =
+    missingImages.length > 0 ? await getQuoteProductsCurrentInfo(missingImages) : null
 
-  const lineItems = items
-    .map((item) => {
-      const product = products.find((p) => p.id === item.productId)
-      if (!product) return null
-
-      const salePrice = product.salePrice ? Number(product.salePrice) : 0
-      const regularPrice = product.regularPrice ? Number(product.regularPrice) : 0
-      const price = salePrice > 0 ? salePrice : regularPrice
-
-      // Nama induk yang dipakai, bukan nama baris variannya: varian warisan
-      // impor WooCommerce sering bernama sama persis dengan induknya, jadi yang
-      // membedakan HARUS labelnya. Lihat lib/utils/variation.ts.
-      const variationLabel = product.parent
-        ? buildVariationLabel(product.attributes.map((a) => a.value.value))
-        : null
-
-      return {
-        id: product.id,
-        name: product.parent?.name ?? product.name,
-        parentName: product.parent?.name ?? null,
-        variationLabel,
-        sku: product.sku,
-        image: product.images[0]?.url ?? product.parent?.images[0]?.url,
-        price,
-        quantity: item.quantity,
-        subtotal: price * item.quantity,
-        stepName: item.stepId ? stepNameById.get(item.stepId) ?? null : null,
-      }
-    })
-    .filter((item): item is NonNullable<typeof item> => item !== null)
-
-  if (lineItems.length === 0) {
-    return <ErrorState message="Komponen yang dipilih tidak ditemukan di katalog." />
-  }
+  const lineItems = snapshot.map((item) => ({
+    id: item.productId,
+    name: item.name,
+    parentName: item.parentName ?? null,
+    variationLabel: item.variationLabel ?? null,
+    sku: item.sku,
+    image: item.image ?? imageFallback?.get(item.productId)?.image ?? undefined,
+    price: item.price,
+    quantity: item.quantity,
+    subtotal: item.price * item.quantity,
+    stepName: item.stepName ?? null,
+  }))
 
   // Kelompokkan per kategori, urut sesuai urutan step di konfigurasi builder.
   const groups = new Map<string, typeof lineItems>()
@@ -183,46 +165,34 @@ export default async function PrintPcBuilderPage({
     groupItems: groupItems.map((item) => ({ ...item, index: ++numbered })),
   }))
 
-  // Jasa rakit tidak lagi ditambahkan di sini: biayanya dikonfigurasi sebagai
-  // step tersendiri di PC Builder, jadi sudah ikut terhitung di `lineItems`.
-  const subtotal = lineItems.reduce((acc, item) => acc + item.subtotal, 0)
-  const total = subtotal
+  /**
+   * Angka diambil dari baris quotation, bukan dijumlah ulang dari snapshot.
+   * Keduanya harus sama — dan kalau suatu hari tidak, yang berlaku adalah yang
+   * tersimpan, karena itulah yang dilihat kasir di `/verify`.
+   */
+  const subtotal = Number(quote.subtotal)
+  const total = Number(quote.total)
   const totalUnits = lineItems.reduce((acc, item) => acc + item.quantity, 0)
 
-  const now = new Date()
-  const issuedDate = now.toLocaleDateString("id-ID", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  })
+  /**
+   * Tanggal TERBIT, bukan tanggal cetak, dan dikunci ke WIB.
+   *
+   * Dulu ini `new Date()` waktu server: cetak ulang bulan depan akan menampilkan
+   * tanggal bulan depan pada dokumen yang diterbitkan hari ini — dua kertas
+   * berkode sama dengan dua tanggal berbeda.
+   */
+  const issuedDate = formatQuoteDateLong(quote.createdAt)
 
-  // Catat quotation supaya bisa diverifikasi lewat /verify/[code]. Pencatatan yang
-  // gagal tidak boleh menggagalkan pencetakan — pelanggan tetap harus dapat
-  // dokumennya, cuma tanpa kode verifikasi.
-  let quoteRef: string | null = null
+  const quoteRef = quote.code
+  const revision = quote.revision
+  const customerName = quote.customerName
+  const salesName = quote.salesName
+
   // Alamat mutlak: tautan di dalam PDF dibuka di luar browser (viewer HP,
   // WhatsApp), jadi path relatif tidak punya host untuk dituju. Lewat
   // `resolveSiteUrl()` supaya tidak jadi `0.0.0.0:3000` di balik proxy dan
   // tidak bisa diarahkan ke host palsu lewat header `Host`.
   const siteUrl = await resolveSiteUrl()
-  try {
-    const recorded = await recordPcBuildQuote(
-      lineItems.map((item) => ({
-        productId: item.id,
-        name: item.name,
-        parentName: item.parentName,
-        variationLabel: item.variationLabel,
-        sku: item.sku,
-        image: item.image,
-        price: item.price,
-        quantity: item.quantity,
-        stepName: item.stepName,
-      }))
-    )
-    quoteRef = recorded.code
-  } catch (error) {
-    console.error("[build-pc/print] gagal mencatat quotation:", error)
-  }
 
   return (
     <div className="min-h-screen bg-neutral-100 py-8 print:bg-white print:py-0">
@@ -262,28 +232,48 @@ export default async function PrintPcBuilderPage({
               Rakitan PC
             </p>
             <dl className="mt-2.5 space-y-1 text-[11px]">
-              {quoteRef && (
-                <div className="flex items-baseline justify-end gap-2">
-                  <dt className="text-white/60">No.</dt>
-                  <dd className="font-mono font-semibold tracking-tight">
-                    {/* Tautan ke halaman verifikasi kasir. Kasir yang
-                        berizin langsung melihat rinciannya; pengunjung lain
-                        (termasuk pelanggan pemilik PDF ini) diantar ke beranda
-                        oleh src/proxy.ts. Gayanya sengaja tidak seperti tautan
-                        — dokumen resmi, bukan halaman web. */}
-                    <a
-                      href={`${siteUrl}/verify/${quoteRef}`}
-                      style={{ color: "inherit", textDecoration: "none" }}
-                    >
-                      {quoteRef}
-                    </a>
-                  </dd>
-                </div>
-              )}
+              <div className="flex items-baseline justify-end gap-2">
+                <dt className="text-white/60">No.</dt>
+                <dd className="font-mono font-semibold tracking-tight">
+                  {/* Tautan ke halaman verifikasi kasir. Kasir yang
+                      berizin langsung melihat rinciannya; pengunjung lain
+                      (termasuk pelanggan pemilik PDF ini) diantar ke beranda
+                      oleh src/proxy.ts. Gayanya sengaja tidak seperti tautan
+                      — dokumen resmi, bukan halaman web. */}
+                  <a
+                    href={`${siteUrl}/verify/${quoteRef}`}
+                    style={{ color: "inherit", textDecoration: "none" }}
+                  >
+                    {quoteRef}
+                  </a>
+                  {/* Nomor revisi hanya muncul kalau memang pernah direvisi.
+                      Menuliskan "Rev. 1" pada dokumen yang tidak punya riwayat
+                      justru menimbulkan pertanyaan yang tidak perlu di kasir. */}
+                  {revision > 1 && (
+                    <span className="ml-2 font-sans font-bold">Rev. {revision}</span>
+                  )}
+                </dd>
+              </div>
               <div className="flex items-baseline justify-end gap-2">
                 <dt className="text-white/60">Tanggal</dt>
                 <dd className="font-semibold">{issuedDate}</dd>
               </div>
+              {/* Pelanggan & Sales hanya untuk quotation yang diterbitkan staff
+                  atas nama seseorang. Cetakan pengunjung tetap anonim seperti
+                  sebelumnya — tidak ada baris kosong yang tercetak.
+                  Nomor HP dan catatan internal TIDAK PERNAH masuk ke sini. */}
+              {customerName && (
+                <div className="flex items-baseline justify-end gap-2">
+                  <dt className="text-white/60">Pelanggan</dt>
+                  <dd className="font-semibold">{customerName}</dd>
+                </div>
+              )}
+              {salesName && (
+                <div className="flex items-baseline justify-end gap-2">
+                  <dt className="text-white/60">Sales</dt>
+                  <dd className="font-semibold">{salesName}</dd>
+                </div>
+              )}
             </dl>
           </div>
         </header>

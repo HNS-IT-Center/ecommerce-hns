@@ -21,6 +21,7 @@ import {
   Coins,
   FileText,
   X,
+  ReceiptText,
 } from "lucide-react"
 
 import {
@@ -76,6 +77,7 @@ const adminNavItems: NavItem[] = [
   { title: "PC Prebuild",  url: "/admin/pc-prebuild", icon: Cpu },
   { title: "Banner Promo", url: "/admin/banner",   icon: Megaphone },
   { title: "Toko & Lokasi", url: "/admin/toko",    icon: Store },
+  { title: "Quotation & Penjualan", url: "/admin/quotation", icon: ReceiptText },
   { title: "Manajemen User", url: "/admin/manajemen-user", icon: ShieldCheck },
   /*
    * Halamannya sudah ada sejak lama dan izinnya sudah terdaftar

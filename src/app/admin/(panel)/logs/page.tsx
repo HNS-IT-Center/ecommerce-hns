@@ -105,6 +105,10 @@ export default async function AdminLogsPage({ searchParams }: Props) {
       itemCount: row.itemCount,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+      status: row.status,
+      customerName: row.customerName,
+      salesName: row.salesName,
+      revision: row.revision,
     }))
   } else if (currentTab === "produk" || currentTab === "update-harga") {
     /**

@@ -2,12 +2,20 @@
 
 import * as React from "react"
 
+import { CircleQuestionMark } from "lucide-react"
+
 import { Button } from "@/components/ui/button"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import type { RoleRow } from "@/lib/api/roles"
 import type { AccessLevel } from "@/lib/auth/permissions"
 import { createRoleAction, updateRoleAction, deleteRoleAction } from "./actions"
 
-type PageDef = { key: string; label: string }
+type PageDef = { key: string; label: string; description: string }
 const LEVELS: AccessLevel[] = ["none", "view", "edit"]
 const LEVEL_LABEL: Record<AccessLevel, string> = { none: "Tak ada", view: "Lihat", edit: "Edit" }
 
@@ -125,9 +133,15 @@ export function ManajemenUserView({
             </label>
           </div>
 
-          {/* Matriks izin */}
-          <div>
-            <span className="text-sm font-medium">Izin per halaman</span>
+          {/* Matriks izin. Satu TooltipProvider membungkus seluruh tabel —
+              memasangnya per baris berarti 20-an provider untuk satu layar. */}
+          <TooltipProvider delay={150}>
+            <div>
+              <span className="text-sm font-medium">Izin per halaman</span>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Arahkan kursor (atau tekan Tab lalu Enter) pada tanda{" "}
+                <span className="font-semibold">?</span> untuk melihat apa yang dibuka tiap izin.
+              </p>
             <div className="mt-2 overflow-x-auto rounded-lg border">
               <table className="w-full text-sm">
                 <thead className="bg-muted/50">
@@ -139,7 +153,12 @@ export function ManajemenUserView({
                 <tbody>
                   {pages.map((p) => (
                     <tr key={p.key} className="border-t">
-                      <td className="p-2">{p.label}</td>
+                      <td className="p-2">
+                        <span className="inline-flex items-center gap-1.5">
+                          {p.label}
+                          <PenjelasanIzin label={p.label} description={p.description} />
+                        </span>
+                      </td>
                       <td className="p-2">
                         <div className="flex justify-center gap-1">
                           {LEVELS.map((lv) => {
@@ -171,7 +190,8 @@ export function ManajemenUserView({
                 </tbody>
               </table>
             </div>
-          </div>
+            </div>
+          </TooltipProvider>
 
           <div className="flex gap-2">
             <Button size="sm" onClick={simpan} disabled={pending || draft.name.trim().length < 2}>
@@ -219,5 +239,37 @@ export function ManajemenUserView({
         )}
       </div>
     </div>
+  )
+}
+
+/**
+ * Tanda "?" di samping nama izin, berisi penjelasan apa yang dibuka izin itu.
+ *
+ * Sebuah `<button>`, bukan `<span>`. Tooltip yang hanya muncul saat hover tidak
+ * pernah sampai ke dua kelompok yang justru paling butuh: orang yang memakai
+ * keyboard, dan orang yang membuka panel dari tablet di meja kasir — di layar
+ * sentuh tidak ada "hover". Sebagai tombol, ia bisa di-Tab dan ditekan.
+ *
+ * `type="button"` wajib: komponen ini duduk di dalam matriks izin yang berada
+ * dalam sebuah form, dan tombol tanpa tipe akan men-submit form itu.
+ */
+function PenjelasanIzin({ label, description }: { label: string; description: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            aria-label={`Apa itu izin ${label}?`}
+            className="inline-flex cursor-help text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none"
+          >
+            <CircleQuestionMark className="h-3.5 w-3.5" aria-hidden="true" />
+          </button>
+        }
+      />
+      <TooltipContent side="top" className="max-w-xs text-left leading-relaxed">
+        {description}
+      </TooltipContent>
+    </Tooltip>
   )
 }

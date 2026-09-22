@@ -32,5 +32,17 @@ export function formatQuoteDateLong(value: Date | string): string {
   return DATE_LONG.format(new Date(value))
 }
 
-/** Sama dengan format yang diterbitkan `buildQuoteCode()`. */
-export const QUOTE_CODE_PATTERN = /^HNSPC-\d{6}-[A-Z0-9]{4}$/
+/**
+ * Dua format kode, dan KEDUANYA harus tetap diterima selamanya.
+ *
+ * - `HNSPC-20260921-0001` — nomor urut, sejak 21 September 2026.
+ * - `HNSPC-260804-7K3M` — warisan: tanggal 6 digit + 4 karakter dari hash isi.
+ *
+ * Yang kedua bukan sisa yang menunggu dibersihkan. Ratusan PDF berformat lama
+ * sudah ada di tangan pelanggan, dan satu-satunya gunanya kode di kertas itu
+ * adalah bisa dicek di /verify. Menyempitkan pola ini berarti dokumen yang sah
+ * ditolak sebagai "kode tidak valid" oleh toko yang menerbitkannya sendiri.
+ *
+ * `\d{4,}`, bukan `\d{4}`: nomor urut boleh melewati 9999 dalam satu bulan.
+ */
+export const QUOTE_CODE_PATTERN = /^HNSPC-(\d{8}-\d{4,}|\d{6}-[A-Z0-9]{4})$/

@@ -8,6 +8,7 @@
  */
 import { getPrisma } from "@/lib/prisma/client"
 import { parseAdminRole, type AdminRole } from "@/lib/auth/roles"
+import { isMaster } from "@/lib/auth/permissions"
 
 export type AdminUserRow = {
   id: string
@@ -176,4 +177,98 @@ export async function assertNotLastOwner(id: string): Promise<void> {
   if (!target) return
   if (parseAdminRole(target.role) !== "owner") return
   if ((await countOwners()) <= 1) throw new LastOwnerError()
+}
+
+/**
+ * Nama tampilan sales milik satu user, untuk mengisi formulir di /admin/akun.
+ *
+ * `null` berarti belum diatur — pemanggilnya jatuh ke `users.name`. Fungsi
+ * sekecil ini tetap tinggal di lapisan `lib/api` dan bukan di halaman, karena
+ * komponen (Server maupun Client) tidak boleh memanggil `getPrisma()` langsung
+ * (CLAUDE.md §2.5).
+ */
+export async function getSalesDisplayName(userId: string): Promise<string | null> {
+  const row = await getPrisma().user.findUnique({
+    where: { id: userId },
+    select: { salesDisplayName: true },
+  })
+  return row?.salesDisplayName ?? null
+}
+
+/**
+ * User yang boleh menjadi TUJUAN operan CS — yaitu yang perannya memuat
+ * `quotation-sales: edit`.
+ *
+ * Disaring dari `role_permissions`, bukan dari nama peran. Nama peran adalah
+ * data yang diketik staff di panel ("Sales", "sales", "Sales Toko"); menjadikan
+ * daftar ini bergantung padanya berarti mengganti nama peran diam-diam
+ * mengosongkan daftar operan CS.
+ *
+ * Yang sengaja DIKELUARKAN:
+ * - `excludeUserId` — CS tidak bisa "mengoper" ke dirinya sendiri; untuk itu ada
+ *   pilihan "Tidak oper" yang menyimpan atas namanya tanpa mencetak nama Sales.
+ * - master — akun developer, bukan orang yang melayani pelanggan di toko.
+ *
+ * Master dikenali lewat env (`MASTER_ADMIN_EMAIL`), sama seperti `isMaster`:
+ * ia sengaja bukan baris data, jadi tidak bisa disaring lewat kueri.
+ */
+export async function listQuotationSalesUsers(
+  excludeUserId?: string
+): Promise<{ id: string; displayName: string }[]> {
+  const rows = await getPrisma().user.findMany({
+    where: {
+      role: { not: "pelanggan" },
+      ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
+      roleRef: {
+        permissions: { some: { page: "quotation-sales", access: "edit" } },
+      },
+    },
+    select: { id: true, name: true, email: true, salesDisplayName: true },
+    orderBy: { name: "asc" },
+  })
+
+  return rows
+    .filter((r) => !isMaster(r))
+    .map((r) => ({ id: r.id, displayName: r.salesDisplayName ?? r.name }))
+}
+
+/**
+ * Semua user berperan Sales beserta nama tampilannya — untuk panel admin.
+ *
+ * Bedanya dengan `listQuotationSalesUsers`: yang itu menjawab "siapa yang boleh
+ * jadi TUJUAN operan" (master & diri sendiri dibuang), yang ini menjawab "siapa
+ * saja yang namanya tercetak di quotation" — jadi tidak ada yang dibuang, dan
+ * nama akun ikut dibawa supaya panel bisa menunjukkan nama apa yang dipakai
+ * saat kolomnya dikosongkan.
+ */
+export async function listSalesUsersWithDisplayName(): Promise<
+  { id: string; name: string; email: string; salesDisplayName: string | null }[]
+> {
+  return getPrisma().user.findMany({
+    where: {
+      role: { not: "pelanggan" },
+      roleRef: { permissions: { some: { page: "quotation-sales", access: "edit" } } },
+    },
+    select: { id: true, name: true, email: true, salesDisplayName: true },
+    orderBy: { name: "asc" },
+  })
+}
+
+/**
+ * Setel nama tampilan sales milik user LAIN (dari Manajemen User).
+ *
+ * `role: { not: "pelanggan" }` ikut di WHERE, bukan cuma diperiksa lebih dulu:
+ * id yang dikirim klien tidak boleh bisa menunjuk baris pelanggan, dan syarat
+ * yang hidup di dalam kueri tidak bisa dilewati oleh jalur kedua yang
+ * ditambahkan orang lain nanti.
+ */
+export async function setSalesDisplayName(
+  userId: string,
+  displayName: string | null
+): Promise<boolean> {
+  const { count } = await getPrisma().user.updateMany({
+    where: { id: userId, role: { not: "pelanggan" } },
+    data: { salesDisplayName: displayName },
+  })
+  return count > 0
 }
