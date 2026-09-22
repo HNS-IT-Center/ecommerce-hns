@@ -1552,7 +1552,67 @@ dirender per permintaan.
 
 ---
 
-## 24. Cap izin panel: `GET /api/admin/permission-version` (22 September 2026)
+---
+
+## 24. Halaman kebijakan: daftar halamannya ikut data (21 September 2026)
+
+`/kebijakan/*` dulu empat folder route statis, masing-masing dengan `metadata`
+yang ditulis harfiah, sementara **isinya** sudah lama datang dari tabel
+`policy_pages`. Yang tertinggal di kode hanya daftar alamatnya — dan daftar itulah
+yang membuat staff tidak bisa menambah kebijakan baru tanpa deploy.
+
+Sekarang satu route dinamis `app/kebijakan/[slug]/page.tsx` melayani semuanya, dan
+panel `/admin/kebijakan` punya Tambah/Edit/Hapus penuh.
+
+### Fungsi di `lib/api/policy.ts`
+
+| Fungsi | Untuk | Fallback ke `POLICY_PAGES`? |
+|---|---|---|
+| `getPolicyPage(slug)` | Halaman publik `/kebijakan/[slug]` | Ya — kecuali baris itu memang dihapus |
+| `getPolicyPages()` | Daftar `/kebijakan` + peta situs | Ya, saat tabel kosong atau query gagal |
+| `getAdminPolicyPages()` | Daftar di panel admin | **Tidak** |
+| `getAdminPolicyPage(slug)` | Formulir sunting | **Tidak** |
+| `createPolicyPage(input)` | Server action Tambah | — |
+| `savePolicyPage(input)` | Server action Simpan | — |
+| `softDeletePolicyPage(slug, by)` | Server action Hapus | — |
+
+Panel admin sengaja tanpa fallback: panel yang menampilkan konten bawaan membuat
+staff menyunting baris yang tidak ada. Alasan yang sama dengan `getAdminFaqItems()`.
+
+### Halaman yang dihapus TIDAK jatuh ke konten bawaan
+
+`getPolicyPage()` membedakan "belum pernah di-seed" dari "sudah dihapus" lewat satu
+`count()` tambahan, dan itu hanya jalan pada kasus nol hasil. Tanpa pembedaan itu,
+kebijakan yang dihapus staff akan terbit kembali dari konstanta di alamatnya sendiri
+— hilang dari panel, tetap terbaca pelanggan.
+
+### Kolom baru di `policy_pages`
+
+`description` (ringkasan kartu **dan** `metadata.description` — satu kolom, bukan
+dua, supaya tidak ada yang dikosongkan), `sort_order`, `is_system`, serta
+`deleted_at`/`deleted_by`. Halaman bertanda `is_system` tidak bisa dihapus: alamat
+keempatnya ditaut dari kode yang tidak tahu apa-apa soal isi tabel. Penjaganya ada
+di `softDeletePolicyPage()` (`where: { isSystem: false }`), bukan cuma di UI.
+
+### Pembuangan cache
+
+`revalidatePolicyPages()` di `app/admin/(panel)/kebijakan/actions.ts` memakai
+`revalidatePath("/kebijakan/[slug]", "page")` — menyegarkan seluruh halaman di route
+dinamis itu, berapa pun jumlahnya — plus `/kebijakan`, `/faq`, dan `/sitemap.xml`.
+Mendaftar path satu per satu seperti dulu berarti halaman yang baru dibuat tidak
+pernah ikut disegarkan.
+
+### Slug tidak bisa diubah setelah dibuat
+
+Formulir sunting menampilkannya sebagai teks, dan `updatePolicyPage` mengambil slug
+dari medan tersembunyi alih-alih menurunkannya ulang dari judul. Staff yang
+memperbaiki judul tidak sedang meminta alamat halamannya berpindah — kalau ia
+berpindah, setiap tautan yang sudah beredar mati tanpa ada yang memberi tahu.
+Slug `baru` dan `faq` ditolak: keduanya sudah jadi segmen statis di `/admin/kebijakan/`.
+
+---
+
+## 25. Cap izin panel: `GET /api/admin/permission-version` (22 September 2026)
 
 Satu endpoint baru di `/api/admin/*` yang TIDAK memanggil AI, jadi ia tidak ikut
 tabel di §10.3.
@@ -1591,7 +1651,7 @@ mengubah nama tampilan sales miliknya sendiri — dan orang itu akan melihat toa
 Cap yang berbohong sesekali akan diabaikan, dan sesudah itu tidak lagi berguna
 saat benar-benar penting. Yang dipakai: `role`, `roleId`, dan `roles.updated_at`.
 
-## 25. `listCustomers`: pengurutan lewat URL (22 September 2026)
+## 26. `listCustomers`: pengurutan lewat URL (22 September 2026)
 
 `listCustomers()` (`lib/api/customers.ts`) menerima `sort` (`name` | `email` |
 `createdAt` | `role`) dan `dir` (`asc` | `desc`), dipakai header tabel di

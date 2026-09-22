@@ -7,13 +7,20 @@
 export type PolicyPageContent = {
   slug: string;
   title: string;
+  /** Ringkasan satu kalimat: teks kartu di /kebijakan + meta description. */
+  description: string;
   content: string; // HTML
+  sortOrder: number;
+  /** Kebijakan bawaan — tidak bisa dihapus lewat panel admin. Lihat schema. */
+  isSystem: boolean;
 };
 
 export const POLICY_PAGES: PolicyPageContent[] = [
   {
     slug: "pengembalian-barang",
     title: "Kebijakan Pengembalian Barang",
+    description:
+      "Syarat dan ketentuan pengembalian barang di HNS IT Center.",
     content: `
 <p>HNS IT Center menerima pengembalian barang untuk kasus tertentu, dengan syarat dan ketentuan berikut.</p>
 <h2>Kelayakan Pengembalian</h2>
@@ -50,10 +57,14 @@ export const POLICY_PAGES: PolicyPageContent[] = [
 </ul>
 <p>Untuk pertanyaan lebih lanjut, silakan hubungi kami melalui halaman <a href="/contact">Kontak Kami</a>.</p>
 `.trim(),
+    sortOrder: 0,
+    isSystem: true,
   },
   {
     slug: "pengembalian-dana",
     title: "Kebijakan Pengembalian Dana",
+    description:
+      "Syarat, metode, dan waktu proses pengembalian dana (refund) di HNS IT Center.",
     content: `
 <p>Pengembalian dana (refund) diproses setelah pengajuan pengembalian barang atau pembatalan pesanan disetujui oleh tim kami, mengikuti <a href="/kebijakan/pengembalian-barang">Kebijakan Pengembalian Barang</a> dan <a href="/kebijakan/pembatalan-pesanan">Kebijakan Pembatalan Pesanan</a>.</p>
 <h2>Kapan Refund Berlaku</h2>
@@ -83,10 +94,14 @@ export const POLICY_PAGES: PolicyPageContent[] = [
 </ul>
 <p>Untuk menanyakan status refund, silakan hubungi kami melalui halaman <a href="/contact">Kontak Kami</a> dengan menyertakan nomor invoice.</p>
 `.trim(),
+    sortOrder: 1,
+    isSystem: true,
   },
   {
     slug: "pembatalan-pesanan",
     title: "Kebijakan Pembatalan Pesanan",
+    description:
+      "Ketentuan pembatalan pesanan di HNS IT Center.",
     content: `
 <p>Karena pemesanan saat ini diproses secara manual melalui WhatsApp, pembatalan pesanan juga dilakukan melalui komunikasi langsung dengan tim CS kami. Dana yang sudah dibayarkan dikembalikan mengikuti <a href="/kebijakan/pengembalian-dana">Kebijakan Pengembalian Dana</a>.</p>
 <h2>Kapan Pesanan Bisa Dibatalkan</h2>
@@ -107,10 +122,14 @@ export const POLICY_PAGES: PolicyPageContent[] = [
 </ol>
 <p>Untuk membatalkan pesanan, silakan hubungi kami melalui halaman <a href="/contact">Kontak Kami</a>.</p>
 `.trim(),
+    sortOrder: 2,
+    isSystem: true,
   },
   {
     slug: "pengiriman",
     title: "Kebijakan Pengiriman",
+    description:
+      "Area, estimasi waktu, dan opsi pengiriman/pengambilan barang di HNS IT Center.",
     content: `
 <h2>Area Pengiriman</h2>
 <p>Kami melayani pengiriman ke seluruh Batam.</p>
@@ -129,6 +148,8 @@ export const POLICY_PAGES: PolicyPageContent[] = [
 <p>Pesanan juga dapat diambil langsung di salah satu toko kami tanpa biaya pengiriman. Lihat lokasi toko di halaman <a href="/stores">Toko Fisik</a>.</p>
 <p>Untuk pertanyaan lebih lanjut, silakan hubungi kami melalui halaman <a href="/contact">Kontak Kami</a>.</p>
 `.trim(),
+    sortOrder: 3,
+    isSystem: true,
   },
 ];
 

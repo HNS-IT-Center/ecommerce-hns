@@ -39,7 +39,16 @@ async function main() {
     await prisma.policyPage.upsert({
       where: { slug: page.slug },
       create: page,
-      update: { title: page.title, content: page.content },
+      /*
+       * `isSystem` ikut di-update, `content` dan `title` juga — keempat halaman
+       * ini memang isi bawaan yang seed-nya berhak menyegarkan.
+       *
+       * Yang TIDAK ikut: `sortOrder` dan `description`. Keduanya bisa disunting
+       * staff lewat panel, dan menimpanya tiap kali seed dijalankan berarti
+       * urutan yang mereka atur diam-diam kembali ke bawaan. Alasan yang sama
+       * membuat blok toko di bawah tidak lagi di-seed sama sekali.
+       */
+      update: { title: page.title, content: page.content, isSystem: true },
     })
   }
   console.log(`Seeded ${POLICY_PAGES.length} policy pages.`)

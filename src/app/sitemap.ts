@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 import { getProductsForSitemap } from "@/lib/api/woocommerce/products";
 import { getCategories } from "@/lib/api/woocommerce/categories";
 import { getPcPrebuildConfig } from "@/lib/pc-prebuild/config";
+import { getPolicyPages } from "@/lib/api/policy";
 import { resolveSiteUrl } from "@/lib/utils/site-url";
 import { isIndexableRequest } from "@/lib/utils/indexable-host";
 
@@ -63,10 +64,11 @@ const STATIC_ROUTES: Array<{
   // induknya tidak — padahal itulah alamat yang ditaut dari footer setiap
   // halaman, dan satu-satunya yang menampilkan keempat kebijakan sekaligus.
   { path: "/kebijakan", changeFrequency: "yearly", priority: 0.4 },
-  { path: "/kebijakan/pengiriman", changeFrequency: "yearly", priority: 0.3 },
-  { path: "/kebijakan/pengembalian-barang", changeFrequency: "yearly", priority: 0.3 },
-  { path: "/kebijakan/pengembalian-dana", changeFrequency: "yearly", priority: 0.3 },
-  { path: "/kebijakan/pembatalan-pesanan", changeFrequency: "yearly", priority: 0.3 },
+  // Halaman kebijakannya sendiri TIDAK di sini lagi: sejak staff bisa menambah
+  // dan menghapus kebijakan lewat panel admin, daftar yang ditulis di kode akan
+  // salah dua arah sekaligus — halaman baru tidak pernah diumumkan, dan halaman
+  // yang sudah dihapus terus diumumkan sampai ada yang ingat menyuntingnya.
+  // Lihat `policyEntries` di bawah.
 ];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
@@ -114,13 +116,30 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   let productEntries: MetadataRoute.Sitemap = [];
   let categoryEntries: MetadataRoute.Sitemap = [];
   let prebuildEntries: MetadataRoute.Sitemap = [];
+  let policyEntries: MetadataRoute.Sitemap = [];
 
   try {
-    const [products, categories, prebuild] = await Promise.all([
+    const [products, categories, prebuild, policies] = await Promise.all([
       getProductsForSitemap(MAX_PRODUCTS),
       getCategories({ hideEmpty: true, perPage: 500 }),
       getPcPrebuildConfig(),
+      getPolicyPages(),
     ]);
+
+    /**
+     * Kebijakan yang sedang tayang, apa pun jumlahnya.
+     *
+     * `getPolicyPages()` punya fallback ke konten bawaan saat database tidak
+     * terjangkau, jadi keempat alamat lama tetap terpeta walau query-nya gagal
+     * — bukan berarti blok ini boleh keluar dari `try`, karena kegagalan lain
+     * di atasnya tetap melompat ke `catch`.
+     */
+    policyEntries = policies.map((policy) => ({
+      url: `${baseUrl}/kebijakan/${policy.slug}`,
+      lastModified: now,
+      changeFrequency: "yearly" as const,
+      priority: 0.3,
+    }));
 
     productEntries = products.map((product) => ({
       url: `${baseUrl}/product/${product.slug}`,
@@ -174,5 +193,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     console.error("Sitemap: gagal memuat produk/kategori/prebuild", error);
   }
 
-  return [...staticEntries, ...prebuildEntries, ...categoryEntries, ...productEntries];
+  return [
+    ...staticEntries,
+    ...policyEntries,
+    ...prebuildEntries,
+    ...categoryEntries,
+    ...productEntries,
+  ];
 }
