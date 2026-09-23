@@ -627,6 +627,20 @@ export function DynamicBuilderView({
      * dialog beberapa detik sebelumnya.
      */
     if (quotationMode !== "anon") {
+      /*
+       * WAJIB, dan bukan pemanis — lihat catatan di `closeMobileDrawers`.
+       *
+       * `validateRequiredSteps()` di atas juga menutup laci, tapi HANYA pada
+       * jalur gagalnya. Artinya justru saat rakitannya lengkap dan dialog ini
+       * benar-benar terbit, lacinya (`z-[55]`) masih menutupi dialog yang
+       * di-portal ke body dengan `z-50`. Yang dialami staff: menekan Print di
+       * panel My Build versi mobile, tidak melihat apa-apa, dan quotation tidak
+       * pernah terbit karena formulir identitas pelanggannya tidak bisa
+       * disentuh. Berlaku untuk kedua mode dialog — `"sendiri"` maupun
+       * `"oper"`. Kasus yang sama sudah lebih dulu diperbaiki di
+       * `handleOpenSaveDialog`.
+       */
+      closeMobileDrawers()
       setIsQuotationDialogOpen(true)
       return
     }
