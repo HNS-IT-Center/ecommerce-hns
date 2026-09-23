@@ -16,9 +16,10 @@ import { formatJakartaPeriod, jakartaPeriod } from "@/lib/utils/timezone"
 import { formatQuoteDateTime } from "@/app/verify/format"
 import { ProfileTabs } from "@/features/account/components/profile-tabs"
 import { HandoverToast } from "@/features/quotation/components/handover-toast"
+import { getStaffProfile } from "@/lib/api/staff-profile"
 
 export const metadata = {
-  title: "Quotation Saya",
+  title: "Quotation Pelanggan",
   robots: { index: false, follow: false },
 }
 
@@ -50,10 +51,14 @@ export default async function QuotationSayaPage({
   const lihatOperan = tab === "dioper"
   const periode = /^\d{6}$/.test(periodeRaw ?? "") ? periodeRaw! : jakartaPeriod(new Date())
 
-  const [rows, rekap] = await Promise.all([
+  const [rows, rekap, profil] = await Promise.all([
     listQuotationsForUser(user.id, { peran: lihatOperan ? "dioper" : "milik", q }),
     summarizeSalesMonth(user.id, periode),
+    getStaffProfile(user.id),
   ])
+
+  const namaTampilan = profil?.salesDisplayName ?? null
+  const nomorSales = profil?.phoneNumber ?? null
 
   return (
     <div className="flex min-h-dvh flex-col bg-page">
@@ -61,7 +66,11 @@ export default async function QuotationSayaPage({
       <main className="min-h-content flex-1 p-4 py-10 sm:px-6 lg:px-8">
         <div className="mx-auto w-full max-w-4xl space-y-6">
           <div>
-            <h1 className="text-2xl font-extrabold tracking-tight">Quotation Saya</h1>
+            {/* Judul sama persis dengan label tabnya. Sebelumnya "Quotation
+                Saya" di judul tapi "Quotation Pelanggan" di tab — dua nama
+                untuk satu halaman, dan yang membacanya berhenti sejenak tiap
+                kali untuk memastikan ia tidak salah pindah. */}
+            <h1 className="text-2xl font-extrabold tracking-tight">Quotation Pelanggan</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               Quotation rakitan PC yang Anda terbitkan untuk pelanggan.
             </p>
@@ -72,6 +81,29 @@ export default async function QuotationSayaPage({
           {/* Lihat catatan di /build-pc: tidak dipasang di root layout
               supaya storefront tidak ikut kehilangan rendering statis. */}
           {adalahSales && <HandoverToast />}
+
+          {/* Satu baris penunjuk, BUKAN salinan ketiga formulirnya.
+
+              Nama, foto, dan nomor WhatsApp sales sekarang disunting bersama di
+              satu kartu di /profile. Menaruh formulir yang sama di sini juga
+              berarti dua layar bisa menampilkan nilai berbeda untuk kolom yang
+              sama — yang satu masih memegang nilai lama saat yang lain sudah
+              disimpan. */}
+          <p className="rounded-2xl border border-border bg-card px-5 py-3 text-sm text-muted-foreground">
+            Nama Anda di quotation & pesan follow-up:{" "}
+            <strong className="font-semibold text-foreground">
+              {namaTampilan ?? user.name}
+            </strong>
+            {" · "}
+            WhatsApp:{" "}
+            <strong className="font-semibold text-foreground">
+              {nomorSales ?? "belum diisi"}
+            </strong>
+            {" — "}
+            <Link href="/profile" className="font-semibold text-primary hover:underline">
+              ubah di Profil Saya
+            </Link>
+          </p>
 
           {/* Rekap penjualan bulan berjalan. Dihitung dari tanggal CLOSING —
               quotation Agustus yang deal September adalah penjualan September. */}
@@ -258,6 +290,13 @@ function KartuQuotation({ row, bisaDibuka }: { row: QuotationHistoryRow; bisaDib
             >
               {terjual ? "Terjual" : "Terbit"}
             </span>
+            {/* Penanda DP, bukan status — quotation ber-DP tetap berstatus
+                Terbit dan tetap bisa direvisi. */}
+            {row.dpAt && (
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 font-sans text-xs font-semibold text-primary">
+                Sudah DP
+              </span>
+            )}
           </p>
 
           <p className="mt-1 truncate text-sm font-semibold">

@@ -8,8 +8,11 @@ import { formatRupiah } from "@/lib/utils"
 import {
   getQuoteByCode,
   getQuoteProductsCurrentInfo,
+  publicTokenMatchesCode,
   type QuoteLineItem,
 } from "@/lib/api/pc-build-quotes"
+import { getCurrentUser } from "@/lib/auth"
+import { bisaAkses, muatIzinUser } from "@/lib/auth/permissions"
 import { QUOTE_CODE_PATTERN, formatQuoteDateLong } from "@/app/verify/format"
 import { env } from "@/config/env"
 import { resolveSiteUrl } from "@/lib/utils/site-url"
@@ -19,6 +22,12 @@ import { PrintClientComponent } from "@/components/print/print-client-component"
 
 export const metadata = {
   title: "Quotation Rakitan PC",
+  /**
+   * Halaman ini memuat nama pelanggan dan seluruh harganya. Ia tidak pernah
+   * pantas muncul di hasil pencarian — dan sampai 23 September 2026 ia memang
+   * bisa, karena tidak ada satu pun aturan crawler yang menyebutnya.
+   */
+  robots: { index: false, follow: false },
 }
 
 /**
@@ -40,6 +49,24 @@ export const metadata = {
  * ini. Harga yang sudah dicetak tidak boleh berubah sendiri di belakang
  * pemiliknya; perbandingan dengan harga terkini adalah tugas `/verify/[code]`.
  */
+
+/**
+ * Penjaga akses halaman cetak. Token diperiksa LEBIH DULU karena ia tidak
+ * menyentuh cookie sama sekali — pelanggan yang membuka tautannya tidak perlu
+ * membayar pembacaan sesi yang pasti kosong, dan halaman ini tetap bisa dibuka
+ * dari peramban yang memblokir cookie pihak ketiga.
+ */
+async function bolehBukaCetakan(kode: string, token: string): Promise<boolean> {
+  if (token && (await publicTokenMatchesCode(kode, token))) return true
+
+  const user = await getCurrentUser()
+  if (!user) return false
+
+  const izin = await muatIzinUser(user)
+  return (
+    bisaAkses(izin, "quotation-terbit", "edit") || bisaAkses(izin, "verify", "view")
+  )
+}
 
 function ErrorState({ message, action }: { message: string; action?: React.ReactNode }) {
   return (
@@ -91,6 +118,46 @@ export default async function PrintPcBuilderPage({
 
   if (!QUOTE_CODE_PATTERN.test(kode)) {
     return <ErrorState message="Format kode quotation tidak dikenali." />
+  }
+
+  /**
+   * Siapa yang boleh membuka dokumen ini.
+   *
+   * Sampai 23 September 2026 jawabannya "siapa saja yang tahu kodenya" — dan
+   * sejak kodenya jadi NOMOR URUT (`HNSPC-20260921-0001`), tahu satu kode
+   * berarti tahu semuanya: naik-turunkan angka terakhirnya dan seluruh
+   * penawaran bulan itu terbuka, lengkap dengan nama pelanggannya.
+   *
+   * Sekarang ada dua jalan masuk, dan keduanya disengaja:
+   *
+   *  1. **Sesi staff** dengan izin `quotation-terbit` (sales & CS yang mencetak
+   *     ulang dari riwayatnya) atau `verify` (kasir yang mencocokkan dokumen di
+   *     meja). Mereka membuka `?kode=` saja, seperti sebelumnya.
+   *  2. **`?t=<token>`** yang cocok dengan kodenya — untuk pelanggan, yang
+   *     tidak punya sesi apa pun. Token itu sampai ke tangan mereka lewat
+   *     tautan penawaran, atau langsung dari tombol Print di builder yang
+   *     menerimanya dari hasil penerbitan.
+   *
+   * Akibat yang diterima sadar: bookmark `?kode=` lama milik PENGUNJUNG anonim
+   * berhenti bekerja. Yang tercetak di dalam PDF adalah `/verify/<kode>`, bukan
+   * alamat ini, jadi dokumen yang sudah beredar tidak terpengaruh.
+   */
+  const token = typeof params.t === "string" ? params.t.trim().toLowerCase() : ""
+  const bolehLihat = await bolehBukaCetakan(kode, token)
+  if (!bolehLihat) {
+    return (
+      <ErrorState
+        message="Tautan ini tidak lengkap. Buka lewat tautan penawaran yang dikirim sales Anda, atau hubungi HNS IT Center untuk dikirimkan ulang."
+        action={
+          <Link
+            href="/build-pc"
+            className="inline-flex h-10 items-center justify-center rounded-lg bg-neutral-900 px-5 text-sm font-semibold text-white hover:bg-neutral-800"
+          >
+            Buka Rakit PC
+          </Link>
+        }
+      />
+    )
   }
 
   const quote = await getQuoteByCode(kode)

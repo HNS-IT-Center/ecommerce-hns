@@ -13,6 +13,7 @@ import {
 } from "@/lib/api/pc-build-quotes"
 import { cn, formatRupiah } from "@/lib/utils"
 import { formatQuoteDateTime } from "./format"
+import { QuoteBadge } from "./quote-badge"
 import { VerifySearchForm } from "./verify-search-form"
 
 export const dynamic = "force-dynamic"
@@ -50,14 +51,19 @@ function QuoteCard({ quote, sort }: { quote: QuoteSummary; sort: QuoteSort }) {
             Rev. {quote.revision}
           </span>
         )}
-        {/* Status jual ditandai di kartu supaya kasir melihatnya tanpa membuka
-            satu per satu — yang sudah terjual paling sering dibuka karena
-            dikira belum. */}
-        {quote.status === "closing" && (
-          <span className="rounded-full bg-brand-green/15 px-2 py-0.5 text-[10px] font-bold text-brand-green">
-            TERJUAL
-          </span>
-        )}
+      </div>
+
+      {/* Lencana status di barisnya sendiri, satu bentuk untuk semuanya.
+
+          Ditandai di KARTU supaya kasir melihatnya tanpa membuka satu per satu:
+          yang sudah terjual paling sering dibuka karena dikira belum, dan yang
+          sudah DP paling sering ditagih ulang penuh karena tidak ada tandanya
+          sampai halaman detail terbuka. */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <QuoteBadge tone={quote.status === "closing" ? "terjual" : "netral"}>
+          {quote.status === "closing" ? "Terjual" : "Belum terjual"}
+        </QuoteBadge>
+        {quote.dpAt && <QuoteBadge tone="dp">Sudah DP</QuoteBadge>}
       </div>
 
       {quote.customerName && (

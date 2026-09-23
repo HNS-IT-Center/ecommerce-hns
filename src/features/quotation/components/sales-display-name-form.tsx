@@ -3,14 +3,20 @@
 import { useActionState } from "react"
 import { CircleCheck, Loader2, TriangleAlert } from "lucide-react"
 
-import { updateSalesDisplayNameAction } from "./actions"
-import { EMPTY_ACCOUNT_STATE, MAX_SALES_DISPLAY_NAME } from "./state"
+import { updateSalesDisplayNameAction } from "../actions"
+import { EMPTY_SALES_NAME_STATE, MAX_SALES_DISPLAY_NAME } from "../lib/sales-name"
 
 const inputClass =
   "w-full rounded-xl border border-input bg-muted/50 px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:bg-background"
 
 /**
- * Nama yang tercetak sebagai "Sales:" di PDF quotation.
+ * Nama yang tercetak sebagai "Sales:" di PDF quotation, dan yang dipakai
+ * memperkenalkan diri di pesan follow-up WhatsApp.
+ *
+ * Dipasang di DUA tempat: `/admin/akun` (kartu "Nama Sales di Quotation") dan
+ * `/profile/quotation`. Yang kedua ditambahkan 23 September 2026 karena di
+ * situlah sales sebenarnya bekerja — kolom yang hanya hidup di panel admin
+ * adalah kolom yang tidak pernah ditemukan orang yang membutuhkannya.
  *
  * `accountName` dipakai sebagai placeholder, bukan sebagai nilai awal: kolom
  * yang kosong harus tetap terbaca kosong, karena mengosongkannya memang berarti
@@ -26,7 +32,7 @@ export function SalesDisplayNameForm({
 }) {
   const [state, action, pending] = useActionState(
     updateSalesDisplayNameAction,
-    EMPTY_ACCOUNT_STATE,
+    EMPTY_SALES_NAME_STATE,
   )
 
   return (

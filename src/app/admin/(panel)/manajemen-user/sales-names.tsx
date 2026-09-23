@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import { Check, Loader2, TriangleAlert } from "lucide-react"
 
-import { MAX_SALES_DISPLAY_NAME } from "../akun/state"
+import { MAX_SALES_DISPLAY_NAME } from "@/features/quotation/lib/sales-name"
 import { setSalesDisplayNameAction } from "./actions"
 
 type SalesRow = {

@@ -126,7 +126,7 @@ function activeChildUrl(pathname: string, item: NavItem): string | null {
  * panel yang bisa mengubah data produk dan menghapus akun pelanggan, tepat di
  * tempat orang memastikan "saya sedang masuk sebagai siapa".
  */
-type AdminIdentity = { name: string; email: string }
+type AdminIdentity = { name: string; email: string; image: string | null }
 
 /** Segmen halaman dari url `/admin/<page>` — untuk mencocokkan izin. */
 function pageSegment(url: string): string | null {
@@ -467,7 +467,7 @@ export function AppSidebar({
         {/* Footer */}
         <SidebarFooter className="p-3 border-t border-white/10">
           <div className={`flex items-center rounded-lg py-1.5 ${open ? "gap-3 px-1.5" : "justify-center"}`}>
-            <UserNav name={user.name || user.email} email={user.email} />
+            <UserNav name={user.name || user.email} email={user.email} image={user.image} />
             {open && (
               <div className="flex flex-col min-w-0">
                 <span className="text-sm font-medium text-white truncate">

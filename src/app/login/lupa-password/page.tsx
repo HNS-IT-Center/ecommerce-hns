@@ -15,9 +15,13 @@ export const metadata = {
  * Pemulihan password hanya untuk orang yang TIDAK bisa masuk. Yang sesinya
  * masih hidup diarahkan ke /profile — pola sama seperti /login dan /register.
  *
- * Ini bukan penghalang bagi pelanggan yang ingin mengganti password: alur itu
- * memang belum ada, dan kalau nanti dibuat, tempatnya di halaman akun dengan
- * verifikasi password lama — bukan lewat tautan reset via email.
+ * Ini bukan penghalang bagi yang sekadar ingin MENGGANTI password: tempatnya
+ * di halaman akun (`/profile` untuk staff, `/admin/akun` di panel), dan sejak
+ * 23 September 2026 halaman itu tidak lagi meminta password lama — lihat
+ * `changePasswordAction`.
+ *
+ * Sejak tanggal yang sama halaman ini melayani SEMUA peran, bukan hanya
+ * pelanggan. Alasannya di `findAccountForPasswordReset`.
  */
 export default async function Page() {
   const customer = await getCurrentCustomer();

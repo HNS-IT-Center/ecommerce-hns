@@ -1750,3 +1750,100 @@ menyusul lewat `visibilitychange`.
 
 Ia hanya menentukan nama di header dan tautan mana yang tampil. CLAUDE.md §2.7
 berlaku penuh: tidak ada harga yang berubah karena seseorang masuk.
+
+---
+
+## 18. Quotation: jalur baca publik & dua aksi baru (23 September 2026)
+
+Rinciannya — beserta alasan tiap keputusannya — ada di `docs/17-quotation-sales.md`
+§12–§14. Yang dicatat di sini hanya bentuk jalur datanya.
+
+### Jalur baca baru: `getQuoteByPublicToken(token)`
+
+Untuk halaman `/q/[token]`, satu-satunya halaman quotation yang bisa dibuka
+**tanpa sesi apa pun**. Ia dicari lewat `public_token` acak, bukan lewat `code`
+yang berurutan.
+
+Seperti `getQuoteStatusForCashier()`, yang menjaga batas privasinya adalah
+**daftar `select`-nya**, bukan komponen yang kebetulan tidak menampilkan
+kolomnya: `customer_phone` dan `internal_note` tidak pernah ikut terbaca, dan
+relasi `submissions` tetap haram di-`include`.
+
+Tidak ada `unstable_cache` di jalur ini. Halamannya `force-dynamic`, dan
+harganya harus selalu yang tersimpan hari ini — halaman quotation yang
+menyajikan angka basi melanggar CLAUDE.md §2.7 dengan cara yang paling mahal:
+pelanggan memegang bukti layar yang tidak bisa dipenuhi kasir.
+
+`publicTokenMatchesCode(code, token)` adalah penjaga `/build-pc/print` untuk
+pembaca tanpa sesi staff. Perbandingannya dilakukan di server, atas nilai yang
+tidak pernah dikirim ke klien.
+
+### Dua aksi tulis baru di `features/quotation/actions.ts`
+
+| Aksi | Menulis | Catatan |
+|---|---|---|
+| `setQuotationDpAction` | `dp_at`, `dp_by_user_id` | TIDAK menyentuh `status`, tidak menulis log status |
+| `refreshQuotationPricesAction` | revisi baru | Memanggil ulang `reviseQuotation(..., useLatestPrices: true)` |
+
+Keduanya memeriksa izin `quotation-terbit: edit` **di dalam action** — server
+action adalah endpoint HTTP tersendiri yang bisa dipanggil tanpa pernah memuat
+halamannya. Syarat "ini milik Anda" ditegakkan terpisah, di lapisan data, lewat
+`owner_user_id` yang ikut di WHERE.
+
+`previewLatestPricesAction` menemani yang kedua: ia **hanya membaca**, dipanggil
+saat dialog konfirmasi dibuka, dan menghitung total barunya lewat
+`priceCartFromCatalog` — fungsi yang sama yang dipakai saat menyimpan. Angka di
+dialog dan angka yang tersimpan karena itu mustahil berbeda, dan tidak ada satu
+pun perkalian yang terjadi di klien (CLAUDE.md §2.7).
+
+### `issueQuotation()` / `reviseQuotation()` mengembalikan `token`
+
+`IssueQuotationResult` yang `ok` sekarang membawa `{ code, token }`. Pemanggil di
+builder memerlukannya untuk membuka `/build-pc/print?kode=…&t=…`: sejak halaman
+cetak menolak `?kode=` telanjang dari non-staff, **pengunjung anonim tanpa token
+tidak bisa membuka dokumen yang baru saja ia terbitkan sendiri**.
+
+### Susulan 23 September 2026 — profil staff & identitas pelanggan
+
+`lib/api/staff-profile.ts` berdiri sendiri di samping `admin-users.ts`, dan
+bedanya bukan kerapian: berkas itu berisi fungsi yang dipakai OWNER untuk
+mengelola akun ORANG LAIN, sedangkan yang di sini selalu bekerja atas `userId`
+dari sesi yang sedang berjalan. Mencampurnya berarti suatu hari ada pemanggil
+yang mengoper id dari klien ke fungsi yang dikira "punya sendiri".
+
+| Aksi (`features/account/actions.ts`) | Menulis |
+|---|---|
+| `updateStaffProfileAction` | `image`, `sales_display_name`, `phone_number` |
+| `updateUsernameAction` | `username` (unik; bentrok dijaga dua lapis) |
+| `changePasswordAction` | `password_hash`, `password_changed_at`, `sessions_revoked_at` + terbitkan ulang sesi panel |
+
+#### Pemulihan password (23 September 2026)
+
+`getStaffProfile()` sekarang mengembalikan `hasPassword: boolean` — hasil
+`passwordHash !== null`, **bukan** hash-nya. Nilainya menyeberang ke komponen
+klien dan ikut terbaca di payload RSC, jadi yang dikirim cukup jawaban
+ada/tidak. Pemakainya: `/profile` dan `/admin/akun`, untuk memilih KATA-KATA —
+"Pasang Password" untuk akun Google yang belum punya, "Ganti Password" untuk
+yang sudah. Formulirnya sendiri sama dan tampil untuk keduanya.
+
+`findAccountForPasswordReset()` (`lib/auth/customer-password.ts`) baru: mencari
+akun by email **tanpa** syarat peran, khusus jalur "Lupa password".
+`findCustomerByEmail()` yang lama tetap ada dan tetap menyaring
+`role = "pelanggan"` — ia melayani "kirim ulang verifikasi", dan
+`emailVerifiedAt` hanya punya arti untuk akun pendaftaran mandiri. Latar
+belakang lengkapnya di `docs/09-google-oauth-setup.md` §11.
+
+`changePasswordAction` **tidak lagi membaca `currentPassword`**, dan menerima
+akun tanpa `passwordHash` — untuk akun Google ia MEMASANG password pertama
+(`googleSub` tidak disentuh, login Google tetap jalan). Dua penanda
+pencabutan diisi bersamaan di sini maupun di `resetPasswordAction`
+(`app/login/actions.ts`): `password_changed_at` untuk cookie panel,
+`sessions_revoked_at` untuk cookie toko. Staff memegang keduanya, jadi mengisi
+satu saja menyisakan sesi yang lain tetap sah sampai kedaluwarsa sendiri.
+
+`updateQuotationCustomerAction` (`features/quotation/actions.ts`) menulis
+`customer_name`, `customer_phone`, dan `internal_note` pada baris quotation —
+**tanpa** menyentuh `pc_build_quote_revisions`. Ia menerima `FormData` langsung,
+bukan lewat `useActionState`: yang terjadi setelah tersimpan (menutup dialog,
+`router.refresh()`) mengikuti satu PERBUATAN, bukan perubahan keadaan, dan
+menuliskannya sebagai efek atas `state.ok` ditolak `react-hooks/set-state-in-effect`.

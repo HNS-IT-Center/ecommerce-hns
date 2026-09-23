@@ -2,8 +2,8 @@
 
 import { useActionState, useEffect, useRef } from "react"
 import { CircleCheck, Loader2, TriangleAlert } from "lucide-react"
-import { changePasswordAction } from "./actions"
-import { EMPTY_ACCOUNT_STATE } from "./state"
+import { changePasswordAction } from "../actions"
+import { EMPTY_ACCOUNT_STATE } from "../lib/state"
 
 const inputClass =
   "w-full rounded-xl border border-input bg-muted/50 px-3 py-2 text-sm outline-none transition-colors focus:border-primary focus:bg-background"
@@ -17,14 +17,26 @@ const inputClass =
  * Angka ini hanya membantu pengguna lebih cepat sadar; ambang yang sebenarnya
  * berlaku tetap diperiksa ulang di server action, karena atribut di HTML bisa
  * dihapus siapa saja dari perambannya sendiri.
+ *
+ * `hasPassword` hanya mengubah KATA-KATA, bukan jalur: memasang password
+ * pertama (akun Google) dan mengganti yang sudah ada menulis hal yang sama
+ * lewat aksi yang sama. Yang tidak boleh terjadi adalah orang membaca "Ganti
+ * Password" pada akun yang belum pernah punya satu pun — ia akan mencari-cari
+ * password yang tidak pernah ada.
  */
-export function ChangePasswordForm({ minLength }: { minLength: number }) {
+export function ChangePasswordForm({
+  minLength,
+  hasPassword,
+}: {
+  minLength: number
+  hasPassword: boolean
+}) {
   const [state, action, pending] = useActionState(changePasswordAction, EMPTY_ACCOUNT_STATE)
   const formRef = useRef<HTMLFormElement>(null)
 
-  // Kosongkan kolom setelah berhasil. Membiarkan password lama dan baru tetap
-  // terisi di halaman yang sudah selesai tidak ada gunanya, dan halaman panel
-  // sering ditinggal terbuka di layar bersama.
+  // Kosongkan kolom setelah berhasil. Membiarkan password baru tetap terisi di
+  // halaman yang sudah selesai tidak ada gunanya, dan halaman panel sering
+  // ditinggal terbuka di layar bersama.
   useEffect(() => {
     if (state.ok) formRef.current?.reset()
   }, [state.ok])
@@ -51,23 +63,14 @@ export function ChangePasswordForm({ minLength }: { minLength: number }) {
         </p>
       )}
 
-      <div>
-        <label className="mb-1 block text-sm font-semibold" htmlFor="currentPassword">
-          Password saat ini
-        </label>
-        <input
-          id="currentPassword"
-          name="currentPassword"
-          type="password"
-          autoComplete="current-password"
-          required
-          className={inputClass}
-        />
-      </div>
+      {/* Tidak ada kolom "Password saat ini". Akun Google tidak punya satu pun
+          untuk diketik, dan yang LUPA passwordnya tidak pernah tertolong oleh
+          kolom yang menanyakannya — ia dipulihkan lewat "Lupa password?" di
+          halaman masuk. Alasan lengkapnya di `changePasswordAction`. */}
 
       <div>
         <label className="mb-1 block text-sm font-semibold" htmlFor="newPassword">
-          Password baru
+          {hasPassword ? "Password baru" : "Password"}
         </label>
         <input
           id="newPassword"
@@ -86,7 +89,7 @@ export function ChangePasswordForm({ minLength }: { minLength: number }) {
 
       <div>
         <label className="mb-1 block text-sm font-semibold" htmlFor="confirmPassword">
-          Ulangi password baru
+          {hasPassword ? "Ulangi password baru" : "Ulangi password"}
         </label>
         <input
           id="confirmPassword"
@@ -105,7 +108,7 @@ export function ChangePasswordForm({ minLength }: { minLength: number }) {
         className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60 sm:w-auto"
       >
         {pending && <Loader2 className="h-4 w-4 animate-spin" />}
-        Ganti Password
+        {hasPassword ? "Ganti Password" : "Pasang Password"}
       </button>
     </form>
   )

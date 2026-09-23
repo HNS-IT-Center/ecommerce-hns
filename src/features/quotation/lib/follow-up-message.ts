@@ -66,6 +66,17 @@ export type FollowUpMessageInput = {
   revision: number;
   /** Total yang SUDAH diformat rupiah di server. Tidak pernah angka mentah. */
   totalText: string;
+  /**
+   * Tautan penawaran `https://hnsitcenter.id/q/<token>`, atau `null` untuk
+   * quotation lama yang belum punya token.
+   *
+   * Disusun DI SERVER dan diterima jadi. Merangkainya di sini berarti komponen
+   * klien perlu tahu alamat situsnya, dan satu-satunya sumber yang tersedia
+   * baginya adalah `window.location` — yang di balik proxy Hostinger bisa
+   * berbunyi lain dari domain publik. Pola yang sama sudah dicatat di
+   * `src/app/p/[id]/route.ts`.
+   */
+  publicUrl: string | null;
 };
 
 /**
@@ -78,7 +89,7 @@ export type FollowUpMessageInput = {
  * sewaktu-waktu menelepon balik dan menanyakan orang itu.
  */
 export function buildFollowUpMessage(input: FollowUpMessageInput, now: Date): string {
-  const { customerName, salesName, code, revision, totalText } = input;
+  const { customerName, salesName, code, revision, totalText, publicUrl } = input;
 
   // "Bapak/Ibu" karena nama pelanggan tidak menyimpan jenis kelamin di mana
   // pun. Menebaknya dari nama berarti salah sapa pada pesan pembuka.
@@ -90,11 +101,26 @@ export function buildFollowUpMessage(input: FollowUpMessageInput, now: Date): st
   // pertanyaan "revisi apa?" atas dokumen yang belum pernah berubah.
   const nomorDokumen = revision > 1 ? `${code} (Rev. ${revision})` : code;
 
+  /**
+   * Tautannya berdiri di barisnya sendiri, didahului kalimat yang menjelaskan
+   * ia akan membawa ke mana.
+   *
+   * Yang membacanya sedang menerima pesan dari nomor yang mungkin belum
+   * tersimpan di kontaknya, dan tautan telanjang di tengah kalimat adalah
+   * bentuk yang sama persis dipakai penipuan. Kalimat pengantar plus alamat
+   * yang terbaca jelas berdomain toko sendiri — bukan pemendek pihak ketiga —
+   * adalah dua hal yang membuatnya berani menekan.
+   */
+  const tautan = publicUrl
+    ? `Rincian lengkapnya bisa Bapak/Ibu buka kembali di sini:\n${publicUrl}\n\n`
+    : "";
+
   return (
     `${sapaan}\n\n` +
     `Perkenalkan saya ${salesName} dari HNS IT Center. Saya ingin melakukan follow up ` +
     `untuk rakitan PC Bapak/Ibu dengan nomor quotation ${nomorDokumen}, ` +
     `dengan total ${totalText}.\n\n` +
+    tautan +
     `Apakah ada yang bisa kami bantu mengenai rakitan tersebut? Terima kasih.`
   );
 }

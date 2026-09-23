@@ -145,6 +145,7 @@ model User {
   quotesOwned     PcBuildQuote[] @relation("QuoteOwner")
   quotesCreated   PcBuildQuote[] @relation("QuoteCreatedBy")
   quotesClosed    PcBuildQuote[] @relation("QuoteClosedBy")
+  quotesMarkedDp  PcBuildQuote[] @relation("QuoteDpBy")
   quoteRevisions  PcBuildQuoteRevision[]
   quoteStatusLogs PcBuildQuoteStatusLog[]
 
@@ -975,6 +976,34 @@ model PcBuildQuote {
   closedByUserId String?   @map("closed_by_user_id")
   closedBy       User?     @relation("QuoteClosedBy", fields: [closedByUserId], references: [id], onDelete: SetNull)
 
+  /// Alamat tautan publik `/q/<token>` yang dikirim sales lewat follow-up
+  /// WhatsApp. **Acak, BUKAN turunan `code`** — kode berurutan bisa ditebak
+  /// tetangganya, dan satu tautan yang beredar akan jadi pintu ke seluruh
+  /// penawaran bulan itu beserta nama pelanggannya.
+  ///
+  /// NULL = baris lama yang belum di-backfill (`scripts/backfill-quote-tokens.ts`).
+  /// Nullable supaya kolomnya bisa ditambahkan ke tabel berisi tanpa backfill
+  /// di dalam migrasi (docs/08 §3). Halaman yang membutuhkannya menangani NULL
+  /// dengan menyembunyikan tautannya, bukan dengan gagal.
+  publicToken String? @map("public_token") @db.VarChar(16)
+
+  /// Kapan sales menandai pelanggan sudah membayar DP, dan siapa yang menandai.
+  ///
+  /// **Ini PENANDA, bukan penggerak apa pun.** Harga sudah terkunci sejak
+  /// quotation disimpan — `items` adalah snapshot dan tidak ada satu pun jalur
+  /// yang memutakhirkannya sendiri. Karena itu DP sengaja TIDAK menjadi nilai
+  /// `status`: seluruh penjaga yang berbunyi `status: "terbit"` (syarat revisi,
+  /// WHERE di `reviseQuotation`, `markQuotationClosed`) akan menolak quotation
+  /// ber-DP, padahal pelanggan yang sudah DP justru yang paling sering menambah
+  /// satu komponen lagi.
+  ///
+  /// Tidak dicatat di `pc_build_quote_status_logs` — tabel itu ada untuk
+  /// perubahan yang mengubah angka penjualan seseorang. Menandai DP tidak.
+  /// Siapa & kapan sudah terjawab oleh dua kolom ini.
+  dpAt       DateTime? @map("dp_at")
+  dpByUserId String?   @map("dp_by_user_id")
+  dpBy       User?     @relation("QuoteDpBy", fields: [dpByUserId], references: [id], onDelete: SetNull)
+
   /// Kapan sales penerima menutup notifikasi operan dari CS. NULL + dioper =
   /// belum dibaca, dan toast-nya masih akan muncul.
   ///
@@ -1013,6 +1042,10 @@ model PcBuildQuote {
   /// jadi seluruh baris berkode format lama (period & sequence NULL) tetap sah
   /// dan tidak saling bentrok.
   @@unique([period, sequence])
+  /// Unik supaya dua quotation mustahil berbagi tautan publik. Di MariaDB
+  /// unique index mengizinkan banyak NULL, jadi baris lama yang belum
+  /// di-backfill tetap sah.
+  @@unique([publicToken])
   @@index([createdAt])
   @@index([updatedAt])
   @@index([contentHash])

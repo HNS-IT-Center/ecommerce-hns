@@ -2,11 +2,12 @@ import type { Metadata } from "next"
 import { requireAuth } from "@/lib/auth"
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth/password"
 import { getSalesDisplayName, listAdminUsers } from "@/lib/api/admin-users"
+import { getStaffProfile } from "@/lib/api/staff-profile"
 import { listRoles } from "@/lib/api/roles"
 import { ADMIN_ROLE_LABELS } from "@/lib/auth/roles"
 import { bisaAkses, muatIzinUser } from "@/lib/auth/permissions"
-import { ChangePasswordForm } from "./change-password-form"
-import { SalesDisplayNameForm } from "./sales-display-name-form"
+import { ChangePasswordForm } from "@/features/account/components/change-password-form"
+import { SalesDisplayNameForm } from "@/features/quotation/components/sales-display-name-form"
 import { AdminRoleList } from "./admin-role-list"
 
 export const metadata: Metadata = {
@@ -45,37 +46,65 @@ export default async function AdminAkunPage() {
     ? await Promise.all([listAdminUsers(), listRoles()])
     : null
 
-  // Kartu nama tampilan hanya untuk yang memang berperan Sales — bagi yang lain
-  // ia kolom tanpa akibat, dan kolom tanpa akibat di panel selalu berakhir
-  // sebagai pertanyaan ke pengelola.
-  const isSales = bisaAkses(izin, "quotation-sales", "edit")
-  const salesDisplayName = isSales ? await getSalesDisplayName(user.id) : null
+  /**
+   * Kartu nama tampilan untuk setiap penerbit quotation — Sales MAUPUN CS.
+   *
+   * Syaratnya dilonggarkan dari `quotation-sales` ke `quotation-terbit` pada
+   * 23 September 2026. Sebelumnya CS tidak pernah melihat kolom ini, padahal
+   * pesan follow-up WhatsApp memperkenalkan ORANG YANG MENEKAN TOMBOL, bukan
+   * sales yang tersnapshot di dokumen — jadi pelanggan menerima pesan dari
+   * "Customer Service 2", nama akun apa adanya.
+   *
+   * Yang tercetak di PDF tidak ikut melonggar: baris "Sales:" diisi dari
+   * `pc_build_quotes.sales_name`, dan itu tetap NULL untuk pemilik yang bukan
+   * Sales (docs/17 §5).
+   */
+  const bolehTerbit = bisaAkses(izin, "quotation-terbit", "edit")
+  const salesDisplayName = bolehTerbit ? await getSalesDisplayName(user.id) : null
+
+  // `requireAuth()` tidak membaca `passwordHash` (lihat `lib/auth/index.ts`),
+  // dan memang tidak seharusnya — sesi tidak butuh tahu. Yang dibutuhkan
+  // halaman ini cuma jawaban ada/tidak, dan itu yang dikembalikan lapisan API.
+  const profil = await getStaffProfile(user.id)
+  const punyaPassword = profil?.hasPassword ?? false
 
   return (
     <div className="mx-auto max-w-2xl">
       <h1 className="text-2xl font-bold">Akun Saya</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        Ganti password akun <strong className="font-semibold">{user.email}</strong>. Role Anda:{" "}
+        Pengaturan akun <strong className="font-semibold">{user.email}</strong>. Role Anda:{" "}
         <strong className="font-semibold">{ADMIN_ROLE_LABELS[user.role]}</strong>.
       </p>
 
+      {/* Judul dan keterangannya mengikuti keadaan akun — akun Google memakai
+          kotak ini untuk MEMASANG password pertama. Sama seperti di `/profile`
+          (lihat `StaffProfileCard`). */}
       <div className="mt-6 rounded-2xl border border-border bg-background p-5">
-        <h2 className="font-bold">Ganti Password</h2>
-        <p className="mt-1 mb-5 text-sm text-muted-foreground">
-          Setelah diganti, sesi di semua perangkat lain akan diputus dan harus masuk ulang. Sesi di
-          perangkat ini tetap berjalan.
-        </p>
+        <h2 className="font-bold">{punyaPassword ? "Ganti Password" : "Pasang Password"}</h2>
+        {punyaPassword ? (
+          <p className="mt-1 mb-5 text-sm text-muted-foreground">
+            Setelah diganti, sesi di semua perangkat lain akan diputus dan harus masuk ulang. Sesi
+            di perangkat ini tetap berjalan.
+          </p>
+        ) : (
+          <p className="mt-1 mb-5 text-sm text-muted-foreground">
+            Akun ini masuk lewat <strong className="font-semibold">Google</strong> dan belum punya
+            password. Pasang satu kalau ingin bisa masuk tanpa Google — login Google Anda tetap
+            berjalan seperti biasa.
+          </p>
+        )}
 
-        <ChangePasswordForm minLength={MIN_PASSWORD_LENGTH} />
+        <ChangePasswordForm minLength={MIN_PASSWORD_LENGTH} hasPassword={punyaPassword} />
       </div>
 
-      {isSales && (
+      {bolehTerbit && (
         <div className="mt-6 rounded-2xl border border-border bg-background p-5">
-          <h2 className="font-bold">Nama Sales di Quotation</h2>
+          <h2 className="font-bold">Nama Anda di Quotation</h2>
           <p className="mt-1 mb-5 text-sm text-muted-foreground">
-            Nama ini yang tercetak sebagai <strong>Sales</strong> di PDF quotation yang Anda
-            terbitkan. Mengubahnya <strong>tidak</strong> mengubah dokumen yang sudah dicetak
-            sebelumnya.
+            Nama ini dipakai saat Anda memperkenalkan diri di pesan{" "}
+            <strong>follow-up WhatsApp</strong>, dan — untuk akun Sales — tercetak sebagai{" "}
+            <strong>Sales</strong> di PDF quotation yang Anda terbitkan. Mengubahnya{" "}
+            <strong>tidak</strong> mengubah dokumen yang sudah dicetak sebelumnya.
           </p>
 
           <SalesDisplayNameForm current={salesDisplayName} accountName={user.name} />
@@ -106,10 +135,17 @@ export default async function AdminAkunPage() {
         </div>
       )}
 
-      <p className="mt-6 text-xs text-muted-foreground">
-        Lupa password saat ini? Belum ada pemulihan mandiri — hubungi pengelola sistem agar
-        passwordnya disetel ulang lewat script.
-      </p>
+      {/* Sengaja TEKS, bukan tautan: `/login/lupa-password` memantulkan siapa
+          pun yang masih punya sesi ke `/profile`, dan yang membaca kalimat ini
+          pasti punya. Ini catatan untuk dipakai NANTI, saat orangnya justru
+          tidak bisa sampai ke halaman ini. */}
+      {punyaPassword && (
+        <p className="mt-6 text-xs text-muted-foreground">
+          Lupa password dan tidak bisa masuk? Di halaman masuk ada{" "}
+          <strong className="font-semibold">Lupa password?</strong> — tautan pembuatan password baru
+          dikirim ke <strong className="font-semibold">{user.email}</strong>.
+        </p>
+      )}
     </div>
   )
 }

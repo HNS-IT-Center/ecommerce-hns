@@ -47,6 +47,22 @@ import SaveIcon from "@/components/icons/save-icon"
 import { ProductImage } from "@/components/ui/product-image"
 
 /**
+ * Alamat halaman cetak, lengkap dengan token penawarannya.
+ *
+ * `t=` bukan hiasan: sejak 23 September 2026 halaman cetak menolak `?kode=`
+ * telanjang dari siapa pun yang tidak punya sesi staff. Yang menekan Print di
+ * sini sebagian besar justru PENGUNJUNG anonim, jadi tanpa token mereka akan
+ * ditolak membuka dokumen yang baru saja mereka terbitkan sendiri.
+ *
+ * Token boleh kosong hanya untuk quotation lama yang belum di-backfill; dalam
+ * hal itu `?t=` tidak ikut ditulis dan yang membuka harus staff.
+ */
+function printHref(code: string, token: string): string {
+  const alamat = `/build-pc/print?kode=${encodeURIComponent(code)}`
+  return token ? `${alamat}&t=${encodeURIComponent(token)}` : alamat
+}
+
+/**
  * Quotation yang sedang direvisi, sudah diselesaikan di server.
  *
  * `hargaSnapshot` adalah harga REVISI SEBELUMNYA per produk — angka yang sudah
@@ -687,7 +703,7 @@ export function DynamicBuilderView({
         })
         return { ok: false, error: hasil.error }
       }
-      tab.go(`/build-pc/print?kode=${encodeURIComponent(hasil.code)}`)
+      tab.go(printHref(hasil.code, hasil.token))
       return { ok: true }
     } catch (error) {
       console.error("[build-pc] gagal menerbitkan quotation:", error)
@@ -752,7 +768,7 @@ export function DynamicBuilderView({
         return
       }
 
-      tab.go(`/build-pc/print?kode=${encodeURIComponent(hasil.code)}`)
+      tab.go(printHref(hasil.code, hasil.token))
     } catch (error) {
       console.error("[build-pc] gagal menyimpan revisi:", error)
       tab.cancel()

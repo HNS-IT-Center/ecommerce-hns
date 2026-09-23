@@ -334,12 +334,68 @@ Yang **tidak** berubah:
 - Semua query pelanggan di panel memakai syarat `role = "pelanggan"` —
   penghapusan di sana hard delete, dan syarat itu yang mencegah akun admin ikut
   terhapus.
-- "Lupa password" di toko hanya berlaku untuk peran pelanggan; admin mengganti
-  passwordnya di `/admin/akun`.
+
+Yang **berubah** setelahnya: "Lupa password" tidak lagi khusus pelanggan, dan
+halaman ganti password tidak lagi meminta password lama — lihat §11.
 
 **Sisa pekerjaan:** drop tabel `customers` lewat migrasi (setelah sinkronisasi
 dijalankan dan diverifikasi), lalu hapus `tx.customer.deleteMany` di
 `lib/api/customers.ts`.
+
+---
+
+## 11. Pemulihan Password untuk Staff (23 Sep 2026)
+
+Sampai 23 September 2026 "Lupa password" hanya berlaku untuk peran pelanggan
+(`findCustomerByEmail` menyaring `role = "pelanggan"`), dan admin mengganti
+passwordnya di `/admin/akun` — halaman yang mensyaratkan password lama. Dua
+aturan itu bertabrakan: staff yang LUPA passwordnya tidak bisa lewat keduanya,
+dan satu-satunya pemulihan adalah menunggu seseorang menjalankan
+`scripts/create-admin-user.mts`.
+
+Yang berlaku sekarang:
+
+| | Sebelum | Sesudah |
+|---|---|---|
+| "Lupa password" di `/login` | Hanya peran pelanggan; staff tidak pernah menerima email | Semua peran, lewat `findAccountForPasswordReset` |
+| Ganti password di `/profile` & `/admin/akun` | Wajib isi password lama | Tidak lagi — cukup password + konfirmasi |
+| Akun Google di halaman yang sama | Formulir selalu menolak (tak ada password lama untuk diketik) | Formulir MEMASANG password pertama |
+| Pencabutan sesi saat password berubah | Hanya SATU penanda per jalur | `passwordChangedAt` **dan** `sessionsRevokedAt`, di kedua jalur |
+
+Dua penanda itu wajib karena staff memegang dua cookie sekaligus (lihat
+`getCurrentCustomer`): mengisi satu saja menyisakan cookie yang lain tetap sah
+sampai kedaluwarsa sendiri.
+
+### Kenapa akun Google boleh memasang password
+
+Mayoritas akun staff masuk lewat Google dan `password_hash`-nya NULL. Kolom
+"password saat ini" karena itu mustahil diisi oleh sebagian besar orang yang
+melihatnya — formulirnya menolak mereka setiap kali ditekan, padahal yang
+mereka butuhkan justru memasang password PERTAMA.
+
+Ini tidak melanggar aturan identitas, karena aturannya sudah berubah lebih
+dulu: sejak 7 September 2026 satu akun boleh punya dua jalur identitas (catatan
+`googleSub` di `schema.prisma`), dan arah password→Google memang sudah ditautkan
+otomatis oleh `api/auth/google/callback`. Yang masih ditolak adalah arah
+sebaliknya di `register/actions.ts` — kasus berbeda, karena di sana orangnya
+belum terbukti pemilik akun, ia cuma mengetikkan sebuah email. Di halaman akun
+ia sudah masuk.
+
+`googleSub` tidak disentuh saat password dipasang, jadi login Google-nya tetap
+berjalan; yang bertambah hanyalah cara masuk kedua.
+
+### Catatan untuk pembuatan akun staff
+
+Alamat email di `users` diisi manual lewat `scripts/create-admin-user.mts` dan
+tidak pernah diverifikasi. Sejak reset terbuka untuk staff, alamat itu adalah
+kunci cadangan akun panel — pastikan ia alamat yang benar-benar dipegang
+orangnya, bukan alamat bersama atau placeholder.
+
+Yang TIDAK ikut longgar: "kirim ulang verifikasi" tetap khusus pelanggan
+(`findCustomerByEmail`), dan "Lupa password" tetap melewati akun tanpa
+`passwordHash` — akun Google yang belum memasang password memulihkan aksesnya
+lewat Google, bukan lewat email kita. Begitu ia memasang password, jalur reset
+ikut terbuka untuknya.
 
 ---
 

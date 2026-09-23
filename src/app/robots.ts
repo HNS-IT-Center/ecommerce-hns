@@ -24,10 +24,25 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
     rules: {
       userAgent: "*",
       allow: "/",
-      // Panel admin tidak pernah pantas muncul di hasil pencarian, walau
-      // aksesnya sendiri sudah dijaga (`src/proxy.ts` menolak permintaan tanpa
-      // sesi, termasuk cookie bertanda tangan palsu).
-      disallow: "/admin",
+      disallow: [
+        // Panel admin tidak pernah pantas muncul di hasil pencarian, walau
+        // aksesnya sendiri sudah dijaga (`src/proxy.ts` menolak permintaan tanpa
+        // sesi, termasuk cookie bertanda tangan palsu).
+        "/admin",
+        /**
+         * Tautan penawaran pelanggan (`/q/<token>`) dan halaman cetaknya.
+         *
+         * Keduanya berisi nama pelanggan dan nilai transaksinya. Yang menjaga
+         * mereka adalah token acak di alamatnya, BUKAN baris ini — baris ini
+         * hanya mencegah crawler yang terlanjur menemukan satu tautan (dari
+         * riwayat chat yang tersinkron, dari ekstensi peramban) menerbitkannya
+         * ke hasil pencarian. Kedua halaman juga memasang `robots: noindex`
+         * sendiri, karena berkas ini tidak berlaku untuk crawler yang memang
+         * tidak membacanya.
+         */
+        "/q",
+        "/build-pc/print",
+      ],
     },
     sitemap: `https://${hostname}/sitemap.xml`,
   }

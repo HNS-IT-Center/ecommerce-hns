@@ -232,6 +232,14 @@ export default async function AdminQuotationPage({ searchParams }: Props) {
                           {formatQuoteDateTime(row.closedAt)}
                         </span>
                       )}
+                      {/* Penanda DP dari sales pemiliknya. Bukan status kedua —
+                          ia berdampingan dengan Terbit/Terjual, tidak
+                          menggantikannya. */}
+                      {row.dpAt && (
+                        <span className="mt-1 block text-[11px] font-semibold text-primary">
+                          Sudah DP · {formatQuoteDateTime(row.dpAt)}
+                        </span>
+                      )}
                     </td>
                     <td className="p-3 text-xs text-muted-foreground">
                       {formatQuoteDateTime(row.createdAt)}

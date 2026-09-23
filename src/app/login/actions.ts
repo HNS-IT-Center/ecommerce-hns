@@ -3,7 +3,7 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import {
-  findCustomerByEmail,
+  findAccountForPasswordReset,
   hashPassword,
   MIN_PASSWORD_LENGTH,
 } from "@/lib/auth/customer-password"
@@ -156,13 +156,21 @@ export async function forgotPasswordAction(
     }
   }
 
-  const customer = await findCustomerByEmail(email)
+  /**
+   * SEMUA peran, termasuk staff — lihat `findAccountForPasswordReset`.
+   *
+   * Satu pintu memang sudah satu pintu: `/login` melayani pelanggan dan staff,
+   * dan `/admin/login` cuma mengalihkan ke sana. Tautan "Lupa password?" di
+   * bawah formulirnya pun sudah dilihat semua orang sejak Fase A — yang belum
+   * ada hanyalah balasan untuk separuh di antara mereka.
+   */
+  const account = await findAccountForPasswordReset(email)
 
-  if (customer && customer.passwordHash) {
+  if (account && account.passwordHash) {
     try {
-      const token = await createVerificationToken(customer.id, "reset_password")
+      const token = await createVerificationToken(account.id, "reset_password")
       const link = `${baseUrl}/login/reset-password/${token}`
-      await sendEmail({ to: customer.email, subject: "Reset password HNS IT Center", text: resetPasswordEmailText(link) })
+      await sendEmail({ to: account.email, subject: "Reset password HNS IT Center", text: resetPasswordEmailText(link) })
     } catch (error) {
       // Kegagalan SMTP tetap ditelan diam-diam: membedakan "email terkirim"
       // dari "email tidak terkirim" akan membocorkan email mana yang terdaftar.
@@ -211,10 +219,19 @@ export async function resetPasswordAction(
   // login tetap mencocokkan hash lama di `users`.
   await getPrisma().user.update({
     where: { id: result.customerId },
-    // Password baru berarti sesi lama (termasuk yang mungkin sudah dibajak
-    // lewat password lama) harus mati — sama alasannya dengan
-    // `passwordChangedAt` di sesi admin.
-    data: { passwordHash, sessionsRevokedAt: changedAt },
+    /**
+     * DUA penanda pencabutan, bukan satu. Password baru berarti sesi lama
+     * (termasuk yang mungkin sudah dibajak lewat password lama) harus mati —
+     * tapi "sesi lama" itu ada dalam dua bentuk, dan masing-masing punya
+     * penandanya sendiri: `sessionsRevokedAt` untuk cookie pelanggan,
+     * `passwordChangedAt` untuk cookie panel (lihat `getCurrentCustomer`).
+     *
+     * Sejak reset terbuka untuk staff (23 September 2026), mengisi yang
+     * pertama saja berarti orang yang meminta reset justru tidak mendapat
+     * yang paling dia butuhkan: cookie panel milik siapa pun yang sedang
+     * memegang akunnya tetap hidup sampai kedaluwarsa sendiri.
+     */
+    data: { passwordHash, sessionsRevokedAt: changedAt, passwordChangedAt: changedAt },
   })
 
   return { error: null, ok: true }

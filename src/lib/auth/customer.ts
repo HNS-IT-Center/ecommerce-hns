@@ -41,6 +41,22 @@ export type CurrentCustomer = {
   username: string | null
   phoneNumber: string | null
   /**
+   * Foto profil, atau `null` kalau belum pernah diunggah.
+   *
+   * Selalu URL di bucket R2 kita sendiri: `updateStaffProfileAction`
+   * (features/account/actions.ts) menolak apa pun yang tidak diawali
+   * `NEXT_PUBLIC_R2_PUBLIC_URL`, dan login Google TIDAK pernah menulis kolom
+   * ini. Itu yang membuatnya aman dirender `next/image` — hostnya sudah
+   * terdaftar di `remotePatterns`, bukan host sembarang.
+   *
+   * Ikut dikirim ke klien lewat `/api/auth/me`. Tidak apa-apa: isinya alamat
+   * berkas publik, sama dengan yang sudah tampil di halaman profilnya sendiri.
+   *
+   * Sampai hari ini hanya STAFF yang punya pengunggahnya (`/profile`);
+   * pelanggan biasa bernilai `null` dan jatuh ke avatar inisial.
+   */
+  image: string | null
+  /**
    * Browser ini juga memegang sesi admin yang sah. HANYA untuk navigasi
    * (tautan "Panel Admin") — bukan izin. Akses panel tetap diputuskan
    * `requirePageView`/`requirePermission`, dan status ini TIDAK BOLEH masuk
@@ -85,6 +101,7 @@ const ACCOUNT_SELECT = {
   name: true,
   username: true,
   phoneNumber: true,
+  image: true,
   role: true,
   roleId: true,
   // Ikut dibaca demi `permissionVersion`. Join kunci primer di baris yang
@@ -164,6 +181,11 @@ export async function getCurrentCustomer(): Promise<CurrentCustomer | null> {
     name: account.name,
     username: account.username,
     phoneNumber: account.phoneNumber,
+    // Dari akun yang TAMPIL, bukan dari `adminAccount`. Foto adalah bagian dari
+    // identitas yang sedang ditunjukkan header; kalau admin sedang menguji akun
+    // pelanggan di peramban yang sama, yang harus terlihat adalah wajah akun
+    // pelanggan itu — sama seperti nama dan emailnya di atas.
+    image: account.image,
     isAdmin: adminAccount !== null,
     canVerify,
     // Dari akun ADMIN, sumber yang sama dengan `canVerify` — bukan dari akun

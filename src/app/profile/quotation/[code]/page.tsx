@@ -8,8 +8,17 @@ import { getCurrentUser } from "@/lib/auth"
 import { bisaAkses, muatIzinUser } from "@/lib/auth/permissions"
 import { getQuotationForUser } from "@/lib/api/pc-build-quotes"
 import { getSalesDisplayName } from "@/lib/api/admin-users"
-import { FollowUpWaButton } from "@/features/quotation/components/follow-up-wa-button"
+import { QuotationCustomerActions } from "@/features/quotation/components/customer-actions"
+import { DpToggleButton } from "@/features/quotation/components/dp-toggle-button"
+import { RefreshPricesButton } from "@/features/quotation/components/refresh-prices-button"
+import {
+  QUOTE_ACTION_OUTLINE,
+  QUOTE_ACTION_PRIMARY,
+  QUOTE_ACTION_ROW,
+} from "@/features/quotation/lib/button-styles"
 import { formatRupiah } from "@/lib/utils"
+import { publicQuoteUrl } from "@/lib/utils/public-token"
+import { resolveSiteUrl } from "@/lib/utils/site-url"
 import { QUOTE_CODE_PATTERN, formatQuoteDateTime } from "@/app/verify/format"
 
 export const metadata = {
@@ -65,6 +74,36 @@ export default async function DetailQuotationPage({
    */
   const namaPengirim = (await getSalesDisplayName(user.id)) ?? user.name
 
+  /**
+   * Tautan penawaran yang ikut di pesan follow-up, disusun DI SERVER.
+   *
+   * `resolveSiteUrl()` dipakai alih-alih merangkainya di komponen klien dari
+   * `window.location`: di balik proxy Hostinger host permintaan bukan domain
+   * publik, dan tautan yang salah host akan mendarat di alamat yang tidak bisa
+   * dibuka ponsel pelanggan (lihat catatan di `src/app/p/[id]/route.ts`).
+   *
+   * `null` untuk quotation lama yang belum punya token — pesannya tetap
+   * tersusun, hanya tanpa baris tautan.
+   */
+  const publicUrl = quote.publicToken
+    ? publicQuoteUrl(await resolveSiteUrl(), quote.publicToken)
+    : null
+
+  const sudahDp = quote.dpAt !== null
+
+  /**
+   * Cetak ulang membawa token penawaran, bukan cuma kodenya.
+   *
+   * Staff yang membuka halaman ini memang lolos penjaga halaman cetak lewat
+   * izinnya, jadi `?t=` bukan syarat baginya. Ia tetap disertakan supaya alamat
+   * yang tersalin dari bilah alamat — dan itu terjadi setiap kali sales
+   * mengirimkan dokumennya ke rekan atau ke pelanggan — tetap bisa dibuka
+   * penerimanya.
+   */
+  const cetakHref = quote.publicToken
+    ? `/build-pc/print?kode=${encodeURIComponent(quote.code)}&t=${quote.publicToken}`
+    : `/build-pc/print?kode=${encodeURIComponent(quote.code)}`
+
   return (
     <div className="flex min-h-dvh flex-col bg-page">
       <Header />
@@ -95,6 +134,14 @@ export default async function DetailQuotationPage({
                   >
                     {terjual ? "Terjual" : "Terbit"}
                   </span>
+                  {/* Penanda, sejajar dengan status tapi BUKAN status — lihat
+                      catatan di kolom `dpAt`. Quotation ber-DP tetap bisa
+                      direvisi dan tetap bisa ditandai terjual. */}
+                  {sudahDp && (
+                    <span className="rounded-full bg-primary/10 px-2.5 py-0.5 font-sans text-xs font-semibold text-primary">
+                      Sudah DP
+                    </span>
+                  )}
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Diterbitkan {formatQuoteDateTime(quote.createdAt)}
@@ -102,12 +149,19 @@ export default async function DetailQuotationPage({
                 </p>
               </div>
 
-              <div className="flex flex-wrap gap-2">
+              {/* Satu baris tombol dengan SATU ukuran.
+
+                  Tingginya, padding, dan ukuran hurufnya datang dari
+                  `lib/button-styles.ts` — sebelumnya tiap tombol lahir di waktu
+                  berbeda dan membawa ukurannya sendiri, sehingga lima tombol
+                  berjejer dengan lima tinggi berbeda. Di HP jadi grid dua kolom
+                  supaya tidak berubah jadi menara tombol selebar layar. */}
+              <div className={QUOTE_ACTION_ROW}>
                 <Link
-                  href={`/build-pc/print?kode=${encodeURIComponent(quote.code)}`}
+                  href={cetakHref}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-xl border border-input px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-muted"
+                  className={QUOTE_ACTION_OUTLINE}
                 >
                   <Printer className="h-4 w-4" />
                   Cetak ulang
@@ -119,28 +173,60 @@ export default async function DetailQuotationPage({
                 {quote.isOwner && !terjual && (
                   <Link
                     href={`/build-pc?quotation=${encodeURIComponent(quote.code)}`}
-                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                    className={QUOTE_ACTION_PRIMARY}
                   >
                     <PencilLine className="h-4 w-4" />
-                    Revisi di Builder
+                    Revisi
                   </Link>
                 )}
 
-                {/* Tidak dibatasi status: quotation yang sudah Terjual pun
-                    masih ditindaklanjuti — konfirmasi pengambilan, pertanyaan
-                    setelah barang di tangan. Yang membuatnya hilang hanyalah
-                    nomor HP yang kosong atau tidak masuk akal, dan itu
-                    diputuskan di dalam komponennya. */}
-                <FollowUpWaButton
-                  customerName={quote.customerName}
-                  customerPhone={quote.customerPhone}
-                  salesName={namaPengirim}
+                {/* Follow-up TIDAK dibatasi status: quotation yang sudah Terjual
+                    pun masih ditindaklanjuti — konfirmasi pengambilan,
+                    pertanyaan setelah barang di tangan. Tombolnya juga tetap ada
+                    saat nomornya kosong; yang terjadi kemudian diputuskan di
+                    dalam komponennya. */}
+                <QuotationCustomerActions
                   code={quote.code}
                   revision={quote.revision}
+                  customerName={quote.customerName}
+                  customerPhone={quote.customerPhone}
+                  internalNote={quote.internalNote}
+                  salesName={namaPengirim}
                   totalText={formatRupiah(quote.total)}
+                  publicUrl={publicUrl}
+                  bisaSunting={quote.isOwner && !terjual}
                 />
+
+                {/* Dua tombol milik PEMILIK, dan hanya selama belum terjual.
+                    Menyegarkan harga adalah revisi, dan revisi memang berhenti
+                    di dokumen yang sudah dipakai bertransaksi; menandai DP pada
+                    penjualan yang sudah tutup tidak menyatakan apa pun lagi.
+                    Syarat yang sama ditegakkan ulang di server. */}
+                {quote.isOwner && !terjual && (
+                  <>
+                    <RefreshPricesButton code={quote.code} sudahDp={sudahDp} />
+                    <DpToggleButton code={quote.code} sudahDp={sudahDp} />
+                  </>
+                )}
               </div>
             </div>
+
+            {/* Alamat yang akan ikut terkirim di pesan follow-up, ditampilkan
+                apa adanya supaya sales bisa menyalinnya sendiri saat ia lebih
+                suka mengetik pesannya dari awal. */}
+            {publicUrl && (
+              <p className="mt-3 break-all text-xs text-muted-foreground">
+                Tautan penawaran untuk pelanggan:{" "}
+                <a
+                  href={publicUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-semibold text-primary hover:underline"
+                >
+                  {publicUrl}
+                </a>
+              </p>
+            )}
 
             {quote.dioperDariCs && (
               <p className="mt-3 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">

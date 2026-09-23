@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { FileText, LayoutDashboard, LogOut, Wrench } from "lucide-react";
+import { LayoutDashboard, LogOut, Wrench } from "lucide-react";
 
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
@@ -8,7 +8,11 @@ import { getCurrentCustomer } from "@/lib/auth/customer";
 import { getCurrentUser } from "@/lib/auth";
 import { bisaAkses, muatIzinUser } from "@/lib/auth/permissions";
 import { listSavedBuilds } from "@/lib/api/saved-pc-builds";
+import { getStaffProfile } from "@/lib/api/staff-profile";
+import { MIN_PASSWORD_LENGTH } from "@/lib/auth/password";
 import { SavedBuildCard } from "@/features/account/components/saved-build-card";
+import { ProfileTabs } from "@/features/account/components/profile-tabs";
+import { StaffProfileCard } from "@/features/account/components/staff-profile-card";
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp";
 import { env } from "@/config/env";
 import { InstallAppButton } from "@/features/pwa/components/install-app-button";
@@ -59,6 +63,55 @@ export default async function Page() {
     ? bisaAkses(await muatIzinUser(staff), "quotation-terbit", "edit")
     : false;
 
+  /**
+   * Profil yang bisa disunting hanya untuk STAFF.
+   *
+   * Pelanggan biasa tidak melihat kartunya sama sekali — nama sales, username
+   * panel, dan nomor yang dihubungi pelanggan tidak berarti apa-apa bagi mereka,
+   * dan mereka juga tidak punya sesi admin untuk menyimpannya. Datanya pun tidak
+   * dibaca kalau bukan staff, bukan sekadar tidak dirender: baris yang tidak
+   * pernah dikirim tidak bisa terbaca dari payload RSC.
+   *
+   * `staff.id === customer.id` bukan syarat berlebihan. Satu peramban bisa
+   * memegang dua sesi untuk akun BERBEDA — admin yang sedang menguji akun
+   * pelanggan — dan di situ `getCurrentCustomer()` memenangkan sesi pelanggan
+   * sementara `getCurrentUser()` tetap mengembalikan akun adminnya. Tanpa
+   * perbandingan ini, halaman menampilkan nama pelanggan di kepalanya tapi
+   * menyunting profil akun admin di bawahnya.
+   */
+  const staffProfile =
+    staff && staff.id === customer.id ? await getStaffProfile(staff.id) : null;
+
+  /**
+   * Tombol akun, disusun sekali lalu dipakai dua cabang tampilan.
+   *
+   * Di mobile tidak ada dropdown akun — dock "Profil" mendarat di halaman ini,
+   * jadi jalan ke panel untuk admin harus ada di sini juga, bukan hanya di
+   * header desktop.
+   */
+  const tombolAkun = (
+    <>
+      {customer.isAdmin && (
+        <Link
+          href="/admin"
+          className="flex h-11 items-center justify-center gap-2 rounded-xl border border-input px-4 text-sm font-semibold transition-colors hover:bg-muted"
+        >
+          <LayoutDashboard className="h-4 w-4" />
+          Panel Admin
+        </Link>
+      )}
+      <form action={customerLogoutAction}>
+        <button
+          type="submit"
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-input px-4 text-sm font-semibold transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+        >
+          <LogOut className="h-4 w-4" />
+          Keluar
+        </button>
+      </form>
+    </>
+  );
+
   const deleteAccountWaUrl = buildWhatsAppUrl(
     env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER,
     "Halo HNS IT Center, saya ingin menghapus akun saya beserta data yang tersimpan."
@@ -68,48 +121,58 @@ export default async function Page() {
     <div className="flex min-h-dvh flex-col bg-page">
       <Header />
       <main className="min-h-content flex-1 p-4 py-12 sm:px-6 lg:px-8">
-        <div className="mx-auto w-full max-w-4xl space-y-8">
-          <div className="flex flex-col gap-6 rounded-2xl border bg-card p-8 shadow-sm sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-extrabold tracking-tight">Profil Saya</h1>
-              <p className="mt-1 text-sm text-muted-foreground">{customer.name}</p>
-              <p className="text-sm text-muted-foreground">{customer.email}</p>
-            </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row">
-              {/* Di mobile tidak ada dropdown akun — dock "Profil" mendarat di
-                  sini, jadi jalan ke panel untuk admin harus ada di halaman
-                  ini juga, bukan hanya di header desktop. */}
-              {bolehQuotation && (
-                <Link
-                  href="/profile/quotation"
-                  className="flex items-center justify-center gap-2 rounded-xl border border-input px-4 py-3 text-sm font-semibold transition-colors hover:bg-muted"
-                >
-                  <FileText className="h-4 w-4" />
-                  Quotation Saya
-                </Link>
-              )}
-              {customer.isAdmin && (
-                <Link
-                  href="/admin"
-                  className="flex items-center justify-center gap-2 rounded-xl border border-input px-4 py-3 text-sm font-semibold transition-colors hover:bg-muted"
-                >
-                  <LayoutDashboard className="h-4 w-4" />
-                  Panel Admin
-                </Link>
-              )}
-              <form action={customerLogoutAction}>
-                <button
-                  type="submit"
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-input px-4 py-3 text-sm font-semibold transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Keluar
-                </button>
-              </form>
-            </div>
+        <div className="mx-auto w-full max-w-4xl space-y-6">
+          {/* Judul halaman DI ATAS bilah tab, bentuk yang sama persis dengan
+              `/profile/quotation` dan `/profile/rakitan`. Ketiganya satu
+              rangkaian halaman; kalau yang satu berjudul di luar kartu dan yang
+              lain di dalam kartu, berpindah tab terasa seperti berpindah
+              aplikasi. */}
+          <div>
+            <h1 className="text-2xl font-extrabold tracking-tight">Profil Saya</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {bolehQuotation
+                ? "Foto, nama, dan nomor yang dilihat pelanggan pada quotation dan pesan follow-up."
+                : "Data akun Anda di HNS IT Center."}
+            </p>
           </div>
 
+          {/* Bilah tab, dan `/profile` adalah SALAH SATU tabnya — bukan halaman
+              induk yang memuat tab di tengah isinya.
+
+              Bentuk sebelumnya membingungkan: kartu profil berdiri di bawah
+              bilah tab yang menyorot "Rakitan Tersimpan", jadi pengaturan akun
+              terbaca seolah isi tab itu. Pelanggan biasa tidak melihat bilahnya
+              sama sekali — bagi mereka memang cuma ada satu daftar. */}
+          {bolehQuotation && <ProfileTabs active="profil" />}
+
+          {/* Satu kartu kepala, bukan dua. Untuk staff, tombol Panel Admin &
+              Keluar dititipkan ke kartu profil; untuk pelanggan, kartu ringkas
+              di bawah ini yang memuatnya. */}
+          {staffProfile ? (
+            <StaffProfileCard
+              profile={staffProfile}
+              minPasswordLength={MIN_PASSWORD_LENGTH}
+              bolehQuotation={bolehQuotation}
+              actions={tombolAkun}
+            />
+          ) : (
+            <div className="flex flex-col gap-6 rounded-2xl border bg-card p-6 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-lg font-bold">{customer.name}</p>
+                <p className="text-sm text-muted-foreground">{customer.email}</p>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row">{tombolAkun}</div>
+            </div>
+          )}
+
+          {/* Daftar rakitan hanya di sini untuk yang TIDAK punya tabnya sendiri.
+
+              Sales & CS punya tab "Rakitan Tersimpan" dengan isi yang sama
+              persis; menampilkannya dua kali berarti halaman profil mereka
+              berakhir dengan daftar yang sudah punya alamatnya sendiri, dan tab
+              yang aktif berhenti menjelaskan apa yang sedang dilihat. */}
+          {!bolehQuotation && (
           <div>
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-bold">Rakitan Tersimpan</h2>
@@ -137,6 +200,8 @@ export default async function Page() {
               </div>
             )}
           </div>
+
+          )}
 
           {/* Hidden automatically when not installable or already installed. */}
           <InstallAppButton variant="card" />

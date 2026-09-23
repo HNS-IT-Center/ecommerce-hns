@@ -149,7 +149,7 @@ Sebelum bekerja di area tertentu, baca dokumen terkait di folder `docs/`:
 | [`docs/14-pwa.md`](./docs/14-pwa.md) | Menyentuh `public/sw.js`, manifest, ikon aplikasi, atau tombol install. **Service worker dilarang menyimpan halaman/API** — harga basi melanggar §2.7. |
 | [`docs/15-seo.md`](./docs/15-seo.md) | Menyentuh `metadata` di layout/halaman, `sitemap.ts`, `robots.ts`, ikon situs, atau structured data. **`alternates.canonical` dilarang di layout** — ia diwarisi semua halaman.
 | [`docs/16-database-lokal-docker.md`](./docs/16-database-lokal-docker.md) | Menguji perubahan yang menyentuh database, menjalankan skrip tulis, atau mencoba migrasi. **Uji di database lokal Docker dulu, jangan di produksi** — `DATABASE_URL` menunjuk lokal, produksi disimpan sebagai `PROD_DATABASE_URL`. |
-| [`docs/17-quotation-sales.md`](./docs/17-quotation-sales.md) | Menyentuh quotation rakitan PC: `/build-pc/print`, `/verify`, `/profile/quotation`, `/admin/quotation`, atau tabel `pc_build_quotes` dan turunannya. **Halaman cetak DILARANG menulis** — nomor hanya terbit lewat server action, dan kasir tidak pernah melihat nomor HP atau catatan internal pelanggan. |
+| [`docs/17-quotation-sales.md`](./docs/17-quotation-sales.md) | Menyentuh quotation rakitan PC: `/build-pc/print`, `/q/[token]`, `/verify`, `/profile/quotation`, `/admin/quotation`, atau tabel `pc_build_quotes` dan turunannya. **Halaman cetak DILARANG menulis** — nomor hanya terbit lewat server action, dan kasir tidak pernah melihat nomor HP atau catatan internal pelanggan. **Tautan publik `/q` memakai token acak, bukan kode** — kode quotation berurutan dan bisa ditebak tetangganya. |
 
 ---
 

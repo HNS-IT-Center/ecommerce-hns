@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { ChevronRight } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -18,6 +19,35 @@ import { buildCategoryTree } from "@/lib/utils/category-tree"
 
 import type { ProductCategory } from "@/types/woocommerce"
 
+/**
+ * Apakah tautan nav ini mewakili halaman yang sedang dibuka.
+ *
+ * "Shop" ikut menyala di detail produk dan hasil pencarian — aturan yang sama
+ * persis dipakai dock mobile (`mobile-dock.tsx`), jadi nav atas dan dock bawah
+ * tidak pernah menunjuk tab yang berbeda di halaman yang sama.
+ *
+ * `/category/[slug]` tidak perlu disebut: halaman itu cuma `redirect()` ke
+ * `/shop?category=…`, jadi pathname yang benar-benar dilihat komponen ini
+ * selalu `/shop`.
+ */
+function isNavActive(pathname: string, href: string): boolean {
+  const bases = href === "/shop" ? ["/shop", "/product", "/search"] : [href]
+  return bases.some((base) => pathname === base || pathname.startsWith(base + "/"))
+}
+
+/** Dasar tiga tautan nav atas — dipisah supaya gaya aktifnya cuma ditulis sekali. */
+const navLinkClass = "relative bg-transparent font-bold tracking-wide uppercase text-[13px]"
+
+/**
+ * Garis di bawah tautan yang sedang aktif.
+ *
+ * `after:`, bukan `border-b`: border ikut menghitung tinggi kotak, jadi tautan
+ * aktif akan sedikit lebih pendek dari tetangganya dan seluruh barisnya bergeser
+ * setiap kali pengunjung berpindah halaman.
+ */
+const navLinkActiveClass =
+  "text-brand-green after:absolute after:inset-x-2.5 after:bottom-0.5 after:h-0.5 after:rounded-full after:bg-brand-green"
+
 interface MegaMenuProps {
   categories?: ProductCategory[]
   /** Sakelar PC Prebuild, dibaca di server oleh Header lalu dioper ke sini. */
@@ -27,6 +57,16 @@ interface MegaMenuProps {
 export function MegaMenu({ categories = [], showPrebuild = false }: MegaMenuProps) {
   // Build category hierarchy (shared dengan MobileMenu, lihat lib/utils/category-tree.ts)
   const mappedCategories = buildCategoryTree(categories)
+
+  /**
+   * Halaman yang sedang dibuka, untuk menyorot tautan yang mewakilinya.
+   *
+   * "Kategori" sengaja tidak pernah ikut disorot. Seluruh isinya mengarah ke
+   * `/shop?category=…`, jadi menyalakannya berarti dua tautan menyala sekaligus
+   * di halaman yang sama — dan indikator yang menunjuk dua tempat tidak
+   * menjawab pertanyaan "saya sedang di mana". Ia pemicu menu, bukan tujuan.
+   */
+  const pathname = usePathname()
 
   // State to track which root category the user has hovered.
   // Stays null until the user hovers one — the first category is the
@@ -119,7 +159,22 @@ export function MegaMenu({ categories = [], showPrebuild = false }: MegaMenuProp
         </NavigationMenuItem>
         
         <NavigationMenuItem>
-          <NavigationMenuLink render={<Link href="/build-pc" className={cn(navigationMenuTriggerStyle(), "bg-transparent font-bold tracking-wide uppercase text-[13px]")} />}>
+          {/* `aria-current="page"` bukan pelengkap gaya di atas — ia yang
+              menyampaikan "sedang di sini" ke pembaca layar, yang tidak bisa
+              melihat garis hijaunya. */}
+          <NavigationMenuLink
+            render={
+              <Link
+                href="/build-pc"
+                aria-current={isNavActive(pathname, "/build-pc") ? "page" : undefined}
+                className={cn(
+                  navigationMenuTriggerStyle(),
+                  navLinkClass,
+                  isNavActive(pathname, "/build-pc") && navLinkActiveClass,
+                )}
+              />
+            }
+          >
             PC Builder
           </NavigationMenuLink>
         </NavigationMenuItem>
@@ -129,14 +184,38 @@ export function MegaMenu({ categories = [], showPrebuild = false }: MegaMenuProp
             dan tidak boleh menyentuh lapisan data sendiri (CLAUDE.md §2.5). */}
         {showPrebuild && (
           <NavigationMenuItem>
-            <NavigationMenuLink render={<Link href="/pc-prebuild" className={cn(navigationMenuTriggerStyle(), "bg-transparent font-bold tracking-wide uppercase text-[13px]")} />}>
+            <NavigationMenuLink
+              render={
+                <Link
+                  href="/pc-prebuild"
+                  aria-current={isNavActive(pathname, "/pc-prebuild") ? "page" : undefined}
+                  className={cn(
+                    navigationMenuTriggerStyle(),
+                    navLinkClass,
+                    isNavActive(pathname, "/pc-prebuild") && navLinkActiveClass,
+                  )}
+                />
+              }
+            >
               PC Prebuild
             </NavigationMenuLink>
           </NavigationMenuItem>
         )}
         
         <NavigationMenuItem>
-          <NavigationMenuLink render={<Link href="/shop" className={cn(navigationMenuTriggerStyle(), "bg-transparent font-bold tracking-wide uppercase text-[13px]")} />}>
+          <NavigationMenuLink
+            render={
+              <Link
+                href="/shop"
+                aria-current={isNavActive(pathname, "/shop") ? "page" : undefined}
+                className={cn(
+                  navigationMenuTriggerStyle(),
+                  navLinkClass,
+                  isNavActive(pathname, "/shop") && navLinkActiveClass,
+                )}
+              />
+            }
+          >
             Shop
           </NavigationMenuLink>
         </NavigationMenuItem>

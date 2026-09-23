@@ -12,7 +12,7 @@ import {
 } from "@/lib/api/roles"
 import { ADMIN_PAGES, type AdminPage, type AccessLevel } from "@/lib/auth/permissions"
 import { setSalesDisplayName } from "@/lib/api/admin-users"
-import { MAX_SALES_DISPLAY_NAME } from "../akun/state"
+import { MAX_SALES_DISPLAY_NAME } from "@/features/quotation/lib/sales-name"
 
 /**
  * Server actions manajemen peran RBAC.

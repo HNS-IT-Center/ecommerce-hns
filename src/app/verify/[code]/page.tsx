@@ -13,6 +13,7 @@ import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { ProductImage } from "@/components/ui/product-image"
 import { QUOTE_CODE_PATTERN, formatQuoteDateTime } from "../format"
+import { QuoteBadge } from "../quote-badge"
 import { CloseQuotationButton } from "../close-quotation-button"
 
 export const dynamic = "force-dynamic"
@@ -185,26 +186,31 @@ export default async function VerifyQuotePage({
                 </h1>
                 <p className="mt-1 text-sm text-muted-foreground">Diterbitkan {issued}</p>
               </div>
-              <div className="flex flex-col items-end gap-1.5">
-                <div className="rounded-full bg-brand-green/10 px-3 py-1.5 text-xs font-bold text-brand-green">
-                  ✓ Asli
-                </div>
-                {/* Status jual dipisah dari tanda keaslian: "asli" menjawab
-                    apakah dokumennya benar terbit dari sistem, "terjual"
-                    menjawab apakah ia sudah dipakai bertransaksi. Menggabungkan
-                    keduanya jadi satu lencana membuat kasir menebak. */}
+              {/* Tiga lencana, satu bentuk, mengalir ke bawah baris kode di HP.
+
+                  "Asli" dipisah dari status jual dengan sengaja: yang pertama
+                  menjawab apakah dokumennya benar terbit dari sistem, yang kedua
+                  apakah ia sudah dipakai bertransaksi. Menggabungkan keduanya
+                  jadi satu lencana membuat kasir menebak.
+
+                  Bentuknya sama persis dengan lencana di grid `/verify`
+                  (`QuoteBadge`) — kasir membaca dua layar yang sama dalam satu
+                  pekerjaan, dan dua gaya berbeda untuk keadaan yang sama
+                  memaksanya membaca ulang tiap kali. */}
+              <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
+                <QuoteBadge tone="asli">✓ Asli</QuoteBadge>
                 {info && (
-                  <div
-                    className={`rounded-full px-3 py-1.5 text-xs font-bold ${
-                      terjual
-                        ? "bg-brand-green text-white"
-                        : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {terjual ? "TERJUAL" : "Belum terjual"}
+                  <QuoteBadge tone={terjual ? "terjual" : "netral"}>
+                    {terjual ? "Terjual" : "Belum terjual"}
                     {info.revision > 1 && ` · Rev. ${info.revision}`}
-                  </div>
+                  </QuoteBadge>
                 )}
+                {/* Penanda DP dari sales. Kasir perlu tahu pelanggan ini sudah
+                    membayar di muka SEBELUM menerima pembayarannya — tapi tidak
+                    ada nominal yang tersimpan di mana pun, jadi tidak ada
+                    "sisa bayar" yang bisa ditampilkan di sini. Berapa yang sudah
+                    masuk tetap ditanyakan ke sales-nya. */}
+                {info?.dpAt && <QuoteBadge tone="dp">Sudah DP</QuoteBadge>}
               </div>
             </div>
 

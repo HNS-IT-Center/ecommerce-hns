@@ -46,7 +46,10 @@ export default async function AdminLayout({
     <div className="bg-muted/40 text-foreground min-h-dvh w-full flex font-sans">
       <PermissionWatcher versiAwal={versiIzin} />
       <SidebarProvider defaultOpen={defaultOpen} style={{ "--sidebar-width-icon": "4.5rem" } as React.CSSProperties}>
-        <AppSidebar user={{ name: user.name, email: user.email }} allowedPages={pagesTerlihat} />
+        <AppSidebar
+          user={{ name: user.name, email: user.email, image: user.image }}
+          allowedPages={pagesTerlihat}
+        />
         <div className="flex flex-col flex-1 w-full relative z-10 min-w-0">
           {/* Mobile top bar — shown only on mobile, replaces client bottom nav */}
           <AdminMobileBar />
