@@ -171,6 +171,7 @@ async function TabAdmin({
         currentUserId={currentUserId}
         roleOptions={roles.map((r) => ({ id: r.id, name: r.name }))}
         canManage={canManage}
+        showFilter
       />
 
       <div className="mt-10">

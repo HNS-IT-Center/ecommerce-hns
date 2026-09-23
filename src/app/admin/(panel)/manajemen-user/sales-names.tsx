@@ -3,8 +3,16 @@
 import { useState, useTransition } from "react"
 import { Check, Loader2, TriangleAlert } from "lucide-react"
 
+import { AdminPagination } from "@/components/admin/admin-pagination"
 import { MAX_SALES_DISPLAY_NAME } from "@/features/quotation/lib/sales-name"
 import { setSalesDisplayNameAction } from "./actions"
+
+/**
+ * Baris Sales per halaman. Lebih kecil dari kartu admin: tiap baris memuat satu
+ * kolom isian dan tombol simpan, jadi daftar panjang di satu halaman berarti
+ * banyak isian belum tersimpan yang tergulir jauh dari pandangan.
+ */
+const SALES_PER_HALAMAN = 10
 
 type SalesRow = {
   id: string
@@ -23,6 +31,19 @@ type SalesRow = {
  * Perubahan tidak berlaku surut — quotation menyimpan salinan nama saat terbit.
  */
 export function SalesNames({ rows, bolehEdit }: { rows: SalesRow[]; bolehEdit: boolean }) {
+  /**
+   * Halaman yang sedang dibuka, dijepit saat render supaya daftar yang menyusut
+   * (mis. seseorang kehilangan peran Sales lalu halamannya disegarkan) tidak
+   * meninggalkan tampilan di halaman yang sudah tidak ada isinya.
+   */
+  const [halaman, setHalaman] = useState(1)
+  const jumlahHalaman = Math.max(1, Math.ceil(rows.length / SALES_PER_HALAMAN))
+  const halamanAktif = Math.min(halaman, jumlahHalaman)
+  const barisHalamanIni = rows.slice(
+    (halamanAktif - 1) * SALES_PER_HALAMAN,
+    halamanAktif * SALES_PER_HALAMAN,
+  )
+
   if (rows.length === 0) {
     return (
       <p className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
@@ -34,11 +55,33 @@ export function SalesNames({ rows, bolehEdit }: { rows: SalesRow[]; bolehEdit: b
   }
 
   return (
-    <div className="divide-y divide-border rounded-xl border border-border">
-      {rows.map((row) => (
-        <SalesNameRow key={row.id} row={row} bolehEdit={bolehEdit} />
-      ))}
-    </div>
+    <>
+      <div className="divide-y divide-border rounded-xl border border-border">
+        {barisHalamanIni.map((row) => (
+          <SalesNameRow key={row.id} row={row} bolehEdit={bolehEdit} />
+        ))}
+      </div>
+
+      {/*
+        Hanya muncul kalau memang ada halaman kedua.
+
+        Catatan: isian yang belum ditekan "Simpan" HILANG saat pindah halaman —
+        state tiap baris hidup di `SalesNameRow` dan barisnya dilepas React saat
+        tidak lagi dirender. Itu dibiarkan apa adanya karena menyimpan draft
+        lintas halaman berarti menahan nama yang belum tentu dikehendaki; yang
+        penting, tidak ada yang tersimpan diam-diam.
+      */}
+      {jumlahHalaman > 1 && (
+        <AdminPagination
+          page={halamanAktif}
+          pageCount={jumlahHalaman}
+          total={rows.length}
+          pageSize={SALES_PER_HALAMAN}
+          labelBaris="sales"
+          onPageChange={setHalaman}
+        />
+      )}
+    </>
   )
 }
 

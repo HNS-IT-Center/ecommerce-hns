@@ -47,9 +47,30 @@ type Props = {
   pageSize: number
   /** Kata benda jamak untuk keterangan, mis. "akun". */
   labelBaris?: string
+  /**
+   * Mode TERKENDALI: halaman berpindah lewat state pemanggil, bukan lewat URL.
+   *
+   * Dipakai daftar yang disaring di klien (tab Admin, Nama Sales) — datanya
+   * sudah termuat seluruhnya, jadi pindah halaman tidak perlu menyentuh server.
+   * Lebih dari itu, `page` di URL akan BERTABRAKAN dengan filter yang hidup di
+   * memori: menyaring daftar sampai tersisa satu halaman sementara URL masih
+   * berkata `page=3` menghasilkan daftar kosong yang tak bisa dijelaskan.
+   *
+   * Saat diisi, nomor halaman dirender sebagai `<button>` dan bukan `<Link>` —
+   * tautan yang tidak menavigasi ke mana-mana adalah kebohongan untuk pembaca
+   * layar dan untuk siapa pun yang menahan Ctrl saat menekannya.
+   */
+  onPageChange?: (page: number) => void
 }
 
-export function AdminPagination({ page, pageCount, total, pageSize, labelBaris = "baris" }: Props) {
+export function AdminPagination({
+  page,
+  pageCount,
+  total,
+  pageSize,
+  labelBaris = "baris",
+  onPageChange,
+}: Props) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
@@ -87,6 +108,7 @@ export function AdminPagination({ page, pageCount, total, pageSize, labelBaris =
         <div className="flex items-center gap-1">
           <TombolArah
             href={hrefHalaman(page - 1)}
+            onPilih={onPageChange && (() => onPageChange(page - 1))}
             aktif={page > 1}
             label="Halaman sebelumnya"
             arah="kiri"
@@ -110,19 +132,13 @@ export function AdminPagination({ page, pageCount, total, pageSize, labelBaris =
                   …
                 </span>
               ) : (
-                <Link
+                <NomorHalaman
                   key={n}
+                  nomor={n}
+                  aktif={n === page}
                   href={hrefHalaman(n)}
-                  aria-current={n === page ? "page" : undefined}
-                  aria-label={`Halaman ${n}`}
-                  className={`flex h-9 min-w-9 items-center justify-center rounded-md px-2 text-sm font-medium tabular-nums transition-colors ${
-                    n === page
-                      ? "bg-primary text-primary-foreground"
-                      : "border border-border hover:bg-muted"
-                  }`}
-                >
-                  {n}
-                </Link>
+                  onPilih={onPageChange}
+                />
               ),
             )}
           </div>
@@ -134,6 +150,7 @@ export function AdminPagination({ page, pageCount, total, pageSize, labelBaris =
 
           <TombolArah
             href={hrefHalaman(page + 1)}
+            onPilih={onPageChange && (() => onPageChange(page + 1))}
             aktif={page < pageCount}
             label="Halaman berikutnya"
             arah="kanan"
@@ -141,6 +158,48 @@ export function AdminPagination({ page, pageCount, total, pageSize, labelBaris =
         </div>
       )}
     </nav>
+  )
+}
+
+/** Satu nomor halaman — tautan di mode URL, tombol di mode terkendali. */
+function NomorHalaman({
+  nomor,
+  aktif,
+  href,
+  onPilih,
+}: {
+  nomor: number
+  aktif: boolean
+  href: string
+  onPilih?: (page: number) => void
+}) {
+  const kelas = `flex h-9 min-w-9 items-center justify-center rounded-md px-2 text-sm font-medium tabular-nums transition-colors ${
+    aktif ? "bg-primary text-primary-foreground" : "border border-border hover:bg-muted"
+  }`
+
+  if (onPilih) {
+    return (
+      <button
+        type="button"
+        onClick={() => onPilih(nomor)}
+        aria-current={aktif ? "page" : undefined}
+        aria-label={`Halaman ${nomor}`}
+        className={kelas}
+      >
+        {nomor}
+      </button>
+    )
+  }
+
+  return (
+    <Link
+      href={href}
+      aria-current={aktif ? "page" : undefined}
+      aria-label={`Halaman ${nomor}`}
+      className={kelas}
+    >
+      {nomor}
+    </Link>
   )
 }
 
@@ -152,11 +211,14 @@ export function AdminPagination({ page, pageCount, total, pageSize, labelBaris =
  */
 function TombolArah({
   href,
+  onPilih,
   aktif,
   label,
   arah,
 }: {
   href: string
+  /** Mode terkendali — kalau diisi, panahnya tombol dan `href` diabaikan. */
+  onPilih?: () => void
   aktif: boolean
   label: string
   arah: "kiri" | "kanan"
@@ -171,6 +233,20 @@ function TombolArah({
       </span>
     )
   }
+
+  if (onPilih) {
+    return (
+      <button
+        type="button"
+        onClick={onPilih}
+        aria-label={label}
+        className={`${kelas} transition-colors hover:bg-muted`}
+      >
+        <Ikon className="h-4 w-4" />
+      </button>
+    )
+  }
+
   return (
     <Link href={href} aria-label={label} className={`${kelas} transition-colors hover:bg-muted`}>
       <Ikon className="h-4 w-4" />

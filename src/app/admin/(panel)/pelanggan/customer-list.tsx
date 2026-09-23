@@ -214,6 +214,48 @@ export function CustomerList({ customers, canDelete, roleOptions, canManageRole,
               </div>
             </dl>
 
+            {/*
+              Ubah peran di KARTU, bukan cuma lewat klik-kanan di tabel.
+
+              Klik-kanan hanya terpasang di `<tr>`, dan tabelnya `hidden
+              lg:block` — jadi di ponsel dan tablet tidak ada satu pun jalur
+              untuk mengangkat pelanggan jadi Sales. Peramban ponsel tidak
+              punya "klik kanan": tahan-lama justru memunculkan menu bawaan
+              sistem, sehingga fitur yang di desktop terasa ada, di ponsel
+              seolah tidak pernah dibuat.
+
+              Dropdown, bukan menu tahan-lama: ia dikenal semua peramban,
+              bisa dipakai keyboard dan pembaca layar, dan targetnya cukup
+              besar untuk jempol.
+            */}
+            {canManageRole && (
+              <div className="mt-4 flex items-center gap-2">
+                <label htmlFor={`peran-hp-${c.id}`} className="shrink-0 text-xs text-muted-foreground">
+                  Peran:
+                </label>
+                <select
+                  id={`peran-hp-${c.id}`}
+                  value={c.roleId ?? ""}
+                  disabled={pending}
+                  onChange={(e) => pilihPeran(c.id, e.target.value)}
+                  className="min-w-0 flex-1 rounded-md border border-input bg-background px-2 py-2 text-xs disabled:opacity-60"
+                >
+                  <option value="">— (pelanggan biasa)</option>
+                  {roleOptions.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {canManageRole && roleOptions.length === 0 && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Belum ada peran. Buat di tab Peran dulu.
+              </p>
+            )}
+
             {canDelete && (
               <Button
                 variant="outline"

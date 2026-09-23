@@ -1,11 +1,12 @@
 "use client"
 
-import { useActionState, useEffect, useRef, useState, useTransition } from "react"
+import { useActionState, useEffect, useMemo, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { CheckCircle2, Info, ShieldCheck, X, Check, UserMinus } from "lucide-react"
+import { CheckCircle2, Info, ShieldCheck, X, Check, UserMinus, Search } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
+import { AdminPagination } from "@/components/admin/admin-pagination"
 import { RoleTag, kelasAksenPeran } from "@/components/admin/role-tag"
 import { ADMIN_ROLE_DESCRIPTIONS, ADMIN_ROLE_LABELS, type AdminRole } from "@/lib/auth/roles"
 
@@ -40,7 +41,28 @@ type Props = {
    * Yang terlihat tapi terkunci menjelaskan dirinya sendiri.
    */
   canManage: boolean
+  /**
+   * Tampilkan baris pencarian & filter peran di atas daftar.
+   *
+   * Mati secara bawaan. Komponen ini dirender di DUA tempat: tab Admin di
+   * Manajemen User (daftar seluruh tim — di situlah mencari orang masuk akal)
+   * dan kartu "Role Admin" di /admin/akun, yang isinya sama tapi hadir sebagai
+   * keterangan singkat. Menyalakannya di mana-mana berarti menaruh kotak
+   * pencarian di atas daftar yang orangnya tidak datang untuk dicari.
+   */
+  showFilter?: boolean
 }
+
+/** Nilai filter peran yang bukan id peran — sentinel, supaya tidak bentrok. */
+const PERAN_SEMUA = "semua"
+const PERAN_TANPA = "tanpa"
+
+/**
+ * Kartu admin per halaman. Kelipatan 12 supaya barisnya penuh di ketiga lebar
+ * grid: 1 kolom di ponsel, 2 di `sm`, 3 di `xl` — tidak ada baris terakhir yang
+ * menggantung dengan satu kartu sendirian.
+ */
+const ADMIN_PER_HALAMAN = 12
 
 function RoleBadge({ role }: { role: AdminRole }) {
   return (
@@ -68,7 +90,13 @@ function inisial(nama: string): string {
   return (kata[0][0] + kata[kata.length - 1][0]).toUpperCase()
 }
 
-export function AdminRoleList({ admins, currentUserId, roleOptions, canManage }: Props) {
+export function AdminRoleList({
+  admins,
+  currentUserId,
+  roleOptions,
+  canManage,
+  showFilter = false,
+}: Props) {
   const router = useRouter()
   const [state, formAction, pending] = useActionState(updateAdminRole, EMPTY_ROLE_STATE)
   const [roleIdState, roleIdAction, roleIdPending] = useActionState(updateAdminRoleId, EMPTY_ROLE_STATE)
@@ -94,8 +122,51 @@ export function AdminRoleList({ admins, currentUserId, roleOptions, canManage }:
   const errorPesan = state.error ?? roleIdState.error ?? turunState.error
   const sedangProses = pending || roleIdPending || turunPending
 
+  // Dihitung dari daftar PENUH, bukan hasil saringan. Penjaga "owner terakhir"
+  // di bawah memakai angka ini; kalau ia ikut menyusut saat staff mengetik di
+  // kotak pencarian, satu-satunya owner yang kebetulan tersaring keluar akan
+  // terlihat boleh diturunkan — tombol yang pasti ditolak server.
   const ownerCount = admins.filter((a) => a.role === "owner").length
   const namaPeran = new Map(roleOptions.map((r) => [r.id, r.name]))
+
+  /** Kata kunci pencarian (nama & email) dan peran yang sedang disaring. */
+  const [cari, setCari] = useState("")
+  const [filterPeran, setFilterPeran] = useState<string>(PERAN_SEMUA)
+
+  const adminTampil = useMemo(() => {
+    if (!showFilter) return admins
+    const kunci = cari.trim().toLowerCase()
+    return admins.filter((a) => {
+      const cocokKunci =
+        kunci === "" ||
+        a.name.toLowerCase().includes(kunci) ||
+        a.email.toLowerCase().includes(kunci)
+      const cocokPeran =
+        filterPeran === PERAN_SEMUA ||
+        (filterPeran === PERAN_TANPA ? a.roleId === null : a.roleId === filterPeran)
+      return cocokKunci && cocokPeran
+    })
+  }, [admins, cari, filterPeran, showFilter])
+
+  const adaFilterAktif = cari.trim() !== "" || filterPeran !== PERAN_SEMUA
+
+  /**
+   * Halaman yang sedang dibuka.
+   *
+   * Dijepit saat render (`halamanAktif`), BUKAN di-reset lewat `useEffect` saat
+   * filternya berubah. Efek baru berjalan setelah render pertama, jadi selama
+   * satu frame daftarnya kosong — orang yang mengetik di kotak cari akan
+   * melihatnya berkedip kosong sebelum hasilnya muncul. Menjepitnya di sini
+   * membuat penyaringan yang memangkas daftar sampai tinggal satu halaman
+   * langsung menarik tampilan kembali ke halaman yang memang ada.
+   */
+  const [halaman, setHalaman] = useState(1)
+  const jumlahHalaman = Math.max(1, Math.ceil(adminTampil.length / ADMIN_PER_HALAMAN))
+  const halamanAktif = Math.min(halaman, jumlahHalaman)
+  const adminHalamanIni = adminTampil.slice(
+    (halamanAktif - 1) * ADMIN_PER_HALAMAN,
+    halamanAktif * ADMIN_PER_HALAMAN,
+  )
 
   /**
    * Peran yang baru dipilih staff, ditahan sampai data server menyusul.
@@ -267,8 +338,77 @@ export function AdminRoleList({ admins, currentUserId, roleOptions, canManage }:
         isi masing-masing, dan deretan tombol di bawahnya tidak lagi sebaris —
         mata harus mencari tombolnya satu per satu.
       */}
+      {/*
+        Pencarian & filter peran. Disaring di KLIEN, bukan lewat query string:
+        `listAdminUsers()` memang sudah memuat seluruh admin sekaligus (tanpa
+        pagination, karena jumlahnya segelintir), jadi menyaringnya di sini
+        instan dan tidak memuat ulang halaman — sekaligus tidak menabrak
+        `?tab=admin` yang dipakai Manajemen User.
+
+        Bertumpuk di ponsel, sebaris mulai `sm`: kotak cari dan dropdown peran
+        berdampingan di 360px menyisakan ruang yang terlalu sempit untuk
+        dua-duanya.
+      */}
+      {showFilter && (
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="relative flex-1">
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+            />
+            <input
+              type="search"
+              value={cari}
+              onChange={(e) => {
+                setCari(e.target.value)
+                setHalaman(1)
+              }}
+              placeholder="Cari nama atau email"
+              aria-label="Cari admin berdasarkan nama atau email"
+              className="w-full rounded-md border border-input bg-background py-2 pr-3 pl-9 text-sm"
+            />
+          </div>
+          <select
+            value={filterPeran}
+            onChange={(e) => {
+              setFilterPeran(e.target.value)
+              setHalaman(1)
+            }}
+            aria-label="Saring admin berdasarkan peran"
+            className="rounded-md border border-input bg-background px-3 py-2 text-sm sm:w-56"
+          >
+            <option value={PERAN_SEMUA}>Semua peran</option>
+            <option value={PERAN_TANPA}>Tanpa peran</option>
+            {roleOptions.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {showFilter && adaFilterAktif && (
+        <p className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span>
+            Menampilkan {adminTampil.length} dari {admins.length} admin.
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setCari("")
+              setFilterPeran(PERAN_SEMUA)
+              setHalaman(1)
+            }}
+            className="font-medium text-primary underline-offset-2 hover:underline"
+          >
+            Reset filter
+          </button>
+        </p>
+      )}
+
       <ul className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {admins.map((admin) => {
+        {adminHalamanIni.map((admin) => {
           const isSelf = admin.id === currentUserId
           // Owner terakhir tidak boleh diturunkan — penjaga sebenarnya ada di
           // server (lib/api/admin-users.ts). Di sini cuma supaya tombolnya tidak
@@ -399,6 +539,25 @@ export function AdminRoleList({ admins, currentUserId, roleOptions, canManage }:
           )
         })}
       </ul>
+
+      {showFilter && adminTampil.length === 0 && (
+        <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+          Tidak ada admin yang cocok dengan pencarian atau filter ini.
+        </p>
+      )}
+
+      {/* Hanya muncul saat memang ada halaman kedua. Daftar tim yang isinya
+          empat orang tidak perlu navigasi halaman di bawahnya. */}
+      {jumlahHalaman > 1 && (
+        <AdminPagination
+          page={halamanAktif}
+          pageCount={jumlahHalaman}
+          total={adminTampil.length}
+          pageSize={ADMIN_PER_HALAMAN}
+          labelBaris="admin"
+          onPageChange={setHalaman}
+        />
+      )}
 
       {canManage && (
         <p className="mt-4 flex items-start gap-2 text-xs text-muted-foreground">
