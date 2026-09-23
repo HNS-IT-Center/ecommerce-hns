@@ -7,6 +7,8 @@ import { Footer } from "@/components/layout/footer"
 import { getCurrentUser } from "@/lib/auth"
 import { bisaAkses, muatIzinUser } from "@/lib/auth/permissions"
 import { getQuotationForUser } from "@/lib/api/pc-build-quotes"
+import { getSalesDisplayName } from "@/lib/api/admin-users"
+import { FollowUpWaButton } from "@/features/quotation/components/follow-up-wa-button"
 import { formatRupiah } from "@/lib/utils"
 import { QUOTE_CODE_PATTERN, formatQuoteDateTime } from "@/app/verify/format"
 
@@ -52,6 +54,16 @@ export default async function DetailQuotationPage({
   if (!quote) notFound()
 
   const terjual = quote.status === "closing"
+
+  /**
+   * Nama untuk memperkenalkan diri di pesan follow-up: nama tampilan sales
+   * milik ORANG YANG SEDANG MEMBUKA halaman ini, bukan `quote.salesName`.
+   *
+   * Keduanya berbeda saat CS membuka quotation yang sudah ia oper — lihat
+   * catatan di `buildFollowUpMessage`. CS tidak punya `salesDisplayName`, jadi
+   * jatuhnya ke nama akun, dan itu memang yang benar untuknya.
+   */
+  const namaPengirim = (await getSalesDisplayName(user.id)) ?? user.name
 
   return (
     <div className="flex min-h-dvh flex-col bg-page">
@@ -113,6 +125,20 @@ export default async function DetailQuotationPage({
                     Revisi di Builder
                   </Link>
                 )}
+
+                {/* Tidak dibatasi status: quotation yang sudah Terjual pun
+                    masih ditindaklanjuti — konfirmasi pengambilan, pertanyaan
+                    setelah barang di tangan. Yang membuatnya hilang hanyalah
+                    nomor HP yang kosong atau tidak masuk akal, dan itu
+                    diputuskan di dalam komponennya. */}
+                <FollowUpWaButton
+                  customerName={quote.customerName}
+                  customerPhone={quote.customerPhone}
+                  salesName={namaPengirim}
+                  code={quote.code}
+                  revision={quote.revision}
+                  totalText={formatRupiah(quote.total)}
+                />
               </div>
             </div>
 
