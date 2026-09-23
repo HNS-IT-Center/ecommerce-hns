@@ -91,7 +91,11 @@ export default async function Page() {
    */
   const tombolAkun = (
     <>
-      {customer.isAdmin && (
+      {/* `canOpenPanel`, bukan `isAdmin` — alasannya sama dengan di
+          `account-nav.tsx`: Sales & Kasir punya sesi admin tapi tidak punya satu
+          pun halaman di dalam panel, jadi `/admin` hanya memantulkan mereka
+          kembali ke sini. */}
+      {customer.canOpenPanel && (
         <Link
           href="/admin"
           className="flex h-11 items-center justify-center gap-2 rounded-xl border border-input px-4 text-sm font-semibold transition-colors hover:bg-muted"

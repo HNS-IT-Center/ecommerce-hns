@@ -195,8 +195,14 @@ export function AccountNav({ logoutAction }: AccountNavProps) {
           Profil Saya
         </DropdownMenuItem>
         {/* Hanya navigasi. Menyembunyikan butir ini bukan pengamanan panel —
-            itu tugas `requirePageView` di sana. */}
-        {customer.isAdmin && (
+            itu tugas `requirePageView` di sana.
+
+            `canOpenPanel`, BUKAN `isAdmin`. Sales dan Kasir memegang sesi admin
+            yang sah (jadi `isAdmin` menyala) tapi seluruh izinnya di luar panel,
+            sehingga `/admin` memantulkan mereka kembali ke `landingPathFor()` —
+            butir menu yang selalu memulangkan penekannya ke tempat ia
+            berangkat. */}
+        {customer.canOpenPanel && (
           <DropdownMenuItem onClick={() => router.push("/admin")}>
             <LayoutDashboard className="h-4 w-4" />
             Panel Admin

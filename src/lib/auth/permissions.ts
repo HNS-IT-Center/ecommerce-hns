@@ -533,6 +533,31 @@ function halamanPanelPertama(izin: PermissionSet): string | null {
   return null
 }
 
+/**
+ * Apakah orang ini punya SATU pun halaman yang benar-benar terbuka di dalam
+ * panel `/admin`?
+ *
+ * Dipakai untuk memutuskan apakah tautan "Panel Admin" layak ditampilkan —
+ * bukan untuk menjaga apa pun. Penjaganya tetap `requirePageView` dan pantulan
+ * di `/admin` itu sendiri.
+ *
+ * Punya sesi admin TIDAK sama dengan punya urusan di panel. Peran seperti Sales
+ * dan Kasir hanya memegang izin di LUAR panel (`quotation-sales`, `verify`),
+ * jadi `/admin` memantulkan mereka kembali ke `landingPathFor()` — dan tombol
+ * yang selalu memulangkan penekannya ke tempat ia berangkat bukan navigasi,
+ * melainkan pintu yang dicat di tembok.
+ *
+ * `akun` (PAGES_SELALU_BOLEH) sengaja tidak dihitung, lewat `halamanPanelPertama`
+ * yang melewatinya: semua orang memilikinya, jadi kalau ia ikut, fungsi ini
+ * akan selalu menjawab "ya" dan tidak menyaring siapa pun. Itu juga tidak
+ * membuat siapa pun terkunci dari gantinya password — staff menggantinya di
+ * `/profile` lewat kartu profil staff, bukan di `/admin/akun`.
+ */
+export function punyaAksesPanel(izin: PermissionSet): boolean {
+  if (bisaAkses(izin, "overview", "view")) return true
+  return halamanPanelPertama(izin) !== null
+}
+
 /** Ambil segmen halaman dari pathname `/admin/<page>/...`. Null kalau bukan sub-halaman. */
 export function pageFromPathname(pathname: string): AdminPage | null {
   const m = pathname.match(/^\/admin\/([^/?#]+)/)

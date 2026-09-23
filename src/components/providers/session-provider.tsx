@@ -206,6 +206,7 @@ function sidikStatus(customer: CurrentCustomer | null): string {
   return [
     customer.id,
     customer.isAdmin ? "1" : "0",
+    customer.canOpenPanel ? "1" : "0",
     customer.canVerify ? "1" : "0",
     customer.permissionVersion ?? "-",
   ].join("|")

@@ -25,7 +25,7 @@ import {
   type CustomerSessionPayload,
 } from "./customer-session"
 import { SESSION_COOKIE, isIssuedBeforeRevocation, verifySession } from "./session"
-import { bisaAkses, capIzin, muatIzinUser } from "./permissions"
+import { bisaAkses, capIzin, muatIzinUser, punyaAksesPanel } from "./permissions"
 
 export {
   CUSTOMER_SESSION_COOKIE,
@@ -69,6 +69,18 @@ export type CurrentCustomer = {
    * `/verify` tetap menjaga dirinya sendiri lewat `requirePageView`.
    */
   canVerify: boolean
+  /**
+   * Sesi admin itu punya setidaknya SATU halaman yang terbuka di dalam panel.
+   *
+   * Beda dari `isAdmin`, dan bedanya itu yang penting: `isAdmin` cuma berarti
+   * "peramban ini memegang sesi admin yang sah". Peran Sales dan Kasir memegang
+   * sesi seperti itu, tapi seluruh izinnya ada di LUAR panel — `/admin` akan
+   * memantulkan mereka ke `landingPathFor()` begitu tautannya ditekan.
+   *
+   * Sama seperti `isAdmin` dan `canVerify`: HANYA untuk menampilkan tautan,
+   * bukan izin. Panel tetap menjaga dirinya lewat `requirePageView`.
+   */
+  canOpenPanel: boolean
   /**
    * Cap izin sesi ADMIN di peramban ini, atau `null` kalau tidak ada.
    *
@@ -165,13 +177,12 @@ export async function getCurrentCustomer(): Promise<CurrentCustomer | null> {
   // Izin dihitung dari akun ADMIN (pemilik cookie admin), bukan akun yang
   // tampil — sama dengan yang diperiksa `requirePageView` di `/verify`.
   // Pelanggan biasa tidak memicu query izin apa pun.
-  const canVerify = adminAccount
-    ? bisaAkses(
-        await muatIzinUser(adminAccount),
-        "verify",
-        "view"
-      )
-    : false
+  //
+  // Dimuat SEKALI lalu dipakai dua penanda di bawah. Memanggil `muatIzinUser`
+  // dua kali berarti dua kali kerja yang sama untuk jawaban yang dijamin sama.
+  const izinAdmin = adminAccount ? await muatIzinUser(adminAccount) : null
+  const canVerify = izinAdmin ? bisaAkses(izinAdmin, "verify", "view") : false
+  const canOpenPanel = izinAdmin ? punyaAksesPanel(izinAdmin) : false
 
   // Dibentuk ulang secara eksplisit — `role` dan penanda pencabutan tidak ada
   // urusannya di luar berkas ini, dan objek ini ikut dikirim `/api/auth/me`.
@@ -188,6 +199,7 @@ export async function getCurrentCustomer(): Promise<CurrentCustomer | null> {
     image: account.image,
     isAdmin: adminAccount !== null,
     canVerify,
+    canOpenPanel,
     // Dari akun ADMIN, sumber yang sama dengan `canVerify` — bukan dari akun
     // yang kebetulan tampil. Pelanggan biasa tidak punya izin yang bisa
     // berubah, jadi capnya memang `null`.
