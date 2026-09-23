@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState, useMemo } from "react"
+import { useRouter } from "next/navigation"
 import {
   sumBuilderSelections,
   useNewBuilderStore,
@@ -12,7 +13,7 @@ import { PcBuilderStepConfig } from "@/lib/pc-builder/config"
 import { buildAttributeRequirementGroups } from "@/lib/pc-builder/compatibility"
 import { formatRupiah } from "@/lib/utils"
 import { fetchBuilderProducts } from "../actions"
-import { saveBuildAction } from "../actions-save"
+import { saveBuildAction, updateSavedBuildAction } from "../actions-save"
 import { useBuilderCatalogPricing } from "../hooks/use-builder-catalog-pricing"
 import {
   PriceChangedBadge,
@@ -90,6 +91,24 @@ export type RevisionLoad = {
   komponenHilang: string[]
 }
 
+/**
+ * Rakitan tersimpan yang sedang dibuka lewat `?build=<id>` (Mode Edit),
+ * sudah diselesaikan di server.
+ *
+ * Tidak membawa harga apa pun, dan memang tidak perlu: yang tampil di panel
+ * selalu harga katalog hari ini. Bedanya dengan `RevisionLoad` justru di situ
+ * — revisi mempertahankan harga yang sudah tercetak di kertas pelanggan,
+ * sedangkan rakitan tersimpan memang dirancang mengikuti katalog setiap kali
+ * dibuka (lihat catatan `SavedBuildItemRef` di lib/api/saved-pc-builds.ts).
+ */
+export type SavedBuildLoad = {
+  id: string
+  name: string
+  selections: Record<string, BuilderSelection[]>
+  /** Jumlah komponen yang dilewati karena sudah tidak tersedia di katalog. */
+  komponenHilang: number
+}
+
 type DynamicBuilderViewProps = {
   stepsConfig: PcBuilderStepConfig[]
   /** Dari sesi customer di server — menentukan tombol Simpan aktif atau mengarah ke /login. */
@@ -124,6 +143,13 @@ type DynamicBuilderViewProps = {
   salesOptions?: SalesOption[]
   /** Terisi hanya saat `?quotation=` menunjuk quotation yang boleh direvisi. */
   revisionLoad?: RevisionLoad | null
+  /** Terisi hanya saat `?build=` menunjuk rakitan tersimpan milik pelanggan ini. */
+  savedBuildLoad?: SavedBuildLoad | null
+  /**
+   * Rakitan di `?build=` ada, tapi tidak satu komponen pun masih bisa dimuat.
+   * Bukan Mode Edit — hanya pemberitahuan. Lihat efeknya di dalam komponen.
+   */
+  savedBuildKosong?: boolean
 }
 
 /**
@@ -137,12 +163,18 @@ export function DynamicBuilderView({
   quotationMode = "anon",
   salesOptions = [],
   revisionLoad = null,
+  savedBuildLoad = null,
+  savedBuildKosong = false,
 }: DynamicBuilderViewProps) {
   const { 
     steps, setSteps, selections, activeStepId, setActiveStep, 
     selectProduct, removeProduct, updateQuantity, clearSelections,
     hydrateSelections
   } = useNewBuilderStore()
+
+  // Dipakai Mode Edit untuk menjaga `?build=` tetap jujur terhadap rakitan
+  // mana yang sedang diedit — lihat `lepasBuildAsal` & `handleConfirmSaveBuild`.
+  const router = useRouter()
 
   const [mounted, setMounted] = useState(false)
   const [sendingWA, setSendingWA] = useState(false)
@@ -218,7 +250,35 @@ export function DynamicBuilderView({
   const [presetPending, setPresetPending] = useState(false)
   const presetSudahDitangani = useRef(false)
   const revisiSudahDimuat = useRef(false)
+  const savedBuildSudahDimuat = useRef(false)
+  const kosongSudahDilaporkan = useRef(false)
+  /**
+   * Rakitan tersimpan yang sedang diedit — ASAL tombol "Simpan Perubahan".
+   *
+   * State, bukan turunan langsung dari `savedBuildLoad`, karena isinya berubah
+   * di dalam sesi: ia dilepas begitu panel diisi sesuatu yang lain (Reset,
+   * Mulai Rakitan Baru, muat paket prebuild), dan berpindah ke baris baru
+   * setelah "Simpan sebagai Rakitan Baru". Tanpa itu, tombol Simpan bisa
+   * menawarkan menimpa rakitan yang sudah tidak ada hubungannya dengan apa pun
+   * yang terlihat di layar.
+   */
+  const [buildAsal, setBuildAsal] = useState<{ id: string; name: string } | null>(
+    savedBuildLoad ? { id: savedBuildLoad.id, name: savedBuildLoad.name } : null
+  )
   const toastManager = useToastManager()
+
+  /**
+   * Keluar dari Mode Edit TANPA menyentuh isi panel maupun baris tersimpannya.
+   *
+   * Dipanggil dari setiap titik yang membuat isi panel bukan lagi rakitan itu.
+   * `router.replace` membuang `?build=` supaya memuat ulang halaman tidak
+   * menghidupkan lagi Mode Edit yang baru saja ditinggalkan.
+   */
+  const lepasBuildAsal = () => {
+    setBuildAsal(null)
+    savedBuildSudahDimuat.current = true
+    if (savedBuildLoad) router.replace("/build-pc", { scroll: false })
+  }
 
   /**
    * Id toast merah "<langkah> belum dipilih" dari `validateRequiredSteps`.
@@ -393,6 +453,40 @@ export function DynamicBuilderView({
     revisiSudahDimuat.current = true
     hydrateSelections(revisionLoad.selections)
   }, [mounted, revisionLoad, hydrateSelections])
+
+  /**
+   * Memuat rakitan tersimpan dari `?build=<id>` (Mode Edit).
+   *
+   * Aturannya sama dengan Mode Revisi, BUKAN dengan `?preset=`: tidak bertanya
+   * lebih dulu. Pelanggan yang menekan "Lanjutkan di Builder" sedang menunjuk
+   * satu rakitan dengan jelas, dan rakitan yang tertinggal di localStorage-nya
+   * justru sudah ia simpan — itulah yang sedang dibuka.
+   *
+   * Tetap WAJIB menunggu `mounted`: sebelum hydration Zustand persist selesai,
+   * `hydrateSelections` akan tertimpa kembali oleh isi localStorage.
+   */
+  useEffect(() => {
+    if (!mounted || !savedBuildLoad || savedBuildSudahDimuat.current) return
+    savedBuildSudahDimuat.current = true
+    hydrateSelections(savedBuildLoad.selections)
+  }, [mounted, savedBuildLoad, hydrateSelections])
+
+  /**
+   * Rakitannya ada, tapi seluruh komponennya sudah ditarik dari katalog.
+   *
+   * Servernya sengaja TIDAK memasang Mode Edit untuk kasus ini (lihat
+   * app/build-pc/page.tsx), jadi yang tersisa hanyalah memberi tahu — tanpa
+   * pemberitahuan, pelanggan mendarat di builder berisi rakitan lamanya dan
+   * mengira tombol "Lanjutkan di Builder" tidak berfungsi.
+   */
+  useEffect(() => {
+    if (!mounted || !savedBuildKosong || kosongSudahDilaporkan.current) return
+    kosongSudahDilaporkan.current = true
+    toastManager.add({
+      title: "Rakitan tidak bisa dimuat",
+      description: "Semua komponen di rakitan itu sudah tidak tersedia di katalog.",
+    })
+  }, [mounted, savedBuildKosong, toastManager])
 
   /**
    * Memuat paket PC Prebuild dari `?preset=`.
@@ -908,8 +1002,57 @@ export function DynamicBuilderView({
     setIsSaveDialogOpen(true)
   }
 
+  /**
+   * "Simpan sebagai Rakitan Baru" — dan juga satu-satunya jalan simpan saat
+   * halaman TIDAK sedang dalam Mode Edit.
+   *
+   * Setelah baris barunya lahir, Mode Edit berpindah ke baris ITU, bukan
+   * bertahan di rakitan asal. Kalau tidak, pelanggan yang menekan "Simpan
+   * sebagai Rakitan Baru" lalu mengubah satu komponen lagi dan menekan
+   * "Simpan Perubahan" akan menimpa rakitan LAMA — dua tekanan tombol dengan
+   * arti berlawanan, dan yang tertimpa justru yang tadi sengaja ia pertahankan.
+   *
+   * URL ikut diperbarui lewat `replace` supaya `?build=` tidak lagi menunjuk
+   * baris lama: kalau halamannya dimuat ulang, yang terbuka harus rakitan yang
+   * sama dengan yang tertulis di bar Mode Edit.
+   */
   const handleConfirmSaveBuild = async (name: string) => {
-    return saveBuildAction(name, buildLineItems())
+    const hasil = await saveBuildAction(name, buildLineItems())
+
+    if (hasil.ok) {
+      setBuildAsal({ id: hasil.id, name: hasil.name })
+      /*
+       * Ditandai SEBELUM `replace`. URL baru membuat server mengirim
+       * `savedBuildLoad` untuk baris yang baru lahir, dan tanpa tanda ini efek
+       * pemuatan akan menganggapnya rakitan yang baru dibuka lalu
+       * menghidratnya ulang — panel melompat kembali ke langkah pertama tepat
+       * setelah pelanggan menekan Simpan, seolah pekerjaannya diambil alih.
+       */
+      savedBuildSudahDimuat.current = true
+      router.replace(`/build-pc?build=${encodeURIComponent(hasil.id)}`, { scroll: false })
+    }
+
+    return hasil
+  }
+
+  /**
+   * "Simpan Perubahan" — menimpa rakitan yang sedang dibuka.
+   *
+   * Yang dikirim SAMA PERSIS dengan jalur simpan baru (`buildLineItems()`:
+   * id, kuantitas, label langkah), jadi tidak ada satu pun angka harga yang
+   * berangkat dari sini. Servernya yang membaca harga katalog, sama seperti
+   * `saveBuildAction`.
+   */
+  const handleUpdateSavedBuild = async (name: string) => {
+    if (!buildAsal) return { ok: false as const, error: "Tidak ada rakitan yang sedang diedit." }
+
+    const hasil = await updateSavedBuildAction(buildAsal.id, name, buildLineItems())
+
+    // Namanya boleh diubah dari dialog, jadi bar Mode Edit harus ikut berubah
+    // — bukan tetap menampilkan nama lama sampai halaman dimuat ulang.
+    if (hasil.ok) setBuildAsal({ id: buildAsal.id, name: hasil.name })
+
+    return hasil
   }
 
   /**
@@ -1014,6 +1157,7 @@ export function DynamicBuilderView({
   const handleDiscardAndStartNew = () => {
     clearSelections()
     setShowPreviousBuildBanner(false)
+    lepasBuildAsal()
   }
 
   /**
@@ -1595,6 +1739,60 @@ export function DynamicBuilderView({
         </div>
       )}
 
+      {/* ---------- Bar Mode Edit (rakitan tersimpan) ---------- */}
+      {/*
+        Sengaja TIDAK dipasang bersamaan dengan bar Mode Revisi: `?build=` dan
+        `?quotation=` tidak pernah aktif berbarengan (lihat syaratnya di
+        app/build-pc/page.tsx), dan dua bar "sedang mengedit X" di layar yang
+        sama cuma membuat orang menebak mana yang akan tertimpa saat menekan
+        Simpan.
+
+        Bar ini ADA supaya pertanyaan itu tidak perlu ditebak sama sekali:
+        selama ia terlihat, tombol Simpan menawarkan menimpa rakitan yang
+        namanya tertulis di sini.
+      */}
+      {buildAsal && (
+        /* `mt-[60px] md:mt-0`: bar ini duduk paling atas di alur dokumen,
+           sedangkan judul mengambang versi mobile `fixed top-0` dan menimpa
+           apa pun di bawahnya — alasan yang sama persis dengan banner paket
+           prebuild. Tanpa ini, bar Mode Edit ada di DOM tapi tertutup penuh di
+           layar ponsel, dan pelanggan tidak pernah tahu ia sedang mengedit
+           rakitan tersimpan sampai dialog Simpan terbuka. */
+        <div className="mb-4 mt-[60px] w-full rounded-2xl border border-blue-500/40 bg-blue-500/10 p-4 md:mt-0 print:hidden">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-bold">
+                Mengedit rakitan tersimpan:{" "}
+                <span className="break-words">&ldquo;{buildAsal.name}&rdquo;</span>
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Menekan <strong>Simpan</strong> akan menawarkan dua jalan: menimpa rakitan ini,
+                atau menyimpannya sebagai rakitan baru.
+              </p>
+            </div>
+            {/* Keluar dari Mode Edit tanpa menyentuh apa pun: komponennya tetap
+                di panel, hanya tautan ke baris tersimpannya yang dilepas.
+                Tombol biasa, BUKAN tautan ke /profile — pelanggan yang menekan
+                ini sedang ingin lanjut merakit bebas, bukan pindah halaman. */}
+            <button
+              type="button"
+              onClick={lepasBuildAsal}
+              className="shrink-0 cursor-pointer rounded-lg border border-foreground/15 bg-background px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-muted"
+            >
+              Lepas
+            </button>
+          </div>
+
+          {savedBuildLoad && buildAsal.id === savedBuildLoad.id && savedBuildLoad.komponenHilang > 0 && (
+            <p className="mt-3 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              <strong>{savedBuildLoad.komponenHilang} komponen</strong> dari rakitan ini sudah tidak
+              tersedia di katalog dan tidak ikut dimuat. Kalau Anda menimpa rakitan ini sekarang,
+              komponen tersebut ikut hilang dari rakitan tersimpan Anda.
+            </p>
+          )}
+        </div>
+      )}
+
     <div className="flex flex-col lg:flex-row gap-8 max-w-[1600px] mx-auto w-full pb-[124px] md:pb-0">
 
       {/*
@@ -1873,6 +2071,9 @@ export function DynamicBuilderView({
                   hydrateSelections(presetLoad.selections)
                   setPresetPending(false)
                   setShowPreviousBuildBanner(false)
+                  // Yang ada di panel sekarang adalah paket prebuild, bukan
+                  // rakitan tersimpan yang tadi dibuka.
+                  lepasBuildAsal()
                 }}
                 className="cursor-pointer rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-xs font-bold text-neutral-900 shadow-sm transition-colors hover:border-neutral-900 hover:bg-neutral-900 hover:text-white"
               >
@@ -1888,7 +2089,12 @@ export function DynamicBuilderView({
           </div>
         )}
 
-        {showPreviousBuildBanner && (
+        {/* `!buildAsal`: di Mode Edit, yang terpampang di panel adalah rakitan
+            yang barusan dibuka dari akun — menyebutnya "rakitan sebelumnya"
+            salah alamat, dan dua kartu "ini rakitan X" sekaligus cuma membuat
+            pelanggan menebak mana yang sedang ia lihat. Bar Mode Edit di atas
+            sudah mengatakannya dengan nama rakitannya. */}
+        {showPreviousBuildBanner && !buildAsal && (
           /* Latar biru pastel dengan tulisan HITAM, bukan biru di atas biru.
              Versi sebelumnya memakai `text-blue-800` di atas `bg-blue-50` —
              dua warna bertetangga yang membuat kalimatnya nyaris menyatu dengan
@@ -2177,6 +2383,12 @@ export function DynamicBuilderView({
           if (!next) setSaveDialogIsForNewBuild(false)
         }}
         onConfirm={handleConfirmSaveBuild}
+        onUpdate={handleUpdateSavedBuild}
+        /* Terisi hanya kalau halaman dibuka lewat `?build=<id>` ATAU rakitan
+           ini baru saja disimpan sebagai rakitan baru — dua-duanya berarti ada
+           satu baris tersimpan yang boleh ditimpa. Kosong = dialog tampil
+           seperti sebelumnya, satu tombol Simpan. */
+        editing={buildAsal}
         onSaved={saveDialogIsForNewBuild ? handleDiscardAndStartNew : undefined}
       />
 
@@ -2261,6 +2473,9 @@ export function DynamicBuilderView({
         onConfirm={() => {
           clearSelections()
           setShowPreviousBuildBanner(false)
+          // Isinya sudah bukan rakitan yang sedang diedit lagi — lihat
+          // `lepasBuildAsal`.
+          lepasBuildAsal()
         }}
       />
 

@@ -225,6 +225,39 @@ export type CreateSavedBuildResult =
   | { ok: false; error: string }
 
 /**
+ * Harga acuan tiap komponen, diisi dari katalog SAAT INI.
+ *
+ * Dipakai bersama oleh `createSavedBuild` dan `updateSavedBuild`: dua-duanya
+ * menerima id/kuantitas dari klien dan TIDAK boleh menerima harga dari sana.
+ * Satu tempat supaya jalur "simpan baru" dan "timpa rakitan yang sedang
+ * diedit" mustahil berbeda pendapat soal dari mana angkanya berasal.
+ */
+async function refsWithCatalogPrices(items: CreateSavedBuildInput[]): Promise<SavedBuildItemRef[]> {
+  const productIds = [...new Set(items.map((i) => i.productId))]
+  const products = await getPrisma().product.findMany({
+      /*
+       * `id` internal, BUKAN `wooId` — `productId` di sini berasal dari PC
+       * Builder, dan builder menyimpan `id` (`fetchBuilderProducts` → `id: p.id`).
+       * Pada 14 September 2026 kueri ini sempat dipindah ke `wooId` dengan
+       * anggapan builder memakai id storefront; akibatnya komponen yang sehat
+       * dilaporkan "sudah tidak tersedia". Lihat `CatalogIdColumn` di
+       * `cart-pricing.ts`.
+       */
+    where: { id: { in: productIds } },
+    select: { id: true, regularPrice: true, salePrice: true },
+  })
+  const priceById = new Map(products.map((p) => [p.id, currentPriceOf(p)]))
+
+  return items.map((item) => ({
+    stepId: item.stepId,
+    stepName: item.stepName,
+    productId: item.productId,
+    quantity: item.quantity,
+    price: priceById.get(item.productId) ?? 0,
+  }))
+}
+
+/**
  * Klien hanya mengirim id komponen, kuantitas, dan label langkah — SAMA
  * seperti `prepareBuildWhatsApp`/`handlePrint`. Harga acuan diisi DI SINI
  * dari katalog, tidak pernah dipercaya dari klien, persis prinsip yang sama
@@ -248,28 +281,7 @@ export async function createSavedBuild(
     }
   }
 
-  const productIds = [...new Set(items.map((i) => i.productId))]
-  const products = await prisma.product.findMany({
-      /*
-       * `id` internal, BUKAN `wooId` — `productId` di sini berasal dari PC
-       * Builder, dan builder menyimpan `id` (`fetchBuilderProducts` → `id: p.id`).
-       * Pada 14 September 2026 kueri ini sempat dipindah ke `wooId` dengan
-       * anggapan builder memakai id storefront; akibatnya komponen yang sehat
-       * dilaporkan "sudah tidak tersedia". Lihat `CatalogIdColumn` di
-       * `cart-pricing.ts`.
-       */
-    where: { id: { in: productIds } },
-    select: { id: true, regularPrice: true, salePrice: true },
-  })
-  const priceById = new Map(products.map((p) => [p.id, currentPriceOf(p)]))
-
-  const refs: SavedBuildItemRef[] = items.map((item) => ({
-    stepId: item.stepId,
-    stepName: item.stepName,
-    productId: item.productId,
-    quantity: item.quantity,
-    price: priceById.get(item.productId) ?? 0,
-  }))
+  const refs = await refsWithCatalogPrices(items)
 
   const created = await prisma.savedPcBuild.create({
     data: { customerId, name, items: refs },
@@ -277,6 +289,63 @@ export async function createSavedBuild(
   })
 
   return { ok: true, id: created.id }
+}
+
+export type UpdateSavedBuildResult =
+  | { ok: true }
+  /**
+   * `gone` = barisnya tidak ada lagi (dihapus dari perangkat lain, atau bukan
+   * milik akun ini). Dipisah dari kegagalan lain supaya pemanggil bisa
+   * menawarkan "Simpan sebagai Rakitan Baru" alih-alih menyuruh mencoba lagi
+   * sesuatu yang tidak akan pernah berhasil.
+   */
+  | { ok: false; error: string; gone?: boolean }
+
+/**
+ * Timpa satu rakitan tersimpan dengan isi terbaru dari builder — dipakai
+ * tombol "Simpan Perubahan" saat pelanggan membuka `/build-pc?build=<id>`.
+ *
+ * TIDAK memeriksa `MAX_SAVED_BUILDS_PER_CUSTOMER`: tidak ada baris baru yang
+ * lahir di sini. Justru inilah gunanya — sebelum ada fungsi ini, mengedit
+ * rakitan lalu menyimpannya selalu melahirkan salinan, dan kuota 20 habis oleh
+ * rakitan yang sama berulang kali.
+ *
+ * Harga acuan ditulis ULANG ke harga katalog saat ini, sama seperti
+ * `refreshBuildPrices`: pelanggan yang menekan Simpan sedang melihat harga
+ * katalog terkini di layar builder, jadi titik banding "naik/turun sejak
+ * disimpan" yang bermakna adalah saat ini, bukan kapan rakitan itu pertama
+ * dibuat.
+ *
+ * `updateMany` + `customerId` di `where`, BUKAN `update({ where: { id } })`:
+ * kepemilikan harus ikut jadi syarat baris yang tersentuh, supaya id milik
+ * orang lain tidak pernah bisa ditimpa lewat tebakan.
+ */
+export async function updateSavedBuild(
+  id: string,
+  customerId: string,
+  name: string,
+  items: CreateSavedBuildInput[]
+): Promise<UpdateSavedBuildResult> {
+  if (items.length === 0) {
+    return { ok: false, error: "Rakitan masih kosong, belum ada yang bisa disimpan." }
+  }
+
+  const refs = await refsWithCatalogPrices(items)
+
+  const result = await getPrisma().savedPcBuild.updateMany({
+    where: { id, customerId },
+    data: { name, items: refs },
+  })
+
+  if (result.count === 0) {
+    return {
+      ok: false,
+      gone: true,
+      error: "Rakitan yang sedang diedit sudah tidak ada di akun Anda.",
+    }
+  }
+
+  return { ok: true }
 }
 
 /** `true` kalau berhasil dihapus, `false` kalau tidak ditemukan/bukan milik akun ini. */
@@ -363,6 +432,26 @@ export type BuilderReadyProduct = {
 export type BuilderReadySelections = Record<string, { product: BuilderReadyProduct; quantity: number }[]>
 
 /**
+ * Rakitan tersimpan, dalam bentuk yang siap dimuat ke builder.
+ *
+ * `id` dan `name` ikut dibawa karena builder perlu tahu rakitan MANA yang
+ * sedang diedit — itulah yang membedakan "Simpan Perubahan" dari "Simpan
+ * sebagai Rakitan Baru" di `/build-pc?build=<id>`.
+ */
+export type SavedBuildForBuilder = {
+  id: string
+  name: string
+  selections: BuilderReadySelections
+  /**
+   * Berapa komponen yang DILEWATI karena sudah tidak tersedia. Pemanggil
+   * memakainya untuk memberi tahu pelanggan bahwa rakitannya termuat tidak
+   * utuh — menyimpan perubahan setelah itu akan membuang komponen tersebut
+   * dari rakitan tersimpan, dan itu tidak boleh terjadi diam-diam.
+   */
+  skipped: number
+}
+
+/**
  * Bentuk yang sama seperti `fetchBuilderProducts` di `features/builder/actions.ts`
  * (dipakai untuk mengisi grid pemilihan produk) — dipakai ulang di sini supaya
  * tombol "Lanjutkan di Builder" mengisi `useNewBuilderStore` dengan objek
@@ -375,7 +464,7 @@ export type BuilderReadySelections = Record<string, { product: BuilderReadyProdu
 export async function getSavedBuildForBuilder(
   id: string,
   customerId: string
-): Promise<BuilderReadySelections | null> {
+): Promise<SavedBuildForBuilder | null> {
   const row = await getPrisma().savedPcBuild.findFirst({ where: { id, customerId } })
   if (!row) return null
 
@@ -462,9 +551,13 @@ export async function getSavedBuildForBuilder(
   const stockDisplayMode = await getStockDisplayMode()
 
   const selections: BuilderReadySelections = {}
+  let skipped = 0
   for (const ref of refs) {
     const product = byId.get(ref.productId)
-    if (!product) continue
+    if (!product) {
+      skipped += 1
+      continue
+    }
 
     const regularPrice = product.regularPrice ? Number(product.regularPrice) : 0
     const salePrice = product.salePrice ? Number(product.salePrice) : 0
@@ -528,5 +621,5 @@ export async function getSavedBuildForBuilder(
     selections[ref.stepId].push({ product: builderProduct, quantity: ref.quantity })
   }
 
-  return selections
+  return { id: row.id, name: row.name, selections, skipped }
 }

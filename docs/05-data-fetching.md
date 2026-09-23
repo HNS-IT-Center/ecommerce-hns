@@ -1847,3 +1847,54 @@ satu saja menyisakan sesi yang lain tetap sah sampai kedaluwarsa sendiri.
 bukan lewat `useActionState`: yang terjadi setelah tersimpan (menutup dialog,
 `router.refresh()`) mengikuti satu PERBUATAN, bukan perubahan keadaan, dan
 menuliskannya sebagai efek atas `state.ok` ditolak `react-hooks/set-state-in-effect`.
+
+---
+
+## 28. Rakitan tersimpan: Mode Edit lewat `?build=` (23 September 2026)
+
+"Lanjutkan di Builder" di `/profile/rakitan/[id]` dulu memuat isinya lewat
+server action lalu mendorongnya ke store Zustand, dan `/build-pc` tidak pernah
+tahu rakitan MANA yang sedang dibuka. Satu-satunya jalan simpan adalah
+`createSavedBuild`, jadi mengedit rakitan sendiri selalu melahirkan salinan dan
+kuota 20 rakitan per akun habis oleh rakitan yang itu-itu juga.
+
+Sekarang identitasnya ikut di URL, pola yang sama dengan `?preset=` dan
+`?quotation=`:
+
+| Jalur | Dipakai untuk |
+|---|---|
+| `GET /build-pc?build=<id>` | Membuka rakitan tersimpan di builder (Mode Edit) |
+| `updateSavedBuildAction(id, name, items)` | "Simpan Perubahan" — menimpa baris itu |
+| `saveBuildAction(name, items)` | "Simpan sebagai Rakitan Baru" — tetap membuat baris baru |
+
+- `getSavedBuildForBuilder` (`lib/api/saved-pc-builds.ts`) sekarang mengembalikan
+  `{ id, name, selections, skipped }`, bukan lagi `selections` saja — builder
+  butuh `id` untuk punya sasaran simpan dan `name` untuk bar "Mengedit rakitan
+  tersimpan". `loadSavedBuildForBuilderAction` **dihapus**; tidak ada lagi
+  pemanggilnya.
+- Kepemilikan tetap diperiksa di server (`where: { id, customerId }`), baik saat
+  memuat maupun saat menimpa (`updateSavedBuild` memakai `updateMany` dengan
+  `customerId` ikut di `where`, bukan `update({ where: { id } })`). Id milik
+  orang lain pulang sebagai `null` dan halaman terbuka seperti rakitan biasa.
+- `updateSavedBuild` **tidak** memeriksa `MAX_SAVED_BUILDS_PER_CUSTOMER` — tidak
+  ada baris baru yang lahir di sana. Itu justru gunanya.
+- Harga acuan (`SavedBuildItemRef.price`) ditulis ULANG dari katalog saat
+  menimpa, sama seperti `refreshBuildPrices`: pelanggan yang menekan Simpan
+  sedang melihat harga katalog hari ini di panel, jadi titik banding
+  "naik/turun sejak disimpan" yang bermakna adalah saat itu. Klien tetap hanya
+  mengirim id, kuantitas, dan label langkah — tidak ada harga yang berangkat
+  dari sana (CLAUDE.md §2.7).
+- Kedua aksi mengembalikan `name` yang BENAR-BENAR tersimpan, karena kolom nama
+  yang dikosongkan diisi server dengan `Rakitan {tanggal}`.
+- Mode Edit dilepas begitu isi panel bukan rakitan itu lagi: Reset, "Mulai
+  Rakitan Baru", dan memuat paket PC Prebuild semuanya memanggil
+  `lepasBuildAsal`, yang juga membuang `?build=` dari URL. Setelah "Simpan
+  sebagai Rakitan Baru", Mode Edit **berpindah** ke baris yang baru lahir
+  (termasuk URL-nya) supaya tekanan Simpan berikutnya tidak menimpa rakitan lama.
+- `?build=` diabaikan kalau `?quotation=` atau `?preset=` sedang aktif: satu
+  halaman tidak boleh punya dua asal simpan sekaligus.
+- Rakitan yang SELURUH komponennya sudah ditarik dari katalog tidak masuk Mode
+  Edit sama sekali (hanya toast pemberitahuan). Memaksakannya berarti panel
+  menampilkan rakitan lain yang tertinggal di localStorage sambil mengaku
+  sedang mengedit rakitan ini — dan "Simpan Perubahan" akan menimpanya dengan
+  isi yang tidak ada hubungannya.

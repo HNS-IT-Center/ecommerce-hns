@@ -10,8 +10,9 @@ import { getCurrentUser } from "@/lib/auth"
 import { bisaAkses, muatIzinUser } from "@/lib/auth/permissions"
 import { listQuotationSalesUsers } from "@/lib/api/admin-users"
 import { getQuotationForRevision } from "@/lib/api/pc-build-quotes"
+import { getSavedBuildForBuilder } from "@/lib/api/saved-pc-builds"
 import { priceCartFromCatalog } from "@/lib/api/woocommerce/cart-pricing"
-import type { RevisionLoad } from "@/features/builder/components/dynamic-builder-view"
+import type { RevisionLoad, SavedBuildLoad } from "@/features/builder/components/dynamic-builder-view"
 import type { BuilderSelection } from "@/store/new-builder"
 
 export const metadata = {
@@ -29,9 +30,9 @@ export const metadata = {
 export default async function BuildPcPage({
   searchParams,
 }: {
-  searchParams: Promise<{ preset?: string; pick?: string; quotation?: string }>
+  searchParams: Promise<{ preset?: string; pick?: string; quotation?: string; build?: string }>
 }) {
-  const [{ preset: presetId, pick, quotation: quotationCode }, stepsConfig, customer] =
+  const [{ preset: presetId, pick, quotation: quotationCode, build: savedBuildId }, stepsConfig, customer] =
     await Promise.all([
       searchParams,
       getPcBuilderConfig(),
@@ -274,6 +275,52 @@ export default async function BuildPcPage({
     }
   }
 
+  /**
+   * Mode Edit: `?build=<id>` — rakitan tersimpan milik pelanggan yang dibuka
+   * lewat "Lanjutkan di Builder".
+   *
+   * Diselesaikan DI SERVER, pola yang sama dengan `?preset=` dan `?quotation=`.
+   * Sebelumnya isinya dioper lewat store Zustand dari halaman profil, dan
+   * akibatnya builder tidak pernah tahu rakitan MANA yang sedang dibuka — satu-
+   * satunya jalan menyimpan adalah membuat baris baru, sehingga mengedit
+   * rakitan sendiri selalu melahirkan salinan dan menghabiskan kuota 20.
+   *
+   * Kepemilikan diperiksa di `getSavedBuildForBuilder` (`where: { id, customerId }`),
+   * jadi id milik orang lain pulang sebagai null dan halaman terbuka seperti
+   * rakitan biasa — bukan pesan "bukan milik Anda" yang justru memberi tahu
+   * penebak bahwa idnya ada.
+   *
+   * Tidak dijalankan kalau `?quotation=` atau `?preset=` sedang aktif: satu
+   * halaman tidak boleh punya dua "asal simpan" sekaligus.
+   */
+  let savedBuildLoad: SavedBuildLoad | null = null
+  /** Rakitannya ada, tapi tidak satu komponen pun masih bisa dimuat. */
+  let savedBuildKosong = false
+
+  if (savedBuildId && customer && !quotationCode && !presetId) {
+    const seed = await getSavedBuildForBuilder(savedBuildId, customer.id)
+
+    if (seed) {
+      /*
+       * Rakitan yang seluruh komponennya sudah ditarik dari etalase TIDAK
+       * masuk Mode Edit. Kalau dipaksakan, panel akan menampilkan rakitan lain
+       * yang kebetulan tertinggal di localStorage sambil mengaku sedang
+       * mengedit rakitan ini — dan "Simpan Perubahan" akan menimpanya dengan
+       * isi yang tidak ada hubungannya.
+       */
+      if (Object.keys(seed.selections).length === 0) {
+        savedBuildKosong = true
+      } else {
+        savedBuildLoad = {
+          id: seed.id,
+          name: seed.name,
+          selections: seed.selections,
+          komponenHilang: seed.skipped,
+        }
+      }
+    }
+  }
+
   return (
     <div className="flex min-h-dvh flex-col bg-page">
       <div className="hidden md:block print:hidden">
@@ -288,6 +335,8 @@ export default async function BuildPcPage({
             quotationMode={quotationMode}
             salesOptions={salesOptions}
             revisionLoad={revisionLoad}
+            savedBuildLoad={savedBuildLoad}
+            savedBuildKosong={savedBuildKosong}
           />
 
           {/*
