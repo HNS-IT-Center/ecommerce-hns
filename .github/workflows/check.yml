@@ -1,9 +1,17 @@
 # Pemeriksa kode — BUKAN jalur deploy.
 #
 # SIAPA YANG DEPLOY: auto-deploy GitHub di hPanel Hostinger, dari branch
-# `development`. Setiap push ke sana membuat Hostinger menjalankan `npm install`
+# `main`. Setiap push ke sana membuat Hostinger menjalankan `npm install`
 # lalu `npm run build` (= `prisma migrate deploy && next build`) dan memasang
-# hasilnya ke hnsitcenter.id. Lihat docs/10-deployment-procedure.md.
+# hasilnya ke hnsitcenter.id. `development` tidak deploy ke mana pun — ia
+# branch kerja. Lihat docs/10-deployment-procedure.md.
+#
+# Branch deploy pindah dari `development` ke `main` pada 22 September 2026.
+# Kalau ia pindah lagi, perbarui komentar ini DAN bagian "Jalur deploy" di
+# docs/10 — keduanya, karena tidak ada apa pun di repo yang bisa memverifikasi
+# branch mana yang sebenarnya ditarik hPanel. Komentar ini yang jadi penjaganya,
+# dan waktu ia basi selama beberapa hari pada September 2026, ada agent yang
+# menyimpulkan push ke `main` tidak menayangkan apa-apa.
 #
 # RIWAYAT: sampai 15 September 2026 berkas ini bernama `deploy.yml` dan ikut
 # men-deploy — build di runner GitHub, kirim tar lewat SCP, pasang lewat SSH.

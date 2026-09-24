@@ -82,26 +82,38 @@ npx prisma migrate status
 
 ---
 
-### Jalur deploy: auto-deploy hPanel dari `development` (15 September 2026)
+### Jalur deploy: auto-deploy hPanel dari `main` (22 September 2026)
 
 **Hanya ada satu jalur deploy:** auto-deploy GitHub di hPanel Hostinger, menarik
-branch **`development`**. Setiap push ke sana membuat Hostinger menjalankan
+branch **`main`**. Setiap push ke sana membuat Hostinger menjalankan
 `npm install` → `npm run build` (`prisma migrate deploy && next build`) lalu
 memasang hasilnya ke `hnsitcenter.id`.
 
 Konsekuensinya, yang wajib disadari setiap orang yang punya akses push:
 
-- **Push ke `development` = deploy ke produksi**, termasuk migrasi ke database
+- **Push ke `main` = deploy ke produksi**, termasuk migrasi ke database
   produksi. Tidak ada staging sejak `store.hnsitcenter.id` diambil alih pada
   cutover 14 September 2026.
+- **`development` tidak deploy ke mana pun.** Ia branch kerja, sesuai namanya.
+  Push ke sana aman; yang menayangkan adalah merge dan push ke `main`.
 - **SQL migrasi dibaca SEBELUM di-push** (langkah 3 `docs/08`), bukan sesudahnya.
   Begitu ter-push, migrasinya sudah berjalan.
 - **Env hanya diatur di hPanel** (Node.js app → Environment variables), termasuk
   `NEXT_PUBLIC_*` yang dibakar saat build. Mengubah `NEXT_PUBLIC_*` butuh
   build ulang, bukan sekadar restart.
 - Branch yang ditarik hPanel adalah satu-satunya penentu apa yang tayang. Kalau
-  suatu hari pindah ke `main`, ubah di hPanel — tidak ada yang perlu disamakan
-  di GitHub.
+  suatu hari pindah lagi, ubah di hPanel — lalu **perbarui bagian ini dan
+  komentar kepala `.github/workflows/check.yml`**, dua-duanya.
+
+**Sampai 22 September 2026 yang ditarik hPanel adalah `development`,** dan
+dokumen ini menyatakan dengan tebal "Push ke `development` = deploy ke produksi"
+selama beberapa hari sesudah itu tidak lagi benar. Akibatnya nyata: 24 September
+seorang agent membaca bagian ini, menyimpulkan `git push origin main` "aman
+karena main bukan branch deploy", dan menawarkannya begitu — persis kebalikan
+dari keadaan sebenarnya. Nasib baik saja yang membuatnya tidak dijalankan.
+Branch deploy hanya diketahui dari hPanel, tidak ada apa pun di dalam repo yang
+bisa membantahnya, jadi baris ini satu-satunya penjaga. Kalau ia salah, tidak
+ada yang menangkapnya.
 
 **GitHub Actions (`.github/workflows/check.yml`) hanya pemeriksa:** `typecheck`
 dan `lint` di setiap push dan pull request. Ia tidak men-deploy, tidak butuh
