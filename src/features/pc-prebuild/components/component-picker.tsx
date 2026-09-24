@@ -128,7 +128,22 @@ export function ComponentPicker({ component, selection, onSelect }: Props) {
 
         {component.branching ? (
           <div className="mt-1.5">
+            {/*
+              `modal={false}` mematikan scroll lock Base UI. Bawaannya `true`,
+              dan itu berarti SETIAP kali dropdown dibuka
+              `useAnchoredPopupScrollLock` menulis `overflow:hidden` +
+              `scrollbar-gutter` ke `<html>`, setelah lebih dulu memaksa dua
+              pengukuran layout serentak untuk mendeteksi dukungan
+              `scrollbar-gutter`. Terukur di halaman ini: 3 layout dan ~7ms
+              recalc style tambahan per buka, hilang begitu prop ini dipasang.
+
+              Yang kita butuhkan cuma popup kecil yang menempel pada pemicunya —
+              bukan keadaan modal. Konsekuensinya halaman masih bisa digulir
+              saat dropdown terbuka; popup ikut menempel karena anchor tracking
+              tetap jalan, dan klik di luar tetap menutupnya.
+            */}
             <Select
+              modal={false}
               items={items}
               value={String(optionId(terpilih))}
               onValueChange={(val: string | null) => {
