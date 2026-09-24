@@ -784,13 +784,41 @@ sisi belakang paket A dengan sisi depan paket B.
   memberi tahu pelanggan tentang pekerjaan internal HNS yang bukan urusannya.
 - Kartu paket bercabang menampilkan **"mulai dari" `minTotal`**, bukan `total`.
 
-**Tautan, tombol, dan drag.** Tautan yang menutupi kartu di `z-10`; kendali
-(panah, filter) di `z-20` supaya bisa ditekan tanpa membuka halaman detail.
-Daftar yang digulir juga di `z-20` — kalau ia di bawah tautan, gulirannya jalan
-tapi setiap sentuhan ikut membuka halaman. Sebagai gantinya daftar itu punya
-`onClick` sendiri ke halaman yang sama; tautan aslinya tetap ada untuk keyboard
-dan pembaca layar. Drag dikunci `drag="x"` supaya tidak berebut dengan guliran
-vertikal di dalam kartu.
+**Tautan dan tombol.** TIDAK ada tautan yang menutupi kartu. Satu-satunya `<a>`
+adalah tombol "Lihat Detail" di footer, dan footer sengaja di luar track supaya
+ia tidak ikut bergeser. Tautan sebesar kartu sudah pernah dicoba dan menelan
+setiap klik tombol filter serta setiap guliran daftar FPS — menaikkan `z-index`
+isinya tidak menolong, karena track-nya waktu itu ber-`transform` dan transform
+membuat stacking context baru. Sebagai gantinya kedua sisi punya `onClick`
+sendiri ke halaman yang sama; itu pintasan tetikus, sementara jalur keyboard dan
+pembaca layar tetap dipegang tombol di footer.
+
+**Gesernya CSS scroll-snap, BUKAN drag JS (24 September 2026).** Track-nya
+container `overflow-x-auto snap-x snap-mandatory`, tiap sisi
+`w-full shrink-0 snap-start`, tombol panah memanggil `scrollTo({ behavior:
+"smooth" })`, dan indikator "1/2" dibaca balik dari `scrollLeft` lewat
+`onScroll` — satu sumber kebenaran posisi, jadi indikatornya tidak bisa berbeda
+dari yang terlihat.
+
+Versi sebelumnya memakai `motion.div` ber-`drag="x"` dengan
+`dragConstraints={{ left: 0, right: 0 }}` sementara posisinya diatur
+`animate={{ x }}`. Dua kendali menulis satu nilai `x`, dan constraint-nya
+mengunci nilai itu ke 0: pelanggan yang sedang di sisi 2 dan sekadar MENYENTUH
+kartu untuk menggulir daftar game langsung dilempar balik ke sisi 1, lalu
+tertinggal di sana karena `sisi` tidak berubah sehingga target `animate` juga
+tidak dan tidak ada animasi balik — indikatornya tetap menulis "2/2". Roda
+tetikus tidak terkena karena roda tidak pernah memulai drag; di ponsel, yang
+notabene seluruh interaksinya sentuhan, sisi performa praktis tidak bisa dibaca.
+Jangan kembalikan `drag`/`dragConstraints` ke kartu ini: arbitrase sumbu
+vertikal-vs-horizontal adalah pekerjaan peramban, dan ia tidak pernah salah
+memilih seperti drag yang diurus JS.
+
+**Tinggi kartu dan foto dipatok per breakpoint.** Foto `h-40 sm:h-44 xl:h-48`
+(tetap `object-contain`), kartu `h-140 xl:h-144`. Dulu fotonya `aspect-16/10`,
+jadi tingginya ikut melebar bersama kartu — di layar kecil, apalagi satu kolom
+tempat kartunya justru paling lebar, daftar komponen tinggal 2–3 baris dan
+berhenti menjawab "isinya apa". Yang menentukan tinggi daftar adalah SELISIH
+kedua angka itu, jadi kalau salah satunya diubah, hitung ulang yang lain.
 
 ### `/pc-prebuild/<id>` — detail
 
