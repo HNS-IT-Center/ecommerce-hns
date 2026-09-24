@@ -823,9 +823,32 @@ kedua angka itu, jadi kalau salah satunya diubah, hitung ulang yang lain.
 ### `/pc-prebuild/<id>` — detail
 
 Galeri kiri (memakai `ProductGallery` milik halaman produk — komponen yang sama,
-bukan salinan), panel performa kanan, isi paket grid dua kolom, bilah aksi
-sticky di bawah.
+bukan salinan), **isi paket kanan**, **panel performa selebar halaman di bawah
+keduanya**, bilah aksi sticky di bawah.
 
+Urutan itu ditukar 24 September 2026. Sebelumnya kebalikannya: performa di kolom
+kanan, isi paket grid dua kolom di bawah. Dua alasan:
+
+- Yang harus diputuskan pelanggan sebelum menekan "Masukkan Keranjang" adalah
+  **pilihan tukarnya**, dan itu dulu berada di bawah lipatan — di bawah panel
+  performa yang panjang. Sekarang ia bersebelahan dengan foto dan bilah harga.
+- Matriks FPS 3 resolusi × 3 setelan (§9) berdesak-desakan di kolom setengah
+  lebar. Selebar halaman ia terbaca tanpa digeser.
+
+- **Pilihan tukar memakai dropdown, bukan deretan chip** (24 September 2026).
+  Kolom kanan setengah lebar halaman, dan komponen dengan 4–5 pilihan
+  menghabiskannya. Komponen **tanpa** cabang tidak dapat dropdown sama sekali —
+  ia tampil sebagai teks; dropdown berisi satu baris mengundang orang
+  menekannya lalu tidak mendapat apa-apa, dan membuat yang benar-benar bisa
+  ditukar tenggelam di antaranya.
+- **Penanda "stok kosong" pilihan aktif dinaikkan ke luar dropdown.** Di daftar
+  chip lama penandanya menempel pada tiap pilihan sekaligus dan semuanya
+  terlihat; begitu daftarnya masuk dropdown, status pilihan yang SEDANG dipakai
+  tidak terlihat lagi sampai dibuka. Stok kosong tetap tidak menyembunyikan
+  pilihan dan tidak memindahkan bawaan (§5).
+- **Trigger dropdown dipaksa `min-h-11`,** menimpa tinggi bawaan 32px milik
+  `SelectTrigger`. Salah tekan di sini berarti komponen lain yang masuk
+  keranjang. Alasan yang sama dulu membuat chip-nya bertumpuk di ponsel.
 - **Harga per komponen sengaja tidak ditampilkan.** Yang dijual adalah paketnya;
   harga satuan di tiap baris mengundang pelanggan menjumlahkan sendiri lalu
   menawar selisihnya, dan angka hasil penjumlahan itu bukan angka yang bisa
