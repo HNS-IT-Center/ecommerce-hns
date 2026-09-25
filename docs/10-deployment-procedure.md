@@ -133,6 +133,51 @@ build lain di GitHub tidak dipakai lagi dan sebaiknya **dihapus** — terutama
 
 ---
 
+### Build memakai webpack, BUKAN Turbopack (25 September 2026)
+
+`npm run build` menjalankan `next build --webpack`. **Jangan dihapus flag itu**
+tanpa membaca bagian ini — tanpanya build di server Hostinger gagal, dan
+gagalnya tidak menyebut memori sama sekali.
+
+Karena ada `postcss.config.mjs` (Tailwind v4 lewat `@tailwindcss/postcss`),
+Turbopack menjalankan PostCSS untuk **setiap** berkas CSS — termasuk yang di
+`node_modules` — dan setiap kali ia **men-spawn proses Node baru**. Di server
+Hostinger salah satu spawn itu gagal:
+
+```
+Execution of PostCssTransformedAsset::process failed
+Execution of evaluate_webpack_loader failed
+- creating new process
+- node process exited before we could connect to it with exit status: 0
+  Process output:        (kosong)
+  Process error output:  (kosong)
+```
+
+Dua deploy beruntun gagal begini, dan **berkas yang disebut berpindah** —
+`src/app/globals.css` pada percobaan pertama, `node_modules/leaflet/dist/leaflet.css`
+pada yang kedua. Itu yang membuktikan penyebabnya bukan CSS tertentu: `leaflet.css`
+tidak pernah kita sentuh dan tidak berubah di antara keduanya. Yang gagal adalah
+mekanismenya, dan berkas mana yang kena tinggal soal urutan.
+
+webpack menjalankan PostCSS **di dalam prosesnya sendiri** lewat `postcss-loader`,
+jadi tidak ada proses anak untuk CSS sama sekali — titik gagalnya tidak dilewati.
+
+**Ini menyiasati, bukan menyelesaikan.** Batas proses di server itu masih ada dan
+suatu hari bisa menggigit di tempat lain (build memakai worker terpisah juga untuk
+static generation). Akar masalahnya ada di kapasitas server, dan riwayat di bagian
+bawah dokumen ini mencatat build di sana memang pernah mati kehabisan memori di
+RAM 1 GB. Kalau paketnya dinaikkan, flag ini boleh dicoba dilepas — **dengan satu
+deploy percobaan**, bukan dengan asumsi.
+
+Satu hal yang ikut terungkap saat pindah bundler, dan layak diingat: Turbopack
+**tidak** membuat pemeriksa tipe untuk sebagian route, sehingga
+`npm run typecheck` lolos sementara `next build --webpack` menolak. Bug
+`/category/<slug>` yang tayang berbulan-bulan (`params` Promise dibaca langsung,
+setiap slug jadi `undefined`) ketemu justru karena itu. Jadi `--webpack` bukan
+cuma jalan keluar; ia memeriksa lebih banyak.
+
+---
+
 ### Migrasi ikut berjalan saat build (31 Agustus 2026)
 
 `npm run build` sekarang berbunyi **`prisma migrate deploy && next build`**.

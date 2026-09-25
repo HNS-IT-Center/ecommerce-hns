@@ -119,6 +119,26 @@ bagian dari pratinjau harian, melainkan tombol terpisah ("Sapuan Penuh").
 
 **Siapa:** dev.
 
+- **Server Hostinger tidak sanggup men-spawn proses yang dibutuhkan Turbopack
+  (25 September 2026).** Dua deploy produksi beruntun gagal: Turbopack
+  men-spawn satu proses Node per berkas CSS untuk menjalankan PostCSS, dan salah
+  satunya selalu mati — `node process exited before we could connect to it with
+  exit status: 0`, stdout dan stderr dua-duanya kosong. Berkas yang disebut
+  berpindah antar percobaan (`src/app/globals.css`, lalu
+  `node_modules/leaflet/dist/leaflet.css`), yang membuktikan penyebabnya bukan
+  CSS-nya.
+
+  **Sudah disiasati,** bukan diselesaikan: build pindah ke `next build --webpack`,
+  yang menjalankan PostCSS in-process (lihat `docs/10` bagian "Build memakai
+  webpack"). Yang masih terbuka adalah **akar masalahnya** — batas memori atau
+  batas jumlah proses di paket Hostinger. Belum ada yang memeriksa statistik
+  resource di hPanel saat build berjalan, jadi belum diketahui yang mana. Build
+  juga masih memakai worker terpisah untuk static generation, jadi batas yang
+  sama bisa menggigit lagi di tempat lain.
+
+  Riwayat yang relevan: `docs/10` mencatat build di server ini **dulu selalu mati
+  kehabisan memori** di RAM 1 GB, dan dinyatakan beres 15 September 2026
+  berdasarkan **satu** log yang lolos. Itu pengamatan, bukan jaminan.
 - **Filter "Tanpa kategori" di `/admin/produk`.** Penyaring yang ada hanya
   status, tipe, dan stok. Tujuh produk hasil import turun jadi draft karena
   kategorinya tidak ketemu, dan sekarang bercampur dengan draft lain tanpa cara
