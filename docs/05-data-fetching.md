@@ -1898,3 +1898,95 @@ Sekarang identitasnya ikut di URL, pola yang sama dengan `?preset=` dan
   menampilkan rakitan lain yang tertinggal di localStorage sambil mengaku
   sedang mengedit rakitan ini — dan "Simpan Perubahan" akan menimpanya dengan
   isi yang tidak ada hubungannya.
+
+---
+
+## 29. Penyusun komponen PC Prebuild: urutan, filter atribut, dan peringkat harga bersama (25 September 2026)
+
+Dibuat bersama perombakan bagian "Komponen" di `/admin/pc-prebuild/[id]` —
+rinciannya di [`docs/11-pc-prebuild.md` §14](./11-pc-prebuild.md).
+
+### `searchPrebuildProducts` menerima `sort` dan `attributeValueGroups`
+
+`lib/pc-prebuild/products.ts`:
+
+| Parameter baru | Isi |
+|---|---|
+| `sort` | `"default" \| "name_asc" \| "name_desc" \| "price_asc" \| "price_desc"` — sama persis dengan `fetchBuilderProducts` |
+| `attributeValueGroups` | Filter atribut pilihan staff, satu kelompok per atribut |
+
+`attributeValueGroups` **menambah** syarat, tidak pernah menggantikan
+`requiredAttributeValueGroups`. Keduanya digabung sebelum masuk `where.AND`,
+jadi aturannya tetap satu: DAN antar kelompok, ATAU di dalam kelompok. Aturan
+kompatibilitas PC Builder bukan preferensi yang boleh dimatikan dari panel —
+kalau bisa, staff akan menyusun paket yang komponennya tidak bisa dipasang
+bersama, dan itu baru ketahuan di meja teknisi.
+
+### Peringkat harga kini satu berkas untuk dua pemakai
+
+Rutin "urutkan menurut harga kartu" yang dijelaskan di §20 dulu hanya ada di
+`fetchBuilderProducts`. Ia sekarang tinggal di
+[`lib/pc-builder/price-sort.ts`](../src/lib/pc-builder/price-sort.ts)
+(`pageIdsByCardPrice` + `reorderByIds`) dan dipakai wizard pelanggan **dan**
+panel admin.
+
+Yang **tidak** ikut dibagi adalah rumus harganya. `priceOf` diserahkan
+pemanggil, karena aturan stoknya berbeda: wizard menghormati sakelar tampilan
+stok di `/admin/produk` (`StockDisplayMode`), panel admin tidak — dan stok ikut
+menentukan varian mana yang sah dipakai sebagai harga kartu induk VARIABLE.
+
+### `PrebuildPickerProduct` bertambah empat bidang
+
+`cardPrice`, `cardStock`, `regularPrice`, `salePrice`.
+
+`cardPrice` **sengaja dipisah** dari `price`. `price` tetap harga induk apa
+adanya, dan untuk induk VARIABLE ia sering nol — di tempat ia dipakai
+(menghitung subtotal barang yang belum punya `variationId`) nol adalah jawaban
+yang BENAR, yaitu penanda bahwa variannya belum dipilih. Kalau `price` sendiri
+diam-diam diisi harga varian termurah, barang setengah jadi akan ikut total
+paket dengan angka yang bukan angka siapa pun.
+
+`regularPrice`/`salePrice` dibutuhkan kartu untuk harga coret, dan `salePrice`
+sudah nol kalau obralnya kedaluwarsa (aturan `saleEndDate` di §20).
+
+### Server action baru: `prebuildAttributeFacetsAction`
+
+`app/admin/(panel)/pc-prebuild/actions.ts`, berizin `pc-prebuild:edit`.
+Mengembalikan `{ facets }` — atribut beserta nilai dan jumlah produknya untuk
+kategori satu langkah, isi modal "Filter Atribut".
+
+Dihitung dari kandidat yang sama dengan grid (kategori langkah + syarat
+kompatibilitas), **tanpa** ikut menyertakan kata kunci maupun filter yang sedang
+aktif. Kalau filter yang aktif ikut mempersempit, nilai yang baru dicentang
+staff akan membuat nilai lain dari atribut yang sama menghilang dari modal — dan
+menambah pilihan kedua ("AM4 atau AM5") jadi mustahil.
+
+Satu kueri atas `productAttribute`, bukan satu kueri per atribut: satu kategori
+bisa punya belasan atribut, dan membuka modal ini tidak boleh berarti belasan
+perjalanan ke database.
+
+### Pencariannya satu hook untuk dua grid
+
+`_components/use-product-search.ts` memegang kata kunci, urutan, filter, dan
+paginasi — dipakai grid utama penyusun komponen DAN grid di dalam dialog
+pilihan tukar. Keduanya mencari di kategori dan di bawah syarat kompatibilitas
+yang sama; kalau logikanya disalin, cepat atau lambat salah satunya menyaring
+berbeda dan staff menemukan produk yang "ada di satu layar tapi tidak ada di
+layar lain".
+
+`enabled: false` menahan pemanggilan untuk dialog yang belum pernah dibuka —
+dialognya tetap harus ter-mount (`useBackToClose`), tapi tidak boleh menembak
+server karenanya.
+
+### `performanceDescription` di `PC_PREBUILD_CONFIG`
+
+Bidang baru di preset, dibaca `parsePrebuildConfig` dan dipotong di
+`MAX_PERFORMANCE_DESCRIPTION` (8000 karakter HTML — ia penjaga, bukan target
+menulis). Alasannya berada di luar objek `performance` ada di
+[`docs/11-pc-prebuild.md` §15](./11-pc-prebuild.md).
+
+Sejak 25 September 2026 ia **dibaca lembar PDF** `/pc-prebuild/[id]/print`,
+menggantikan blok Estimasi Performa yang tidak dicetak lagi. Halaman itu tidak
+lagi memanggil `getPcPrebuildGames()`; datanya kini hanya konfigurasi paket,
+langkah PC Builder, mode tampilan stok, dan katalog lewat
+`resolvePrebuildPresets` — semuanya seperti sebelumnya.

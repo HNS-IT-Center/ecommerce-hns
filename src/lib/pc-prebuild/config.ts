@@ -53,6 +53,7 @@ import {
   MAX_ALTERNATIVES_PER_ITEM,
   MAX_BRANCHING_ITEMS,
   MAX_ITEMS_PER_SLOT,
+  MAX_PERFORMANCE_DESCRIPTION,
   MAX_PREBUILD_IMAGES,
   MAX_QUANTITY_PER_ITEM,
 } from "./limits"
@@ -79,6 +80,7 @@ export {
   MAX_ALTERNATIVES_PER_ITEM,
   MAX_BRANCHING_ITEMS,
   MAX_ITEMS_PER_SLOT,
+  MAX_PERFORMANCE_DESCRIPTION,
   MAX_PREBUILD_IMAGES,
   MAX_QUANTITY_PER_ITEM,
 } from "./limits"
@@ -165,6 +167,23 @@ export type PcPrebuildPreset = {
    * bersama presetnya, karena ia memang cuma berlaku untuk satu paket itu.
    */
   performance?: PrebuildPerformance
+  /**
+   * Deskripsi performa yang DITULIS STAFF — untuk lembar PDF paket.
+   *
+   * Tiga hal yang mudah tertukar, dan sengaja dipisah:
+   *
+   * | Bidang | Siapa yang menulis | Dipakai di |
+   * |---|---|---|
+   * | `summary` | staff | kartu & halaman paket, satu-dua kalimat "untuk siapa" |
+   * | `performance.headline` | AI (boleh disunting staff) | panel performa |
+   * | `performanceDescription` | staff | lembar PDF |
+   *
+   * Ia TIDAK tinggal di dalam `performance` karena isi objek itu ditimpa utuh
+   * setiap kali analisis AI dijalankan ulang — dan tulisan tangan staff yang
+   * hilang karena tombol "Hitung ulang" ditekan adalah kerugian yang tidak
+   * terlihat sampai PDF-nya dicetak.
+   */
+  performanceDescription?: string
   /**
    * Potongan nominal untuk seluruh paket, ditetapkan staff — satu-satunya angka
    * rupiah yang disimpan preset. Ia BUKAN harga: harga tetap dibaca dari
@@ -381,6 +400,14 @@ function toPreset(value: unknown, index: number): PcPrebuildPreset | null {
   const performance = parsePrebuildPerformance(preset.performance)
   const discount = parsePrebuildDiscount(preset.discount)
 
+  // Dipotong, bukan ditolak — sama seperti batas lain di paket ini. Teks yang
+  // kepanjangan tetap tersimpan sampai batasnya; yang ditolak diam-diam justru
+  // membuat staff mengira tombol simpannya rusak.
+  const performanceDescription =
+    typeof preset.performanceDescription === "string"
+      ? preset.performanceDescription.trim().slice(0, MAX_PERFORMANCE_DESCRIPTION)
+      : ""
+
   return {
     id: preset.id,
     name: preset.name,
@@ -388,6 +415,7 @@ function toPreset(value: unknown, index: number): PcPrebuildPreset | null {
     images,
     order: angkaSah(preset.order) ? preset.order : index,
     slots,
+    ...(performanceDescription ? { performanceDescription } : {}),
     ...(performance ? { performance } : {}),
     ...(discount ? { discount } : {}),
   }

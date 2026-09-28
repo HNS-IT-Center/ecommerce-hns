@@ -20,7 +20,7 @@ import {
   UnavailableNotice,
   UnverifiedPriceNotice,
 } from "@/components/shared/price-change-notice"
-import { ProductCardBuilder, type SelectedVariationLine } from "./product-card-builder"
+import { ProductCardBuilder, type SelectedVariationLine } from "@/components/shared/product-card-builder"
 import { VariationPickerDialog } from "./variation-picker-dialog"
 import { BuilderQuickViewDialog } from "./builder-quick-view-dialog"
 import { cheapestAvailableVariation } from "@/lib/utils/variation"

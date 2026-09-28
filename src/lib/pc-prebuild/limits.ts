@@ -76,3 +76,19 @@ export const MAX_PREBUILD_IMAGES = 4
 export const MAX_OPTIONS_PER_SLOT = MAX_ALTERNATIVES_PER_ITEM
 /** @deprecated Pakai `MAX_BRANCHING_ITEMS`. */
 export const MAX_BRANCHING_SLOTS = MAX_BRANCHING_ITEMS
+
+/**
+ * Deskripsi performa yang ditulis staff sendiri — bukan `summary`, dan bukan
+ * `headline` milik analisis AI.
+ *
+ * Angkanya menghitung **HTML**, bukan teks yang terbaca: kolomnya rich text
+ * (paragraf, daftar, tebal), dan satu paragraf berpenanda bisa tiga kali lebih
+ * panjang daripada kalimatnya sendiri. 8000 karena itu bukan target menulis
+ * melainkan PENJAGA — ia menahan tempelan sepanjang satu halaman web masuk ke
+ * kolom JSON, dan panjang yang wajar untuk lembar PDF jauh di bawahnya.
+ *
+ * Panjang yang ditunjukkan ke staff di panel adalah panjang TEKSNYA
+ * (`stripHtml`), karena angka yang melonjak gara-gara satu tombol tebal ditekan
+ * tidak berarti apa-apa baginya.
+ */
+export const MAX_PERFORMANCE_DESCRIPTION = 8000

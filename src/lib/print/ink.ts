@@ -30,9 +30,21 @@ export const INK_BLACK = "#000000"
 export const INK_GRAY = "#595959"
 /** ≈ K20 — garis rambut dan bingkai. */
 export const INK_HAIRLINE = "#cccccc"
-/** ≈ C8 M3 Y0 K2 — latar panel tipis bernada navy. Cukup terang untuk teks hitam. */
+/**
+ * ≈ C8 M3 Y0 K2 — latar panel tipis bernada navy. Cukup terang untuk teks hitam.
+ *
+ * Tidak dipakai lembar mana pun sejak blok performa PC Prebuild berhenti
+ * dicetak (25 Sep 2026). Dibiarkan ada karena berkas ini palet, bukan daftar
+ * warna yang kebetulan terpakai.
+ */
 export const INK_TINT = "#eef2f8"
 /** ≈ C100 M0 Y100 K15 — hijau proses: potongan harga, FPS mulus. */
 export const INK_GREEN = "#00843d"
-/** ≈ C0 M40 Y100 K0 — kuning-jingga proses: FPS masih layak dimainkan. */
+/**
+ * ≈ C0 M40 Y100 K0 — kuning-jingga proses.
+ *
+ * Dulu menandai "FPS masih layak dimainkan" di lembar PC Prebuild; tidak ada
+ * pemakainya lagi sejak 25 Sep 2026. Sama seperti `INK_TINT`, dibiarkan ada
+ * sebagai bagian palet.
+ */
 export const INK_AMBER = "#f39200"

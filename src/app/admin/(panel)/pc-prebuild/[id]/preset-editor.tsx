@@ -27,7 +27,7 @@ import { savePcPrebuildPreset } from "../actions"
 import { AnalysisPanel } from "../_components/analysis-panel"
 import { DiscountPanel } from "../_components/discount-panel"
 import { PresetImages } from "../_components/preset-images"
-import { SlotBoard } from "../_components/slot-board"
+import { ComponentWorkbench } from "../_components/component-workbench"
 
 /**
  * Editor satu paket — satu halaman yang dibaca dari atas ke bawah:
@@ -75,6 +75,9 @@ export function PresetEditor({ initialPreset, isNew, steps, games, initialCatalo
   )
   const [discount, setDiscount] = useState<PrebuildDiscount | null>(
     initialPreset.discount ?? null
+  )
+  const [performanceDescription, setPerformanceDescription] = useState(
+    initialPreset.performanceDescription ?? ""
   )
   // Jam dibaca sekali saat editor dibuka — cukup untuk menilai masa berlaku.
   const [sekarang] = useState(() => Date.now())
@@ -183,6 +186,7 @@ export function PresetEditor({ initialPreset, isNew, steps, games, initialCatalo
         images,
         order: initialPreset.order,
         slots,
+        ...(performanceDescription.trim() ? { performanceDescription } : {}),
         ...(performance ? { performance } : {}),
         ...(discount ? { discount } : {}),
       })
@@ -324,37 +328,21 @@ export function PresetEditor({ initialPreset, isNew, steps, games, initialCatalo
               </p>
             ) : (
               <>
-                {/* Dua kolom di layar lebar. Satu kolom membuat kartu langkah
-                    membentang selebar 96rem untuk isi yang cuma satu baris
-                    produk — ruang terbuang, dan langkah ke-8 jadi jauh di bawah
-                    lipatan.
-
-                    Kartu sebaris SENGAJA dibiarkan sama tinggi (bawaan grid,
-                    tanpa `items-start`). Versi sebelumnya memakai `items-start`,
-                    dan hasilnya tepi bawah bergerigi setiap kali satu kartu
-                    punya baris varian atau pilihan tukar yang terbuka — ruang
-                    kosongnya tetap ada, hanya pindah ke luar kartu. Isi kartu
-                    tetap rata atas, jadi kartu yang ikut meninggi tidak
-                    menggeser apa pun.
-
-                    Jangan diganti masonry (`columns-2`): kartu akan melompat
-                    kolom saat tingginya berubah di tengah pengeditan, dan urutan
-                    langkah — yang saling menyaring, misal Prosesor → Motherboard
-                    — tidak lagi terbaca kiri ke kanan. */}
-                <div className="grid gap-4 xl:grid-cols-2">
-                  {steps.map((step) => (
-                    <SlotBoard
-                      key={step.id}
-                      step={step}
-                      items={slots.find((s) => s.stepId === step.id)?.items ?? []}
-                      onChange={(items) => ubahSlot(step.id, items)}
-                      katalog={katalog}
-                      onLearn={pelajariProduk}
-                      branchingLeft={Math.max(0, MAX_BRANCHING_ITEMS - bercabang)}
-                      requiredAttributeValueGroups={syaratAtribut.get(step.id) ?? []}
-                    />
-                  ))}
-                </div>
+                {/* Satu langkah pada satu waktu, lewat rail tab — bukan lagi
+                    grid dua kolom berisi semua langkah sekaligus. Alasan
+                    penggantiannya ada di `component-workbench.tsx`: yang
+                    dibutuhkan penyusun paket adalah grid produk berfoto selebar
+                    halaman, dan grid itu tidak muat di kartu selebar setengah
+                    layar. */}
+                <ComponentWorkbench
+                  steps={steps}
+                  slots={slots}
+                  onChangeSlot={ubahSlot}
+                  katalog={katalog}
+                  onLearn={pelajariProduk}
+                  branchingLeft={Math.max(0, MAX_BRANCHING_ITEMS - bercabang)}
+                  syaratAtribut={syaratAtribut}
+                />
 
                 {belumLengkap > 0 && (
                   <p className="mt-3 flex items-start gap-2 text-xs text-warning">
@@ -400,6 +388,11 @@ export function PresetEditor({ initialPreset, isNew, steps, games, initialCatalo
               branchingCount={bercabang}
               onChange={(p) => {
                 setPerformance(p)
+                setTersimpan(false)
+              }}
+              performanceDescription={performanceDescription}
+              onDescriptionChange={(v) => {
+                setPerformanceDescription(v)
                 setTersimpan(false)
               }}
             />
@@ -485,9 +478,15 @@ function JumpRail() {
   }
 
   return (
+    // `z-40`, dan angkanya ditentukan dari dua sisi. Di bawahnya: tombol Quick
+    // Preview kartu produk yang di layar sempit menempel di sudut kanan atas
+    // kartu — tepat di jalur rail ini — jadi rail harus menang. Di atasnya:
+    // dialog project memakai `z-50` (`components/ui/dialog.tsx`), dan rail yang
+    // mengapung di atas modal akan tampak bisa ditekan padahal isi di
+    // belakangnya sedang tidak boleh disentuh.
     <nav
       aria-label="Lompat ke bagian"
-      className="fixed right-3 top-1/2 z-30 flex -translate-y-1/2 flex-col gap-2 md:right-5"
+      className="fixed right-3 top-1/2 z-40 flex -translate-y-1/2 flex-col gap-2 md:right-5"
     >
       {BAGIAN.map((b) => (
         <Tooltip key={b.id}>

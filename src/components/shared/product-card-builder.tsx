@@ -2,11 +2,29 @@
 
 import { Minus, Plus, Repeat2 } from "lucide-react"
 import { formatRupiah } from "@/lib/utils"
-import { BuilderProduct } from "@/store/new-builder"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import EyeIcon from "@/components/icons/eye-icon"
 import { ProductImage } from "@/components/ui/product-image"
+
+/**
+ * Kartu komponen — dipakai wizard PC Builder yang dilihat pelanggan
+ * (`features/builder/components/dynamic-builder-view.tsx`) DAN panel penyusun
+ * paket PC Prebuild (`admin/pc-prebuild/[id]`).
+ *
+ * Tinggal di `components/shared/` justru karena dua pemakai itu. Sebelumnya ia
+ * milik `features/builder/`, dan menyalinnya ke panel admin berarti dua kartu
+ * yang perlahan menyimpang — staff menyusun paket lewat kartu yang tidak lagi
+ * sama dengan kartu yang dilihat pelanggan saat paket itu dibuka di wizard.
+ *
+ * Konsekuensinya: **perubahan di berkas ini terasa di dua tempat.** Yang khas
+ * satu pemakai tidak ditaruh di sini; ia dinyatakan lewat prop.
+ *
+ * Kartu ini murni tampilan — tidak menyentuh store, tidak memanggil server.
+ * Semua aksinya datang sebagai prop, dan semua angkanya dibaca apa adanya dari
+ * yang diberikan pemanggil (CLAUDE.md §2.7 — persentase diskon boleh dihitung
+ * karena ia keterangan atas selisih dua angka katalog, bukan sumber potongan).
+ */
 
 /** Satu varian produk ini yang sudah masuk rakitan pada langkah yang sedang aktif. */
 export type SelectedVariationLine = {
@@ -16,8 +34,29 @@ export type SelectedVariationLine = {
   stock: number
 }
 
+/**
+ * Bentuk produk seminimal yang dibutuhkan kartu ini.
+ *
+ * Sengaja BUKAN `BuilderProduct`: panel admin memakai
+ * `PrebuildPickerProduct` yang bentuknya berbeda, dan mengikat kartu ke store
+ * wizard berarti panel admin harus membuat objek store palsu cuma untuk
+ * menggambar satu kartu. Kedua tipe itu memenuhi bentuk ini apa adanya.
+ */
+export type ComponentCardProduct = {
+  id: number
+  name: string
+  price: number
+  regularPrice?: number
+  salePrice?: number
+  image?: string | null
+  stock: number
+  attributes: { attributeId: number; valueName: string }[]
+  /** Hanya panjangnya yang dipakai kartu — isinya urusan pemilih varian. */
+  variations?: unknown[]
+}
+
 interface ProductCardBuilderProps {
-  product: BuilderProduct
+  product: ComponentCardProduct
   /**
    * Untuk produk biasa: kuantitas yang dipilih. Untuk produk bervarian: jumlah
    * seluruh varian yang dipilih dari kartu ini — dipakai hanya untuk menandai
@@ -35,8 +74,16 @@ interface ProductCardBuilderProps {
    * produk habis tetap tampil di grid (sama seperti di katalog), dan justru
    * barang itulah yang paling sering ditanyakan spesifikasinya sambil menunggu
    * restock. Yang dimatikan hanya tombol pilih komponennya, di dalam dialog.
+   *
+   * Boleh dikosongkan, dan tombolnya ikut hilang. Satu pemakai memang tidak
+   * bisa menyediakannya: grid yang hidup DI DALAM sebuah dialog tidak boleh
+   * membuka dialog lain — `useBackToClose` mendorong satu entri riwayat boneka
+   * per dialog, dan dialog berantai membuat entri itu saling makan sehingga
+   * yang baru dibuka tertutup pada detik yang sama (lihat catatan di
+   * `builder-quick-view-dialog.tsx`). Tombol yang ada tapi tidak melakukan
+   * apa-apa lebih buruk daripada tombol yang tidak ada.
    */
-  onQuickView: () => void
+  onQuickView?: () => void
   onUpdateQuantity: (quantity: number) => void
   displayAttributeIds: number[]
   /** Kosong untuk produk biasa; berisi untuk kartu bervarian yang sudah dipilih. */
@@ -118,6 +165,7 @@ export function ProductCardBuilder({
         {/* Quick Preview — hover (desktop). Perlakuannya disamakan dengan kartu
           katalog (`components/ui/product-card.tsx`) supaya sales dan pelanggan
           tidak perlu belajar dua gerakan untuk hal yang sama. */}
+        {onQuickView && (
         <div className="absolute inset-0 z-20 hidden md:flex items-center justify-center opacity-0 transition-opacity duration-300 group-hover/image:opacity-100 group-hover/image:bg-background/40 group-hover/image:backdrop-blur-sm pointer-events-none">
           <button
             type="button"
@@ -133,17 +181,26 @@ export function ProductCardBuilder({
             </span>
           </button>
         </div>
+        )}
 
         {/* Quick Preview — tombol tetap (mobile), karena tidak ada hover di sana. */}
-        <button
-          type="button"
-          onClick={onQuickView}
-          className="absolute top-2 right-2 z-[40] flex md:hidden h-8 w-8 items-center justify-center rounded-full bg-background/80 text-foreground shadow-sm hover:bg-background cursor-pointer"
-          title="Quick Preview"
-          aria-label={`Pratinjau ${product.name}`}
-        >
-          <EyeIcon size={18} />
-        </button>
+        {onQuickView && (
+          <button
+            type="button"
+            onClick={onQuickView}
+            // `z-30`: cukup untuk menang atas overlay HABIS (`z-10`) dan
+            // overlay hover (`z-20`) di dalam kartu ini, dan tidak lebih.
+            // Sebelumnya `z-[40]`, yang membuatnya menimpa kontrol `fixed` di
+            // luar kartu — di panel admin prebuild ia menutupi rail "lompat ke
+            // bagian". Bilah-bilah di wizard pelanggan sudah `z-[45]` ke atas,
+            // jadi di sana tidak ada yang berubah.
+            className="absolute top-2 right-2 z-30 flex md:hidden h-8 w-8 items-center justify-center rounded-full bg-background/80 text-foreground shadow-sm hover:bg-background cursor-pointer"
+            title="Quick Preview"
+            aria-label={`Pratinjau ${product.name}`}
+          >
+            <EyeIcon size={18} />
+          </button>
+        )}
       </div>
 
       {/* Content */}

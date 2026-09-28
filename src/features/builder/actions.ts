@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client"
 import { displayStockCount, getStockDisplayMode, type StockDisplayMode } from "@/lib/api/stock-display"
 import { buildVariationLabel, cheapestAvailableVariation } from "@/lib/utils/variation"
 import type { AttributeRequirementGroup } from "@/lib/pc-builder/compatibility"
+import { pageIdsByCardPrice, reorderByIds } from "@/lib/pc-builder/price-sort"
 
 /**
  * ATURAN HARGA & STOK — satu-satunya yang berlaku di seluruh PC Builder:
@@ -313,66 +314,26 @@ export async function fetchBuilderProducts({
   let hasMore: boolean
 
   if (sort === "price_asc" || sort === "price_desc") {
-    /**
-     * Pengurutan harga TIDAK bisa diserahkan ke `ORDER BY` database.
-     *
-     * Harga yang tampil di kartu adalah `salePrice` kalau ada, dan untuk induk
-     * VARIABLE ia berasal dari varian termurah yang masih ada stoknya — dua
-     * aturan yang tidak bisa dinyatakan sebagai satu kolom untuk diurutkan
-     * Prisma. Lihat `hargaKartu` di atas untuk gejala yang ditimbulkan
-     * `orderBy: { regularPrice }`.
-     *
-     * Karena itu peringkatnya disusun di sini: satu kueri ringan (hanya id,
-     * dua kolom harga, dan harga/stok variannya) atas SELURUH kandidat yang
-     * lolos filter, lalu halamannya diambil dari urutan itu. Mengurutkan hanya
-     * 20 baris per halaman akan salah — yang termurah bisa berada di halaman
-     * mana pun.
-     *
-     * Bebannya sepadan: kueri ini tidak menarik gambar, deskripsi, maupun
-     * atribut, dan kandidatnya sudah dipersempit kategori langkah beserta
-     * syarat kompatibilitasnya.
-     */
-    const kandidat = await prisma.product.findMany({
+    // Pengurutan harga TIDAK bisa diserahkan ke `ORDER BY` database — alasan
+    // lengkapnya ada di `lib/pc-builder/price-sort.ts`, yang juga dipakai panel
+    // admin PC Prebuild supaya dua grid itu tidak pernah mengurutkan berbeda.
+    // Rumus harganya tetap milik berkas ini (`hargaKartu`), karena hanya di
+    // sini sakelar tampilan stok pelanggan berlaku.
+    const halaman = await pageIdsByCardPrice({
       where,
-      select: {
-        id: true,
-        regularPrice: true,
-        salePrice: true,
-        saleEndDate: true,
-        variations: {
-          where: { status: "PUBLISHED" },
-          select: {
-            regularPrice: true,
-            salePrice: true,
-            saleEndDate: true,
-            stockQty: true,
-            stockStatus: true,
-          },
-        },
-      },
+      skip,
+      limit,
+      direction: sort === "price_asc" ? "asc" : "desc",
+      priceOf: (p) => hargaKartu(p, p.variations, stockDisplayMode),
     })
 
-    const arah = sort === "price_asc" ? 1 : -1
-    const berurut = kandidat
-      .map((p) => ({ id: p.id, price: hargaKartu(p, p.variations, stockDisplayMode) }))
-      // `id` sebagai pemecah seri: tanpa itu urutan dua barang berharga sama
-      // bisa bertukar antar halaman, dan barang yang sama muncul dua kali (atau
-      // tidak sama sekali) saat "Load More" ditekan.
-      .sort((a, b) => (a.price === b.price ? a.id - b.id : (a.price - b.price) * arah))
+    hasMore = halaman.hasMore
 
-    const idHalaman = berurut.slice(skip, skip + limit).map((x) => x.id)
-    hasMore = berurut.length > skip + limit
-
-    const baris = idHalaman.length > 0
-      ? await prisma.product.findMany({ where: { id: { in: idHalaman } }, select: PILIH_KARTU })
+    const baris = halaman.ids.length > 0
+      ? await prisma.product.findMany({ where: { id: { in: halaman.ids } }, select: PILIH_KARTU })
       : []
 
-    // `IN (...)` tidak menjamin urutan, jadi hasilnya dirangkai ulang mengikuti
-    // peringkat di atas.
-    const barisById = new Map(baris.map((b) => [b.id, b]))
-    paginatedProducts = idHalaman
-      .map((id) => barisById.get(id))
-      .filter((b): b is BarisKartu => b !== undefined)
+    paginatedProducts = reorderByIds(baris, halaman.ids)
   } else {
     const orderBy: Prisma.ProductOrderByWithRelationInput[] = []
     if (sort === "name_asc") orderBy.push({ name: "asc" })
