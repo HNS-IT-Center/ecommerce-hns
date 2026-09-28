@@ -13,6 +13,7 @@ import {
 } from "@/lib/api/pc-build-quotes"
 import { cn, formatRupiah } from "@/lib/utils"
 import { formatQuoteDateTime } from "./format"
+import { QuoteBadge } from "./quote-badge"
 import { VerifySearchForm } from "./verify-search-form"
 
 export const dynamic = "force-dynamic"
@@ -41,9 +42,37 @@ function QuoteCard({ quote, sort }: { quote: QuoteSummary; sort: QuoteSort }) {
       href={`/verify/${quote.code}`}
       className="group flex flex-col gap-2 rounded-xl border border-border bg-card p-4 shadow-sm transition-colors hover:border-primary/40 hover:bg-muted/40"
     >
-      <p className="font-mono text-sm font-bold tracking-tight group-hover:text-primary">
-        {quote.code}
-      </p>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <p className="font-mono text-sm font-bold tracking-tight group-hover:text-primary">
+          {quote.code}
+        </p>
+        {quote.revision > 1 && (
+          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground">
+            Rev. {quote.revision}
+          </span>
+        )}
+      </div>
+
+      {/* Lencana status di barisnya sendiri, satu bentuk untuk semuanya.
+
+          Ditandai di KARTU supaya kasir melihatnya tanpa membuka satu per satu:
+          yang sudah terjual paling sering dibuka karena dikira belum, dan yang
+          sudah DP paling sering ditagih ulang penuh karena tidak ada tandanya
+          sampai halaman detail terbuka. */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <QuoteBadge tone={quote.status === "closing" ? "terjual" : "netral"}>
+          {quote.status === "closing" ? "Terjual" : "Belum terjual"}
+        </QuoteBadge>
+        {quote.dpAt && <QuoteBadge tone="dp">Sudah DP</QuoteBadge>}
+      </div>
+
+      {quote.customerName && (
+        <p className="truncate text-xs font-semibold text-muted-foreground">
+          {quote.customerName}
+          {quote.salesName ? ` · ${quote.salesName}` : ""}
+        </p>
+      )}
+
       <p className="text-lg font-black tabular-nums text-sale-red">
         {formatRupiah(quote.total)}
       </p>
@@ -69,12 +98,12 @@ export default async function VerifyBuildPage({
   const quotes = await listRecentQuotes(sort, RECENT_LIMIT)
 
   return (
-    <div className="flex min-h-screen flex-col bg-page">
+    <div className="flex min-h-dvh flex-col bg-page">
       <Header />
       <Breadcrumb
         items={[{ label: "Beranda", href: "/" }, { label: "Cek Rakitan PC" }]}
       />
-      <main className="flex-1 bg-muted/20">
+      <main className="min-h-content flex-1 bg-muted/20">
         {/* Area kerja kasir setinggi satu layar (100dvh) di desktop: judul &
             pencarian tetap di tempat, hanya grid yang menggulir. Di HP halaman
             menggulir biasa — gulir-di-dalam-gulir di layar sempit menjebak. */}

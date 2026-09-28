@@ -3,7 +3,6 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useRef, useState } from "react"
-import { motion, type PanInfo } from "framer-motion"
 import { ArrowRight, ChevronLeft, ChevronRight, ImageOff, TriangleAlert } from "lucide-react"
 
 import type { PrebuildGame } from "@/lib/pc-prebuild/games"
@@ -39,15 +38,39 @@ import { UseCaseChips } from "./use-cases"
  * membandingkan sisi belakang paket A dengan sisi depan paket B, padahal yang
  * ingin ia bandingkan adalah paketnya.
  *
+ * ## Gesernya memakai scroll-snap, BUKAN drag framer-motion
+ *
+ * Versi pertama memakai `motion.div` ber-`drag="x"` dengan
+ * `dragConstraints={{ left: 0, right: 0 }}`, sementara posisi sisinya diatur
+ * `animate={{ x: ... }}`. Dua kendali menulis satu nilai `x`, dan constraint-nya
+ * mengunci nilai itu ke 0 — jadi begitu pelanggan yang sedang di sisi 2
+ * MENYENTUH kartu (mis. hendak menggulir daftar game), framer menarik `x`
+ * kembali ke 0 dan kartunya lompat ke sisi 1. Saat jarinya lepas tanpa melewati
+ * ambang, `sisi` tidak berubah, target `animate` juga tidak — jadi tidak ada
+ * animasi balik dan tampilannya tertinggal di sisi 1 padahal indikatornya masih
+ * "2/2". Roda tetikus aman karena roda tidak pernah memulai drag; yang kena
+ * sentuhan, dan di ponsel itu berarti setiap usaha menggulir daftar FPS.
+ *
+ * Karena itu arbitrase sumbu sekarang diserahkan ke peramban: track-nya
+ * container `overflow-x-auto` + `snap-x snap-mandatory`, tiap sisi
+ * `w-full shrink-0 snap-start`. Gerakan vertikal di atas daftar menggulir
+ * daftarnya, gerakan horizontal memindah sisi — peramban yang memutuskan, dan
+ * ia tidak pernah salah memilih seperti drag yang diurus JS. Tombol panah
+ * memanggil `scrollTo({ behavior: "smooth" })`, dan indikator "1/2" dibaca balik
+ * dari `scrollLeft` lewat `onScroll` supaya posisinya cuma punya SATU sumber
+ * kebenaran. Jangan kembalikan `drag`/`dragConstraints` ke sini.
+ *
  * ## JANGAN pakai tautan yang menutupi seluruh kartu di sini
  *
  * Pola `<Link className="absolute inset-0 z-10">` yang dipakai deck admin TIDAK
- * bisa dipakai di kartu ini, dan pernah dicoba: `motion.div` yang menganimasikan
- * `x` memasang `transform`, dan transform **membuat stacking context baru**.
- * Seluruh `z-20` di dalam track karena itu jadi relatif terhadap track-nya
- * sendiri, bukan terhadap tautan di luar — jadi tautannya selalu menang berapa
- * pun angkanya, dan ia menelan setiap klik tombol filter serta setiap guliran di
- * daftar FPS. Menaikkan angkanya tidak akan menolong; yang salah bukan angkanya.
+ * bisa dipakai di kartu ini, dan pernah dicoba: tautan sebesar kartu berada di
+ * atas isinya, jadi ia menelan setiap klik tombol filter dan setiap guliran di
+ * daftar FPS. Menaikkan `z-index` isinya tidak menolong — waktu itu track-nya
+ * `motion.div` yang menganimasikan `x`, dan `transform` **membuat stacking
+ * context baru**, jadi seluruh `z-20` di dalam track jadi relatif terhadap
+ * track-nya sendiri, bukan terhadap tautan di luar. Track sekarang bukan lagi
+ * elemen ber-transform, tapi kesimpulannya tidak berubah: yang salah memang
+ * bukan angkanya.
  *
  * Susunannya sekarang:
  *
@@ -63,9 +86,22 @@ import { UseCaseChips } from "./use-cases"
  *   biasa yang bisa dibaca pembaca layar, bukan dibungkus `<a>` kedua yang
  *   mengumumkan tautan kembar di setiap kartu.
  *
- * Drag dikunci sumbu X (`drag="x"`) supaya tidak berebut dengan guliran vertikal
- * di dalam kartu, dan geseran yang berakhir di atas sebuah sisi tidak boleh ikut
- * membuka halaman — lihat `sedangGeser` di bawah.
+ * Geseran yang berakhir di atas sebuah sisi tidak boleh ikut membuka halaman —
+ * lihat `baruGulir` di bawah.
+ *
+ * ## Tinggi kartu & foto sengaja dipatok per breakpoint
+ *
+ * Dulu fotonya `aspect-16/10`, jadi tingginya ikut melebar bersama kartunya —
+ * dan di layar kecil (apalagi satu kolom, tempat kartunya justru paling lebar)
+ * foto itu memakan ruang sampai daftar komponen tinggal 2–3 baris. Daftar yang
+ * cuma memperlihatkan tiga baris tidak menjawab "isinya apa"; ia cuma memberi
+ * tahu bahwa ada yang disembunyikan.
+ *
+ * Sekarang tinggi fotonya tetap per breakpoint (`object-contain`, jadi tidak ada
+ * yang terpotong) dan tinggi kartunya dinaikkan, supaya sisa ruang untuk daftar
+ * konsisten ±4–5 baris di semua ukuran layar. Kalau angkanya diubah, ubah
+ * keduanya bersamaan — yang menentukan tinggi daftar adalah SELISIHNYA, bukan
+ * salah satunya.
  */
 
 type Props = {
@@ -73,24 +109,21 @@ type Props = {
   games: PrebuildGame[]
 }
 
-/** Sejauh apa harus digeser sebelum sisinya berpindah. */
-const AMBANG_GESER = 60
-
 export function PrebuildCard({ view, games }: Props) {
   const router = useRouter()
+  const trackRef = useRef<HTMLDivElement>(null)
   const [sisi, setSisi] = useState<0 | 1>(0)
 
   /**
-   * Menandai bahwa yang baru saja terjadi adalah GESERAN, bukan ketukan.
+   * Menandai bahwa yang baru saja terjadi adalah GULIRAN, bukan ketukan.
    *
-   * Sisi depan adalah sebuah `<a>`, dan geseran yang dimulai di atasnya berakhir
-   * dengan event `click` — tanpa penanda ini, setiap kali pelanggan menggeser
-   * kartu untuk melihat performanya, ia justru mendarat di halaman detail.
-   *
-   * `onDragStart` milik framer-motion baru menyala setelah ambang geser
-   * terlampaui, jadi ketukan biasa tidak pernah menyalakannya.
+   * Peramban memang sudah menahan `click` yang lahir dari panning sentuh, tapi
+   * penanda ini menutup sisanya: ketukan yang mendarat saat guliran inersia
+   * masih berjalan, dan ketukan yang menyusul guliran halus dari tombol panah.
+   * Tanpa itu, sebagian usaha menggeser kartu berakhir di halaman detail.
    */
-  const sedangGeser = useRef(false)
+  const baruGulir = useRef(false)
+  const jedaGulir = useRef<number | null>(null)
 
   const href = `/pc-prebuild/${encodeURIComponent(view.id)}`
 
@@ -99,9 +132,36 @@ export function PrebuildCard({ view, games }: Props) {
   // internal HNS yang bukan urusannya.
   const adaPerforma = view.performance !== null
 
-  /** Dipakai kedua sisi sebagai pintasan tetikus, dengan penjaga geseran. */
+  /** Dipakai tombol panah. Posisinya TIDAK di-set di sini — lihat `saatGulir`. */
+  const keSisi = (tujuan: 0 | 1) => {
+    const track = trackRef.current
+    if (!track) return
+    track.scrollTo({ left: tujuan * track.clientWidth, behavior: "smooth" })
+  }
+
+  /**
+   * Satu-satunya yang mengubah `sisi`.
+   *
+   * Tombol panah sengaja tidak ikut menyetelnya: kalau keduanya menulis, saat
+   * guliran halus masih di tengah jalan indikatornya berkedip antara dua nilai.
+   * Posisi sebenarnya ada di `scrollLeft`, jadi itu yang dibaca.
+   */
+  const saatGulir = () => {
+    const track = trackRef.current
+    if (!track) return
+
+    setSisi(track.scrollLeft > track.clientWidth / 2 ? 1 : 0)
+
+    baruGulir.current = true
+    if (jedaGulir.current !== null) window.clearTimeout(jedaGulir.current)
+    jedaGulir.current = window.setTimeout(() => {
+      baruGulir.current = false
+    }, 120)
+  }
+
+  /** Dipakai kedua sisi sebagai pintasan tetikus, dengan penjaga guliran. */
   const bukaDetail = () => {
-    if (sedangGeser.current) return
+    if (baruGulir.current) return
     router.push(href)
   }
 
@@ -114,30 +174,21 @@ export function PrebuildCard({ view, games }: Props) {
     // jelas tidak ada yang menandai bahwa seluruh kartunya memang bisa ditekan.
     // Naik sedikit + garis tepi hijau + bayangan tebal, ketiganya sekaligus —
     // bayangan saja nyaris tak terlihat di mode gelap.
-    <article className="group flex h-132 min-w-0 flex-col overflow-hidden rounded-2xl border bg-card shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-brand-green/60 hover:shadow-xl">
-      <div className="relative flex-1 overflow-hidden">
-        <motion.div
-          className="flex h-full"
-          animate={{ x: sisi === 0 ? "0%" : "-100%" }}
-          transition={{ type: "spring", stiffness: 320, damping: 34 }}
-          drag={adaPerforma ? "x" : false}
-          dragConstraints={{ left: 0, right: 0 }}
-          dragElastic={0.12}
-          onDragStart={() => {
-            sedangGeser.current = true
-          }}
-          onDragEnd={(_: unknown, info: PanInfo) => {
-            if (info.offset.x < -AMBANG_GESER) setSisi(1)
-            if (info.offset.x > AMBANG_GESER) setSisi(0)
-            // Dilepas setelah event `click` yang menyusul geseran sudah lewat.
-            window.setTimeout(() => {
-              sedangGeser.current = false
-            }, 0)
-          }}
+    <article className="group flex h-140 min-w-0 flex-col overflow-hidden rounded-2xl border bg-card shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-brand-green/60 hover:shadow-xl xl:h-144">
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        {/* `no-scrollbar` menyembunyikan batangnya, BUKAN mematikan gulirannya
+            — geseran sentuh dan trackpad tetap jalan, cuma tidak ada batang
+            abu-abu yang memotong kartu. `overflow-y-hidden` supaya container
+            ini tidak ikut menawarkan guliran vertikal; itu milik daftar di
+            dalam masing-masing sisi. */}
+        <div
+          ref={trackRef}
+          onScroll={saatGulir}
+          className="no-scrollbar flex h-full w-full snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain"
         >
           <SisiKomponen view={view} onOpen={bukaDetail} />
           {adaPerforma && <SisiPerforma view={view} games={games} onOpen={bukaDetail} />}
-        </motion.div>
+        </div>
       </div>
 
       {/* Footer TIDAK ikut bergeser — ia di luar track. Harga dan tombol
@@ -164,7 +215,7 @@ export function PrebuildCard({ view, games }: Props) {
             <div className="flex shrink-0 items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => setSisi(0)}
+                onClick={() => keSisi(0)}
                 disabled={sisi === 0}
                 aria-label="Lihat komponen"
                 className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border transition-colors enabled:hover:border-brand-green enabled:hover:text-brand-green disabled:cursor-default disabled:opacity-35"
@@ -176,7 +227,7 @@ export function PrebuildCard({ view, games }: Props) {
               </span>
               <button
                 type="button"
-                onClick={() => setSisi(1)}
+                onClick={() => keSisi(1)}
                 disabled={sisi === 1}
                 aria-label="Lihat estimasi performa"
                 className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border transition-colors enabled:hover:border-brand-green enabled:hover:text-brand-green disabled:cursor-default disabled:opacity-35"
@@ -213,8 +264,15 @@ export function PrebuildCard({ view, games }: Props) {
  */
 function SisiKomponen({ view, onOpen }: { view: PrebuildView; onOpen: () => void }) {
   return (
-    <div onClick={onOpen} className="flex h-full w-full shrink-0 cursor-pointer flex-col">
-      <div className="relative aspect-16/10 w-full shrink-0 overflow-hidden bg-white">
+    <div
+      onClick={onOpen}
+      className="flex h-full w-full shrink-0 cursor-pointer snap-start flex-col"
+    >
+      {/* Tinggi tetap, BUKAN `aspect-*`: rasio membuat foto ikut melebar
+          bersama kartunya dan memakan daftar komponen di layar kecil (catatan
+          di kepala berkas). Tetap `object-contain`, jadi tidak ada foto yang
+          terpotong — yang berubah cuma jatah ruangnya. */}
+      <div className="relative h-40 w-full shrink-0 overflow-hidden bg-white sm:h-44 xl:h-48">
         {/* Paket tanpa foto — atau yang fotonya gagal dimuat — tetap tampil
             dengan daftar komponen berikon; fiturnya tidak menunggu aset
             (docs/11-pc-prebuild.md §6). */}
@@ -313,7 +371,7 @@ function SisiPerforma({
   if (!performance) return null
 
   return (
-    <div className="flex h-full w-full shrink-0 flex-col px-4 pb-4 pt-3">
+    <div className="flex h-full w-full shrink-0 snap-start flex-col px-4 pb-4 pt-3">
       <div className="shrink-0">
         <h3 className="truncate text-base font-bold">{view.name}</h3>
         <p className="mt-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">

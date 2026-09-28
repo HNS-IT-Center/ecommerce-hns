@@ -8,6 +8,7 @@
  */
 import { getPrisma } from "@/lib/prisma/client"
 import { parseAdminRole, type AdminRole } from "@/lib/auth/roles"
+import { capIzin, isMaster } from "@/lib/auth/permissions"
 
 export type AdminUserRow = {
   id: string
@@ -176,4 +177,155 @@ export async function assertNotLastOwner(id: string): Promise<void> {
   if (!target) return
   if (parseAdminRole(target.role) !== "owner") return
   if ((await countOwners()) <= 1) throw new LastOwnerError()
+}
+
+/**
+ * Nama tampilan sales milik satu user, untuk mengisi formulir di /admin/akun.
+ *
+ * `null` berarti belum diatur — pemanggilnya jatuh ke `users.name`. Fungsi
+ * sekecil ini tetap tinggal di lapisan `lib/api` dan bukan di halaman, karena
+ * komponen (Server maupun Client) tidak boleh memanggil `getPrisma()` langsung
+ * (CLAUDE.md §2.5).
+ */
+export async function getSalesDisplayName(userId: string): Promise<string | null> {
+  const row = await getPrisma().user.findUnique({
+    where: { id: userId },
+    select: { salesDisplayName: true },
+  })
+  return row?.salesDisplayName ?? null
+}
+
+/**
+ * User yang boleh menjadi TUJUAN operan CS — yaitu yang perannya memuat
+ * `quotation-sales: edit`.
+ *
+ * Disaring dari `role_permissions`, bukan dari nama peran. Nama peran adalah
+ * data yang diketik staff di panel ("Sales", "sales", "Sales Toko"); menjadikan
+ * daftar ini bergantung padanya berarti mengganti nama peran diam-diam
+ * mengosongkan daftar operan CS.
+ *
+ * Yang sengaja DIKELUARKAN:
+ * - `excludeUserId` — CS tidak bisa "mengoper" ke dirinya sendiri; untuk itu ada
+ *   pilihan "Tidak oper" yang menyimpan atas namanya tanpa mencetak nama Sales.
+ * - master — akun developer, bukan orang yang melayani pelanggan di toko.
+ *
+ * Master dikenali lewat env (`MASTER_ADMIN_EMAIL`), sama seperti `isMaster`:
+ * ia sengaja bukan baris data, jadi tidak bisa disaring lewat kueri.
+ */
+export async function listQuotationSalesUsers(
+  excludeUserId?: string
+): Promise<{ id: string; displayName: string }[]> {
+  const rows = await getPrisma().user.findMany({
+    where: {
+      role: { not: "pelanggan" },
+      ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
+      roleRef: {
+        permissions: { some: { page: "quotation-sales", access: "edit" } },
+      },
+    },
+    select: { id: true, name: true, email: true, salesDisplayName: true },
+    orderBy: { name: "asc" },
+  })
+
+  return rows
+    .filter((r) => !isMaster(r))
+    .map((r) => ({ id: r.id, displayName: r.salesDisplayName ?? r.name }))
+}
+
+/**
+ * Semua user berperan Sales beserta nama tampilannya — untuk panel admin.
+ *
+ * Bedanya dengan `listQuotationSalesUsers`: yang itu menjawab "siapa yang boleh
+ * jadi TUJUAN operan" (master & diri sendiri dibuang), yang ini menjawab "siapa
+ * saja yang namanya tercetak di quotation" — jadi tidak ada yang dibuang, dan
+ * nama akun ikut dibawa supaya panel bisa menunjukkan nama apa yang dipakai
+ * saat kolomnya dikosongkan.
+ */
+export async function listSalesUsersWithDisplayName(): Promise<
+  { id: string; name: string; email: string; salesDisplayName: string | null }[]
+> {
+  return getPrisma().user.findMany({
+    where: {
+      role: { not: "pelanggan" },
+      roleRef: { permissions: { some: { page: "quotation-sales", access: "edit" } } },
+    },
+    select: { id: true, name: true, email: true, salesDisplayName: true },
+    orderBy: { name: "asc" },
+  })
+}
+
+/**
+ * Setel nama tampilan sales milik user LAIN (dari Manajemen User).
+ *
+ * `role: { not: "pelanggan" }` ikut di WHERE, bukan cuma diperiksa lebih dulu:
+ * id yang dikirim klien tidak boleh bisa menunjuk baris pelanggan, dan syarat
+ * yang hidup di dalam kueri tidak bisa dilewati oleh jalur kedua yang
+ * ditambahkan orang lain nanti.
+ */
+export async function setSalesDisplayName(
+  userId: string,
+  displayName: string | null
+): Promise<boolean> {
+  const { count } = await getPrisma().user.updateMany({
+    where: { id: userId, role: { not: "pelanggan" } },
+    data: { salesDisplayName: displayName },
+  })
+  return count > 0
+}
+
+/**
+ * "Cap" izin satu akun — satu string yang berubah setiap kali hak akses orang
+ * itu berubah, apa pun bentuk perubahannya.
+ *
+ * Dipakai `PermissionWatcher` di panel: klien menyimpan cap yang berlaku saat
+ * halamannya dimuat, lalu menanyakannya lagi secara berkala. Begitu capnya
+ * berbeda, artinya ada yang mengubah aksesnya dan tampilan yang sedang dilihat
+ * sudah tidak sesuai dengan yang sebenarnya berlaku di server.
+ *
+ * Tiga bagian, masing-masing menangkap perubahan yang tidak tertangkap yang
+ * lain:
+ *
+ *   1. `role` — owner↔staff, dan penurunan menjadi "pelanggan" (akses panel
+ *      dicabut sama sekali).
+ *   2. `roleId` — peran dinamis ditautkan atau dilepas. Bagian ini juga yang
+ *      menangkap PENGHAPUSAN sebuah peran: kolomnya dikosongkan oleh database
+ *      lewat `onDelete: SetNull`, tanpa Prisma pernah menulis baris user itu.
+ *   3. `updatedAt` peran — izin per halaman peran itu disunting. `updateRole`
+ *      ikut menulis baris `roles` di transaksi yang sama, jadi capnya bergerak
+ *      walau yang berubah hanya matriks izinnya.
+ *
+ * `users.updatedAt` sengaja TIDAK ikut, walau sekilas terlihat seperti penanda
+ * paling lengkap. Kolom itu bergerak untuk SETIAP penulisan ke baris user —
+ * termasuk staff yang mengubah nama tampilan sales miliknya sendiri. Kalau ia
+ * ikut, orang itu akan melihat toast "Peran diperbarui" dan halamannya dimuat
+ * ulang padahal tidak satu pun izinnya berubah. Cap yang berbohong sesekali
+ * akan diabaikan, dan sesudah itu ia tidak lagi berguna saat benar-benar
+ * penting. Ketiga bagian di atas sudah mencakup semua jalur yang benar-benar
+ * mengubah akses.
+ *
+ * `null` berarti akunnya sudah tidak ada — dan itu juga perubahan yang perlu
+ * disampaikan, bukan kesalahan yang perlu didiamkan.
+ *
+ * SATU query, kunci primer + join kunci primer. Dipanggil berkala oleh tiap
+ * panel yang terbuka, jadi ia memang harus semurah ini.
+ */
+export async function getPermissionVersion(userId: string): Promise<string | null> {
+  const row = await getPrisma().user.findUnique({
+    where: { id: userId },
+    select: {
+      role: true,
+      roleId: true,
+      roleRef: { select: { updatedAt: true } },
+    },
+  })
+  if (!row) return null
+
+  // Rumusnya di `lib/auth/permissions.ts` — dipakai bersama halaman di luar
+  // panel (lihat `capIzin`), supaya "berubah" berarti hal yang sama di
+  // kedua tempat.
+  return capIzin({
+    role: row.role,
+    roleId: row.roleId,
+    roleUpdatedAt: row.roleRef?.updatedAt,
+  })
 }

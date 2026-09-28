@@ -1,3 +1,4 @@
+import { requirePageView } from "@/lib/auth"
 import { notFound } from "next/navigation"
 
 import { getPcBuilderConfig } from "@/lib/pc-builder/config"
@@ -27,6 +28,8 @@ export default async function PrebuildEditorPage({
 }: {
   params: Promise<{ id: string }>
 }) {
+  await requirePageView("pc-prebuild")
+
   const { id } = await params
   const baru = id === "baru"
 

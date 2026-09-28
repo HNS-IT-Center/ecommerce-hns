@@ -39,9 +39,52 @@ export type CustomerRow = {
   emailVerifiedAt: Date | null
   createdAt: Date
   savedBuildCount: number
+  /**
+   * Peran RBAC yang tertaut, kalau pelanggan ini sudah dinaikkan jadi tim.
+   *
+   * Ikut dibaca DI SINI, bukan lewat query kedua di halamannya. Sebelumnya
+   * `manajemen-user/page.tsx` memanggil `getPrisma()` sendiri untuk mengambil
+   * peran tiap baris — dua sumber untuk satu daftar, dan sebuah pelanggaran
+   * CLAUDE.md §2.5 yang juga membuat pengurutan berdasarkan peran mustahil,
+   * karena yang mengurutkan (database) tidak tahu kolom yang dipakai
+   * mengurutkan itu ada.
+   */
+  roleId: string | null
+  roleName: string | null
 }
 
-const CUSTOMER_PAGE_SIZE = 25
+/** Diekspor supaya pagination bisa menghitung rentang "1–25 dari 312" tanpa
+ * mengarang angkanya sendiri — dua tempat yang menebak jumlah per halaman
+ * cepat atau lambat akan berbeda. */
+export const CUSTOMER_PAGE_SIZE = 25
+
+/**
+ * Kolom yang boleh dipakai mengurutkan daftar pelanggan.
+ *
+ * Union literal, BUKAN string bebas: nilainya datang dari URL (`?sort=`), dan
+ * string apa pun yang lolos ke `orderBy` Prisma akan melempar di runtime saat
+ * kolomnya tidak ada. Daftar tertutup membuat parameter yang dikarang orang
+ * jatuh ke urutan bawaan, bukan ke halaman error.
+ *
+ * "Rakitan" sengaja TIDAK ada di sini. `savedBuildCount` tidak ikut di-select —
+ * ia dihitung setelahnya lewat `groupBy` untuk satu halaman saja — jadi
+ * mengurutkannya di database mustahil tanpa mengubah bentuk query, dan
+ * mengurutkannya di aplikasi cuma akan mengurutkan 25 baris yang kebetulan
+ * sedang terbuka sambil terlihat seperti mengurutkan semuanya. Yang kedua itu
+ * lebih buruk daripada tidak bisa mengurutkan sama sekali.
+ */
+export type CustomerSortField = "name" | "email" | "createdAt" | "role"
+export type SortDirection = "asc" | "desc"
+
+const SORT_FIELDS: readonly CustomerSortField[] = ["name", "email", "createdAt", "role"] as const
+
+export function isCustomerSortField(value: unknown): value is CustomerSortField {
+  return typeof value === "string" && (SORT_FIELDS as readonly string[]).includes(value)
+}
+
+export function isSortDirection(value: unknown): value is SortDirection {
+  return value === "asc" || value === "desc"
+}
 
 export type CustomerListResult = {
   rows: CustomerRow[]
@@ -60,6 +103,8 @@ export type CustomerListResult = {
 export async function listCustomers(options: {
   query?: string
   page?: number
+  sort?: CustomerSortField
+  dir?: SortDirection
 } = {}): Promise<CustomerListResult> {
   const page = Math.max(1, options.page ?? 1)
   const q = options.query?.trim()
@@ -75,6 +120,31 @@ export async function listCustomers(options: {
       }
     : CUSTOMER_ROLE
 
+  /**
+   * Urutan. Bawaannya tetap pendaftar terbaru di atas — itu yang dicari saat
+   * halaman ini dibuka tanpa maksud khusus.
+   *
+   * Pengurutan berdasar peran memakai relasi `roleRef`, dan di MySQL/MariaDB
+   * baris tanpa peran (NULL) selalu berkumpul di ujung `asc`. Itu justru
+   * berguna: "urutkan peran" hampir selalu berarti "kumpulkan yang punya
+   * peran", bukan "kumpulkan yang tidak".
+   *
+   * `id` ikut sebagai kunci kedua pada setiap pilihan. Tanpa itu, baris yang
+   * nilai urutnya sama (dua orang bernama "Budi") bisa muncul dengan susunan
+   * berbeda tiap query — dan pada daftar berhalaman, satu baris bisa terlihat
+   * dua kali di halaman berbeda sementara baris lain tidak pernah muncul sama
+   * sekali.
+   */
+  const arah = options.dir ?? (options.sort === undefined ? "desc" : "asc")
+  const orderBy =
+    options.sort === "name"
+      ? [{ name: arah }, { id: "asc" as const }]
+      : options.sort === "email"
+        ? [{ email: arah }, { id: "asc" as const }]
+        : options.sort === "role"
+          ? [{ roleRef: { name: arah } }, { id: "asc" as const }]
+          : [{ createdAt: arah }, { id: "asc" as const }]
+
   const prisma = getPrisma()
   const [total, rows] = await Promise.all([
     prisma.user.count({ where }),
@@ -88,8 +158,10 @@ export async function listCustomers(options: {
         phoneNumber: true,
         emailVerifiedAt: true,
         createdAt: true,
+        roleId: true,
+        roleRef: { select: { name: true } },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy,
       skip: (page - 1) * CUSTOMER_PAGE_SIZE,
       take: CUSTOMER_PAGE_SIZE,
     }),
@@ -108,7 +180,11 @@ export async function listCustomers(options: {
   const countById = new Map(counts.map((c) => [c.customerId, c._count._all]))
 
   return {
-    rows: rows.map((r) => ({ ...r, savedBuildCount: countById.get(r.id) ?? 0 })),
+    rows: rows.map(({ roleRef, ...r }) => ({
+      ...r,
+      savedBuildCount: countById.get(r.id) ?? 0,
+      roleName: roleRef?.name ?? null,
+    })),
     total,
     page,
     pageCount: Math.max(1, Math.ceil(total / CUSTOMER_PAGE_SIZE)),
@@ -127,11 +203,14 @@ export async function getCustomerForDeletion(id: string): Promise<CustomerRow | 
       phoneNumber: true,
       emailVerifiedAt: true,
       createdAt: true,
+      roleId: true,
+      roleRef: { select: { name: true } },
     },
   })
   if (!row) return null
   const savedBuildCount = await prisma.savedPcBuild.count({ where: { customerId: id } })
-  return { ...row, savedBuildCount }
+  const { roleRef, ...sisanya } = row
+  return { ...sisanya, savedBuildCount, roleName: roleRef?.name ?? null }
 }
 
 export class CustomerNotFoundError extends Error {

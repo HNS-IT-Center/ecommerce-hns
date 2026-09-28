@@ -15,9 +15,13 @@ export const metadata = {
  * Pemulihan password hanya untuk orang yang TIDAK bisa masuk. Yang sesinya
  * masih hidup diarahkan ke /profile — pola sama seperti /login dan /register.
  *
- * Ini bukan penghalang bagi pelanggan yang ingin mengganti password: alur itu
- * memang belum ada, dan kalau nanti dibuat, tempatnya di halaman akun dengan
- * verifikasi password lama — bukan lewat tautan reset via email.
+ * Ini bukan penghalang bagi yang sekadar ingin MENGGANTI password: tempatnya
+ * di halaman akun (`/profile` untuk staff, `/admin/akun` di panel), dan sejak
+ * 23 September 2026 halaman itu tidak lagi meminta password lama — lihat
+ * `changePasswordAction`.
+ *
+ * Sejak tanggal yang sama halaman ini melayani SEMUA peran, bukan hanya
+ * pelanggan. Alasannya di `findAccountForPasswordReset`.
  */
 export default async function Page() {
   const customer = await getCurrentCustomer();
@@ -26,7 +30,7 @@ export default async function Page() {
   return (
     <div className="flex min-h-dvh flex-col bg-page">
       <Header />
-      <main className="flex flex-1 items-center justify-center p-4 py-12 sm:px-6 lg:px-8">
+      <main className="min-h-content flex flex-1 items-center justify-center p-4 py-12 sm:px-6 lg:px-8">
         <div className="w-full max-w-sm space-y-6 rounded-2xl border bg-card p-8 shadow-sm">
           <div className="text-center">
             <h1 className="text-xl font-bold">Lupa Password</h1>

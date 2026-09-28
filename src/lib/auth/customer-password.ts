@@ -19,13 +19,17 @@ export type CustomerIdentityLookup = {
 }
 
 /**
- * Cari akun pelanggan by email — dipakai jalur yang memang butuh email
- * spesifik (lupa password, kirim ulang verifikasi), bukan saat masuk.
+ * Cari akun PELANGGAN by email — kirim ulang tautan verifikasi.
  *
- * Membaca `users` dengan syarat `role = "pelanggan"`. Syarat itu bukan hiasan:
- * sejak Satu Login akun admin juga hidup di tabel ini, dan tanpa syarat itu
- * "Lupa password" di storefront bisa dipakai mengganti password akun panel
- * lewat email. Admin mengganti passwordnya di /admin/akun.
+ * Syarat `role = "pelanggan"` tetap berlaku di sini, dan alasannya khas jalur
+ * ini: `emailVerifiedAt` hanya punya arti untuk akun yang lahir dari
+ * pendaftaran mandiri. Akun staff dibuat lewat `scripts/create-admin-user.mts`
+ * dan nilainya selalu NULL — tanpa syarat ini, "kirim ulang verifikasi" akan
+ * mengirimi mereka tautan untuk memverifikasi sesuatu yang tidak pernah
+ * diminta.
+ *
+ * Untuk RESET password, syarat itu sengaja tidak dipakai — lihat
+ * `findAccountForPasswordReset` di bawah.
  *
  * (`findCustomerByEmailOrUsername` pernah ada di sini — tidak dipakai lagi
  * sejak login terpadu memakai `findUserByIdentifier`, dihapus di Fase B.)
@@ -36,6 +40,43 @@ export async function findCustomerByEmail(raw: string): Promise<CustomerIdentity
 
   return getPrisma().user.findFirst({
     where: { email, role: "pelanggan" },
+    select: { id: true, email: true, passwordHash: true, googleSub: true, emailVerifiedAt: true },
+  })
+}
+
+/**
+ * Cari akun by email untuk RESET PASSWORD — semua peran, termasuk staff.
+ *
+ * **Keputusan 23 September 2026.** Sampai hari ini fungsi ini tidak ada dan
+ * "Lupa password" menyaring `role = "pelanggan"`, dengan alasan tertulis:
+ * jangan sampai jalur storefront dipakai mengganti password akun panel lewat
+ * email; admin menggantinya sendiri di `/admin/akun`.
+ *
+ * Alasan itu bergantung pada asumsi yang tidak pernah benar — bahwa staff yang
+ * lupa passwordnya bisa sampai ke `/admin/akun`. Halaman itu di balik sesi,
+ * dan orang yang lupa password justru tidak punya sesi. Yang tersisa untuk
+ * mereka hanyalah menunggu seseorang menjalankan
+ * `scripts/create-admin-user.mts` di laptop yang tepat; di luar jam kerja,
+ * kasir yang terkunci keluar berarti kasir yang berhenti melayani.
+ *
+ * Yang ditukar disadari: siapa pun yang menguasai kotak masuk seorang staff
+ * bisa mengambil alih akun panelnya. Itu sifat setiap reset lewat email, dan
+ * alamat staff di `users` diisi manual lewat skrip — pastikan ia alamat yang
+ * benar-benar dipegang orangnya, bukan alamat bersama atau placeholder.
+ *
+ * Yang TIDAK ikut longgar: akun tanpa `passwordHash` (jalur Google) tetap
+ * tidak bisa direset — penjagaan itu ada di pemanggil, `forgotPasswordAction`.
+ */
+export async function findAccountForPasswordReset(
+  raw: string
+): Promise<CustomerIdentityLookup | null> {
+  const email = normalizeIdentifier(raw)
+  if (!email) return null
+
+  // `findUnique`, bukan `findFirst`: tanpa syarat peran, email sudah menjadi
+  // kunci unik di `users` — satu email satu akun, apa pun perannya.
+  return getPrisma().user.findUnique({
+    where: { email },
     select: { id: true, email: true, passwordHash: true, googleSub: true, emailVerifiedAt: true },
   })
 }

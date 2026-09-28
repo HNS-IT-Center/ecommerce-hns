@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState, useMemo } from "react"
+import { useRouter } from "next/navigation"
 import {
   sumBuilderSelections,
   useNewBuilderStore,
@@ -12,14 +13,14 @@ import { PcBuilderStepConfig } from "@/lib/pc-builder/config"
 import { buildAttributeRequirementGroups } from "@/lib/pc-builder/compatibility"
 import { formatRupiah } from "@/lib/utils"
 import { fetchBuilderProducts } from "../actions"
-import { saveBuildAction } from "../actions-save"
+import { saveBuildAction, updateSavedBuildAction } from "../actions-save"
 import { useBuilderCatalogPricing } from "../hooks/use-builder-catalog-pricing"
 import {
   PriceChangedBadge,
   UnavailableNotice,
   UnverifiedPriceNotice,
 } from "@/components/shared/price-change-notice"
-import { ProductCardBuilder, type SelectedVariationLine } from "./product-card-builder"
+import { ProductCardBuilder, type SelectedVariationLine } from "@/components/shared/product-card-builder"
 import { VariationPickerDialog } from "./variation-picker-dialog"
 import { BuilderQuickViewDialog } from "./builder-quick-view-dialog"
 import { cheapestAvailableVariation } from "@/lib/utils/variation"
@@ -30,12 +31,83 @@ import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Edit2, Messag
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { useToastManager } from "@/components/ui/toast"
-import { openInternal } from "@/features/pwa/lib/open-internal"
+import { prepareInternalOpen } from "@/features/pwa/lib/open-internal"
+import {
+  issueQuotationAction,
+  reviseQuotationAction,
+} from "@/features/builder/actions-quotation"
+import {
+  IssueQuotationDialog,
+  type QuotationFormValues,
+  type SalesOption,
+} from "./issue-quotation-dialog"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import { motion, AnimatePresence } from "framer-motion"
 import Stack3Icon from "@/components/icons/stack-icon"
 import SaveIcon from "@/components/icons/save-icon"
 import { ProductImage } from "@/components/ui/product-image"
+
+/**
+ * Alamat halaman cetak, lengkap dengan token penawarannya.
+ *
+ * `t=` bukan hiasan: sejak 23 September 2026 halaman cetak menolak `?kode=`
+ * telanjang dari siapa pun yang tidak punya sesi staff. Yang menekan Print di
+ * sini sebagian besar justru PENGUNJUNG anonim, jadi tanpa token mereka akan
+ * ditolak membuka dokumen yang baru saja mereka terbitkan sendiri.
+ *
+ * Token boleh kosong hanya untuk quotation lama yang belum di-backfill; dalam
+ * hal itu `?t=` tidak ikut ditulis dan yang membuka harus staff.
+ */
+function printHref(code: string, token: string): string {
+  const alamat = `/build-pc/print?kode=${encodeURIComponent(code)}`
+  return token ? `${alamat}&t=${encodeURIComponent(token)}` : alamat
+}
+
+/**
+ * Quotation yang sedang direvisi, sudah diselesaikan di server.
+ *
+ * `hargaSnapshot` adalah harga REVISI SEBELUMNYA per produk — angka yang sudah
+ * tercetak di kertas pelanggan. Ia dipakai sebagai harga tampil selama tombol
+ * "Gunakan harga terbaru" mati. Ini bukan harga karangan klien: nilainya berasal
+ * dari katalog saat revisi itu diterbitkan, disimpan server, dan dikirim apa
+ * adanya — pola yang sama dengan `SavedPcBuild.price`. Klien tidak pernah
+ * menghitung, cuma memilih peta harga mana yang dipakai, dan pilihan itu
+ * dikirim sebagai BOOLEAN ke server yang menghitung ulang sendiri.
+ *
+ * Komponen yang ditambahkan SAAT revisi tidak ada di peta ini, jadi ia otomatis
+ * jatuh ke harga katalog — persis aturannya.
+ */
+export type RevisionLoad = {
+  code: string
+  /** Revisi yang berlaku sekarang; yang akan ditulis adalah `revisiBerlaku + 1`. */
+  revisiBerlaku: number
+  customerName: string
+  customerPhone: string
+  internalNote: string
+  selections: Record<string, BuilderSelection[]>
+  hargaSnapshot: Record<number, number>
+  perubahanHarga: { name: string; hargaLama: number; hargaBaru: number }[]
+  /** Komponen yang sudah lenyap dari katalog dan tidak bisa dimuat ulang. */
+  komponenHilang: string[]
+}
+
+/**
+ * Rakitan tersimpan yang sedang dibuka lewat `?build=<id>` (Mode Edit),
+ * sudah diselesaikan di server.
+ *
+ * Tidak membawa harga apa pun, dan memang tidak perlu: yang tampil di panel
+ * selalu harga katalog hari ini. Bedanya dengan `RevisionLoad` justru di situ
+ * — revisi mempertahankan harga yang sudah tercetak di kertas pelanggan,
+ * sedangkan rakitan tersimpan memang dirancang mengikuti katalog setiap kali
+ * dibuka (lihat catatan `SavedBuildItemRef` di lib/api/saved-pc-builds.ts).
+ */
+export type SavedBuildLoad = {
+  id: string
+  name: string
+  selections: Record<string, BuilderSelection[]>
+  /** Jumlah komponen yang dilewati karena sudah tidak tersedia di katalog. */
+  komponenHilang: number
+}
 
 type DynamicBuilderViewProps = {
   stepsConfig: PcBuilderStepConfig[]
@@ -47,6 +119,37 @@ type DynamicBuilderViewProps = {
    * presetnya tidak ditemukan, atau sakelar fiturnya sedang mati.
    */
   presetLoad?: { name: string; selections: Record<string, BuilderSelection[]> } | null
+  /**
+   * Cara penerbitan quotation, sudah dihitung di server dari izin.
+   *
+   * `"anon"`    — pengunjung & pelanggan biasa: Print langsung menerbitkan
+   *               dokumen anonim, tanpa dialog, persis seperti sebelumnya.
+   * `"sendiri"` — dialog identitas pelanggan; pemiliknya dirinya sendiri.
+   * `"oper"`    — dialog yang sama + wajib memilih Sales tujuan atau
+   *               "Tidak oper". Dibuka izin `quotation-oper`.
+   *
+   * Yang dibedakan di sini BUKAN "sales atau CS", melainkan "boleh mengoper
+   * atau tidak" — dua orang dengan jabatan sama bisa berbeda di sini, dan
+   * seorang sales yang merangkap CS memakai mode `oper` sambil tetap bisa
+   * memilih "Tidak oper" untuk menyimpannya atas namanya sendiri.
+   *
+   * Ini menentukan APA YANG TERLIHAT saja. Siapa pemilik quotation diputuskan
+   * ulang di server (`actions-quotation.ts`) dari izin sesi, karena server
+   * action adalah endpoint HTTP tersendiri yang bisa dipanggil tanpa memuat
+   * halaman ini.
+   */
+  quotationMode?: "anon" | "sendiri" | "oper"
+  /** Kandidat operan untuk mode `oper`. Kosong untuk mode lain. */
+  salesOptions?: SalesOption[]
+  /** Terisi hanya saat `?quotation=` menunjuk quotation yang boleh direvisi. */
+  revisionLoad?: RevisionLoad | null
+  /** Terisi hanya saat `?build=` menunjuk rakitan tersimpan milik pelanggan ini. */
+  savedBuildLoad?: SavedBuildLoad | null
+  /**
+   * Rakitan di `?build=` ada, tapi tidak satu komponen pun masih bisa dimuat.
+   * Bukan Mode Edit — hanya pemberitahuan. Lihat efeknya di dalam komponen.
+   */
+  savedBuildKosong?: boolean
 }
 
 /**
@@ -57,6 +160,11 @@ export function DynamicBuilderView({
   stepsConfig,
   isLoggedIn,
   presetLoad = null,
+  quotationMode = "anon",
+  salesOptions = [],
+  revisionLoad = null,
+  savedBuildLoad = null,
+  savedBuildKosong = false,
 }: DynamicBuilderViewProps) {
   const { 
     steps, setSteps, selections, activeStepId, setActiveStep, 
@@ -64,8 +172,19 @@ export function DynamicBuilderView({
     hydrateSelections
   } = useNewBuilderStore()
 
+  // Dipakai Mode Edit untuk menjaga `?build=` tetap jujur terhadap rakitan
+  // mana yang sedang diedit — lihat `lepasBuildAsal` & `handleConfirmSaveBuild`.
+  const router = useRouter()
+
   const [mounted, setMounted] = useState(false)
   const [sendingWA, setSendingWA] = useState(false)
+  const [issuingQuote, setIssuingQuote] = useState(false)
+  const [isQuotationDialogOpen, setIsQuotationDialogOpen] = useState(false)
+  /**
+   * Mati secara bawaan, dan itu keputusan yang disengaja: harga yang sudah
+   * dipegang pelanggan dipertahankan kecuali sales memilih sebaliknya.
+   */
+  const [pakaiHargaTerbaru, setPakaiHargaTerbaru] = useState(false)
   const [products, setProducts] = useState<BuilderProduct[]>([])
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -130,7 +249,36 @@ export function DynamicBuilderView({
   // berjalan. Lihat efeknya di bawah.
   const [presetPending, setPresetPending] = useState(false)
   const presetSudahDitangani = useRef(false)
+  const revisiSudahDimuat = useRef(false)
+  const savedBuildSudahDimuat = useRef(false)
+  const kosongSudahDilaporkan = useRef(false)
+  /**
+   * Rakitan tersimpan yang sedang diedit — ASAL tombol "Simpan Perubahan".
+   *
+   * State, bukan turunan langsung dari `savedBuildLoad`, karena isinya berubah
+   * di dalam sesi: ia dilepas begitu panel diisi sesuatu yang lain (Reset,
+   * Mulai Rakitan Baru, muat paket prebuild), dan berpindah ke baris baru
+   * setelah "Simpan sebagai Rakitan Baru". Tanpa itu, tombol Simpan bisa
+   * menawarkan menimpa rakitan yang sudah tidak ada hubungannya dengan apa pun
+   * yang terlihat di layar.
+   */
+  const [buildAsal, setBuildAsal] = useState<{ id: string; name: string } | null>(
+    savedBuildLoad ? { id: savedBuildLoad.id, name: savedBuildLoad.name } : null
+  )
   const toastManager = useToastManager()
+
+  /**
+   * Keluar dari Mode Edit TANPA menyentuh isi panel maupun baris tersimpannya.
+   *
+   * Dipanggil dari setiap titik yang membuat isi panel bukan lagi rakitan itu.
+   * `router.replace` membuang `?build=` supaya memuat ulang halaman tidak
+   * menghidupkan lagi Mode Edit yang baru saja ditinggalkan.
+   */
+  const lepasBuildAsal = () => {
+    setBuildAsal(null)
+    savedBuildSudahDimuat.current = true
+    if (savedBuildLoad) router.replace("/build-pc", { scroll: false })
+  }
 
   /**
    * Id toast merah "<langkah> belum dipilih" dari `validateRequiredSteps`.
@@ -172,8 +320,24 @@ export function DynamicBuilderView({
    * persis angka yang berpotensi basi. Karena itu setiap tempat yang memakai
    * fallback ini WAJIB berdampingan dengan `UnverifiedPriceNotice`.
    */
+  /**
+   * Urutannya penting di Mode Revisi.
+   *
+   * Harga revisi sebelumnya menang atas harga katalog selama tombol "Gunakan
+   * harga terbaru" mati — kalau tidak, panel akan menampilkan angka katalog hari
+   * ini sementara yang benar-benar tersimpan nanti adalah angka lama, dan sales
+   * melihat total yang berbeda dari dokumen yang ia terbitkan.
+   *
+   * Komponen yang ditambahkan saat revisi tidak ada di peta itu, jadi ia jatuh
+   * ke katalog dengan sendirinya — memang begitu aturannya.
+   */
+  const hargaRevisiAktif =
+    revisionLoad && !pakaiHargaTerbaru ? revisionLoad.hargaSnapshot : null
+
   const unitPriceOf = (product: { id: number; price: number }) =>
-    pricing?.unitPriceByProductId[Number(product.id)] ?? product.price
+    hargaRevisiAktif?.[Number(product.id)] ??
+    pricing?.unitPriceByProductId[Number(product.id)] ??
+    product.price
 
   const isUnavailable = (product: { id: number }) =>
     pricing?.unavailableProductIds.includes(Number(product.id)) ?? false
@@ -272,6 +436,57 @@ export function DynamicBuilderView({
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  /**
+   * Memuat quotation yang sedang direvisi dari `?quotation=`.
+   *
+   * Berbeda dari `?preset=`, ini TIDAK bertanya lebih dulu. Sales yang menekan
+   * "Revisi di Builder" sedang menyatakan niatnya dengan jelas, dan rakitan
+   * yang kebetulan tertinggal di localStorage-nya bukan pekerjaan yang sedang
+   * ia kerjakan — ia sudah menyimpannya sebagai quotation.
+   *
+   * Tetap WAJIB menunggu `mounted`: sebelum hydration Zustand persist selesai,
+   * `hydrateSelections` akan tertimpa kembali oleh isi localStorage.
+   */
+  useEffect(() => {
+    if (!mounted || !revisionLoad || revisiSudahDimuat.current) return
+    revisiSudahDimuat.current = true
+    hydrateSelections(revisionLoad.selections)
+  }, [mounted, revisionLoad, hydrateSelections])
+
+  /**
+   * Memuat rakitan tersimpan dari `?build=<id>` (Mode Edit).
+   *
+   * Aturannya sama dengan Mode Revisi, BUKAN dengan `?preset=`: tidak bertanya
+   * lebih dulu. Pelanggan yang menekan "Lanjutkan di Builder" sedang menunjuk
+   * satu rakitan dengan jelas, dan rakitan yang tertinggal di localStorage-nya
+   * justru sudah ia simpan — itulah yang sedang dibuka.
+   *
+   * Tetap WAJIB menunggu `mounted`: sebelum hydration Zustand persist selesai,
+   * `hydrateSelections` akan tertimpa kembali oleh isi localStorage.
+   */
+  useEffect(() => {
+    if (!mounted || !savedBuildLoad || savedBuildSudahDimuat.current) return
+    savedBuildSudahDimuat.current = true
+    hydrateSelections(savedBuildLoad.selections)
+  }, [mounted, savedBuildLoad, hydrateSelections])
+
+  /**
+   * Rakitannya ada, tapi seluruh komponennya sudah ditarik dari katalog.
+   *
+   * Servernya sengaja TIDAK memasang Mode Edit untuk kasus ini (lihat
+   * app/build-pc/page.tsx), jadi yang tersisa hanyalah memberi tahu — tanpa
+   * pemberitahuan, pelanggan mendarat di builder berisi rakitan lamanya dan
+   * mengira tombol "Lanjutkan di Builder" tidak berfungsi.
+   */
+  useEffect(() => {
+    if (!mounted || !savedBuildKosong || kosongSudahDilaporkan.current) return
+    kosongSudahDilaporkan.current = true
+    toastManager.add({
+      title: "Rakitan tidak bisa dimuat",
+      description: "Semua komponen di rakitan itu sudah tidak tersedia di katalog.",
+    })
+  }, [mounted, savedBuildKosong, toastManager])
 
   /**
    * Memuat paket PC Prebuild dari `?preset=`.
@@ -412,7 +627,7 @@ export function DynamicBuilderView({
 
   if (!mounted) {
     return (
-      <div className="flex items-center justify-center py-32">
+      <div className="flex min-h-placeholder items-center justify-center">
         <Loader2 className="w-10 h-10 animate-spin text-muted-foreground/30" />
       </div>
     )
@@ -472,25 +687,39 @@ export function DynamicBuilderView({
     return false
   }
 
-  const handlePrint = () => {
+  /**
+   * Menerbitkan quotation lewat server action, lalu membuka halaman cetaknya.
+   *
+   * Dulu tombol ini cuma membuka `/build-pc/print?items=…` dan halaman itulah
+   * yang menulis ke database. Sejak kodenya berupa nomor urut, menulis saat GET
+   * jadi tidak bisa dipertahankan: refresh tab PDF akan memakan nomor baru.
+   * Sekarang nomor terbit SEKALI di sini, dan halaman cetak hanya membaca.
+   *
+   * Yang dikirim tetap hanya id & kuantitas — nama, harga, dan gambar dibaca
+   * ulang dari katalog di server, jadi harga di PDF tidak bisa dipalsukan lewat
+   * inspect element di halaman ini (CLAUDE.md §2.7).
+   */
+  /** Komponen terpilih sebagai id & kuantitas. Tidak pernah membawa harga. */
+  const kumpulkanItems = () =>
+    steps.flatMap((step) => {
+      const stepSels = selections[step.id]
+      if (!Array.isArray(stepSels)) return []
+      return stepSels.map((sel) => ({
+        stepId: step.id,
+        productId: sel.product.id,
+        quantity: sel.quantity,
+      }))
+    })
+
+  const handlePrint = async () => {
     // Langkah wajib dijaga di SINI, bukan cuma di `handleCheckoutWA`. PDF
     // quotation ini dicetak dan dibawa pelanggan; kalau ia boleh terbit tanpa
     // komponen wajib, tanda `*` di daftar langkah tidak berarti apa-apa dan CS
     // menerima pertanyaan atas dokumen yang rakitannya tidak bisa dirakit.
     if (!validateRequiredSteps()) return
+    if (issuingQuote) return
 
-    // Hanya id & kuantitas yang dikirim — nama, harga, dan gambar dibaca ulang
-    // dari database di halaman /build-pc/print, jadi harga yang tampil di PDF
-    // tidak bisa dipalsukan lewat inspect element di halaman ini.
-    const itemsParam = steps
-      .flatMap((step) => {
-        const stepSels = selections[step.id]
-        if (!Array.isArray(stepSels)) return []
-        return stepSels.map((sel) => `${step.id}:${sel.product.id}:${sel.quantity}`)
-      })
-      .join(",")
-
-    if (itemsParam.length === 0) {
+    if (kumpulkanItems().length === 0) {
       toastManager.add({
         title: "Build Kosong",
         description: "Belum ada komponen yang dipilih.",
@@ -499,8 +728,152 @@ export function DynamicBuilderView({
       return
     }
 
-    // New tab in the browser; same window in the installed app (docs/14-pwa.md §6).
-    openInternal(`/build-pc/print?items=${encodeURIComponent(itemsParam)}`)
+    /**
+     * Staff mengisi identitas pelanggan dulu; pengunjung langsung terbit.
+     *
+     * Dialognya TIDAK dibuka lewat `prepareInternalOpen` — tab cetak baru
+     * disiapkan saat tombol Terbitkan di dalam dialog ditekan, karena gestur
+     * klik yang dihitung browser adalah klik itu, bukan klik yang membuka
+     * dialog beberapa detik sebelumnya.
+     */
+    if (quotationMode !== "anon") {
+      /*
+       * WAJIB, dan bukan pemanis — lihat catatan di `closeMobileDrawers`.
+       *
+       * `validateRequiredSteps()` di atas juga menutup laci, tapi HANYA pada
+       * jalur gagalnya. Artinya justru saat rakitannya lengkap dan dialog ini
+       * benar-benar terbit, lacinya (`z-[55]`) masih menutupi dialog yang
+       * di-portal ke body dengan `z-50`. Yang dialami staff: menekan Print di
+       * panel My Build versi mobile, tidak melihat apa-apa, dan quotation tidak
+       * pernah terbit karena formulir identitas pelanggannya tidak bisa
+       * disentuh. Berlaku untuk kedua mode dialog — `"sendiri"` maupun
+       * `"oper"`. Kasus yang sama sudah lebih dulu diperbaiki di
+       * `handleOpenSaveDialog`.
+       */
+      closeMobileDrawers()
+      setIsQuotationDialogOpen(true)
+      return
+    }
+
+    await terbitkanDanCetak({})
+  }
+
+  /**
+   * Menerbitkan quotation lewat server action, lalu membuka halaman cetaknya.
+   *
+   * Dulu tombol Print cuma membuka `/build-pc/print?items=…` dan halaman itulah
+   * yang menulis ke database. Sejak kodenya berupa nomor urut, menulis saat GET
+   * jadi tidak bisa dipertahankan: refresh tab PDF akan memakan nomor baru.
+   * Sekarang nomor terbit SEKALI di sini, dan halaman cetak hanya membaca.
+   *
+   * Yang dikirim tetap hanya id & kuantitas plus identitas pelanggan — harga
+   * dibaca ulang dari katalog di server, jadi harga di PDF tidak bisa dipalsukan
+   * lewat inspect element di halaman ini (CLAUDE.md §2.7).
+   */
+  const terbitkanDanCetak = async (
+    identitas: Partial<QuotationFormValues>,
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const items = kumpulkanItems()
+
+    // Tab disiapkan SEBELUM await: browser hanya mengizinkan membuka tab selama
+    // gestur klik masih berjalan. Lihat `prepareInternalOpen`.
+    const tab = prepareInternalOpen()
+    setIssuingQuote(true)
+    try {
+      const hasil = await issueQuotationAction({ items, ...identitas })
+      if (!hasil.ok) {
+        tab.cancel()
+        /**
+         * Kegagalan pada alur berdialog dikembalikan ke DIALOG, bukan dijadikan
+         * toast: yang harus dibetulkan ada di formulir itu sendiri, dan menutup
+         * dialog untuk memunculkan toast berarti isian yang sudah diketik hilang.
+         */
+        if (Object.keys(identitas).length > 0) return { ok: false, error: hasil.error }
+
+        toastManager.add({
+          title: "Quotation gagal diterbitkan",
+          description: hasil.error,
+          data: { variant: "danger" },
+        })
+        return { ok: false, error: hasil.error }
+      }
+      tab.go(printHref(hasil.code, hasil.token))
+      return { ok: true }
+    } catch (error) {
+      console.error("[build-pc] gagal menerbitkan quotation:", error)
+      tab.cancel()
+      const pesan = "Periksa koneksi lalu coba lagi."
+      if (Object.keys(identitas).length === 0) {
+        toastManager.add({
+          title: "Quotation gagal diterbitkan",
+          description: pesan,
+          data: { variant: "danger" },
+        })
+      }
+      return { ok: false, error: pesan }
+    } finally {
+      setIssuingQuote(false)
+    }
+  }
+
+
+  /**
+   * Menyimpan revisi, lalu membuka halaman cetaknya. Kode TIDAK berubah.
+   *
+   * Yang dikirim: id & kuantitas komponen, identitas pelanggan, dan satu
+   * BOOLEAN `useLatestPrices`. Tidak ada rupiah yang berangkat dari sini —
+   * server yang memutuskan tiap baris memakai harga lama atau harga katalog
+   * (CLAUDE.md §2.7).
+   */
+  const handleSimpanRevisi = async () => {
+    if (!revisionLoad) return
+    if (!validateRequiredSteps()) return
+    if (issuingQuote) return
+
+    const items = kumpulkanItems()
+    if (items.length === 0) {
+      toastManager.add({
+        title: "Rakitan Kosong",
+        description: "Revisi tidak bisa disimpan tanpa komponen.",
+        data: { variant: "danger" },
+      })
+      return
+    }
+
+    const tab = prepareInternalOpen()
+    setIssuingQuote(true)
+    try {
+      const hasil = await reviseQuotationAction({
+        code: revisionLoad.code,
+        items,
+        customerName: revisionLoad.customerName,
+        customerPhone: revisionLoad.customerPhone,
+        internalNote: revisionLoad.internalNote,
+        useLatestPrices: pakaiHargaTerbaru,
+      })
+
+      if (!hasil.ok) {
+        tab.cancel()
+        toastManager.add({
+          title: "Revisi gagal disimpan",
+          description: hasil.error,
+          data: { variant: "danger" },
+        })
+        return
+      }
+
+      tab.go(printHref(hasil.code, hasil.token))
+    } catch (error) {
+      console.error("[build-pc] gagal menyimpan revisi:", error)
+      tab.cancel()
+      toastManager.add({
+        title: "Revisi gagal disimpan",
+        description: "Periksa koneksi lalu coba lagi.",
+        data: { variant: "danger" },
+      })
+    } finally {
+      setIssuingQuote(false)
+    }
   }
 
   /**
@@ -629,8 +1002,57 @@ export function DynamicBuilderView({
     setIsSaveDialogOpen(true)
   }
 
+  /**
+   * "Simpan sebagai Rakitan Baru" — dan juga satu-satunya jalan simpan saat
+   * halaman TIDAK sedang dalam Mode Edit.
+   *
+   * Setelah baris barunya lahir, Mode Edit berpindah ke baris ITU, bukan
+   * bertahan di rakitan asal. Kalau tidak, pelanggan yang menekan "Simpan
+   * sebagai Rakitan Baru" lalu mengubah satu komponen lagi dan menekan
+   * "Simpan Perubahan" akan menimpa rakitan LAMA — dua tekanan tombol dengan
+   * arti berlawanan, dan yang tertimpa justru yang tadi sengaja ia pertahankan.
+   *
+   * URL ikut diperbarui lewat `replace` supaya `?build=` tidak lagi menunjuk
+   * baris lama: kalau halamannya dimuat ulang, yang terbuka harus rakitan yang
+   * sama dengan yang tertulis di bar Mode Edit.
+   */
   const handleConfirmSaveBuild = async (name: string) => {
-    return saveBuildAction(name, buildLineItems())
+    const hasil = await saveBuildAction(name, buildLineItems())
+
+    if (hasil.ok) {
+      setBuildAsal({ id: hasil.id, name: hasil.name })
+      /*
+       * Ditandai SEBELUM `replace`. URL baru membuat server mengirim
+       * `savedBuildLoad` untuk baris yang baru lahir, dan tanpa tanda ini efek
+       * pemuatan akan menganggapnya rakitan yang baru dibuka lalu
+       * menghidratnya ulang — panel melompat kembali ke langkah pertama tepat
+       * setelah pelanggan menekan Simpan, seolah pekerjaannya diambil alih.
+       */
+      savedBuildSudahDimuat.current = true
+      router.replace(`/build-pc?build=${encodeURIComponent(hasil.id)}`, { scroll: false })
+    }
+
+    return hasil
+  }
+
+  /**
+   * "Simpan Perubahan" — menimpa rakitan yang sedang dibuka.
+   *
+   * Yang dikirim SAMA PERSIS dengan jalur simpan baru (`buildLineItems()`:
+   * id, kuantitas, label langkah), jadi tidak ada satu pun angka harga yang
+   * berangkat dari sini. Servernya yang membaca harga katalog, sama seperti
+   * `saveBuildAction`.
+   */
+  const handleUpdateSavedBuild = async (name: string) => {
+    if (!buildAsal) return { ok: false as const, error: "Tidak ada rakitan yang sedang diedit." }
+
+    const hasil = await updateSavedBuildAction(buildAsal.id, name, buildLineItems())
+
+    // Namanya boleh diubah dari dialog, jadi bar Mode Edit harus ikut berubah
+    // — bukan tetap menampilkan nama lama sampai halaman dimuat ulang.
+    if (hasil.ok) setBuildAsal({ id: buildAsal.id, name: hasil.name })
+
+    return hasil
   }
 
   /**
@@ -735,6 +1157,7 @@ export function DynamicBuilderView({
   const handleDiscardAndStartNew = () => {
     clearSelections()
     setShowPreviousBuildBanner(false)
+    lepasBuildAsal()
   }
 
   /**
@@ -1171,10 +1594,17 @@ export function DynamicBuilderView({
             Lanjut
           </Button>
 
+          {/* Konsultasi WA disembunyikan di Mode Revisi: angka yang tampil
+              boleh berbeda dari katalog (itu memang gunanya revisi), sedangkan
+              pesan ke CS selalu dibaca ulang dari katalog. Membiarkannya
+              berarti sales mengirim total yang tidak sama dengan dokumen yang
+              sedang ia susun. */}
           <Button
             onClick={handleCheckoutWA}
             disabled={sendingWA}
-            className="w-full cursor-pointer bg-[#25D366] hover:bg-[#1EBE5A] active:bg-[#17A74C] text-white font-bold h-10 rounded-lg flex items-center justify-center gap-1.5 text-sm transition-colors"
+            className={`w-full cursor-pointer bg-[#25D366] hover:bg-[#1EBE5A] active:bg-[#17A74C] text-white font-bold h-10 rounded-lg flex items-center justify-center gap-1.5 text-sm transition-colors ${
+              revisionLoad ? "hidden" : ""
+            }`}
           >
             {sendingWA ? (
               <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin" />
@@ -1187,27 +1617,182 @@ export function DynamicBuilderView({
           </Button>
         </div>
 
-        <div className="mt-2 grid grid-cols-2 gap-2">
-          <button
-            onClick={handlePrint}
-            className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-foreground/15 bg-foreground text-background hover:bg-foreground/85 active:bg-foreground/75 h-10 text-sm font-semibold transition-colors"
-          >
-            <Printer className="w-3.5 h-3.5" />
-            Print
-          </button>
-          <button
-            onClick={handleOpenSaveDialog}
-            className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-foreground/15 bg-background text-foreground hover:bg-muted h-10 text-sm font-semibold transition-colors"
-          >
-            <SaveIcon size={14} />
-            Simpan
-          </button>
-        </div>
+        {revisionLoad ? (
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <button
+              onClick={handleSimpanRevisi}
+              disabled={issuingQuote}
+              className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-foreground/15 bg-foreground text-background hover:bg-foreground/85 active:bg-foreground/75 h-10 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              {issuingQuote ? "Menyimpan…" : "Simpan Revisi"}
+            </button>
+            {/* Batal = kembali ke detail quotation, BUKAN mengosongkan rakitan.
+                Yang ditinggalkan cuma perubahan yang belum disimpan; dokumen
+                yang sudah terbit tidak tersentuh sama sekali. */}
+            <a
+              href={`/profile/quotation/${encodeURIComponent(revisionLoad.code)}`}
+              className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-foreground/15 bg-background text-foreground hover:bg-muted h-10 text-sm font-semibold transition-colors"
+            >
+              Batal
+            </a>
+          </div>
+        ) : (
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {/* Dinonaktifkan selama penerbitan berjalan: satu klik = satu nomor
+                urut, dan klik ganda pada koneksi lambat berarti dua dokumen untuk
+                satu rakitan. */}
+            <button
+              onClick={handlePrint}
+              disabled={issuingQuote}
+              className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-foreground/15 bg-foreground text-background hover:bg-foreground/85 active:bg-foreground/75 h-10 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              {issuingQuote ? "Menerbitkan…" : "Print"}
+            </button>
+            <button
+              onClick={handleOpenSaveDialog}
+              className="cursor-pointer flex items-center justify-center gap-1.5 rounded-lg border border-foreground/15 bg-background text-foreground hover:bg-muted h-10 text-sm font-semibold transition-colors"
+            >
+              <SaveIcon size={14} />
+              Simpan
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )
 
   return (
+    <>
+      {/* ---------- Bar Mode Revisi ---------- */}
+      {revisionLoad && (
+        <div className="mb-4 w-full rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 print:hidden">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-bold">
+                Merevisi{" "}
+                <span className="font-mono">{revisionLoad.code}</span>{" "}
+                <span className="font-sans">
+                  · Rev. {revisionLoad.revisiBerlaku} → Rev. {revisionLoad.revisiBerlaku + 1}
+                </span>
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Pelanggan: <strong>{revisionLoad.customerName || "—"}</strong>. Kode quotation
+                tidak berubah; yang bertambah adalah nomor revisinya.
+              </p>
+            </div>
+          </div>
+
+          {/* Komponen yang sudah lenyap dari katalog. Dilaporkan lebih dulu
+              karena ia mengubah isi rakitan, bukan cuma angkanya. */}
+          {revisionLoad.komponenHilang.length > 0 && (
+            <p className="mt-3 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              <strong>{revisionLoad.komponenHilang.length} komponen</strong> dari revisi sebelumnya
+              sudah tidak ada di katalog dan tidak ikut dimuat. Tambahkan penggantinya sebelum
+              menyimpan.
+            </p>
+          )}
+
+          {revisionLoad.perubahanHarga.length > 0 && (
+            <div className="mt-3 rounded-xl border border-border bg-background/70 p-3">
+              <p className="text-xs font-bold">
+                {revisionLoad.perubahanHarga.length} item harganya sudah berubah di katalog
+              </p>
+              <ul className="mt-1.5 space-y-0.5">
+                {revisionLoad.perubahanHarga.map((p) => (
+                  <li key={p.name} className="flex flex-wrap justify-between gap-2 text-xs">
+                    <span className="min-w-0 flex-1 truncate text-muted-foreground">{p.name}</span>
+                    <span className="shrink-0 tabular-nums">
+                      <span className="text-muted-foreground line-through">
+                        {formatRupiah(p.hargaLama)}
+                      </span>{" "}
+                      <span className={p.hargaBaru > p.hargaLama ? "font-bold text-destructive" : "font-bold text-brand-green"}>
+                        {formatRupiah(p.hargaBaru)}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+
+              {/* Mati secara bawaan. Harga yang sudah dipegang pelanggan
+                  dipertahankan kecuali sales memilih sebaliknya — menaikkannya
+                  diam-diam saat sales cuma menambah satu komponen adalah cara
+                  tercepat kehilangan kepercayaan pelanggan. */}
+              <label className="mt-3 flex cursor-pointer items-start gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={pakaiHargaTerbaru}
+                  onChange={(e) => setPakaiHargaTerbaru(e.target.checked)}
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-pointer"
+                />
+                <span>
+                  <strong>Gunakan harga terbaru</strong> untuk semua komponen.
+                  <span className="block text-muted-foreground">
+                    Kalau dibiarkan mati, harga revisi sebelumnya dipertahankan. Komponen yang baru
+                    ditambahkan selalu memakai harga katalog.
+                  </span>
+                </span>
+              </label>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ---------- Bar Mode Edit (rakitan tersimpan) ---------- */}
+      {/*
+        Sengaja TIDAK dipasang bersamaan dengan bar Mode Revisi: `?build=` dan
+        `?quotation=` tidak pernah aktif berbarengan (lihat syaratnya di
+        app/build-pc/page.tsx), dan dua bar "sedang mengedit X" di layar yang
+        sama cuma membuat orang menebak mana yang akan tertimpa saat menekan
+        Simpan.
+
+        Bar ini ADA supaya pertanyaan itu tidak perlu ditebak sama sekali:
+        selama ia terlihat, tombol Simpan menawarkan menimpa rakitan yang
+        namanya tertulis di sini.
+      */}
+      {buildAsal && (
+        /* `mt-[60px] md:mt-0`: bar ini duduk paling atas di alur dokumen,
+           sedangkan judul mengambang versi mobile `fixed top-0` dan menimpa
+           apa pun di bawahnya — alasan yang sama persis dengan banner paket
+           prebuild. Tanpa ini, bar Mode Edit ada di DOM tapi tertutup penuh di
+           layar ponsel, dan pelanggan tidak pernah tahu ia sedang mengedit
+           rakitan tersimpan sampai dialog Simpan terbuka. */
+        <div className="mb-4 mt-[60px] w-full rounded-2xl border border-blue-500/40 bg-blue-500/10 p-4 md:mt-0 print:hidden">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-bold">
+                Mengedit rakitan tersimpan:{" "}
+                <span className="break-words">&ldquo;{buildAsal.name}&rdquo;</span>
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Menekan <strong>Simpan</strong> akan menawarkan dua jalan: menimpa rakitan ini,
+                atau menyimpannya sebagai rakitan baru.
+              </p>
+            </div>
+            {/* Keluar dari Mode Edit tanpa menyentuh apa pun: komponennya tetap
+                di panel, hanya tautan ke baris tersimpannya yang dilepas.
+                Tombol biasa, BUKAN tautan ke /profile — pelanggan yang menekan
+                ini sedang ingin lanjut merakit bebas, bukan pindah halaman. */}
+            <button
+              type="button"
+              onClick={lepasBuildAsal}
+              className="shrink-0 cursor-pointer rounded-lg border border-foreground/15 bg-background px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-muted"
+            >
+              Lepas
+            </button>
+          </div>
+
+          {savedBuildLoad && buildAsal.id === savedBuildLoad.id && savedBuildLoad.komponenHilang > 0 && (
+            <p className="mt-3 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              <strong>{savedBuildLoad.komponenHilang} komponen</strong> dari rakitan ini sudah tidak
+              tersedia di katalog dan tidak ikut dimuat. Kalau Anda menimpa rakitan ini sekarang,
+              komponen tersebut ikut hilang dari rakitan tersimpan Anda.
+            </p>
+          )}
+        </div>
+      )}
+
     <div className="flex flex-col lg:flex-row gap-8 max-w-[1600px] mx-auto w-full pb-[124px] md:pb-0">
 
       {/*
@@ -1358,11 +1943,15 @@ export function DynamicBuilderView({
                 Lanjut
                 <ChevronRight className="h-3.5 w-3.5 shrink-0" />
               </Button>
-            ) : (
+            ) : revisionLoad ? null : (
               /* Langkah terakhir: tidak ada lagi tempat untuk maju, jadi
                  tombolnya berganti peran menjadi aksi penutup. Handler-nya SAMA
                  PERSIS dengan tombol Konsultasi di panel My Build — termasuk
-                 `validateRequiredSteps` dan pembacaan ulang harga di server. */
+                 `validateRequiredSteps` dan pembacaan ulang harga di server.
+
+                 Di Mode Revisi slot ini dikosongkan, dengan alasan yang sama
+                 seperti di panel My Build. Tombol "Kembali" di sebelahnya tetap
+                 ada — navigasi antar langkah bukan yang dipermasalahkan §2.7. */
               <Button
                 onClick={handleCheckoutWA}
                 disabled={sendingWA}
@@ -1482,6 +2071,9 @@ export function DynamicBuilderView({
                   hydrateSelections(presetLoad.selections)
                   setPresetPending(false)
                   setShowPreviousBuildBanner(false)
+                  // Yang ada di panel sekarang adalah paket prebuild, bukan
+                  // rakitan tersimpan yang tadi dibuka.
+                  lepasBuildAsal()
                 }}
                 className="cursor-pointer rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-xs font-bold text-neutral-900 shadow-sm transition-colors hover:border-neutral-900 hover:bg-neutral-900 hover:text-white"
               >
@@ -1497,7 +2089,12 @@ export function DynamicBuilderView({
           </div>
         )}
 
-        {showPreviousBuildBanner && (
+        {/* `!buildAsal`: di Mode Edit, yang terpampang di panel adalah rakitan
+            yang barusan dibuka dari akun — menyebutnya "rakitan sebelumnya"
+            salah alamat, dan dua kartu "ini rakitan X" sekaligus cuma membuat
+            pelanggan menebak mana yang sedang ia lihat. Bar Mode Edit di atas
+            sudah mengatakannya dengan nama rakitannya. */}
+        {showPreviousBuildBanner && !buildAsal && (
           /* Latar biru pastel dengan tulisan HITAM, bukan biru di atas biru.
              Versi sebelumnya memakai `text-blue-800` di atas `bg-blue-50` —
              dua warna bertetangga yang membuat kalimatnya nyaris menyatu dengan
@@ -1767,6 +2364,18 @@ export function DynamicBuilderView({
         </div>
       </div>
 
+      {/* Hanya untuk staff. Pengunjung tidak pernah melihat dialog ini — tombol
+          Print mereka langsung menerbitkan dokumen anonim. */}
+      {quotationMode !== "anon" && (
+        <IssueQuotationDialog
+          open={isQuotationDialogOpen}
+          onOpenChange={setIsQuotationDialogOpen}
+          mode={quotationMode}
+          salesOptions={salesOptions}
+          onSubmit={terbitkanDanCetak}
+        />
+      )}
+
       <SaveBuildDialog
         open={isSaveDialogOpen}
         onOpenChange={(next) => {
@@ -1774,6 +2383,12 @@ export function DynamicBuilderView({
           if (!next) setSaveDialogIsForNewBuild(false)
         }}
         onConfirm={handleConfirmSaveBuild}
+        onUpdate={handleUpdateSavedBuild}
+        /* Terisi hanya kalau halaman dibuka lewat `?build=<id>` ATAU rakitan
+           ini baru saja disimpan sebagai rakitan baru — dua-duanya berarti ada
+           satu baris tersimpan yang boleh ditimpa. Kosong = dialog tampil
+           seperti sebelumnya, satu tombol Simpan. */
+        editing={buildAsal}
         onSaved={saveDialogIsForNewBuild ? handleDiscardAndStartNew : undefined}
       />
 
@@ -1858,6 +2473,9 @@ export function DynamicBuilderView({
         onConfirm={() => {
           clearSelections()
           setShowPreviousBuildBanner(false)
+          // Isinya sudah bukan rakitan yang sedang diedit lagi — lihat
+          // `lepasBuildAsal`.
+          lepasBuildAsal()
         }}
       />
 
@@ -1869,5 +2487,6 @@ export function DynamicBuilderView({
         onDiscard={handleDiscardAndStartNew}
       />
     </div>
+    </>
   )
 }

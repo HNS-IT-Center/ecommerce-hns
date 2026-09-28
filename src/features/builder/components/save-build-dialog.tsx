@@ -14,10 +14,27 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { CheckCircle2, TriangleAlert } from "lucide-react"
 
+/** `name` = nama yang BENAR-BENAR tersimpan, diisi server kalau kolomnya kosong. */
+type SimpanResult = { ok: boolean; error?: string; name?: string }
+
 type SaveBuildDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onConfirm: (name: string) => Promise<{ ok: boolean; error?: string }>
+  /** Simpan sebagai BARIS BARU. Selalu tersedia. */
+  onConfirm: (name: string) => Promise<SimpanResult>
+  /**
+   * Timpa rakitan yang sedang diedit. Dipakai hanya kalau `editing` terisi.
+   * `gone: true` berarti barisnya sudah tidak ada — dialognya lalu menutup
+   * jalan "Simpan Perubahan" dan menyisakan "Simpan sebagai Rakitan Baru",
+   * karena mencoba lagi tidak akan pernah berhasil.
+   */
+  onUpdate?: (name: string) => Promise<SimpanResult & { gone?: boolean }>
+  /**
+   * Rakitan tersimpan yang sedang dibuka di builder (`?build=<id>`), atau
+   * `null` kalau ini rakitan yang belum pernah disimpan. Inilah yang
+   * membedakan dialog dua tombol dari dialog satu tombol.
+   */
+  editing?: { id: string; name: string } | null
   /**
    * Dipanggil sekali begitu simpan sukses, SEBELUM layar konfirmasi
    * ditampilkan. Opsional — pemanggil biasa (tombol Simpan di panel My
@@ -37,51 +54,97 @@ type SaveBuildDialogProps = {
  * lewat WhatsApp, jadi keputusan pindah halaman diserahkan ke pelanggan,
  * bukan dipaksa.
  *
+ * Saat `editing` terisi, formnya menawarkan DUA tombol: menimpa rakitan yang
+ * sedang dibuka, atau menyimpannya sebagai rakitan baru. Sebelum ini hanya ada
+ * satu jalan — selalu membuat baris baru — sehingga pelanggan yang membuka
+ * rakitannya sendiri lewat "Lanjutkan di Builder", mengubah satu komponen,
+ * lalu menekan Simpan justru menumpuk salinan, dan kuota 20 rakitan tersimpan
+ * habis oleh rakitan yang itu-itu juga.
+ *
  * Nama boleh dikosongkan — `saveBuildAction` di server yang mengisi fallback
  * "Rakitan {tanggal}", supaya aturan penamaan hanya hidup di satu tempat.
  */
-export function SaveBuildDialog({ open, onOpenChange, onConfirm, onSaved }: SaveBuildDialogProps) {
+export function SaveBuildDialog({
+  open,
+  onOpenChange,
+  onConfirm,
+  onUpdate,
+  editing = null,
+  onSaved,
+}: SaveBuildDialogProps) {
   const router = useRouter()
-  const [name, setName] = useState("")
-  const [saving, setSaving] = useState(false)
+  /**
+   * `null` = belum disentuh pelanggan; yang tampil adalah nama rakitan yang
+   * sedang diedit. Sengaja nilai turunan seperti ini, BUKAN `useEffect` yang
+   * menyalin `editing.name` ke state saat dialog terbuka: efek semacam itu
+   * ikut berjalan setiap kali `editing` berubah — termasuk tepat setelah
+   * "Simpan sebagai Rakitan Baru" berhasil dan induknya memindahkan Mode Edit
+   * ke baris yang baru lahir — dan menghapus layar konfirmasi yang baru saja
+   * muncul.
+   */
+  const [name, setName] = useState<string | null>(null)
+  // Tombol mana yang sedang menunggu server. `null` = tidak ada.
+  const [saving, setSaving] = useState<"timpa" | "baru" | null>(null)
   const [error, setError] = useState<string | null>(null)
-  // `null` = masih di form. String = sukses, isinya nama yang tersimpan.
-  const [savedName, setSavedName] = useState<string | null>(null)
+  // `null` = masih di form. Terisi = sukses, sekaligus menandai lewat jalan mana.
+  const [savedMode, setSavedMode] = useState<"timpa" | "baru" | null>(null)
+  const [savedName, setSavedName] = useState("")
+  /** Rakitan asalnya sudah lenyap — lihat `onUpdate`. */
+  const [asalHilang, setAsalHilang] = useState(false)
+
+  const nilaiNama = name ?? editing?.name ?? ""
+  const bolehMenimpa = !!editing && !!onUpdate && !asalHilang
 
   const reset = () => {
-    setName("")
+    setName(null)
     setError(null)
-    setSavedName(null)
+    setSavedMode(null)
+    setSavedName("")
+    setAsalHilang(false)
   }
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (mode: "timpa" | "baru") => {
     if (saving) return
-    setSaving(true)
+    setSaving(mode)
     setError(null)
 
     /*
-     * `onConfirm` memanggil server action, dan server action bisa MELEMPAR —
-     * bukan cuma mengembalikan `{ ok: false }`. Tanpa try/catch, lemparan itu
-     * meninggalkan dialog pada keadaan "Menyimpan…" selamanya: tombolnya
-     * terkunci, tidak ada pesan, dan tidak ada cara mencoba lagi selain memuat
-     * ulang halaman.
+     * `onConfirm`/`onUpdate` memanggil server action, dan server action bisa
+     * MELEMPAR — bukan cuma mengembalikan `{ ok: false }`. Tanpa try/catch,
+     * lemparan itu meninggalkan dialog pada keadaan "Menyimpan…" selamanya:
+     * tombolnya terkunci, tidak ada pesan, dan tidak ada cara mencoba lagi
+     * selain memuat ulang halaman.
      */
-    let result: { ok: boolean; error?: string }
+    let result: SimpanResult & { gone?: boolean }
     try {
-      result = await onConfirm(name)
+      result =
+        mode === "timpa" && onUpdate ? await onUpdate(nilaiNama) : await onConfirm(nilaiNama)
     } catch {
-      setSaving(false)
+      setSaving(null)
       setError("Gagal menghubungi server. Periksa koneksi Anda lalu coba lagi.")
       return
     }
 
-    setSaving(false)
+    setSaving(null)
     if (!result.ok) {
+      /*
+       * Rakitan asalnya sudah dihapus — bisa dari perangkat lain, bisa dari tab
+       * sebelah. Menyuruh "coba lagi" di sini berarti menyuruh mencoba sesuatu
+       * yang mustahil berhasil, sementara rakitan yang sedang disusun tetap
+       * belum tersimpan di mana pun. Jalan menimpa ditutup, jalan simpan-baru
+       * dibiarkan terbuka — dan itulah satu-satunya yang masih masuk akal.
+       */
+      if (result.gone) setAsalHilang(true)
       setError(result.error ?? "Gagal menyimpan rakitan.")
       return
     }
 
-    setSavedName(name.trim() || "Rakitan Anda")
+    // Nama yang dipakai layar konfirmasi datang dari SERVER kalau ada: kolom
+    // nama yang dikosongkan diisi di sana ("Rakitan 23 September"), dan
+    // menyebut nama lain di sini berarti pelanggan mencari rakitan dengan nama
+    // yang tidak pernah ada di daftarnya.
+    setSavedName(result.name ?? (nilaiNama.trim() || "Rakitan Anda"))
+    setSavedMode(mode)
 
     /*
      * Rakitan sudah ada di database, tapi `/profile` yang akan dibuka
@@ -108,16 +171,27 @@ export function SaveBuildDialog({ open, onOpenChange, onConfirm, onSaved }: Save
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
-        {savedName ? (
+        {savedMode ? (
           <>
             <DialogHeader>
               <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-brand-green/10">
                 <CheckCircle2 className="h-6 w-6 text-brand-green" />
               </div>
-              <DialogTitle className="text-center">Rakitan Tersimpan</DialogTitle>
+              <DialogTitle className="text-center">
+                {savedMode === "timpa" ? "Perubahan Tersimpan" : "Rakitan Tersimpan"}
+              </DialogTitle>
               <DialogDescription className="text-center">
-                &quot;{savedName}&quot; sudah tersimpan di akun Anda. Harganya akan mengikuti harga
-                terbaru di katalog setiap kali Anda membukanya kembali.
+                {savedMode === "timpa" ? (
+                  <>
+                    &quot;{savedName}&quot; sudah diperbarui — isinya diganti dengan rakitan yang
+                    sekarang, bukan ditambahkan sebagai salinan baru.
+                  </>
+                ) : (
+                  <>
+                    &quot;{savedName}&quot; sudah tersimpan di akun Anda. Harganya akan mengikuti
+                    harga terbaru di katalog setiap kali Anda membukanya kembali.
+                  </>
+                )}
               </DialogDescription>
             </DialogHeader>
 
@@ -137,10 +211,19 @@ export function SaveBuildDialog({ open, onOpenChange, onConfirm, onSaved }: Save
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle>Simpan Rakitan</DialogTitle>
+              <DialogTitle>{bolehMenimpa ? "Simpan Perubahan" : "Simpan Rakitan"}</DialogTitle>
               <DialogDescription>
-                Rakitan ini akan muncul di akun Anda. Harganya selalu mengikuti harga terbaru di
-                katalog, bukan harga saat disimpan.
+                {bolehMenimpa && editing ? (
+                  <>
+                    Anda sedang mengedit &quot;{editing.name}&quot;. Perubahannya bisa ditimpakan ke
+                    rakitan itu, atau disimpan sebagai rakitan baru tanpa mengubahnya.
+                  </>
+                ) : (
+                  <>
+                    Rakitan ini akan muncul di akun Anda. Harganya selalu mengikuti harga terbaru di
+                    katalog, bukan harga saat disimpan.
+                  </>
+                )}
               </DialogDescription>
             </DialogHeader>
 
@@ -150,12 +233,18 @@ export function SaveBuildDialog({ open, onOpenChange, onConfirm, onSaved }: Save
               </label>
               <Input
                 id="build-name"
-                value={name}
+                value={nilaiNama}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Contoh: PC Gaming Budget"
                 maxLength={120}
                 autoFocus
               />
+              {bolehMenimpa && (
+                <p className="text-xs text-muted-foreground">
+                  Nama ini ikut tersimpan. Ubah dulu kalau Anda ingin menyimpannya sebagai rakitan
+                  baru yang berdiri sendiri.
+                </p>
+              )}
               {error && (
                 <p className="flex items-start gap-2 text-xs text-destructive">
                   <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -164,18 +253,53 @@ export function SaveBuildDialog({ open, onOpenChange, onConfirm, onSaved }: Save
               )}
             </div>
 
-            <DialogFooter>
-              <button
-                type="button"
-                onClick={() => handleOpenChange(false)}
-                disabled={saving}
-                className="rounded-lg px-4 py-2 text-sm text-muted-foreground hover:bg-muted disabled:opacity-60"
-              >
-                Batal
-              </button>
-              <Button onClick={handleSubmit} disabled={saving}>
-                {saving ? "Menyimpan…" : "Simpan"}
-              </Button>
+            {/* Saat sedang mengedit, tombolnya ditumpuk dan yang UTAMA adalah
+                menimpa: itulah yang diharapkan orang yang membuka rakitannya
+                sendiri lalu menekan Simpan. "Simpan sebagai Rakitan Baru" tetap
+                satu ketukan, hanya tidak jadi bawaan — ia menambah baris dan
+                memakan kuota rakitan tersimpan. */}
+            <DialogFooter className={bolehMenimpa ? "sm:flex-col sm:gap-2" : undefined}>
+              {bolehMenimpa ? (
+                <>
+                  <Button
+                    className="w-full"
+                    onClick={() => handleSubmit("timpa")}
+                    disabled={!!saving}
+                  >
+                    {saving === "timpa" ? "Menyimpan…" : "Simpan Perubahan"}
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => handleSubmit("baru")}
+                    disabled={!!saving}
+                    className="w-full rounded-lg border border-input px-4 py-2 text-sm font-semibold transition-colors hover:bg-muted disabled:opacity-60"
+                  >
+                    {saving === "baru" ? "Menyimpan…" : "Simpan sebagai Rakitan Baru"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenChange(false)}
+                    disabled={!!saving}
+                    className="w-full rounded-lg px-4 py-2 text-sm text-muted-foreground hover:bg-muted disabled:opacity-60"
+                  >
+                    Batal
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenChange(false)}
+                    disabled={!!saving}
+                    className="rounded-lg px-4 py-2 text-sm text-muted-foreground hover:bg-muted disabled:opacity-60"
+                  >
+                    Batal
+                  </button>
+                  <Button onClick={() => handleSubmit("baru")} disabled={!!saving}>
+                    {saving === "baru" ? "Menyimpan…" : "Simpan"}
+                  </Button>
+                </>
+              )}
             </DialogFooter>
           </>
         )}

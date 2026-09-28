@@ -3,14 +3,14 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import {
-  findCustomerByEmail,
+  findAccountForPasswordReset,
   hashPassword,
   MIN_PASSWORD_LENGTH,
 } from "@/lib/auth/customer-password"
 import { createCustomerSession } from "@/lib/auth/customer"
 import { createSession } from "@/lib/auth"
 import { findUserByIdentifier } from "@/lib/auth/identity"
-import { isMaster } from "@/lib/auth/permissions"
+import { isMaster, landingPathFor, muatIzinUser } from "@/lib/auth/permissions"
 import { verifyPassword as verifyPasswordUser } from "@/lib/auth/password"
 import { createVerificationToken, consumeVerificationToken } from "@/lib/auth/verification-token"
 import { sendEmail } from "@/lib/email/send"
@@ -78,9 +78,18 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
     redirect(nextPath)
   }
 
-  // Selain "pelanggan" = akun admin (owner/staff/role dinamis) → panel.
+  // Selain "pelanggan" = akun admin (owner/staff/role dinamis).
   await createSession({ id: user.id, email: user.email })
-  redirect("/admin")
+
+  /**
+   * Tujuannya ditentukan izin, bukan dipatok ke `/admin`.
+   *
+   * Kasir dan Sales/CS bekerja di luar panel (`/verify`, `/profile/quotation`),
+   * dan sidebar panel tidak punya satu pun menu untuk mereka. Mengantar mereka
+   * ke dashboard berarti setiap hari dimulai dari halaman kosong yang harus
+   * mereka tinggalkan sendiri.
+   */
+  redirect(landingPathFor(await muatIzinUser(user)))
 }
 
 function resetPasswordEmailText(link: string): string {
@@ -147,13 +156,21 @@ export async function forgotPasswordAction(
     }
   }
 
-  const customer = await findCustomerByEmail(email)
+  /**
+   * SEMUA peran, termasuk staff — lihat `findAccountForPasswordReset`.
+   *
+   * Satu pintu memang sudah satu pintu: `/login` melayani pelanggan dan staff,
+   * dan `/admin/login` cuma mengalihkan ke sana. Tautan "Lupa password?" di
+   * bawah formulirnya pun sudah dilihat semua orang sejak Fase A — yang belum
+   * ada hanyalah balasan untuk separuh di antara mereka.
+   */
+  const account = await findAccountForPasswordReset(email)
 
-  if (customer && customer.passwordHash) {
+  if (account && account.passwordHash) {
     try {
-      const token = await createVerificationToken(customer.id, "reset_password")
+      const token = await createVerificationToken(account.id, "reset_password")
       const link = `${baseUrl}/login/reset-password/${token}`
-      await sendEmail({ to: customer.email, subject: "Reset password HNS IT Center", text: resetPasswordEmailText(link) })
+      await sendEmail({ to: account.email, subject: "Reset password HNS IT Center", text: resetPasswordEmailText(link) })
     } catch (error) {
       // Kegagalan SMTP tetap ditelan diam-diam: membedakan "email terkirim"
       // dari "email tidak terkirim" akan membocorkan email mana yang terdaftar.
@@ -202,10 +219,19 @@ export async function resetPasswordAction(
   // login tetap mencocokkan hash lama di `users`.
   await getPrisma().user.update({
     where: { id: result.customerId },
-    // Password baru berarti sesi lama (termasuk yang mungkin sudah dibajak
-    // lewat password lama) harus mati — sama alasannya dengan
-    // `passwordChangedAt` di sesi admin.
-    data: { passwordHash, sessionsRevokedAt: changedAt },
+    /**
+     * DUA penanda pencabutan, bukan satu. Password baru berarti sesi lama
+     * (termasuk yang mungkin sudah dibajak lewat password lama) harus mati —
+     * tapi "sesi lama" itu ada dalam dua bentuk, dan masing-masing punya
+     * penandanya sendiri: `sessionsRevokedAt` untuk cookie pelanggan,
+     * `passwordChangedAt` untuk cookie panel (lihat `getCurrentCustomer`).
+     *
+     * Sejak reset terbuka untuk staff (23 September 2026), mengisi yang
+     * pertama saja berarti orang yang meminta reset justru tidak mendapat
+     * yang paling dia butuhkan: cookie panel milik siapa pun yang sedang
+     * memegang akunnya tetap hidup sampai kedaluwarsa sendiri.
+     */
+    data: { passwordHash, sessionsRevokedAt: changedAt, passwordChangedAt: changedAt },
   })
 
   return { error: null, ok: true }

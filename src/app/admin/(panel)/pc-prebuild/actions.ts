@@ -12,7 +12,11 @@ import {
   parsePrebuildConfig,
 } from "@/lib/pc-prebuild/config"
 import { parsePrebuildGames } from "@/lib/pc-prebuild/games"
-import { searchPrebuildProducts } from "@/lib/pc-prebuild/products"
+import {
+  getPrebuildAttributeFacets,
+  searchPrebuildProducts,
+  type PrebuildSortMode,
+} from "@/lib/pc-prebuild/products"
 import type { AttributeRequirementGroup } from "@/lib/pc-builder/compatibility"
 
 /**
@@ -151,11 +155,28 @@ export async function searchPrebuildProductsAction(input: {
   categoryIds: number[]
   /** Aturan `dependSteps`/`dependAttributes` PC Builder — lihat `products.ts`. */
   requiredAttributeValueGroups?: AttributeRequirementGroup[]
+  /** Filter atribut pilihan staff dari modal — MENAMBAH syarat di atas, bukan menggantinya. */
+  attributeValueGroups?: AttributeRequirementGroup[]
   searchQuery?: string
   limit?: number
   page?: number
+  sort?: PrebuildSortMode
 }) {
   return searchPrebuildProducts(input)
+}
+
+/**
+ * Isi modal "Filter Atribut" untuk satu langkah.
+ *
+ * Berizin `edit` seperti tetangganya: daftar ini hanya berguna di dalam editor
+ * paket, dan ia membocorkan bentuk katalog kalau bisa dipanggil siapa saja.
+ */
+export async function prebuildAttributeFacetsAction(input: {
+  categoryIds: number[]
+  requiredAttributeValueGroups?: AttributeRequirementGroup[]
+}) {
+  await requirePermission("pc-prebuild", "edit")
+  return { facets: await getPrebuildAttributeFacets(input) }
 }
 
 /**

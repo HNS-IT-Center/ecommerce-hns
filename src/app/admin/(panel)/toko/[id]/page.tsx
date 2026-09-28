@@ -1,3 +1,4 @@
+import { requirePageView } from "@/lib/auth"
 import { notFound } from "next/navigation";
 import { getStoreById } from "@/lib/api/stores";
 import { StoreForm } from "../store-form";
@@ -7,6 +8,8 @@ type Props = {
 };
 
 export default async function AdminTokoEditPage({ params }: Props) {
+  await requirePageView("toko")
+
   const { id } = await params;
   // `getStoreById` menyaring `deletedAt`, jadi toko yang sudah dihapus tidak bisa
   // dibuka lewat URL langsung dan dihidupkan kembali dengan menekan Simpan.

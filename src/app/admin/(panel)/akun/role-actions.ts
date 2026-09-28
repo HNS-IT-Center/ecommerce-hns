@@ -29,6 +29,14 @@ import type { RoleActionState } from "./role-state"
  *
  * Lapis kedua yang sebenarnya menjaga. Lapis pertama cuma memberi pesan yang
  * lebih enak dibaca.
+ *
+ * DUA path di-revalidate, dan itu wajib. `AdminRoleList` dirender di dua
+ * tempat: `/admin/akun` (asalnya) dan `/admin/manajemen-user` tab Admin (tempat
+ * ia sebenarnya dipakai sehari-hari). Sempat hanya `/admin/akun` yang disebut,
+ * dan akibatnya di tab Admin peran yang baru dipilih terlihat kembali ke yang
+ * lama sampai halamannya dimuat ulang manual — datanya memang berubah di
+ * database, yang tidak berubah cuma pohon RSC yang sedang dilihat staff.
+ * Berlaku untuk seluruh action di berkas ini.
  */
 export async function updateAdminRole(
   _prev: RoleActionState,
@@ -53,6 +61,7 @@ export async function updateAdminRole(
 
     await setAdminUserRole(userId, role)
     revalidatePath("/admin/akun")
+    revalidatePath("/admin/manajemen-user")
 
     return { error: null, success: "Role berhasil diperbarui." }
   } catch (error) {
@@ -85,6 +94,7 @@ export async function updateAdminRoleId(
 
     await setAdminUserRoleId(userId, roleIdRaw === "" ? null : roleIdRaw)
     revalidatePath("/admin/akun")
+    revalidatePath("/admin/manajemen-user")
 
     return {
       error: null,

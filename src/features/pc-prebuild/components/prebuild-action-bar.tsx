@@ -15,6 +15,27 @@ import type { PackagePrice } from "../lib/selection"
  * berhenti di atas footer alih-alih menutupinya, dan tidak perlu ada padding
  * bayangan di bawah konten yang harus dijaga tetap sepadan.
  *
+ * ## Di ponsel ia BERHENTI 60px di atas dasar layar
+ *
+ * Dulu `bottom-0`, dan di ponsel titik itu ditempati MobileDock (`fixed
+ * bottom-0 z-50`, tinggi 60px — lihat `mobile-dock.tsx`). Karena dock
+ * ber-`z-50` dan bilah ini `z-30`, yang tertutup adalah justru total harga dan
+ * tombol "Masukkan Keranjang": halaman paket kehilangan satu-satunya cara
+ * memesannya, tanpa gejala apa pun di layar lebar.
+ *
+ * `env(safe-area-inset-bottom)` ikut dijumlahkan karena dock membawa
+ * `pb-safe` — di iPhone ber-home-indicator tinggi dock adalah 60px DITAMBAH
+ * inset itu, jadi 60px saja masih menyisakan tumpang tindih setipis inset.
+ * Pola yang sama dipakai `install-chip.tsx`.
+ *
+ * Dari `md` ke atas dock tidak dirender (`md:hidden`), jadi bilah ini kembali
+ * menempel ke dasar layar.
+ *
+ * Tombol WhatsApp mengambang tidak perlu dihitung: ia menyembunyikan dirinya
+ * di halaman ini lewat `hasOwnWhatsAppCta` (lihat
+ * `floating-whatsapp-button.tsx`), sama seperti di halaman produk yang juga
+ * punya bilah aksinya sendiri.
+ *
  * Harga di sini adalah PENJUMLAHAN harga satuan katalog atas pilihan yang
  * sedang aktif, dikurangi potongan paket yang ditetapkan staff — lewat
  * `selectionPrice()`, bukan dihitung di komponen ini (CLAUDE.md §2.7,
@@ -46,7 +67,7 @@ export function PrebuildActionBar({
   builderHref,
 }: Props) {
   return (
-    <div className="sticky bottom-0 z-30 -mx-4 mt-8 border-t bg-background/95 px-4 py-3 backdrop-blur supports-backdrop-filter:bg-background/80 md:-mx-6 md:px-6">
+    <div className="sticky bottom-[calc(60px+env(safe-area-inset-bottom))] z-30 -mx-4 mt-8 border-t bg-background/95 px-4 py-3 backdrop-blur supports-backdrop-filter:bg-background/80 md:-mx-6 md:bottom-0 md:px-6">
       <div className="mx-auto flex max-w-7xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <p className="text-[11px] uppercase tracking-wide text-muted-foreground">

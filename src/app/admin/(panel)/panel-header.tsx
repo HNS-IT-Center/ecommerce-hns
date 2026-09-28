@@ -1,5 +1,7 @@
 import Link from "next/link"
 import { LogOut } from "lucide-react"
+
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import type { AdminUser } from "@/lib/auth"
 import { logoutAction } from "../login/actions"
 
@@ -23,10 +25,14 @@ import { logoutAction } from "../login/actions"
  * halaman lewat sana.
  */
 export function PanelHeader({ user }: { user: AdminUser }) {
-  // Huruf awal, bukan `user.image`. Foto dari sumber luar harus lolos
-  // `remotePatterns` di next.config, dan mengizinkan host sembarang demi avatar
-  // di panel internal bukan pertukaran yang sepadan. Nama bisa kosong secara
-  // teori, jadi email dipakai sebagai cadangan.
+  // Foto kalau ada, huruf awal kalau tidak. Nama bisa kosong secara teori, jadi
+  // email dipakai sebagai cadangan huruf awalnya.
+  //
+  // Keberatan lama ("foto dari sumber luar harus lolos `remotePatterns`, dan
+  // mengizinkan host sembarang demi avatar panel bukan pertukaran yang
+  // sepadan") sudah tidak berlaku: `users.image` kini hanya bisa diisi lewat
+  // `updateStaffProfileAction`, yang MENOLAK URL di luar bucket R2 kita
+  // sendiri. Tidak ada host sembarang yang perlu diizinkan.
   const initial = (user.name || user.email).charAt(0).toUpperCase()
 
   return (
@@ -46,12 +52,16 @@ export function PanelHeader({ user }: { user: AdminUser }) {
           href="/admin/akun"
           className="flex items-center gap-2 rounded-xl px-1 py-1 transition-colors hover:bg-muted sm:px-2"
         >
-          <span
-            aria-hidden="true"
-            className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-bold text-primary"
-          >
-            {initial}
-          </span>
+          {/* `Avatar` Base UI dirender dari Server Component ini apa adanya —
+              ia memang komponen klien, tapi tidak menerima satu pun props yang
+              tidak bisa diserialisasi, dan fallback-nya yang menyala sendiri
+              saat foto gagal dimuat tidak bisa ditiru di server. */}
+          <Avatar aria-hidden="true" className="size-8">
+            {user.image && <AvatarImage src={user.image} alt="" />}
+            <AvatarFallback className="bg-primary/10 text-xs font-bold text-primary">
+              {initial}
+            </AvatarFallback>
+          </Avatar>
 
           {/*
             `sr-only sm:not-sr-only`, bukan `hidden sm:block`. Di layar sempit

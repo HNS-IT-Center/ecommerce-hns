@@ -1,10 +1,13 @@
 import { z } from "zod";
 
 const EnvSchema = z.object({
-  // WooCommerce (WAJIB)
+  // WordPress lama (WAJIB) — dipakai blog (/wp-json/wp/v2) dan sebagai host
+  // gambar produk. Kredensial REST WooCommerce (`WOOCOMMERCE_CONSUMER_KEY` /
+  // `_SECRET`) sudah DIHAPUS bersama fitur sinkronisasi: tidak ada lagi kode
+  // yang memanggil /wp-json/wc/v3, dan menahan kunci baca-tulis katalog di
+  // environment untuk sesuatu yang tak pernah dipanggil hanya memperpanjang
+  // umur kunci yang menurut docs/12 §1 memang harus dicabut.
   WOOCOMMERCE_URL: z.string().url(),
-  WOOCOMMERCE_CONSUMER_KEY: z.string().min(1),
-  WOOCOMMERCE_CONSUMER_SECRET: z.string().min(1),
 
   // Site (WAJIB)
   NEXT_PUBLIC_SITE_URL: z.string().url(),
@@ -20,7 +23,8 @@ const EnvSchema = z.object({
   NEXT_PUBLIC_IMAGE_DOMAIN: z.string().min(1),
 
   // Admin panel — WordPress Application Password (upload gambar produk lewat
-  // /wp-json/wp/v2/media). BEDA kredensial dari WOOCOMMERCE_CONSUMER_*.
+  // /wp-json/wp/v2/media). Kredensialnya sendiri, bukan kunci REST WooCommerce
+  // (yang sudah tidak ada lagi).
   WORDPRESS_APP_USER: z.string().min(1).optional(),
   WORDPRESS_APP_PASSWORD: z.string().min(1).optional(),
 
@@ -144,8 +148,6 @@ const EnvSchema = z.object({
 
 export const env = EnvSchema.parse({
   WOOCOMMERCE_URL: process.env.WOOCOMMERCE_URL,
-  WOOCOMMERCE_CONSUMER_KEY: process.env.WOOCOMMERCE_CONSUMER_KEY,
-  WOOCOMMERCE_CONSUMER_SECRET: process.env.WOOCOMMERCE_CONSUMER_SECRET,
   NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
   NEXT_PUBLIC_SITE_NAME: process.env.NEXT_PUBLIC_SITE_NAME,
   REVALIDATE_SECRET: process.env.REVALIDATE_SECRET,

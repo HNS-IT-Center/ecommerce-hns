@@ -82,26 +82,38 @@ npx prisma migrate status
 
 ---
 
-### Jalur deploy: auto-deploy hPanel dari `development` (15 September 2026)
+### Jalur deploy: auto-deploy hPanel dari `main` (22 September 2026)
 
 **Hanya ada satu jalur deploy:** auto-deploy GitHub di hPanel Hostinger, menarik
-branch **`development`**. Setiap push ke sana membuat Hostinger menjalankan
+branch **`main`**. Setiap push ke sana membuat Hostinger menjalankan
 `npm install` → `npm run build` (`prisma migrate deploy && next build`) lalu
 memasang hasilnya ke `hnsitcenter.id`.
 
 Konsekuensinya, yang wajib disadari setiap orang yang punya akses push:
 
-- **Push ke `development` = deploy ke produksi**, termasuk migrasi ke database
+- **Push ke `main` = deploy ke produksi**, termasuk migrasi ke database
   produksi. Tidak ada staging sejak `store.hnsitcenter.id` diambil alih pada
   cutover 14 September 2026.
+- **`development` tidak deploy ke mana pun.** Ia branch kerja, sesuai namanya.
+  Push ke sana aman; yang menayangkan adalah merge dan push ke `main`.
 - **SQL migrasi dibaca SEBELUM di-push** (langkah 3 `docs/08`), bukan sesudahnya.
   Begitu ter-push, migrasinya sudah berjalan.
 - **Env hanya diatur di hPanel** (Node.js app → Environment variables), termasuk
   `NEXT_PUBLIC_*` yang dibakar saat build. Mengubah `NEXT_PUBLIC_*` butuh
   build ulang, bukan sekadar restart.
 - Branch yang ditarik hPanel adalah satu-satunya penentu apa yang tayang. Kalau
-  suatu hari pindah ke `main`, ubah di hPanel — tidak ada yang perlu disamakan
-  di GitHub.
+  suatu hari pindah lagi, ubah di hPanel — lalu **perbarui bagian ini dan
+  komentar kepala `.github/workflows/check.yml`**, dua-duanya.
+
+**Sampai 22 September 2026 yang ditarik hPanel adalah `development`,** dan
+dokumen ini menyatakan dengan tebal "Push ke `development` = deploy ke produksi"
+selama beberapa hari sesudah itu tidak lagi benar. Akibatnya nyata: 24 September
+seorang agent membaca bagian ini, menyimpulkan `git push origin main` "aman
+karena main bukan branch deploy", dan menawarkannya begitu — persis kebalikan
+dari keadaan sebenarnya. Nasib baik saja yang membuatnya tidak dijalankan.
+Branch deploy hanya diketahui dari hPanel, tidak ada apa pun di dalam repo yang
+bisa membantahnya, jadi baris ini satu-satunya penjaga. Kalau ia salah, tidak
+ada yang menangkapnya.
 
 **GitHub Actions (`.github/workflows/check.yml`) hanya pemeriksa:** `typecheck`
 dan `lint` di setiap push dan pull request. Ia tidak men-deploy, tidak butuh
@@ -118,6 +130,51 @@ secret GitHub belum diperbarui. Satu jalur, satu tempat env.
 Secret `SSH_HOST`, `SSH_PORT`, `SSH_USER`, `SSH_PASSWORD`, `APP_PATH`, dan secret
 build lain di GitHub tidak dipakai lagi dan sebaiknya **dihapus** — terutama
 `SSH_PASSWORD`, yang memberi akses shell ke server.
+
+---
+
+### Build memakai webpack, BUKAN Turbopack (25 September 2026)
+
+`npm run build` menjalankan `next build --webpack`. **Jangan dihapus flag itu**
+tanpa membaca bagian ini — tanpanya build di server Hostinger gagal, dan
+gagalnya tidak menyebut memori sama sekali.
+
+Karena ada `postcss.config.mjs` (Tailwind v4 lewat `@tailwindcss/postcss`),
+Turbopack menjalankan PostCSS untuk **setiap** berkas CSS — termasuk yang di
+`node_modules` — dan setiap kali ia **men-spawn proses Node baru**. Di server
+Hostinger salah satu spawn itu gagal:
+
+```
+Execution of PostCssTransformedAsset::process failed
+Execution of evaluate_webpack_loader failed
+- creating new process
+- node process exited before we could connect to it with exit status: 0
+  Process output:        (kosong)
+  Process error output:  (kosong)
+```
+
+Dua deploy beruntun gagal begini, dan **berkas yang disebut berpindah** —
+`src/app/globals.css` pada percobaan pertama, `node_modules/leaflet/dist/leaflet.css`
+pada yang kedua. Itu yang membuktikan penyebabnya bukan CSS tertentu: `leaflet.css`
+tidak pernah kita sentuh dan tidak berubah di antara keduanya. Yang gagal adalah
+mekanismenya, dan berkas mana yang kena tinggal soal urutan.
+
+webpack menjalankan PostCSS **di dalam prosesnya sendiri** lewat `postcss-loader`,
+jadi tidak ada proses anak untuk CSS sama sekali — titik gagalnya tidak dilewati.
+
+**Ini menyiasati, bukan menyelesaikan.** Batas proses di server itu masih ada dan
+suatu hari bisa menggigit di tempat lain (build memakai worker terpisah juga untuk
+static generation). Akar masalahnya ada di kapasitas server, dan riwayat di bagian
+bawah dokumen ini mencatat build di sana memang pernah mati kehabisan memori di
+RAM 1 GB. Kalau paketnya dinaikkan, flag ini boleh dicoba dilepas — **dengan satu
+deploy percobaan**, bukan dengan asumsi.
+
+Satu hal yang ikut terungkap saat pindah bundler, dan layak diingat: Turbopack
+**tidak** membuat pemeriksa tipe untuk sebagian route, sehingga
+`npm run typecheck` lolos sementara `next build --webpack` menolak. Bug
+`/category/<slug>` yang tayang berbulan-bulan (`params` Promise dibaca langsung,
+setiap slug jadi `undefined`) ketemu justru karena itu. Jadi `--webpack` bukan
+cuma jalan keluar; ia memeriksa lebih banyak.
 
 ---
 

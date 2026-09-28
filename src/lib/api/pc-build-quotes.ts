@@ -1,9 +1,12 @@
 import "server-only"
 
 import { createHash } from "crypto"
-import { cache } from "react"
+
+import type { Prisma } from "@prisma/client"
 
 import { getPrisma } from "@/lib/prisma/client"
+import { generatePublicToken } from "@/lib/utils/public-token"
+import { jakartaMonthRange, jakartaPeriod, jakartaYyyymmdd } from "@/lib/utils/timezone"
 
 export type QuoteLineItem = {
   productId: number
@@ -59,92 +62,343 @@ function computeContentHash(items: QuoteLineItem[]): string {
 }
 
 /**
- * `HNSPC-260804-7K3M` — tanggal terbit + 4 karakter dari hash.
+ * `HNSPC-20260921-0001` — tanggal terbit (WIB) + nomor urut dalam bulan itu.
  *
- * Sengaja BUKAN nomor berurutan: urutan seperti HNSPC00001 membocorkan berapa
- * banyak quotation yang sudah pernah dibuat kepada siapa pun yang memegang dua
- * dokumen berbeda.
+ * **Keputusan 21 September 2026.** Sampai hari ini kodenya berakhiran 4 karakter
+ * dari hash isi, dan komentar di sini menyatakan urutan sengaja dihindari karena
+ * "membocorkan berapa banyak quotation yang sudah pernah dibuat". Alasan itu
+ * masih benar — dua dokumen memang cukup untuk memperkirakan volume per bulan —
+ * tapi HNS memilih nomor urut dengan sadar: quotation kini alat kerja tim toko
+ * yang harus bisa disebut lewat telepon, dicatat di buku, dan diurutkan.
+ *
+ * Dua hal yang menahan risikonya, dan keduanya harus tetap ada:
+ * 1. Nomor hanya terbit lewat aksi eksplisit, bukan sebagai efek samping GET
+ *    halaman cetak — refresh tab PDF tidak menghabiskan nomor.
+ * 2. Rate limit per IP untuk penerbitan oleh non-staff.
+ *
+ * Tanggalnya **WIB**, bukan waktu server. Container produksi berjalan di UTC;
+ * tanpa penerjemahan itu, cetakan pukul 00.30 WIB tanggal 1 masuk periode bulan
+ * sebelumnya dan mengambil nomor lanjutan yang seharusnya sudah di-reset.
+ *
+ * Nomor boleh melewati 9999 (jadi 5 digit). Kehabisan nomor adalah kegagalan
+ * yang jauh lebih buruk daripada kode yang lebih panjang satu karakter.
  */
-function buildQuoteCode(contentHash: string, issuedAt: Date): string {
-  const yy = String(issuedAt.getFullYear()).slice(-2)
-  const mm = String(issuedAt.getMonth() + 1).padStart(2, "0")
-  const dd = String(issuedAt.getDate()).padStart(2, "0")
-
-  // Base36 dari potongan hash: 0-9 + A-Z, mudah dibaca & diketik ulang.
-  const suffix = parseInt(contentHash.slice(0, 8), 16)
-    .toString(36)
-    .toUpperCase()
-    .padStart(4, "0")
-    .slice(-4)
-
-  return `HNSPC-${yy}${mm}${dd}-${suffix}`
+function buildQuoteCode(issuedAt: Date, sequence: number): string {
+  return `HNSPC-${jakartaYyyymmdd(issuedAt)}-${String(sequence).padStart(4, "0")}`
 }
 
 /**
- * Catat quotation. Mengembalikan kode yang tersimpan.
+ * Ambil nomor berikutnya untuk sebuah periode, di dalam transaksi pemanggil.
  *
- * Rakitan dengan isi DAN harga yang sama persis tidak membuat baris baru — yang
- * berubah cuma `updatedAt`, penanda kapan terakhir dokumen itu dicetak ulang.
- * Snapshot-nya sendiri sengaja TIDAK pernah ditimpa: dokumen yang sudah dicetak
- * pelanggan harus selamanya cocok dengan yang tersimpan, supaya `/verify/[code]`
- * bisa dipercaya sebagai bukti penawaran. Harga baru = penawaran baru = kode
- * baru (lihat `computeContentHash`).
+ * Satu pernyataan `INSERT … ON DUPLICATE KEY UPDATE`, bukan
+ * `SELECT … FOR UPDATE` lalu `UPDATE`. Bedanya penting di bawah beban: pola
+ * SELECT-lalu-UPDATE mengambil kunci berbagi dulu, lalu menaikkannya jadi kunci
+ * eksklusif — dan dua transaksi yang sama-sama sudah memegang kunci berbagi atas
+ * baris yang sama akan saling menunggu selamanya (deadlock). Bentuk di bawah
+ * langsung mengambil kunci eksklusif, jadi penerbitan bersamaan mengantre.
+ *
+ * `SELECT` sesudahnya aman membaca hasilnya sendiri: kuncinya masih dipegang
+ * sampai transaksi pemanggil selesai, jadi tidak ada yang bisa menyelip di
+ * antara keduanya.
+ */
+async function nextQuoteSequence(
+  tx: Prisma.TransactionClient,
+  period: string
+): Promise<number> {
+  await tx.$executeRaw`
+    INSERT INTO pc_build_quote_counters (period, last_number)
+    VALUES (${period}, 1)
+    ON DUPLICATE KEY UPDATE last_number = last_number + 1
+  `
+
+  const rows = await tx.$queryRaw<{ last_number: number | bigint }[]>`
+    SELECT last_number FROM pc_build_quote_counters WHERE period = ${period}
+  `
+
+  const value = rows[0]?.last_number
+  if (value === undefined) {
+    // Tidak mungkin terjadi — barisnya baru saja ditulis di transaksi yang sama.
+    // Dilempar alih-alih jatuh ke 0 supaya nomor ganda tidak pernah lolos diam-diam.
+    throw new Error(`Penghitung quotation periode ${period} hilang setelah ditulis`)
+  }
+
+  return Number(value)
+}
+
+/**
+ * Token tautan publik yang belum dipakai baris lain.
+ *
+ * Ruang tebakannya 850 miliar untuk tabel berisi ribuan baris, jadi tabrakan
+ * praktis tidak pernah terjadi — tapi "praktis tidak pernah" bukan alasan
+ * membiarkan penerbitan gagal dengan `Unique constraint failed` di depan sales
+ * yang sedang melayani pelanggan. Lima percobaan lebih dari cukup; kalau
+ * kelimanya bertabrakan, yang salah bukan keberuntungan melainkan sumber
+ * acaknya, dan itu pantas dilempar.
+ */
+async function tokenUnikBaru(tx: Prisma.TransactionClient): Promise<string> {
+  for (let percobaan = 0; percobaan < 5; percobaan++) {
+    const token = generatePublicToken()
+    const bentrok = await tx.pcBuildQuote.findUnique({
+      where: { publicToken: token },
+      select: { id: true },
+    })
+    if (!bentrok) return token
+  }
+  throw new Error("Gagal membuat token tautan publik yang unik setelah 5 percobaan")
+}
+
+/**
+ * Identitas pelanggan + siapa yang memegang quotation.
+ *
+ * `undefined` seluruhnya = cetakan anonim (pengunjung). Tidak ada id akun yang
+ * disimpan sama sekali untuk kasus itu — data pribadi paling aman adalah yang
+ * tidak disimpan (CLAUDE.md §2.8).
+ *
+ * Perbedaan `ownerUserId` dan `createdByUserId` adalah inti alur operan:
+ *  - keduanya SAMA  → sales menerbitkan untuk dirinya, atau CS memilih "tidak oper"
+ *  - keduanya BEDA  → CS mengoper ke sales; itulah yang menampilkan badge
+ *                     "Dioper dari CS" dan memicu notifikasi ke sales penerima.
+ *
+ * `salesName` adalah SALINAN nama tampilan pemilik saat terbit, dan sengaja
+ * dikirim oleh pemanggil alih-alih dibaca di sini: yang tahu apakah pemiliknya
+ * berperan Sales adalah lapisan yang sudah memuat izinnya.
+ */
+export type QuotationOwner = {
+  customerName: string | null
+  customerPhone: string | null
+  internalNote: string | null
+  ownerUserId: string | null
+  salesName: string | null
+  createdByUserId: string | null
+}
+
+/**
+ * Tulis satu quotation baru bernomor dari snapshot yang SUDAH berharga.
+ *
+ * Lapisan terendah: ia tidak membaca katalog dan tidak memeriksa izin apa pun.
+ * Pemanggil yang sudah memegang harga hasil `priceCartFromCatalog` (jalur
+ * "Kirim ke HNS") memakainya langsung; jalur cetak lewat `issueQuotation()`
+ * di bawah, yang membaca katalog lebih dulu.
+ *
+ * **Satu panggilan = satu dokumen baru bernomor.** Sampai 21 September 2026
+ * fungsi ini men-dedupe per `contentHash`: rakitan dengan isi dan harga sama
+ * persis memakai ulang baris yang sudah ada. Itu dilepas bersamaan dengan
+ * masuknya pemilik, nama pelanggan, dan status jual — dua penawaran untuk dua
+ * orang berbeda tidak boleh jadi satu baris hanya karena isinya kebetulan sama.
+ * Alasan lengkapnya ada di komentar model `PcBuildQuote` dan di migrasi
+ * `20260921093118_quotation_sales_revisions`.
  *
  * Kegagalan di sini TIDAK boleh menggagalkan pencetakan — dokumen tetap harus
  * bisa keluar walau pencatatan gagal, jadi pemanggilnya menangani error.
  *
- * Penulisannya di-dedupe per `contentHash` lewat `cache()`, bukan per argumen:
- * setiap render mengirim array baru, jadi `cache()` yang membungkus fungsi ini
- * langsung tidak akan pernah kena. Tanpa dedupe, render ulang React (Strict
- * Mode menjalankan effect & render dua kali di dev) membuat `updatedAt` maju
- * beberapa milidetik setelah `createdAt` walau pelanggan baru mencetak SEKALI —
- * kolom "Diperbarui" di admin jadi tampak seperti ada cetak ulang yang tidak
- * pernah terjadi.
+ * **`cache()` sudah dibuang di sini, dan itu disengaja.** Pembungkus itu ada
+ * untuk menahan render ganda React saat halaman cetak masih menulis pada GET.
+ * Sejak penerbitan pindah ke server action, tidak ada lagi render yang menulis:
+ * satu aksi = satu panggilan. Memasangnya kembali justru berbahaya — ia akan
+ * diam-diam menyatukan dua penerbitan berbeda yang isinya kebetulan sama di
+ * dalam satu request.
  */
-export async function recordPcBuildQuote(items: QuoteLineItem[]) {
-  return upsertQuoteByHash(computeContentHash(items), JSON.stringify(items))
-}
-
-/**
- * SEMUA argumen di sini sengaja berupa string primitif.
- *
- * `cache()` mengunci pada identitas tiap argumen, jadi mengoper array `items`
- * apa adanya membuat memoisasi tidak pernah kena — setiap render membuat array
- * baru, dan array baru selalu dianggap argumen yang berbeda. Dengan hash +
- * JSON, dua render dengan isi rakitan sama menghasilkan kunci yang identik dan
- * database benar-benar cuma disentuh sekali per permintaan.
- */
-const upsertQuoteByHash = cache(async function upsertQuoteByHash(
-  contentHash: string,
-  itemsJson: string
-) {
+export async function recordPcBuildQuote(
+  items: QuoteLineItem[],
+  owner?: QuotationOwner
+): Promise<{ code: string; token: string }> {
   const prisma = getPrisma()
-  const items = JSON.parse(itemsJson) as QuoteLineItem[]
+  const contentHash = computeContentHash(items)
   const subtotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0)
   const issuedAt = new Date()
+  const period = jakartaPeriod(issuedAt)
 
-  const quote = await prisma.pcBuildQuote.upsert({
-    where: { contentHash },
-    // Hanya menyentuh `updatedAt` (diisi otomatis oleh `@updatedAt`) — kolom
-    // lain dibiarkan apa adanya supaya snapshot tetap utuh.
-    update: {},
-    create: {
-      items,
-      subtotal,
-      // Jasa rakit sekarang jadi step biasa di PC Builder, jadi nilainya sudah
-      // ikut di `subtotal`. Kolomnya dipertahankan untuk membaca quotation lama
-      // yang biayanya masih terpisah.
-      assemblyFee: 0,
-      total: subtotal,
-      itemCount: items.length,
-      code: buildQuoteCode(contentHash, issuedAt),
-      contentHash,
-      createdAt: issuedAt,
+  /**
+   * Nomor dan barisnya lahir di SATU transaksi.
+   *
+   * Kalau penghitung dinaikkan lebih dulu di transaksinya sendiri, setiap insert
+   * yang gagal sesudahnya meninggalkan lubang permanen di urutan — dan urutan
+   * yang bolong adalah hal pertama yang membuat orang meragukan pembukuannya.
+   *
+   * Batas waktunya dinaikkan dari bawaan 5 detik: kolam koneksi Prisma di sini
+   * hanya 3 (lihat `lib/prisma/client.ts`), jadi penerbitan yang bersamaan
+   * memang mengantre — mengantre bukan kegagalan.
+   */
+  const quote = await prisma.$transaction(
+    async (tx) => {
+      const sequence = await nextQuoteSequence(tx, period)
+      const publicToken = await tokenUnikBaru(tx)
+
+      const created = await tx.pcBuildQuote.create({
+        data: {
+          items,
+          subtotal,
+          // Jasa rakit sekarang jadi step biasa di PC Builder, jadi nilainya sudah
+          // ikut di `subtotal`. Kolomnya dipertahankan untuk membaca quotation lama
+          // yang biayanya masih terpisah.
+          assemblyFee: 0,
+          total: subtotal,
+          itemCount: items.length,
+          code: buildQuoteCode(issuedAt, sequence),
+          contentHash,
+          period,
+          sequence,
+          publicToken,
+          createdAt: issuedAt,
+          ...(owner
+            ? {
+                customerName: owner.customerName,
+                customerPhone: owner.customerPhone,
+                internalNote: owner.internalNote,
+                ownerUserId: owner.ownerUserId,
+                salesName: owner.salesName,
+                createdByUserId: owner.createdByUserId,
+                /**
+                 * Operan yang TIDAK terjadi ditandai terbaca saat itu juga.
+                 * Tanpa ini, quotation yang diterbitkan sales untuk dirinya
+                 * sendiri ikut memicu toast "dapat operan dari CS" — notifikasi
+                 * atas peristiwa yang tidak pernah ada.
+                 */
+                handoverSeenAt:
+                  owner.createdByUserId === owner.ownerUserId ? issuedAt : null,
+              }
+            : {}),
+        },
+        select: { id: true, code: true, publicToken: true },
+      })
+
+      // Rev. 1 ditulis sekarang juga, bukan nanti saat revisi pertama terjadi.
+      // Riwayat yang dimulai dari Rev. 2 memaksa pembacanya menebak isi versi
+      // pertama dari baris induk yang sudah tertimpa.
+      await tx.pcBuildQuoteRevision.create({
+        data: {
+          quoteId: created.id,
+          revision: 1,
+          items,
+          subtotal,
+          assemblyFee: 0,
+          total: subtotal,
+          itemCount: items.length,
+          usedLatestPrices: true,
+          createdByUserId: owner?.createdByUserId ?? null,
+          createdAt: issuedAt,
+        },
+      })
+
+      return created
     },
+    { timeout: 15_000, maxWait: 15_000 }
+  )
+
+  // `publicToken` baru saja ditulis di transaksi yang sama, jadi ia tidak
+  // mungkin NULL di sini — `?? ""` hanya menyenangkan tipe kolom nullable.
+  return { code: quote.code, token: quote.publicToken ?? "" }
+}
+
+/** Satu komponen yang dipilih di builder. Hanya id & kuantitas — TIDAK ada harga. */
+export type QuotationSelection = {
+  stepId: string | null
+  productId: number
+  quantity: number
+}
+
+export type IssueQuotationResult =
+  /**
+   * `token` ikut dikembalikan supaya halaman cetak bisa dibuka lewat
+   * `?kode=…&t=…` tanpa kueri tambahan. Pengunjung anonim TIDAK punya sesi
+   * staff, jadi tanpa token di tangan mereka tidak akan bisa membuka dokumen
+   * yang baru saja mereka terbitkan sendiri.
+   */
+  | { ok: true; code: string; token: string }
+  | { ok: false; error: string }
+
+/**
+ * Terbitkan quotation dari pilihan komponen — jalur tunggal untuk tombol Print.
+ *
+ * Klien hanya mengirim `stepId`, `productId`, dan `quantity`. **Harga tidak
+ * pernah datang dari klien** (CLAUDE.md §2.7): ia dibaca ulang dari katalog di
+ * sini, lewat `priceCartFromCatalog` — fungsi yang sama yang dipakai checkout
+ * dan Konsultasi WA, sehingga harga di PDF, di keranjang, dan di pesan CS
+ * mustahil berbeda.
+ *
+ * Memakai `priceCartFromCatalog` sekaligus menutup dua celah yang dulu ada di
+ * halaman cetak, yang membaca produk dengan kueri sendiri:
+ *  - halaman itu TIDAK menyaring `status: PUBLISHED`, jadi komponen yang sudah
+ *    ditarik staf dari etalase tetap bisa masuk quotation oleh siapa pun yang
+ *    menyimpan id-nya;
+ *  - ia TIDAK memeriksa `saleEndDate`, jadi harga obral yang sudah kedaluwarsa
+ *    ikut tercetak — dan dokumen itulah yang dibawa pelanggan ke kasir.
+ */
+export async function issueQuotation(
+  selections: QuotationSelection[],
+  owner?: QuotationOwner
+): Promise<IssueQuotationResult> {
+  if (selections.length === 0) {
+    return { ok: false, error: "Belum ada komponen yang dipilih." }
+  }
+
+  const { priceCartFromCatalog } = await import("@/lib/api/woocommerce/cart-pricing")
+  const { getPcBuilderConfig } = await import("@/lib/pc-builder/config")
+
+  const [priced, stepsConfig] = await Promise.all([
+    priceCartFromCatalog(
+      selections.map((s) => ({ productId: s.productId, quantity: s.quantity })),
+      "id"
+    ),
+    getPcBuilderConfig(),
+  ])
+
+  /**
+   * Komponen yang hilang dari katalog MEMBATALKAN penerbitan, tidak dibuang
+   * diam-diam. Quotation yang terbit tanpa satu komponennya adalah penawaran
+   * atas rakitan yang tidak pernah dipilih siapa pun — dan yang menemukannya
+   * adalah kasir, di depan pelanggan.
+   */
+  if (priced.unavailableProductIds.length > 0) {
+    return {
+      ok: false,
+      error:
+        priced.unavailableProductIds.length === 1
+          ? "Satu komponen sudah tidak tersedia di katalog. Ganti komponen itu lalu coba lagi."
+          : `${priced.unavailableProductIds.length} komponen sudah tidak tersedia di katalog. Ganti komponen itu lalu coba lagi.`,
+    }
+  }
+
+  if (priced.lines.length === 0) {
+    return { ok: false, error: "Komponen yang dipilih tidak ditemukan di katalog." }
+  }
+
+  // Gambar dibaca terpisah: `priceCartFromCatalog` sengaja tidak mengembalikannya
+  // karena checkout tidak membutuhkannya, dan melebarkan tipe bersama demi satu
+  // pemanggil berarti setiap jalur pemesanan ikut menanggung kolom yang tak
+  // dipakainya. Satu kueri tambahan pada aksi yang eksplisit — bukan pada setiap
+  // render halaman — adalah harga yang wajar.
+  const currentInfo = await getQuoteProductsCurrentInfo(priced.lines.map((l) => l.productId))
+
+  const stepNameById = new Map(stepsConfig.map((step) => [step.id, step.name]))
+  const stepIdByProduct = new Map(selections.map((s) => [s.productId, s.stepId]))
+
+  const items: QuoteLineItem[] = priced.lines.map((line) => {
+    const stepId = stepIdByProduct.get(line.productId) ?? null
+    return {
+      productId: line.productId,
+      // Nama induk yang dicetak, bukan nama baris varian — varian warisan impor
+      // WooCommerce sering mengulang nama induknya utuh, jadi yang membedakan
+      // adalah `variationLabel`. Lihat lib/utils/variation.ts.
+      name: line.parentName ?? line.name,
+      parentName: line.parentName,
+      variationLabel: line.variationLabel,
+      sku: line.sku || null,
+      image: currentInfo.get(line.productId)?.image ?? undefined,
+      price: line.unitPrice,
+      quantity: line.quantity,
+      stepName: stepId ? stepNameById.get(stepId) ?? null : null,
+    }
   })
 
-  return { code: quote.code }
-})
+  try {
+    const { code, token } = await recordPcBuildQuote(items, owner)
+    return { ok: true, code, token }
+  } catch (error) {
+    console.error("[quotation] gagal menerbitkan:", error)
+    return { ok: false, error: "Gagal menerbitkan quotation. Coba lagi sebentar lagi." }
+  }
+}
 
 /**
  * Dipakai halaman verifikasi /verify/[code] — halaman kasir yang dijaga izin
@@ -156,6 +410,129 @@ export async function getQuoteByCode(code: string) {
   return prisma.pcBuildQuote.findUnique({
     where: { code: code.toUpperCase() },
   })
+}
+
+/** Satu quotation seperti yang dilihat PELANGGAN di `/q/<token>`. */
+export type PublicQuote = {
+  code: string
+  revision: number
+  status: string
+  sudahDp: boolean
+  customerName: string | null
+  salesName: string | null
+  /**
+   * Nomor WhatsApp sales pemegang quotation, apa adanya dari `users.phone_number`.
+   *
+   * `null` kalau pemiliknya belum mengisinya di `/profile` — dan halaman publik
+   * memakai ketiadaan itu untuk membelokkan pelanggan ke CS, bukan untuk
+   * menyembunyikan tombolnya.
+   */
+  salesPhone: string | null
+  items: QuoteLineItem[]
+  total: number
+  itemCount: number
+  createdAt: string
+  /**
+   * Kapan harga yang tampil ini ditetapkan — tanggal revisi TERAKHIR, bukan
+   * `updatedAt`. `updatedAt` ikut maju saat sales menandai DP, dan tanggal yang
+   * bergeser tanpa satu angka pun berubah membuat "Harga per …" jadi bohong.
+   */
+  pricedAt: string
+  /**
+   * Umur harga dalam hari, dihitung DI SINI.
+   *
+   * Bukan di halaman: `Date.now()` di badan komponen adalah panggilan tak murni
+   * di tengah render, dan aturan `react-hooks/purity` menolaknya. Lagipula
+   * "berapa hari umur penawaran ini" adalah pertanyaan tentang datanya, bukan
+   * tentang tampilannya.
+   */
+  umurHari: number
+}
+
+/**
+ * Baca quotation lewat tautan publiknya.
+ *
+ * **Jalur baca pelanggan — dan inilah satu-satunya yang menjaga batasnya.**
+ * `customerPhone` dan `internalNote` tidak di-`select`, persis seperti
+ * `getQuoteStatusForCashier()` (docs/17 §6). Jangan menambahkannya "supaya
+ * lengkap": yang membuka halaman ini bukan cuma pelanggan yang dikirimi
+ * tautannya, melainkan siapa pun yang tautannya diteruskan kepadanya.
+ *
+ * Larangan lama tetap berlaku dan justru paling keras di sini: **jangan pernah
+ * meng-`include` relasi `submissions`.**
+ *
+ * Yang dirender adalah revisi TERAKHIR. Itu keputusan sadar: tautan ini alat
+ * follow-up ("ini yang berlaku sekarang"), sedangkan yang beku adalah PDF di
+ * tangan pelanggan. Keduanya tidak bertabrakan selama halaman ini selalu
+ * menyebutkan nomor revisi dan tanggal harganya — dan itu wajib.
+ */
+export async function getQuoteByPublicToken(token: string): Promise<PublicQuote | null> {
+  const row = await getPrisma().pcBuildQuote.findUnique({
+    where: { publicToken: token.toLowerCase() },
+    select: {
+      code: true,
+      revision: true,
+      status: true,
+      dpAt: true,
+      customerName: true,
+      salesName: true,
+      items: true,
+      total: true,
+      itemCount: true,
+      createdAt: true,
+      // Hanya nomornya. Nama sales sudah ada sebagai snapshot di `salesName`,
+      // dan relasi ini sengaja tidak membawa apa pun yang lain — setiap kolom
+      // tambahan di sini ikut terkirim ke peramban siapa pun yang memegang
+      // tautannya.
+      owner: { select: { phoneNumber: true } },
+      revisions: {
+        select: { createdAt: true },
+        orderBy: { revision: "desc" },
+        take: 1,
+      },
+    },
+  })
+
+  if (!row) return null
+
+  const items = Array.isArray(row.items) ? (row.items as unknown as QuoteLineItem[]) : []
+  if (items.length === 0) return null
+
+  const pricedAt = row.revisions[0]?.createdAt ?? row.createdAt
+
+  return {
+    code: row.code,
+    revision: row.revision,
+    status: row.status,
+    sudahDp: row.dpAt !== null,
+    customerName: row.customerName,
+    salesName: row.salesName,
+    salesPhone: row.owner?.phoneNumber ?? null,
+    items,
+    total: Number(row.total),
+    itemCount: row.itemCount,
+    createdAt: row.createdAt.toISOString(),
+    // Quotation lama bisa saja tidak punya baris revisi sama sekali; tanggal
+    // terbit adalah cadangan yang benar untuknya.
+    pricedAt: pricedAt.toISOString(),
+    umurHari: Math.floor((Date.now() - pricedAt.getTime()) / (24 * 60 * 60 * 1000)),
+  }
+}
+
+/**
+ * Apakah token ini memang milik kode tersebut — penjaga halaman cetak untuk
+ * pembaca tanpa sesi staff.
+ *
+ * Dibanding di sini, bukan di halaman, supaya perbandingannya tidak pernah
+ * dilakukan dengan `===` atas nilai yang sudah terlanjur dikirim ke klien.
+ */
+export async function publicTokenMatchesCode(code: string, token: string): Promise<boolean> {
+  if (!token) return false
+  const row = await getPrisma().pcBuildQuote.findUnique({
+    where: { code: code.toUpperCase() },
+    select: { publicToken: true },
+  })
+  return row?.publicToken !== null && row?.publicToken === token.toLowerCase()
 }
 
 /**
@@ -173,6 +550,18 @@ export type QuoteSummary = {
   createdAt: string
   /** Terakhir dicetak — maju setiap kali rakitan yang sama persis dicetak ulang. */
   updatedAt: string
+  /** "terbit" | "closing" — dipakai badge di grid & hasil pencarian. */
+  status: string
+  /** Nama pelanggan, kalau quotation diterbitkan staff atas nama seseorang. */
+  customerName: string | null
+  salesName: string | null
+  revision: number
+  /**
+   * Penanda DP, supaya kasir melihatnya di GRID tanpa membuka satu per satu.
+   * Alasan yang sama dengan status jual di kartu: yang sudah ditandai justru
+   * yang paling sering dibuka karena dikira belum.
+   */
+  dpAt: string | null
 }
 
 /**
@@ -195,6 +584,11 @@ const QUOTE_SUMMARY_SELECT = {
   itemCount: true,
   createdAt: true,
   updatedAt: true,
+  status: true,
+  customerName: true,
+  salesName: true,
+  revision: true,
+  dpAt: true,
 } as const
 
 function toQuoteSummary(row: {
@@ -203,6 +597,11 @@ function toQuoteSummary(row: {
   itemCount: number
   createdAt: Date
   updatedAt: Date
+  status: string
+  customerName: string | null
+  salesName: string | null
+  revision: number
+  dpAt: Date | null
 }): QuoteSummary {
   return {
     code: row.code,
@@ -210,6 +609,11 @@ function toQuoteSummary(row: {
     itemCount: row.itemCount,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    status: row.status,
+    customerName: row.customerName,
+    salesName: row.salesName,
+    revision: row.revision,
+    dpAt: row.dpAt?.toISOString() ?? null,
   }
 }
 
@@ -297,4 +701,1075 @@ export async function getQuoteProductsCurrentInfo(
       ]
     })
   )
+}
+
+/** Satu baris riwayat quotation di `/profile/quotation`. */
+export type QuotationHistoryRow = {
+  code: string
+  customerName: string | null
+  customerPhone: string | null
+  salesName: string | null
+  total: number
+  itemCount: number
+  revision: number
+  status: string
+  createdAt: string
+  closedAt: string | null
+  /**
+   * Kapan DP ditandai, atau `null` kalau belum. PENANDA saja — ia tidak
+   * mengunci, membuka, atau mengubah apa pun, karena harga sudah terkunci
+   * sejak quotation disimpan.
+   */
+  dpAt: string | null
+  /** Alamat tautan publik; `null` untuk baris lama yang belum di-backfill. */
+  publicToken: string | null
+  /** Diterbitkan CS lalu dioper ke pemiliknya — `createdByUserId != ownerUserId`. */
+  dioperDariCs: boolean
+  /** Nama yang mengoper, untuk badge "Dioper dari CS · <nama>". */
+  dioperOleh: string | null
+}
+
+const HISTORY_SELECT = {
+  code: true,
+  customerName: true,
+  customerPhone: true,
+  salesName: true,
+  total: true,
+  itemCount: true,
+  revision: true,
+  status: true,
+  createdAt: true,
+  closedAt: true,
+  dpAt: true,
+  publicToken: true,
+  ownerUserId: true,
+  createdByUserId: true,
+  createdBy: { select: { name: true, salesDisplayName: true } },
+} as const
+
+function toHistoryRow(row: {
+  code: string
+  customerName: string | null
+  customerPhone: string | null
+  salesName: string | null
+  total: { toString(): string }
+  itemCount: number
+  revision: number
+  status: string
+  createdAt: Date
+  closedAt: Date | null
+  dpAt: Date | null
+  publicToken: string | null
+  ownerUserId: string | null
+  createdByUserId: string | null
+  createdBy: { name: string; salesDisplayName: string | null } | null
+}): QuotationHistoryRow {
+  const dioper = row.createdByUserId !== null && row.createdByUserId !== row.ownerUserId
+  return {
+    code: row.code,
+    customerName: row.customerName,
+    customerPhone: row.customerPhone,
+    salesName: row.salesName,
+    total: Number(row.total),
+    itemCount: row.itemCount,
+    revision: row.revision,
+    status: row.status,
+    createdAt: row.createdAt.toISOString(),
+    closedAt: row.closedAt?.toISOString() ?? null,
+    dpAt: row.dpAt?.toISOString() ?? null,
+    publicToken: row.publicToken,
+    dioperDariCs: dioper,
+    dioperOleh: dioper ? (row.createdBy?.salesDisplayName ?? row.createdBy?.name ?? null) : null,
+  }
+}
+
+/**
+ * Riwayat quotation seseorang.
+ *
+ * `peran` memisahkan dua pertanyaan yang tampak mirip tapi berbeda:
+ *  - `"milik"`   — yang ia PEGANG (`ownerUserId`). Ini yang boleh ia revisi.
+ *  - `"dioper"`  — yang ia TERBITKAN lalu oper ke orang lain. Baca-saja; hak
+ *                  revisinya sudah berpindah bersama kepemilikannya.
+ *
+ * Pencarian menyentuh kode, nama pelanggan, dan nomor HP. `contains` berarti
+ * `LIKE '%…%'` yang tidak memakai indeks — diterima dengan sadar karena
+ * daftarnya sudah disaring pemilik lebih dulu, jadi yang dipindai adalah
+ * quotation satu orang, bukan seluruh tabel.
+ */
+export async function listQuotationsForUser(
+  userId: string,
+  opts: { peran?: "milik" | "dioper"; q?: string; take?: number } = {}
+): Promise<QuotationHistoryRow[]> {
+  const { peran = "milik", q, take = 50 } = opts
+  const term = q?.trim() ?? ""
+
+  const rows = await getPrisma().pcBuildQuote.findMany({
+    where: {
+      ...(peran === "milik"
+        ? { ownerUserId: userId }
+        : // Yang ia terbitkan TAPI bukan miliknya — kalau tidak, quotation yang
+          // ia pegang sendiri akan muncul di dua tab sekaligus.
+          { createdByUserId: userId, NOT: { ownerUserId: userId } }),
+      ...(term.length >= 3
+        ? {
+            OR: [
+              { code: { contains: term.toUpperCase() } },
+              { customerName: { contains: term } },
+              { customerPhone: { contains: term } },
+            ],
+          }
+        : {}),
+    },
+    select: HISTORY_SELECT,
+    orderBy: { createdAt: "desc" },
+    take,
+  })
+
+  return rows.map(toHistoryRow)
+}
+
+/**
+ * Rekap penjualan satu sales dalam satu periode.
+ *
+ * Dihitung dari `closedAt`, **bukan** tanggal terbit: quotation yang terbit
+ * Agustus lalu deal September adalah penjualan September. Memakai tanggal
+ * terbit akan memindahkan capaian seseorang ke bulan yang salah setiap kali
+ * penawaran butuh waktu — yang justru paling sering terjadi pada rakitan mahal.
+ */
+export async function summarizeSalesMonth(
+  userId: string,
+  period: string
+): Promise<{ unit: number; total: number }> {
+  const { mulai, sesudah } = jakartaMonthRange(period)
+
+  const hasil = await getPrisma().pcBuildQuote.aggregate({
+    where: {
+      ownerUserId: userId,
+      status: "closing",
+      closedAt: { gte: mulai, lt: sesudah },
+    },
+    _count: { _all: true },
+    _sum: { total: true },
+  })
+
+  return { unit: hasil._count._all, total: Number(hasil._sum.total ?? 0) }
+}
+
+/**
+ * Detail satu quotation untuk pemiliknya (atau yang mengopernya).
+ *
+ * `null` kalau kodenya tidak ada ATAU bukan miliknya — sengaja tidak dibedakan.
+ * Membedakan "tidak ada" dari "bukan milik Anda" mengubah halaman ini menjadi
+ * alat untuk menebak kode quotation orang lain.
+ */
+export async function getQuotationForUser(code: string, userId: string) {
+  const quote = await getPrisma().pcBuildQuote.findUnique({
+    where: { code: code.toUpperCase() },
+    select: {
+      ...HISTORY_SELECT,
+      id: true,
+      items: true,
+      subtotal: true,
+      internalNote: true,
+      owner: { select: { name: true, salesDisplayName: true } },
+      revisions: {
+        select: {
+          revision: true,
+          total: true,
+          itemCount: true,
+          usedLatestPrices: true,
+          createdAt: true,
+        },
+        orderBy: { revision: "desc" },
+      },
+      statusLogs: {
+        select: { fromStatus: true, toStatus: true, reason: true, createdAt: true },
+        orderBy: { createdAt: "desc" },
+      },
+    },
+  })
+
+  if (!quote) return null
+  if (quote.ownerUserId !== userId && quote.createdByUserId !== userId) return null
+
+  return {
+    ...toHistoryRow(quote),
+    isOwner: quote.ownerUserId === userId,
+    internalNote: quote.internalNote,
+    subtotal: Number(quote.subtotal),
+    items: Array.isArray(quote.items) ? (quote.items as unknown as QuoteLineItem[]) : [],
+    revisions: quote.revisions.map((r) => ({
+      revision: r.revision,
+      total: Number(r.total),
+      itemCount: r.itemCount,
+      usedLatestPrices: r.usedLatestPrices,
+      createdAt: r.createdAt.toISOString(),
+    })),
+    statusLogs: quote.statusLogs.map((l) => ({
+      fromStatus: l.fromStatus,
+      toStatus: l.toStatus,
+      reason: l.reason,
+      createdAt: l.createdAt.toISOString(),
+    })),
+  }
+}
+
+/** Satu baris revisi terakhir, untuk dimuat ulang ke builder. */
+export type RevisionSeedItem = {
+  productId: number
+  quantity: number
+  stepName: string | null
+  /** Harga satuan pada revisi terakhir — yang akan dipertahankan secara bawaan. */
+  price: number
+}
+
+export type RevisionSeed = {
+  code: string
+  /** Revisi yang BERLAKU sekarang. Yang akan ditulis adalah `revision + 1`. */
+  revision: number
+  /** Tautan publiknya tidak berubah saat direvisi — ia menunjuk dokumennya, bukan versinya. */
+  publicToken: string | null
+  customerName: string | null
+  customerPhone: string | null
+  internalNote: string | null
+  items: RevisionSeedItem[]
+}
+
+/**
+ * Muat quotation untuk direvisi — `null` kalau tidak boleh.
+ *
+ * Tiga syarat, dan ketiganya diperiksa DI SINI supaya jalur mana pun yang
+ * memanggilnya menanggung aturan yang sama:
+ *  1. kodenya ada;
+ *  2. `userId` adalah PEMILIKNYA (`ownerUserId`) — bukan sekadar yang
+ *     menerbitkannya. CS yang sudah mengoper kehilangan hak revisi bersama
+ *     kepemilikannya;
+ *  3. statusnya masih `terbit`. Quotation yang sudah ditandai terjual terkunci:
+ *     merevisinya berarti mengubah isi dokumen yang sudah dipakai bertransaksi.
+ *
+ * Ketiganya berakhir `null` tanpa dibedakan — membedakannya mengubah halaman
+ * ini jadi alat untuk menebak kode quotation orang lain.
+ */
+export async function getQuotationForRevision(
+  code: string,
+  userId: string
+): Promise<RevisionSeed | null> {
+  const quote = await getPrisma().pcBuildQuote.findUnique({
+    where: { code: code.toUpperCase() },
+    select: {
+      code: true,
+      revision: true,
+      status: true,
+      publicToken: true,
+      ownerUserId: true,
+      customerName: true,
+      customerPhone: true,
+      internalNote: true,
+      revisions: {
+        select: { items: true },
+        orderBy: { revision: "desc" },
+        take: 1,
+      },
+    },
+  })
+
+  if (!quote) return null
+  if (quote.ownerUserId !== userId) return null
+  if (quote.status !== "terbit") return null
+
+  const snapshot = quote.revisions[0]?.items
+  const items = Array.isArray(snapshot) ? (snapshot as unknown as QuoteLineItem[]) : []
+  if (items.length === 0) return null
+
+  return {
+    code: quote.code,
+    revision: quote.revision,
+    publicToken: quote.publicToken,
+    customerName: quote.customerName,
+    customerPhone: quote.customerPhone,
+    internalNote: quote.internalNote,
+    items: items.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      stepName: item.stepName ?? null,
+      price: item.price,
+    })),
+  }
+}
+
+export type ReviseQuotationInput = {
+  selections: QuotationSelection[]
+  customerName: string
+  customerPhone: string | null
+  internalNote: string | null
+  /**
+   * `false` (bawaan) — harga revisi sebelumnya DIPERTAHANKAN untuk komponen yang
+   * sudah ada di sana. `true` — seluruh baris memakai harga katalog hari ini.
+   *
+   * Klien mengirim BOOLEAN, tidak pernah angka rupiah (CLAUDE.md §2.7).
+   */
+  useLatestPrices: boolean
+}
+
+/** Penanda internal bahwa revisi kalah balapan; diterjemahkan jadi pesan pengguna. */
+class RevisiBentrokError extends Error {}
+
+/**
+ * Tulis revisi baru atas quotation yang sudah ada. **Kodenya tidak berubah.**
+ *
+ * Aturan harganya — dan ini inti fitur revisi:
+ *
+ *  - Komponen yang SUDAH ADA di revisi sebelumnya mempertahankan harganya,
+ *    kecuali `useLatestPrices`. Pelanggan sudah memegang kertas dengan angka
+ *    itu; menaikkannya diam-diam saat sales cuma menambah satu keping RAM
+ *    adalah cara tercepat kehilangan kepercayaannya.
+ *  - Komponen yang BARU ditambahkan selalu memakai harga katalog. Tidak ada
+ *    harga lama untuk barang yang belum pernah ditawarkan.
+ *
+ * Yang tidak berubah dari penerbitan: harga tidak pernah datang dari klien, dan
+ * komponen yang hilang dari katalog membatalkan penyimpanan alih-alih dibuang
+ * diam-diam.
+ */
+export async function reviseQuotation(
+  code: string,
+  userId: string,
+  input: ReviseQuotationInput
+): Promise<IssueQuotationResult> {
+  const seed = await getQuotationForRevision(code, userId)
+  if (!seed) {
+    return {
+      ok: false,
+      error:
+        "Quotation ini tidak bisa direvisi — mungkin sudah ditandai terjual, atau bukan milik Anda.",
+    }
+  }
+
+  if (input.selections.length === 0) {
+    return { ok: false, error: "Rakitan tidak boleh kosong." }
+  }
+
+  const { priceCartFromCatalog } = await import("@/lib/api/woocommerce/cart-pricing")
+  const { getPcBuilderConfig } = await import("@/lib/pc-builder/config")
+
+  const [priced, stepsConfig] = await Promise.all([
+    priceCartFromCatalog(
+      input.selections.map((s) => ({ productId: s.productId, quantity: s.quantity })),
+      "id"
+    ),
+    getPcBuilderConfig(),
+  ])
+
+  if (priced.unavailableProductIds.length > 0) {
+    return {
+      ok: false,
+      error:
+        priced.unavailableProductIds.length === 1
+          ? "Satu komponen sudah tidak tersedia di katalog. Ganti atau hapus komponen itu lalu simpan lagi."
+          : `${priced.unavailableProductIds.length} komponen sudah tidak tersedia di katalog. Ganti atau hapus komponen itu lalu simpan lagi.`,
+    }
+  }
+  if (priced.lines.length === 0) {
+    return { ok: false, error: "Komponen yang dipilih tidak ditemukan di katalog." }
+  }
+
+  const hargaSebelumnya = new Map(seed.items.map((item) => [item.productId, item.price]))
+  const currentInfo = await getQuoteProductsCurrentInfo(priced.lines.map((l) => l.productId))
+  const stepNameById = new Map(stepsConfig.map((step) => [step.id, step.name]))
+  const stepIdByProduct = new Map(input.selections.map((s) => [s.productId, s.stepId]))
+
+  const items: QuoteLineItem[] = priced.lines.map((line) => {
+    const lama = hargaSebelumnya.get(line.productId)
+    const price = !input.useLatestPrices && lama !== undefined ? lama : line.unitPrice
+    const stepId = stepIdByProduct.get(line.productId) ?? null
+
+    return {
+      productId: line.productId,
+      name: line.parentName ?? line.name,
+      parentName: line.parentName,
+      variationLabel: line.variationLabel,
+      sku: line.sku || null,
+      image: currentInfo.get(line.productId)?.image ?? undefined,
+      price,
+      quantity: line.quantity,
+      stepName: stepId ? stepNameById.get(stepId) ?? null : null,
+    }
+  })
+
+  const subtotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0)
+  const revisiBaru = seed.revision + 1
+  const now = new Date()
+
+  try {
+    await getPrisma().$transaction(
+      async (tx) => {
+        /**
+         * Syarat `status` dan `revision` ikut di WHERE, bukan cuma diperiksa
+         * lebih dulu lewat `getQuotationForRevision`. Di antara pemeriksaan itu
+         * dan baris ini, kasir bisa menandai quotation terjual, atau sales
+         * membuka dua tab lalu menyimpan dua revisi bersamaan. Dengan syaratnya
+         * di dalam UPDATE, yang kalah menyentuh nol baris dan tahu ia kalah.
+         */
+        const { count } = await tx.pcBuildQuote.updateMany({
+          where: { code: seed.code, status: "terbit", revision: seed.revision },
+          data: {
+            revision: revisiBaru,
+            items,
+            subtotal,
+            assemblyFee: 0,
+            total: subtotal,
+            itemCount: items.length,
+            customerName: input.customerName,
+            customerPhone: input.customerPhone,
+            internalNote: input.internalNote,
+            contentHash: computeContentHash(items),
+            updatedAt: now,
+          },
+        })
+        if (count === 0) throw new RevisiBentrokError()
+
+        const quote = await tx.pcBuildQuote.findUnique({
+          where: { code: seed.code },
+          select: { id: true },
+        })
+        if (!quote) throw new RevisiBentrokError()
+
+        await tx.pcBuildQuoteRevision.create({
+          data: {
+            quoteId: quote.id,
+            revision: revisiBaru,
+            items,
+            subtotal,
+            assemblyFee: 0,
+            total: subtotal,
+            itemCount: items.length,
+            usedLatestPrices: input.useLatestPrices,
+            createdByUserId: userId,
+            createdAt: now,
+          },
+        })
+      },
+      { timeout: 15_000, maxWait: 15_000 }
+    )
+  } catch (error) {
+    if (error instanceof RevisiBentrokError) {
+      return {
+        ok: false,
+        error:
+          "Quotation ini baru saja berubah — mungkin sudah direvisi di tab lain atau ditandai terjual. Muat ulang halaman.",
+      }
+    }
+    console.error("[quotation] gagal menyimpan revisi:", error)
+    return { ok: false, error: "Gagal menyimpan revisi. Coba lagi sebentar lagi." }
+  }
+
+  return { ok: true, code: seed.code, token: seed.publicToken ?? "" }
+}
+
+/**
+ * Susun ulang `selections` dari isi revisi terakhir.
+ *
+ * Snapshot menyimpan `stepName` (yang tercetak), bukan `stepId`, jadi namanya
+ * dipetakan balik lewat konfigurasi builder. Nama yang sudah tidak ada di
+ * konfigurasi jatuh ke `null` — komponennya tetap ikut, hanya masuk kelompok
+ * "Komponen Lainnya" di PDF. Membuangnya berarti menyegarkan harga diam-diam
+ * mengubah isi rakitan.
+ */
+async function selectionsDariSeed(seed: RevisionSeed): Promise<QuotationSelection[]> {
+  const { getPcBuilderConfig } = await import("@/lib/pc-builder/config")
+  const stepsConfig = await getPcBuilderConfig()
+  const stepIdByName = new Map(stepsConfig.map((step) => [step.name, step.id]))
+
+  return seed.items.map((item) => ({
+    stepId: item.stepName ? stepIdByName.get(item.stepName) ?? null : null,
+    productId: item.productId,
+    quantity: item.quantity,
+  }))
+}
+
+export type LatestPricePreview =
+  | {
+      ok: true
+      totalSekarang: number
+      totalBaru: number
+      /** `totalBaru - totalSekarang`, dihitung DI SINI. Klien hanya memformat. */
+      selisih: number
+      /** Berapa baris yang harganya berbeda dari katalog hari ini. */
+      barisBerubah: number
+    }
+  | { ok: false; error: string }
+
+/**
+ * Berapa jadinya kalau harga disegarkan — dibaca SEBELUM apa pun ditulis.
+ *
+ * Ada supaya dialog konfirmasinya menyebut angka, bukan cuma "harga akan
+ * mengikuti katalog". Sales yang menekan tombol ini sedang berbicara dengan
+ * pelanggan di telepon; ia perlu tahu totalnya naik atau turun sebelum
+ * menjawab, bukan sesudah dokumennya berubah.
+ *
+ * Seluruh aritmatikanya di server, dari katalog, lewat `priceCartFromCatalog` —
+ * fungsi yang sama yang dipakai `reviseQuotation` saat benar-benar menyimpan,
+ * sehingga angka di dialog dan angka yang tersimpan mustahil berbeda
+ * (CLAUDE.md §2.7).
+ */
+export async function previewLatestPrices(
+  code: string,
+  userId: string
+): Promise<LatestPricePreview> {
+  const seed = await getQuotationForRevision(code, userId)
+  if (!seed) {
+    return {
+      ok: false,
+      error:
+        "Quotation ini tidak bisa disegarkan — mungkin sudah ditandai terjual, atau bukan milik Anda.",
+    }
+  }
+
+  const { priceCartFromCatalog } = await import("@/lib/api/woocommerce/cart-pricing")
+  const priced = await priceCartFromCatalog(
+    seed.items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+    "id"
+  )
+
+  if (priced.unavailableProductIds.length > 0) {
+    return {
+      ok: false,
+      error:
+        priced.unavailableProductIds.length === 1
+          ? "Satu komponen sudah tidak ada di katalog. Buka Revisi di Builder untuk menggantinya."
+          : `${priced.unavailableProductIds.length} komponen sudah tidak ada di katalog. Buka Revisi di Builder untuk menggantinya.`,
+    }
+  }
+
+  const hargaLama = new Map(seed.items.map((item) => [item.productId, item.price]))
+  let totalBaru = 0
+  let barisBerubah = 0
+  for (const line of priced.lines) {
+    totalBaru += line.unitPrice * line.quantity
+    if (hargaLama.get(line.productId) !== line.unitPrice) barisBerubah += 1
+  }
+
+  const totalSekarang = seed.items.reduce((acc, item) => acc + item.price * item.quantity, 0)
+
+  return {
+    ok: true,
+    totalSekarang,
+    totalBaru,
+    selisih: totalBaru - totalSekarang,
+    barisBerubah,
+  }
+}
+
+/**
+ * Segarkan seluruh harga ke katalog hari ini — isi rakitannya TIDAK berubah.
+ *
+ * Sengaja memanggil ulang `reviseQuotation` alih-alih menulis sendiri: ia sudah
+ * memegang syarat kepemilikan, penjaga balapan (`status` + `revision` di
+ * WHERE), penulisan baris riwayat, dan aturan harga. Jalur tulis kedua untuk
+ * pekerjaan yang sama adalah tempat kedua aturan itu bisa berselisih.
+ *
+ * Hasilnya Rev. N+1 dengan `usedLatestPrices = true`, jadi `/verify` bisa
+ * menjelaskan kenapa angkanya berbeda dari kertas yang dipegang pelanggan.
+ */
+export async function refreshQuotationPrices(
+  code: string,
+  userId: string
+): Promise<IssueQuotationResult> {
+  const seed = await getQuotationForRevision(code, userId)
+  if (!seed) {
+    return {
+      ok: false,
+      error:
+        "Quotation ini tidak bisa disegarkan — mungkin sudah ditandai terjual, atau bukan milik Anda.",
+    }
+  }
+
+  /**
+   * Quotation anonim tidak punya pemilik, jadi ia tidak akan pernah sampai di
+   * sini. Dijaga tetap eksplisit karena `reviseQuotation` menulis `customerName`
+   * apa adanya — meloloskan string kosong berarti menghapus nama pelanggan
+   * sebagai efek samping menyegarkan harga.
+   */
+  if (!seed.customerName) {
+    return { ok: false, error: "Quotation ini tidak punya nama pelanggan." }
+  }
+
+  return reviseQuotation(code, userId, {
+    selections: await selectionsDariSeed(seed),
+    customerName: seed.customerName,
+    customerPhone: seed.customerPhone,
+    internalNote: seed.internalNote,
+    useLatestPrices: true,
+  })
+}
+
+/**
+ * Perbaiki identitas pelanggan pada quotation yang sudah terbit.
+ *
+ * Sebelum ini satu-satunya cara membetulkan salah ketik nama atau nomor HP
+ * adalah membuka Revisi di Builder dan menyimpannya kembali — yang menaikkan
+ * nomor revisi dokumen. Revisi menyatakan "isi rakitan atau harganya berubah";
+ * memakainya untuk membetulkan satu digit nomor HP membuat riwayat revisi
+ * berbohong tentang apa yang terjadi.
+ *
+ * Karena itu identitas pelanggan memang TIDAK ikut diversikan (lihat catatan di
+ * model `PcBuildQuoteRevision`): ia hidup di baris induknya saja, dan
+ * menyuntingnya di sini tidak menyentuh satu pun baris revisi.
+ *
+ * Syaratnya sama dengan revisi: pemiliknya, dan hanya selama status `terbit`.
+ * Nama pelanggan tercetak di PDF dan terbaca kasir; mengubahnya pada dokumen
+ * yang sudah dipakai bertransaksi berarti menulis ulang bukti penjualan.
+ */
+export async function updateQuotationCustomer(
+  code: string,
+  userId: string,
+  data: { customerName: string; customerPhone: string | null; internalNote: string | null }
+): Promise<StatusChangeResult> {
+  const { count } = await getPrisma().pcBuildQuote.updateMany({
+    where: { code: code.toUpperCase(), ownerUserId: userId, status: "terbit" },
+    data: {
+      customerName: data.customerName,
+      customerPhone: data.customerPhone,
+      internalNote: data.internalNote,
+    },
+  })
+
+  if (count === 0) {
+    return {
+      ok: false,
+      error:
+        "Tidak bisa disimpan — quotation ini bukan milik Anda, atau sudah ditandai terjual.",
+    }
+  }
+  return { ok: true }
+}
+
+export type StatusChangeResult = { ok: true } | { ok: false; error: string }
+
+/**
+ * Tandai / batalkan tanda "sudah DP". Dipanggil PEMILIK dari halaman detailnya.
+ *
+ * **Tidak menyentuh `status`, dan tidak boleh.** Harga sudah terkunci sejak
+ * quotation disimpan; DP tidak mengunci apa pun, ia cuma memberi tahu semua
+ * orang — termasuk kasir — bahwa pelanggan ini sudah membayar di muka. Kalau ia
+ * dijadikan nilai status, setiap penjaga `status: "terbit"` ikut menolaknya dan
+ * quotation ber-DP berhenti bisa direvisi maupun ditandai terjual.
+ *
+ * Tidak ada `expectedRevision` di sini, berbeda dari `markQuotationClosed`.
+ * Penjaga itu ada di sana karena kasir menutup penjualan ATAS SEBUAH ANGKA;
+ * penanda DP tidak menyatakan apa pun tentang angka, jadi revisi yang menyelip
+ * tidak membuatnya salah.
+ *
+ * Pembatalan tandanya tidak butuh alasan tertulis dan tidak butuh admin —
+ * salah klik pada penanda adalah hal yang wajar, dan tidak ada angka penjualan
+ * siapa pun yang berubah karenanya.
+ */
+export async function setQuotationDp(
+  code: string,
+  userId: string,
+  dp: boolean
+): Promise<StatusChangeResult> {
+  const { count } = await getPrisma().pcBuildQuote.updateMany({
+    // `ownerUserId` di WHERE, bukan diperiksa lebih dulu: yang boleh menandai
+    // adalah yang MEMEGANG quotation. CS yang sudah mengoper kehilangan hak itu
+    // bersama kepemilikannya, sama seperti hak revisi.
+    where: { code: code.toUpperCase(), ownerUserId: userId },
+    data: dp
+      ? { dpAt: new Date(), dpByUserId: userId }
+      : { dpAt: null, dpByUserId: null },
+  })
+
+  if (count === 0) {
+    return { ok: false, error: "Quotation ini bukan milik Anda, atau sudah tidak ada." }
+  }
+  return { ok: true }
+}
+
+/**
+ * Tandai quotation TERJUAL. Dipanggil kasir dari `/verify/[code]`.
+ *
+ * `expectedRevision` bukan hiasan. Antara kasir membuka halaman dan menekan
+ * tombol, sales bisa menyimpan revisi baru — dan kasir akan menutup penjualan
+ * atas angka yang sudah bukan angka terakhir. Dengan nomor revisi ikut di WHERE,
+ * yang kalah menyentuh nol baris dan diberi tahu, bukan diam-diam menang.
+ *
+ * `status: "terbit"` juga ikut di WHERE supaya menekan tombol dua kali (atau
+ * dua kasir di dua layar) tidak menimpa `closedAt` yang sudah tercatat.
+ */
+export async function markQuotationClosed(
+  code: string,
+  expectedRevision: number,
+  byUserId: string
+): Promise<StatusChangeResult> {
+  const prisma = getPrisma()
+  const now = new Date()
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const { count } = await tx.pcBuildQuote.updateMany({
+        where: { code: code.toUpperCase(), status: "terbit", revision: expectedRevision },
+        data: { status: "closing", closedAt: now, closedByUserId: byUserId },
+      })
+      if (count === 0) throw new StatusBentrokError()
+
+      const quote = await tx.pcBuildQuote.findUnique({
+        where: { code: code.toUpperCase() },
+        select: { id: true },
+      })
+      if (!quote) throw new StatusBentrokError()
+
+      await tx.pcBuildQuoteStatusLog.create({
+        data: {
+          quoteId: quote.id,
+          fromStatus: "terbit",
+          toStatus: "closing",
+          byUserId,
+          createdAt: now,
+        },
+      })
+    })
+  } catch (error) {
+    if (error instanceof StatusBentrokError) {
+      return {
+        ok: false,
+        error:
+          "Quotation ini sudah ditandai terjual, atau baru saja direvisi. Muat ulang halaman lalu periksa lagi.",
+      }
+    }
+    console.error("[quotation] gagal menandai closing:", error)
+    return { ok: false, error: "Gagal menandai quotation. Coba lagi sebentar lagi." }
+  }
+
+  return { ok: true }
+}
+
+/**
+ * Batalkan status terjual. Hanya admin, dan hanya dengan alasan.
+ *
+ * Alasannya WAJIB dan itu disengaja. Tindakan ini mengurangi angka penjualan
+ * seorang sales pada bulan berjalan; tanpa alasan tertulis, satu-satunya jejak
+ * yang tersisa adalah bahwa angkanya pernah lebih besar — dan tidak ada cara
+ * menjawab kenapa, sebulan kemudian.
+ *
+ * `closedAt`/`closedByUserId` dikosongkan supaya rekap bulanan (yang menghitung
+ * dari `closedAt`) langsung ikut benar. Jejaknya tidak hilang: ia pindah ke
+ * `pc_build_quote_status_logs`, tempat yang memang untuk itu.
+ */
+export async function reopenQuotation(
+  code: string,
+  byUserId: string,
+  reason: string
+): Promise<StatusChangeResult> {
+  const prisma = getPrisma()
+  const now = new Date()
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const { count } = await tx.pcBuildQuote.updateMany({
+        where: { code: code.toUpperCase(), status: "closing" },
+        data: { status: "terbit", closedAt: null, closedByUserId: null },
+      })
+      if (count === 0) throw new StatusBentrokError()
+
+      const quote = await tx.pcBuildQuote.findUnique({
+        where: { code: code.toUpperCase() },
+        select: { id: true },
+      })
+      if (!quote) throw new StatusBentrokError()
+
+      await tx.pcBuildQuoteStatusLog.create({
+        data: {
+          quoteId: quote.id,
+          fromStatus: "closing",
+          toStatus: "terbit",
+          byUserId,
+          reason: reason.slice(0, 255),
+          createdAt: now,
+        },
+      })
+    })
+  } catch (error) {
+    if (error instanceof StatusBentrokError) {
+      return { ok: false, error: "Quotation ini sudah tidak berstatus terjual. Muat ulang halaman." }
+    }
+    console.error("[quotation] gagal membatalkan closing:", error)
+    return { ok: false, error: "Gagal membatalkan status. Coba lagi sebentar lagi." }
+  }
+
+  return { ok: true }
+}
+
+/** Penanda internal bahwa perubahan status kalah balapan. */
+class StatusBentrokError extends Error {}
+
+/**
+ * Isi `/verify/[code]` yang MELEBIHI `getQuoteByCode`: status, identitas yang
+ * boleh dilihat kasir, dan riwayat revisinya.
+ *
+ * **Nomor HP dan catatan internal SENGAJA tidak ada di sini.** Kasir cukup
+ * mencocokkan nama orang yang berdiri di depan meja dengan dokumennya;
+ * nomor HP tidak menambah apa pun pada pekerjaan itu, dan catatan internal
+ * ("masih banding harga") adalah percakapan tim yang tidak seharusnya terbaca
+ * dari layar yang menghadap pelanggan. Keduanya ada di `/profile/quotation`
+ * untuk pemiliknya dan di `/admin/quotation` untuk admin.
+ *
+ * Jangan menambahkannya ke `select` di bawah "supaya lengkap".
+ */
+export async function getQuoteStatusForCashier(code: string) {
+  return getPrisma().pcBuildQuote.findUnique({
+    where: { code: code.toUpperCase() },
+    select: {
+      status: true,
+      revision: true,
+      customerName: true,
+      salesName: true,
+      closedAt: true,
+      // Kasir perlu tahu pelanggan ini sudah membayar di muka sebelum menerima
+      // pembayarannya. Ini penanda, bukan nominal — tidak ada angka DP yang
+      // disimpan di mana pun, jadi tidak ada "sisa bayar" yang bisa dihitung.
+      dpAt: true,
+      revisions: {
+        select: { revision: true, total: true, itemCount: true, usedLatestPrices: true, createdAt: true },
+        orderBy: { revision: "desc" },
+      },
+    },
+  })
+}
+
+/** Satu baris di tabel pengawasan `/admin/quotation`. */
+export type AdminQuotationRow = QuotationHistoryRow & {
+  /** Nama akun pemilik, untuk quotation yang pemiliknya bukan Sales (CS). */
+  ownerName: string | null
+  internalNote: string | null
+}
+
+export type AdminQuotationFilter = {
+  q?: string
+  /** "YYYYMM" — disaring menurut TANGGAL TERBIT, bukan tanggal closing. */
+  periode?: string
+  ownerUserId?: string
+  status?: string
+  /** Halaman, mulai dari 1. */
+  page?: number
+}
+
+/**
+ * Baris per halaman di `/admin/quotation`.
+ *
+ * Menggantikan `take = 100` yang dulu dipakai tanpa pagination. Batas itu
+ * BUKAN pengaman melainkan pemotong senyap: begitu quotation ke-101 terbit,
+ * yang paling lama hilang dari daftar tanpa satu pun tanda di layar — dan
+ * halaman ini justru tempat orang mencari quotation lama saat ada keluhan.
+ */
+export const ADMIN_QUOTATION_PAGE_SIZE = 25
+
+export type AdminQuotationListResult = {
+  rows: AdminQuotationRow[]
+  total: number
+  page: number
+  pageCount: number
+}
+
+/**
+ * Seluruh quotation lintas sales — hanya untuk `/admin/quotation`.
+ *
+ * Berbeda dari `listQuotationsForUser`, fungsi ini TIDAK menyaring pemilik.
+ * Itulah sebabnya ia berdiri sendiri alih-alih menambah parameter opsional ke
+ * fungsi itu: saringan pemilik yang bisa dimatikan lewat argumen adalah
+ * saringan yang cepat atau lambat akan dimatikan di tempat yang salah.
+ *
+ * Penyaringan periode memakai `createdAt` (tanggal terbit), bukan `closedAt`.
+ * Ini daftar dokumen, bukan rekap penjualan — yang menghitung capaian adalah
+ * `summarizeSalesByMonth` di bawah, dan ia memang memakai `closedAt`.
+ */
+export async function listQuotationsForAdmin(
+  filter: AdminQuotationFilter = {}
+): Promise<AdminQuotationListResult> {
+  const { q, periode, ownerUserId, status } = filter
+  const page = Math.max(1, filter.page ?? 1)
+  const term = q?.trim() ?? ""
+  const rentang = periode && /^\d{6}$/.test(periode) ? jakartaMonthRange(periode) : null
+
+  const where = {
+    ...(rentang ? { createdAt: { gte: rentang.mulai, lt: rentang.sesudah } } : {}),
+    ...(ownerUserId ? { ownerUserId } : {}),
+    ...(status === "terbit" || status === "closing" ? { status } : {}),
+    ...(term.length >= 3
+      ? {
+          OR: [
+            { code: { contains: term.toUpperCase() } },
+            { customerName: { contains: term } },
+            { customerPhone: { contains: term } },
+          ],
+        }
+      : {}),
+  }
+
+  const prisma = getPrisma()
+  const [total, rows] = await Promise.all([
+    prisma.pcBuildQuote.count({ where }),
+    prisma.pcBuildQuote.findMany({
+      where,
+      select: {
+        ...HISTORY_SELECT,
+        internalNote: true,
+        owner: { select: { name: true, salesDisplayName: true } },
+      },
+      /**
+       * `code` sebagai kunci kedua, bukan `createdAt` saja.
+       *
+       * Quotation yang terbit pada detik yang sama — yang terjadi saat sales
+       * menerbitkan beberapa revisi berurutan — bisa tersusun berbeda tiap
+       * query. Pada daftar berhalaman itu berarti satu baris muncul di dua
+       * halaman sementara baris lain tidak pernah muncul sama sekali, dan yang
+       * tidak pernah muncul itulah yang sedang dicari orang.
+       */
+      orderBy: [{ createdAt: "desc" }, { code: "desc" }],
+      skip: (page - 1) * ADMIN_QUOTATION_PAGE_SIZE,
+      take: ADMIN_QUOTATION_PAGE_SIZE,
+    }),
+  ])
+
+  return {
+    rows: rows.map((row) => ({
+      ...toHistoryRow(row),
+      ownerName: row.owner ? (row.owner.salesDisplayName ?? row.owner.name) : null,
+      internalNote: row.internalNote,
+    })),
+    total,
+    page,
+    pageCount: Math.max(1, Math.ceil(total / ADMIN_QUOTATION_PAGE_SIZE)),
+  }
+}
+
+/**
+ * Rekap penjualan SEMUA pemilik dalam satu periode, diurutkan dari yang
+ * terbesar.
+ *
+ * Dihitung dari `closedAt` — sama dengan rekap di profil masing-masing sales,
+ * supaya angka yang dilihat owner dan angka yang dilihat sales tidak pernah
+ * berbeda. Kalau keduanya dihitung dengan aturan yang berlainan, percakapan
+ * yang menyusul bukan tentang penjualan melainkan tentang laporan mana yang
+ * benar.
+ */
+export async function summarizeSalesByMonth(
+  periode: string
+): Promise<{ ownerUserId: string; nama: string; unit: number; total: number }[]> {
+  const { mulai, sesudah } = jakartaMonthRange(periode)
+
+  const grup = await getPrisma().pcBuildQuote.groupBy({
+    by: ["ownerUserId"],
+    where: {
+      status: "closing",
+      closedAt: { gte: mulai, lt: sesudah },
+      ownerUserId: { not: null },
+    },
+    _count: { _all: true },
+    _sum: { total: true },
+  })
+
+  if (grup.length === 0) return []
+
+  const ids = grup.map((g) => g.ownerUserId!).filter(Boolean)
+  const users = await getPrisma().user.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, name: true, salesDisplayName: true },
+  })
+  const namaById = new Map(users.map((u) => [u.id, u.salesDisplayName ?? u.name]))
+
+  return grup
+    .map((g) => ({
+      ownerUserId: g.ownerUserId!,
+      // Pemilik yang akunnya sudah dihapus tetap dihitung — penjualannya
+      // terjadi, dan menghilangkannya dari rekap membuat total bulan itu tidak
+      // cocok dengan jumlah dokumennya.
+      nama: namaById.get(g.ownerUserId!) ?? "(akun dihapus)",
+      unit: g._count._all,
+      total: Number(g._sum.total ?? 0),
+    }))
+    .sort((a, b) => b.total - a.total)
+}
+
+/** Daftar pemilik quotation, untuk saringan di `/admin/quotation`. */
+export async function listQuotationOwners(): Promise<{ id: string; nama: string }[]> {
+  const grup = await getPrisma().pcBuildQuote.groupBy({
+    by: ["ownerUserId"],
+    where: { ownerUserId: { not: null } },
+  })
+  const ids = grup.map((g) => g.ownerUserId!).filter(Boolean)
+  if (ids.length === 0) return []
+
+  const users = await getPrisma().user.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, name: true, salesDisplayName: true },
+    orderBy: { name: "asc" },
+  })
+  return users.map((u) => ({ id: u.id, nama: u.salesDisplayName ?? u.name }))
+}
+
+/** Satu operan yang belum dibaca sales penerima. */
+export type UnseenHandover = {
+  code: string
+  customerName: string | null
+  /** Nama CS yang mengoper. */
+  dariCs: string | null
+  total: number
+  createdAt: string
+}
+
+/**
+ * Operan dari CS yang belum dibaca oleh `userId`.
+ *
+ * "Operan" berarti `createdByUserId != ownerUserId` — quotation yang
+ * diterbitkan orang lain lalu diserahkan. Quotation yang diterbitkan sales
+ * untuk dirinya sendiri tidak pernah masuk ke sini, karena `handoverSeenAt`-nya
+ * sudah diisi saat terbit.
+ *
+ * Dibatasi 5: ini notifikasi, bukan daftar kerja. Sales yang punya dua puluh
+ * operan belum dibaca lebih terbantu oleh halaman riwayatnya daripada oleh dua
+ * puluh toast yang harus ditutup satu per satu.
+ */
+export async function listUnseenHandovers(userId: string): Promise<UnseenHandover[]> {
+  const rows = await getPrisma().pcBuildQuote.findMany({
+    where: {
+      ownerUserId: userId,
+      handoverSeenAt: null,
+      createdByUserId: { not: null, notIn: [userId] },
+    },
+    select: {
+      code: true,
+      customerName: true,
+      total: true,
+      createdAt: true,
+      createdBy: { select: { name: true, salesDisplayName: true } },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 5,
+  })
+
+  return rows.map((row) => ({
+    code: row.code,
+    customerName: row.customerName,
+    dariCs: row.createdBy ? (row.createdBy.salesDisplayName ?? row.createdBy.name) : null,
+    total: Number(row.total),
+    createdAt: row.createdAt.toISOString(),
+  }))
+}
+
+/**
+ * Tandai satu operan sudah dibaca. Dipanggil saat sales menutup toast-nya.
+ *
+ * `ownerUserId` ikut di WHERE: menandai terbaca hanya boleh dilakukan oleh
+ * penerimanya, dan syarat yang hidup di dalam kueri tidak bisa dilewati jalur
+ * lain yang ditambahkan kemudian.
+ *
+ * Disimpan di SERVER, bukan di localStorage. Operan yang datang saat sales
+ * belum login harus tetap sampai ketika ia login, dan yang sudah ditutup tidak
+ * boleh muncul lagi hanya karena ia membuka perangkat lain.
+ */
+export async function markHandoverSeen(code: string, userId: string): Promise<boolean> {
+  const { count } = await getPrisma().pcBuildQuote.updateMany({
+    where: { code: code.toUpperCase(), ownerUserId: userId, handoverSeenAt: null },
+    data: { handoverSeenAt: new Date() },
+  })
+  return count > 0
 }

@@ -1,6 +1,6 @@
 import Link from "next/link"
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { logoutAction } from "@/app/admin/login/actions"
 import {
   DropdownMenu,
@@ -13,16 +13,15 @@ import {
 type UserNavProps = {
   name: string
   email: string
+  /** Foto profil dari `users.image`, atau `null` kalau belum pernah diunggah. */
+  image: string | null
 }
 
 /**
- * Inisial dari nama, maksimal dua huruf.
+ * Inisial dari nama, maksimal dua huruf. Dipakai kalau fotonya belum ada — atau
+ * gagal dimuat.
  *
- * Huruf awal, BUKAN `user.image` — mengikuti keputusan yang sudah diambil di
- * `panel-header.tsx`: foto dari sumber luar harus lolos `remotePatterns` di
- * next.config, dan mengizinkan host sembarang demi avatar di panel internal
- * bukan pertukaran yang sepadan. Nama bisa kosong secara teori, jadi ada
- * cadangan di pemanggilnya.
+ * Nama bisa kosong secara teori, jadi ada cadangan di pemanggilnya.
  */
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -30,18 +29,21 @@ function initials(name: string): string {
   return (parts[0][0] + (parts[1]?.[0] ?? "")).toUpperCase()
 }
 
-export function UserNav({ name, email }: UserNavProps) {
+export function UserNav({ name, email, image }: UserNavProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="relative flex h-8 w-8 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         {/*
-          Tidak ada `AvatarImage` sama sekali. Sebelumnya src-nya
-          `/avatars/01.png` — berkas yang tidak pernah ada di `public/`, jadi
-          SETIAP halaman admin menembakkan permintaan 404 sepanjang hari kerja
-          staff. Dengan hanya `AvatarFallback`, tidak ada permintaan jaringan
-          yang dibuat sama sekali.
+          `AvatarImage` HANYA kalau ada fotonya. Sebelumnya src-nya dipasang
+          tanpa syarat ke `/avatars/01.png` — berkas yang tidak pernah ada di
+          `public/`, jadi SETIAP halaman admin menembakkan permintaan 404
+          sepanjang hari kerja staff. Itu yang dulu diperbaiki dengan membuang
+          `AvatarImage` sama sekali; syarat di bawah menjaga perbaikan itu
+          sambil tetap menampilkan foto yang memang ada. Akun tanpa foto tetap
+          tidak membuat satu permintaan jaringan pun.
         */}
         <Avatar className="h-8 w-8">
+          {image && <AvatarImage src={image} alt="" />}
           <AvatarFallback>{initials(name)}</AvatarFallback>
         </Avatar>
       </DropdownMenuTrigger>

@@ -1,44 +1,19 @@
 "use client"
 
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { Loader2, RefreshCw, Trash2, Wrench } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
+import { buttonVariants } from "@/components/ui/button"
 import { useToastManager } from "@/components/ui/toast"
-import { useNewBuilderStore } from "@/store/new-builder"
-import {
-  deleteSavedBuildAction,
-  loadSavedBuildForBuilderAction,
-  refreshBuildPricesAction,
-} from "@/features/builder/actions-save"
+import { deleteSavedBuildAction, refreshBuildPricesAction } from "@/features/builder/actions-save"
 
 export function SavedBuildActions({ buildId, hasPriceChanges }: { buildId: string; hasPriceChanges: boolean }) {
   const router = useRouter()
   const toastManager = useToastManager()
-  const hydrateSelections = useNewBuilderStore((s) => s.hydrateSelections)
-  const [loadingBuilder, setLoadingBuilder] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
-
-  const handleContinueInBuilder = async () => {
-    if (loadingBuilder) return
-    setLoadingBuilder(true)
-
-    const selections = await loadSavedBuildForBuilderAction(buildId)
-    setLoadingBuilder(false)
-
-    if (!selections || Object.keys(selections).length === 0) {
-      toastManager.add({
-        title: "Tidak bisa dimuat",
-        description: "Semua komponen di rakitan ini sudah tidak tersedia.",
-      })
-      return
-    }
-
-    hydrateSelections(selections)
-    router.push("/build-pc")
-  }
 
   const handleDelete = async () => {
     if (deleting) return
@@ -88,10 +63,24 @@ export function SavedBuildActions({ buildId, hasPriceChanges }: { buildId: strin
           Perbarui Harga Acuan
         </button>
       )}
-      <Button onClick={handleContinueInBuilder} disabled={loadingBuilder}>
-        {loadingBuilder ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wrench className="h-4 w-4" />}
+      {/*
+        Tautan biasa ke `/build-pc?build=<id>`, BUKAN lagi tombol yang memuat
+        isinya lewat server action lalu mendorongnya ke store Zustand.
+
+        Bedanya bukan sekadar cara: dengan jalur lama, builder menerima daftar
+        komponen tanpa tahu rakitan MANA asalnya, sehingga satu-satunya cara
+        menyimpan adalah membuat baris baru — mengedit rakitan sendiri selalu
+        melahirkan salinan. Id yang ikut di URL-lah yang membuat "Simpan
+        Perubahan" punya sasaran, dan yang membuat Mode Edit selamat dari
+        refresh halaman.
+
+        Kepemilikan tetap diperiksa di server (`getSavedBuildForBuilder`), jadi
+        id di URL bukan kunci apa-apa buat orang lain.
+      */}
+      <Link href={`/build-pc?build=${encodeURIComponent(buildId)}`} className={buttonVariants()}>
+        <Wrench className="h-4 w-4" />
         Lanjutkan di Builder
-      </Button>
+      </Link>
       <button
         onClick={handleDelete}
         disabled={deleting}

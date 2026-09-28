@@ -96,7 +96,12 @@ export function PrebuildDetail({ view, games }: Props) {
       </Link>
 
       <div className="grid gap-8 lg:grid-cols-2 lg:gap-10">
-        <div className="lg:sticky lg:top-24 lg:self-start">
+        {/* `min-w-0`: butir grid bawaannya tidak boleh menyusut di bawah lebar
+            intrinsik isinya, dan galeri di dalamnya membawa kanvas selebar
+            layar. Tanpa ini, kolom yang memaksa dirinya lebih lebar dari grid
+            akan terpotong diam-diam oleh `overflow-x-clip` di html/body —
+            kolom kanan sudah memilikinya sejak awal. */}
+        <div className="min-w-0 lg:sticky lg:top-24 lg:self-start">
           {galeri.length > 0 ? (
             <ProductGallery images={galeri} />
           ) : (
@@ -111,9 +116,9 @@ export function PrebuildDetail({ view, games }: Props) {
 
         <div className="min-w-0 space-y-6">
           <div>
-            <h1 className="text-2xl font-extrabold tracking-tight md:text-3xl">{view.name}</h1>
+            <h1 className="text-2xl font-extrabold tracking-tight break-words md:text-3xl">{view.name}</h1>
             {view.summary && (
-              <p className="mt-2 text-justify text-sm leading-relaxed text-muted-foreground hyphens-auto md:text-base">
+              <p className="mt-2 text-justify text-sm leading-relaxed text-muted-foreground break-words hyphens-auto md:text-base">
                 {view.summary}
               </p>
             )}
@@ -134,46 +139,54 @@ export function PrebuildDetail({ view, games }: Props) {
             </a>
           </div>
 
-          {view.performance ? (
-            <PerformancePanel performance={view.performance} games={games} />
-          ) : (
-            // Tidak ada panel kosong berisi "belum dianalisis": itu memberi tahu
-            // pelanggan tentang pekerjaan internal HNS yang bukan urusannya.
-            <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
-              Perkiraan performa untuk paket ini belum tersedia. Hubungi kami kalau Anda punya
-              target FPS atau kebutuhan tertentu — teknisi kami bisa membantu menilainya.
-            </p>
-          )}
+          <section>
+            <h2 className="flex items-center gap-2 text-lg font-bold">
+              <Layers className="h-5 w-5 text-brand-green" />
+              Isi Paket
+              <span className="text-sm font-normal text-muted-foreground">
+                ({view.components.length} komponen)
+              </span>
+            </h2>
+
+            {view.branchingCount > 0 && (
+              <p className="mt-1.5 text-sm text-muted-foreground">
+                Beberapa komponen punya pilihan. Yang Anda pilih di sini ikut terbawa, baik saat
+                dimasukkan ke keranjang maupun saat dibuka di PC Builder.
+              </p>
+            )}
+
+            {/* Satu kolom, bukan grid: kolomnya sendiri sudah cuma setengah
+                lebar halaman, dan dua baris komponen berdampingan di dalamnya
+                menyisakan ruang yang tidak cukup untuk dropdown. */}
+            <div className="mt-4 space-y-2.5">
+              {view.components.map((component) => (
+                <ComponentPicker
+                  key={component.key}
+                  component={component}
+                  selection={selection}
+                  onSelect={pilih}
+                />
+              ))}
+            </div>
+          </section>
         </div>
       </div>
 
-      <section className="mt-10">
-        <h2 className="flex items-center gap-2 text-lg font-bold">
-          <Layers className="h-5 w-5 text-brand-green" />
-          Isi Paket
-          <span className="text-sm font-normal text-muted-foreground">
-            ({view.components.length} komponen)
-          </span>
-        </h2>
-
-        {view.branchingCount > 0 && (
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            Beberapa komponen punya pilihan. Yang Anda pilih di sini ikut terbawa, baik saat
-            dimasukkan ke keranjang maupun saat dibuka di PC Builder.
+      {/* Panel performa selebar halaman, di bawah galeri dan daftar komponen.
+          Matriks FPS-nya 3 resolusi × 3 setelan (docs/11-pc-prebuild.md §9) —
+          di kolom setengah lebar, kolom angkanya berdesakan. */}
+      <div className="mt-10">
+        {view.performance ? (
+          <PerformancePanel performance={view.performance} games={games} />
+        ) : (
+          // Tidak ada panel kosong berisi "belum dianalisis": itu memberi tahu
+          // pelanggan tentang pekerjaan internal HNS yang bukan urusannya.
+          <p className="rounded-xl border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+            Perkiraan performa untuk paket ini belum tersedia. Hubungi kami kalau Anda punya target
+            FPS atau kebutuhan tertentu — teknisi kami bisa membantu menilainya.
           </p>
         )}
-
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {view.components.map((component) => (
-            <ComponentPicker
-              key={component.key}
-              component={component}
-              selection={selection}
-              onSelect={pilih}
-            />
-          ))}
-        </div>
-      </section>
+      </div>
 
       <PrebuildActionBar
         price={harga}

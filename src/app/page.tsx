@@ -23,9 +23,9 @@ export const metadata: Metadata = {
 
 export default function HomePage() {
   return (
-    <div className="flex min-h-screen flex-col bg-page">
+    <div className="flex min-h-dvh flex-col bg-page">
       <Header />
-      <main className="flex-1">
+      <main className="min-h-content flex-1">
         {/* Beranda sebelumnya tidak punya <h1> sama sekali — judul terbesarnya
             adalah <h2> milik slide banner, yang isinya berganti tiap promo.
             Mesin pencari membaca h1 sebagai "halaman ini tentang apa", dan

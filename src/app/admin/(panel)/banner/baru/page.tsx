@@ -1,8 +1,11 @@
+import { requirePageView } from "@/lib/auth"
 import { getBatchOptions } from "@/lib/api/banner-batches"
 import { BannerForm } from "../banner-form"
 import { createBanner } from "../actions"
 
 export default async function AdminBannerBaruPage() {
+  await requirePageView("banner")
+
   const batches = await getBatchOptions()
 
   return (

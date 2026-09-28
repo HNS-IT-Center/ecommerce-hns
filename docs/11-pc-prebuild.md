@@ -784,20 +784,71 @@ sisi belakang paket A dengan sisi depan paket B.
   memberi tahu pelanggan tentang pekerjaan internal HNS yang bukan urusannya.
 - Kartu paket bercabang menampilkan **"mulai dari" `minTotal`**, bukan `total`.
 
-**Tautan, tombol, dan drag.** Tautan yang menutupi kartu di `z-10`; kendali
-(panah, filter) di `z-20` supaya bisa ditekan tanpa membuka halaman detail.
-Daftar yang digulir juga di `z-20` — kalau ia di bawah tautan, gulirannya jalan
-tapi setiap sentuhan ikut membuka halaman. Sebagai gantinya daftar itu punya
-`onClick` sendiri ke halaman yang sama; tautan aslinya tetap ada untuk keyboard
-dan pembaca layar. Drag dikunci `drag="x"` supaya tidak berebut dengan guliran
-vertikal di dalam kartu.
+**Tautan dan tombol.** TIDAK ada tautan yang menutupi kartu. Satu-satunya `<a>`
+adalah tombol "Lihat Detail" di footer, dan footer sengaja di luar track supaya
+ia tidak ikut bergeser. Tautan sebesar kartu sudah pernah dicoba dan menelan
+setiap klik tombol filter serta setiap guliran daftar FPS — menaikkan `z-index`
+isinya tidak menolong, karena track-nya waktu itu ber-`transform` dan transform
+membuat stacking context baru. Sebagai gantinya kedua sisi punya `onClick`
+sendiri ke halaman yang sama; itu pintasan tetikus, sementara jalur keyboard dan
+pembaca layar tetap dipegang tombol di footer.
+
+**Gesernya CSS scroll-snap, BUKAN drag JS (24 September 2026).** Track-nya
+container `overflow-x-auto snap-x snap-mandatory`, tiap sisi
+`w-full shrink-0 snap-start`, tombol panah memanggil `scrollTo({ behavior:
+"smooth" })`, dan indikator "1/2" dibaca balik dari `scrollLeft` lewat
+`onScroll` — satu sumber kebenaran posisi, jadi indikatornya tidak bisa berbeda
+dari yang terlihat.
+
+Versi sebelumnya memakai `motion.div` ber-`drag="x"` dengan
+`dragConstraints={{ left: 0, right: 0 }}` sementara posisinya diatur
+`animate={{ x }}`. Dua kendali menulis satu nilai `x`, dan constraint-nya
+mengunci nilai itu ke 0: pelanggan yang sedang di sisi 2 dan sekadar MENYENTUH
+kartu untuk menggulir daftar game langsung dilempar balik ke sisi 1, lalu
+tertinggal di sana karena `sisi` tidak berubah sehingga target `animate` juga
+tidak dan tidak ada animasi balik — indikatornya tetap menulis "2/2". Roda
+tetikus tidak terkena karena roda tidak pernah memulai drag; di ponsel, yang
+notabene seluruh interaksinya sentuhan, sisi performa praktis tidak bisa dibaca.
+Jangan kembalikan `drag`/`dragConstraints` ke kartu ini: arbitrase sumbu
+vertikal-vs-horizontal adalah pekerjaan peramban, dan ia tidak pernah salah
+memilih seperti drag yang diurus JS.
+
+**Tinggi kartu dan foto dipatok per breakpoint.** Foto `h-40 sm:h-44 xl:h-48`
+(tetap `object-contain`), kartu `h-140 xl:h-144`. Dulu fotonya `aspect-16/10`,
+jadi tingginya ikut melebar bersama kartu — di layar kecil, apalagi satu kolom
+tempat kartunya justru paling lebar, daftar komponen tinggal 2–3 baris dan
+berhenti menjawab "isinya apa". Yang menentukan tinggi daftar adalah SELISIH
+kedua angka itu, jadi kalau salah satunya diubah, hitung ulang yang lain.
 
 ### `/pc-prebuild/<id>` — detail
 
 Galeri kiri (memakai `ProductGallery` milik halaman produk — komponen yang sama,
-bukan salinan), panel performa kanan, isi paket grid dua kolom, bilah aksi
-sticky di bawah.
+bukan salinan), **isi paket kanan**, **panel performa selebar halaman di bawah
+keduanya**, bilah aksi sticky di bawah.
 
+Urutan itu ditukar 24 September 2026. Sebelumnya kebalikannya: performa di kolom
+kanan, isi paket grid dua kolom di bawah. Dua alasan:
+
+- Yang harus diputuskan pelanggan sebelum menekan "Masukkan Keranjang" adalah
+  **pilihan tukarnya**, dan itu dulu berada di bawah lipatan — di bawah panel
+  performa yang panjang. Sekarang ia bersebelahan dengan foto dan bilah harga.
+- Matriks FPS 3 resolusi × 3 setelan (§9) berdesak-desakan di kolom setengah
+  lebar. Selebar halaman ia terbaca tanpa digeser.
+
+- **Pilihan tukar memakai dropdown, bukan deretan chip** (24 September 2026).
+  Kolom kanan setengah lebar halaman, dan komponen dengan 4–5 pilihan
+  menghabiskannya. Komponen **tanpa** cabang tidak dapat dropdown sama sekali —
+  ia tampil sebagai teks; dropdown berisi satu baris mengundang orang
+  menekannya lalu tidak mendapat apa-apa, dan membuat yang benar-benar bisa
+  ditukar tenggelam di antaranya.
+- **Penanda "stok kosong" pilihan aktif dinaikkan ke luar dropdown.** Di daftar
+  chip lama penandanya menempel pada tiap pilihan sekaligus dan semuanya
+  terlihat; begitu daftarnya masuk dropdown, status pilihan yang SEDANG dipakai
+  tidak terlihat lagi sampai dibuka. Stok kosong tetap tidak menyembunyikan
+  pilihan dan tidak memindahkan bawaan (§5).
+- **Trigger dropdown dipaksa `min-h-11`,** menimpa tinggi bawaan 32px milik
+  `SelectTrigger`. Salah tekan di sini berarti komponen lain yang masuk
+  keranjang. Alasan yang sama dulu membuat chip-nya bertumpuk di ponsel.
 - **Harga per komponen sengaja tidak ditampilkan.** Yang dijual adalah paketnya;
   harga satuan di tiap baris mengundang pelanggan menjumlahkan sendiri lalu
   menawar selisihnya, dan angka hasil penjumlahan itu bukan angka yang bisa
@@ -865,8 +916,10 @@ panel.
 
 Ambang warna FPS ikut keluar ke `lib/fps-tone.ts` karena kartu memakainya juga.
 Kalau ambangnya disalin, paket yang sama bisa terlihat "hijau" di layar staff
-dan "kuning" di layar pelanggan. Ambangnya sendiri ada di `fpsLevel()`; layar
-memetakannya ke kelas Tailwind, lembar cetak (§13) ke warna tinta.
+dan "kuning" di layar pelanggan. Ambangnya sendiri ada di `fpsLevel()`, dan
+layar memetakannya ke kelas Tailwind. Lembar cetak (§13) dulu memetakannya ke
+warna tinta; sejak 25 Sep 2026 ia tidak mencetak angka FPS sama sekali, jadi
+`fps-tone.ts` sekarang hanya dipakai layar.
 
 ---
 
@@ -912,7 +965,7 @@ CS dibaca server dari konfigurasi (lihat `docs/05-data-fetching.md` §13).
 
 ---
 
-## 13. Lembar spesifikasi PDF (17 September 2026)
+## 13. Lembar spesifikasi PDF (17 September 2026, dirombak 25 September 2026)
 
 Tombol **Bagikan PDF** di halaman paket membuka
 `/pc-prebuild/<id>/print?pick=…` di tab baru. Halaman itu memanggil dialog cetak
@@ -936,34 +989,71 @@ Bedanya dengan quotation Build PC:
 |---|---|---|
 | Dicatat `recordPcBuildQuote` / nomor verifikasi | ya | **tidak** — brosur, bukan penawaran kasir |
 | Harga per komponen | ikut sakelar `showItemPrices` | **tidak pernah** — hanya harga paket (§11) |
-| Tata letak | tabel komponen | foto + harga kiri, nama + ringkasan + grid komponen kanan, performa selebar halaman |
+| Tata letak | tabel komponen | foto + harga kiri, nama + ringkasan + grid komponen kanan, deskripsi staff selebar halaman |
 
 **Satu tata letak untuk semua perangkat.** Tidak ada kelas responsif di dalam
 lembar; ia dirender selebar A4 di layar mana pun. PDF dari HP identik dengan PDF
 dari PC. Di layar sempit pratinjaunya digulir menyamping.
 
-**Satu atau dua halaman, ditentukan dari JUMLAH isi — bukan dibiarkan mengalir.**
-Lembar satu halaman pas untuk 10 komponen + 8 game dengan sisa ±3mm. Satu
-tambahan saja melempar kaki halaman sendirian ke halaman 2, jadi pemisahnya
-dipilih di depan (`tataLetak` di `print/page.tsx`):
+**Satu halaman, mengalir (direvisi 25 September 2026).** Sampai 25 Sep 2026
+lembar ini memilih tata letak satu atau dua halaman DI DEPAN — `tataLetak` di
+`print/page.tsx`, dengan ambang 10 komponen / 8 game, plus komponen
+`HalamanLanjutan` berpita nama paket. Seluruh mesin itu ada karena matriks FPS:
+ia satu blok besar yang tidak boleh terbelah, dan satu game tambahan saja
+melempar kaki halaman sendirian ke halaman 2.
 
-| Isi | Halaman 1 | Halaman 2 |
-|---|---|---|
-| ≤ 10 komponen dan ≤ 8 game | semuanya | — |
-| lebih dari itu, ≤ 16 komponen | foto, harga, komponen, ringkasan performa, S&K | tabel FPS |
-| > 16 komponen | foto, harga, komponen, S&K | seluruh blok performa |
+Matriks FPS sudah tidak dicetak (lihat **Performa** di bawah), jadi mesinnya
+ikut dibuang — yang tersisa mengalir apa adanya dan muat satu halaman pada
+kasus normal. Ruang yang dibebaskan ±90mm, dan itu yang membiayai nama komponen
+utuh di bawah ini.
 
-Diuji 17 Sep 2026 dengan 10/8, 14/12, dan 18/8 — ketiganya rapi. Halaman 1
-selalu berakhir dengan S&K supaya tetap utuh kalau hanya halaman itu yang
-dikirim. Halaman 2 membawa pita nama paket sendiri.
+Yang diterima sebagai konsekuensi: deskripsi yang sangat panjang bisa menyeret
+kaki halaman ke lembar kedua, dan lembar kedua itu **tidak punya jarak ke tepi
+atas kertas** (`@page` bermargin 0; padding `.print-sheet` hanya berlaku di
+potongan pertama, dan trik `thead th { padding-top: 12mm }` butuh tabel yang
+bersambung — lembar ini tidak punya tabel lagi). Kalau suatu saat lembar dua
+halaman jadi hal biasa, jarak itu yang pertama harus dibereskan.
+
+**Nama komponen dicetak utuh.** Tidak ada `line-clamp` di grid Isi Paket.
+Sebelumnya dijepit dua baris demi memuat blok performa, dan yang terpotong
+justru bagian yang membedakan satu barang dari barang lain — kapasitas SSD,
+ukuran RAM, tipe motherboard. Ringkasan paket (`summary`) juga tidak lagi
+dijepit enam baris, alasan yang sama.
+
+Karena panjang nama jadi berbeda-beda, semua kartu Isi Paket dibuat setinggi
+kartu tertinggi (`auto-rows-fr`) dengan isi di tengah vertikal (`items-center`)
+— 28 September 2026. Kartu rata atas (`items-start`) yang dipakai sebelumnya
+membuat grid bergerigi. Daftar satu kolom (label | foto | nama) sudah dicoba
+sebagai gantinya dan ditolak pemilik produk karena tampilannya. Konsekuensi yang
+diterima: satu nama yang sangat panjang meninggikan semua kartu.
 
 Di bawah harga tercetak **"Harga berlaku per <hari, tanggal>"** — tanggal lembar
 dibuat, karena berkas PDF-nya tidak ikut berubah sesudahnya.
 
-**Performa.** Hanya `performancePublic`, sama seperti halaman paket. Tabelnya
-seluruh matriks 3 resolusi × 3 setelan per game. Karena analisis hanya berlaku
-untuk susunan bawaan (§9), lembar yang dicetak dengan pilihan tukar non-bawaan
-menuliskannya terang-terangan.
+**Performa: tidak dicetak lagi (25 September 2026).** Blok "Estimasi Performa"
+— kotak resolusi, bar "Cocok untuk", dan matriks FPS 3×3 per game — sudah tidak
+ada di lembar ini. Keputusan pemilik produk: brosur yang dibagikan ke pelanggan
+cukup membawa isi paket, harga, dan uraian yang ditulis staff sendiri.
+
+Yang **tidak** ikut dihapus: panel performa di halaman paket `/pc-prebuild/<id>`,
+`performancePublic`, analisis Groq, dan seluruh `lib/pc-prebuild/performance.ts`.
+Yang hilang hanya pencetakannya di lembar PDF. Ikut hilang bersamanya:
+peringatan "estimasi dihitung untuk susunan bawaan" (ia menerangkan angka yang
+tidak dicetak lagi) dan pemanggilan `getPcPrebuildGames()` di halaman ini.
+
+**Deskripsi staff menggantikannya.** Di bawah grid komponen dicetak
+`preset.performanceDescription` — rich-text yang ditulis staff di panel admin
+khusus untuk lembar ini (§15). Ia BUKAN `summary`: `summary` tetap di kolom
+kanan sebagai satu-dua kalimat "paket ini untuk siapa". Blok dan judulnya hanya
+muncul kalau `stripHtml()` isinya tidak kosong — editor menyisakan `<p></p>`
+untuk kolom yang pernah disentuh lalu dikosongkan, dan judul yang berdiri di
+atas paragraf kosong lebih buruk daripada tidak ada blok sama sekali.
+
+Kelas `prose` sengaja TIDAK dipakai untuk merendernya. Warna `.prose` di
+`globals.css` diikat ke token tema (`var(--foreground)`), yang pada tema gelap
+berarti teks terang — di atas kertas putih itu tidak terbaca. Penataannya
+ditulis sebagai varian arbitrer (`[&_p]:…`, `[&_ul]:…`) dengan tinta
+`lib/print/ink.ts` yang tidak ikut tema.
 
 **Warna dan CMYK.** Browser selalu membuat PDF RGB; tidak ada CSS yang bisa
 memaksa CMYK. Yang dikerjakan: seluruh warna lembar datang dari
@@ -972,5 +1062,307 @@ bersih — di dalam gamut, kanal tegas, abu-abu netral. Warna layar yang menyala
 (biru `#2166de`) sengaja tidak dipakai di lembar cetak. Palet yang sama kini
 dipakai `/build-pc/print`.
 
-**`<thead>` tidak dipakai** di tabel FPS: aturan cetak global memberi `thead th`
-padding 12mm untuk tabel quotation yang bersambung antar halaman.
+**Jangan pakai `<thead>`** kalau suatu saat ada tabel baru di lembar ini:
+aturan cetak global memberi `thead th` padding 12mm untuk tabel quotation yang
+bersambung antar halaman, dan di lembar satu halaman itu terbaca sebagai celah
+kosong yang janggal. Tabel FPS yang dulu ada di sini memakai `<tbody>` saja
+karena alasan itu.
+
+---
+
+## 14. Penyusun komponen: rail langkah + grid produk (25 September 2026)
+
+Bagian **2 Komponen** di `/admin/pc-prebuild/[id]` diganti bentuknya.
+`slot-board.tsx` dihapus; penggantinya
+[`_components/component-workbench.tsx`](../src/app/admin/(panel)/pc-prebuild/_components/component-workbench.tsx).
+
+**Bentuk datanya tidak berubah sama sekali.** `items`, `alternatives`,
+`variationId`, seluruh `MAX_*`, rumus kunci `productId~variationId`, dan parser
+tidak disentuh. Paket yang tersimpan sebelum tanggal ini terbaca sama persis.
+Yang diganti cuma cara staff memilih produknya.
+
+### Apa yang berubah
+
+| Dulu | Sekarang |
+|---|---|
+| Grid dua kolom berisi SEMUA langkah sekaligus | Rail langkah (vertikal di `lg+`, strip yang digeser di layar sempit) + satu panel kerja |
+| Produk dipilih lewat dropdown pencarian di dalam kartu langkah | Grid produk selebar panel, kartu yang sama persis dengan `/build-pc` |
+| Tidak ada foto produk saat memilih | Foto, badge atribut, harga coret, Quick Preview |
+| Tidak ada pengurutan | Cari · Urutkan (5 pilihan) · Filter Atribut |
+| Halaman memanjang mengikuti isi katalog | Papan setinggi `100dvh`, yang menggulir isinya |
+
+### Kenapa
+
+Dropdown lama cuma muat 12 baris teks selebar setengah layar, dan staff memilih
+komponen **tanpa pernah melihat fotonya** — padahal foto adalah cara tercepat
+mengenali barang yang namanya beda satu digit ("B550M-PLUS" vs "B550M-PLUS II").
+Grid berfoto tidak muat di kartu selebar itu, jadi tata letaknya yang harus
+berubah, bukan dropdownnya yang diperbesar.
+
+Ongkos yang dibayar: langkah yang belum diisi tidak lagi terlihat sekaligus.
+Dijawab di rail — tiap tab membawa jumlah barangnya dan **titik merah** kalau
+ada barang yang belum lengkap.
+
+### Kartu produk kini berkas bersama
+
+[`components/shared/product-card-builder.tsx`](../src/components/shared/product-card-builder.tsx),
+dipakai wizard pelanggan **dan** panel ini. Ia pindah dari `features/builder/`
+justru supaya tidak disalin: dua kartu yang perlahan menyimpang berarti staff
+menyusun paket lewat kartu yang tidak lagi sama dengan kartu yang dilihat
+pelanggan saat paket itu dibuka di wizard.
+
+**Konsekuensinya: perubahan di berkas itu terasa di dua tempat.** Yang khas satu
+pemakai dinyatakan lewat prop, bukan ditaruh di dalamnya. Tipe produknya
+`ComponentCardProduct` — bentuk seminimal yang dibutuhkan kartu, bukan
+`BuilderProduct`, supaya panel admin tidak perlu membuat objek store palsu.
+
+Quick Preview-nya **tidak** ikut pindah: `BuilderQuickViewDialog` tetap di
+`features/builder/` dan diimpor panel ini. Ia terikat `ProductGallery`,
+`VariationList`, dan server action deskripsi; memindahkannya berarti menyentuh
+tiga berkas lagi di jalur pelanggan untuk keuntungan nol.
+
+### Tingginya dikunci satu layar
+
+Seluruh papan ini `100dvh`. Yang menggulir adalah **baris komponen terpilih**
+(mendatar) dan **grid produk** (menurun), masing-masing di wadahnya sendiri;
+rail langkah punya gulirannya sendiri di layar lebar.
+
+Sebelumnya papan ini ikut memanjangkan halaman editor, dan grid produk yang
+berisi ratusan barang mendorong bagian 3 dan 4 (harga & analisis) ribuan piksel
+ke bawah — menggulir dari komponen ke harga jadi perjalanan yang panjangnya
+bergantung pada berapa banyak produk yang kebetulan sudah dimuat. Dengan tinggi
+terkunci, panjang halaman editor tidak lagi ditentukan isi katalog.
+
+Konsekuensinya bilah alat dan baris terpilih tidak ikut tergulir keluar saat
+staff menyisir grid. Itu disengaja: keduanya kontrol, bukan isi.
+
+Dua tempat yang **wajib** ikut kalau tinggi ini diubah: `pb-20 md:pb-0` di wadah
+grid (bilah simpan `fixed` di dasar layar sempit akan menutupi kartu baris
+terakhir, dan tidak ada lagi guliran halaman yang bisa membebaskannya), dan
+`max-h-20` di area chip varian kotak barang (produk dengan belasan varian akan
+menumbuhkan kotaknya sampai baris terpilih setinggi setengah layar).
+
+### Pilihan tukar: dialog tersendiri
+
+[`_components/alternatives-dialog.tsx`](../src/app/admin/(panel)/pc-prebuild/_components/alternatives-dialog.tsx).
+
+Rancangan pertama membuka daftar ini sebagai accordion di dalam kotak barang,
+dan grid utama berubah jadi "mode memilih pengganti". Dua-duanya membuat
+**kotak-kotak barang berpindah posisi** setiap kali daftar dibuka atau ditutup:
+barisnya melebar, kotak tetangganya bergeser, dan staff kehilangan tempat yang
+barusan ditunjuknya. Dialog membuat segala sesuatu di belakangnya diam.
+
+Dialog itu punya pencarian dan pengurutannya sendiri lewat hook yang sama
+(`use-product-search.ts`), jadi kategori dan syarat kompatibilitasnya mustahil
+menyimpang dari grid utama.
+
+**Tidak ada Quick Preview dan filter atribut di dalamnya.** Keduanya dialog, dan
+dialog di project ini tidak boleh dirantai (§7 dan catatan di
+`builder-quick-view-dialog.tsx`). Karena itu `onQuickView` di kartu bersama
+bersifat **opsional**: tanpa prop itu, tombolnya tidak dirender sama sekali —
+tombol yang ada tapi tidak melakukan apa-apa lebih buruk daripada tombol yang
+tidak ada.
+
+Indeks barang yang dituju dialog **diturunkan**, bukan dibereskan lewat efek
+yang memanggil `setState`. Barang yang dituju bisa lenyap di tengah jalan (staff
+menghapus kotaknya), dan indeks yang tertinggal tidak menunjuk "tidak ada"
+melainkan **barang lain** begitu staff menambah komponen berikutnya.
+
+### Filter atribut
+
+Modal dua tingkat: pilih atributnya, lalu centang nilainya. Isinya dari
+`prebuildAttributeFacetsAction` — hanya atribut yang benar-benar dimiliki produk
+di kategori langkah itu. Rincian aturannya di
+[`docs/05-data-fetching.md` §29](./05-data-fetching.md).
+
+Yang disengaja di UI-nya:
+
+- **Angka di samping nama atribut** = berapa nilai yang dipilih di sana. Tanpa
+  itu, filter yang aktif di atribut lain jadi tak kasat mata begitu staff pindah
+  panel — cara tercepat membuat orang mengira katalognya kosong.
+- **Nilai berjumlah nol tetap ditampilkan**, diredupkan. Staff perlu bisa
+  membedakan "tidak ada di katalog" dari "tidak cocok dengan komponen yang sudah
+  dipilih".
+- **Diterapkan saat ditekan**, bukan per centang: satu muat ulang grid, bukan
+  satu per klik.
+- Chip filter aktif ikut tampil di toolbar panel setelah modal ditutup.
+
+### Dua varian dari satu produk tetap berarti "pelanggan pilih salah satu"
+
+Ini ditegaskan ulang karena bentuk barunya menampilkan varian aktif sebagai chip
+di kotak barang, dan chip yang menyala mudah terbaca sebagai "dipasang". Yang
+masuk total paket **hanya bawaannya**; sisanya `alternatives` (§2). Kotak barang
+menyebutnya terang-terangan begitu lebih dari satu varian menyala.
+
+### "Dipasang bersamaan" vs "pelanggan pilih salah satu" (25 September 2026)
+
+Keluhan dari pemakaian nyata: menambah beberapa barang dalam satu langkah
+**terasa** seperti menyusun pilihan tukar. Dan itu masuk akal — deretan kotak
+berdampingan adalah bentuk yang di mana pun berarti "pilih satu", sementara
+pilihan tukar yang sebenarnya justru tersembunyi di balik satu tombol di dalam
+kotak. Salahnya tidak berbunyi: paket "RAM 16 GB **atau** 32 GB" tersimpan
+sebagai 16 GB **dan** 32 GB, totalnya naik satu keping, dan pelanggan menerima
+dua keping.
+
+Tiga perubahan, semuanya kata dan tanda — **tidak ada yang menyentuh bentuk
+data atau alur klik**:
+
+- **Tanda `+` antar kotak barang.** Pernyataan "DAN" yang terbaca tanpa membaca
+  kalimat apa pun. `aria-hidden`, karena `role="list"` di wadahnya hanya boleh
+  berisi `listitem` dan artinya sudah disampaikan keterangan di atas baris.
+- **Keterangan di atas baris terpilih**, hanya saat barangnya lebih dari satu:
+  "Dipasang bersamaan. N barang di bawah semuanya ikut dalam rakitan dan masuk
+  total paket — bukan pilihan." Pada satu barang tidak ada apa pun yang bisa
+  tertukar, dan baris yang selalu ada berhenti dibaca tepat saat ia dibutuhkan.
+- **Keterangan tepat waktu saat barang KEDUA masuk**, lewat `pesan` yang sudah
+  ada, beserta jalan keluarnya ("hapus barang ini lalu pakai Pilihan tukar").
+  Keterangan pasif saja tidak cukup: saat menekan kartu, yang ditatap staff
+  adalah grid, bukan barisnya.
+
+`pesan` karena itu punya **`nada`** (`info` | `peringatan`). Pesan yang satu ini
+muncul saat penambahannya **berhasil**, dan rupa peringatan membuatnya terbaca
+sebagai kesalahan yang perlu dibatalkan.
+
+Kosakatanya **satu pasang, dipakai di tiga tempat**: keterangan baris, kotak
+varian, dan sub-label tombol "Pilihan tukar" (yang sekarang menulis "pelanggan
+pilih salah satu" di bawah namanya). Sisi "atau" sudah punya kalimat itu sejak
+16 September di kotak varian; yang hilang adalah padanannya di sisi "dan". Kalau
+kalimat ini diubah, ubah di ketiganya — dua istilah untuk satu perbedaan adalah
+persis penyakit yang sedang diobati.
+
+**Yang sengaja TIDAK dipakai**, beserta alasannya:
+
+- **Wadah bergaris berlabel "Dipasang bersamaan (2)"** di sekeliling deretan
+  kotak. Paling tegas, tapi papan ini tingginya dikunci `100dvh` dan tambahan
+  lapisnya diambil dari grid produk — satu-satunya area kerja yang menggulir.
+  Ditahan; kalau kata dan tanda ternyata belum cukup, ia bisa ditambahkan tanpa
+  membongkar yang sekarang.
+- **Popup "tambah sebagai barang / sebagai pilihan tukar" saat kartu ditekan.**
+  Praktis mustahil salah paham, tapi membuat kasus paling wajar (empat keping
+  RAM, dua NVMe) butuh dua klik per produk, dan ia mendekati "grid jadi mode
+  memilih pengganti" yang sudah ditolak di bagian ini.
+
+### `z-index` rail "lompat ke bagian"
+
+Rail-nya `z-40`, dan angkanya ditentukan dari dua sisi. Di bawahnya: tombol
+Quick Preview kartu produk, yang di layar sempit menempel di sudut kanan atas
+kartu — tepat di jalur rail. Di atasnya: dialog project memakai `z-50`
+(`components/ui/dialog.tsx`), dan rail yang mengapung di atas modal tampak bisa
+ditekan padahal isi di belakangnya sedang tidak boleh disentuh.
+
+Yang diturunkan justru kartunya: tombol matanya dulu `z-[40]` tanpa sebab — di
+dalam kartu ia cuma perlu menang atas overlay HABIS (`z-10`) dan overlay hover
+(`z-20`), jadi sekarang `z-30`. Kartunya berkas bersama dengan wizard pelanggan,
+tapi bilah-bilah di sana sudah `z-[45]` ke atas, jadi tombol itu memang sudah
+berada di bawahnya sebelum ini.
+
+
+---
+
+## 15. Tag performa, kalimat pembuka, dan deskripsi PDF (25 September 2026)
+
+### Tag sasaran dan kalimat pembuka bisa disunting tangan
+
+`resolution.tier`, `resolution.quality`, dan `headline` di panel analisis kini
+punya kontrolnya sendiri: dua `select` dan satu textarea, dengan pratinjau tag
+("1440p High") persis seperti yang dilihat pelanggan.
+
+Sebelumnya ketiganya cuma bisa diubah dengan menjalankan **ulang seluruh
+analisis** — satu panggilan Groq penuh untuk membetulkan satu kata, dan hasilnya
+pun belum tentu berubah. Angka FPS sudah bisa disunting sejak awal dengan alasan
+yang sama persis (teknisi HNS tahu hal yang tidak diketahui model: casing
+berventilasi sempit, panel 75 Hz yang membuat "1440p High" tidak ada gunanya,
+driver yang sedang bermasalah); tidak ada alasan tag dan kalimat pembukanya
+diperlakukan berbeda.
+
+Suntingannya ikut tersimpan bersama preset dan bertahan sampai analisis
+dijalankan ulang — dialog konfirmasi "Hitung ulang" sudah menyebutkan bahwa
+hasil yang sekarang akan ditimpa, termasuk yang sudah disunting.
+
+### Tata letak panel analisis
+
+Dua perubahan kecil dengan alasan yang sama — apa yang pantas selebar panel:
+
+- **"Perlu diperiksa" berbagi baris dengan "Keseimbangan CPU & GPU"** (grid dua
+  kolom). Keduanya catatan pinggir untuk staff, bukan isi paket; masing-masing
+  selebar panel membuatnya terbaca sepenting matriks FPS di atasnya. Kalau
+  tidak ada peringatan sama sekali, kartu keseimbangan kembali selebar panel —
+  kolom kosong di sebelahnya cuma menyisakan lubang.
+- **Kolom deskripsi PDF naik ke bawah sakelar "Tampilkan ke pelanggan".**
+  Keduanya keputusan yang diambil staff sendiri; semua yang di bawahnya angka
+  yang dibaca. Di dasar panel ia baru ditemukan setelah layar penuh angka, dan
+  kolom yang tidak ditemukan sama saja dengan kolom yang tidak ada.
+
+### `performanceDescription` — deskripsi performa untuk PDF
+
+Bidang **baru** di `PcPrebuildPreset`, maksimal `MAX_PERFORMANCE_DESCRIPTION`
+(1000 karakter, dipotong di parser — bukan ditolak, sama seperti batas lain).
+
+Tiga teks yang mudah tertukar, dan sengaja dipisah:
+
+| Bidang | Siapa yang menulis | Dipakai di |
+|---|---|---|
+| `summary` | staff | kartu & halaman paket — paket ini untuk siapa |
+| `performance.headline` | AI, boleh disunting staff | panel performa |
+| `performanceDescription` | staff | lembar PDF paket |
+
+**Ia tidak tinggal di dalam `performance`.** Isi objek itu ditimpa utuh setiap
+kali analisis AI dijalankan ulang, dan tulisan tangan staff yang hilang karena
+tombol "Hitung ulang" ditekan adalah kerugian yang tidak terlihat sampai
+PDF-nya dicetak.
+
+Kolomnya dirender **di luar** cabang `performance` di `analysis-panel.tsx`,
+supaya paket yang belum pernah dianalisis tetap bisa mengisinya — kalau tidak,
+satu-satunya cara menulis deskripsi PDF adalah menjalankan analisis AI lebih
+dulu.
+
+Kolomnya **rich text** (`components/admin/rich-text-editor.tsx`), sama seperti
+deskripsi produk dan halaman kebijakan: isinya masuk ke PDF sebagai paragraf
+dan daftar, dan teks polos memaksa staff menyerahkan penataannya ke lembar
+cetak. Karena itu `MAX_PERFORMANCE_DESCRIPTION` (8000) menghitung **HTML**, dan
+ia penjaga — bukan target menulis. Yang ditunjukkan ke staff adalah panjang
+TEKSNYA (`stripHtml`), karena angka yang melonjak gara-gara satu tombol tebal
+ditekan tidak berarti apa-apa baginya.
+
+**Sudah dipakai lembar PDF (25 September 2026).** Perombakan yang ditunggu
+paragraf ini sudah dikerjakan: `/pc-prebuild/[id]/print` membacanya dan
+mencetaknya sebagai HTML di bawah grid komponen, di tempat blok "Estimasi
+Performa" dulu berada. Rincian penataan dan alasan `prose` tidak dipakai ada di
+§13.
+
+---
+
+## 16. Galeri foto paket menyalin galeri produk (25 September 2026)
+
+`_components/preset-images.tsx` sekarang berbentuk deretan ubin 96px yang bisa
+**diseret** untuk diurutkan, dengan nomor urut, penanda "Utama" di ubin
+pertama, dan ubin "Upload" di ujung — sama persis dengan
+`admin/produk/image-uploader.tsx`.
+
+Bentuk sebelumnya: satu kotak besar untuk foto utama, lalu grid kecil yang
+**baru muncul setelah foto utama ada**, dan urutan hanya bisa diubah lewat
+tombol bintang per foto. Dua akibatnya nyata. Staff yang belum punya foto sama
+sekali tidak melihat satu pun ubin tambah, jadi "bagaimana menambah foto" tidak
+terjawab di layar. Dan staff yang terbiasa mengurutkan foto produk dengan
+menyeret mencoba menyeret di sini, tidak terjadi apa-apa, lalu menyimpulkan
+urutannya memang tidak bisa diubah.
+
+Yang ikut dibetulkan setelah dipakai: kolomnya diberi **judul** ("Foto paket"),
+foto di dalam ubin diberi **padding** supaya tidak menempel garis tepi, dan di
+bawah deretan ada **tombol bertulisan "Tambah foto"** — ubin bergaris
+putus-putus saja terbaca sebagai tempat foto berikutnya akan muncul, bukan
+sebagai sesuatu yang bisa ditekan. Ubin dan tombol memicu **satu** `<input>`
+yang sama lewat ref; dua input terpisah membuat dialog berkas kedua kadang
+membuka pilihan sisa dari yang pertama.
+
+**Yang sengaja TETAP berbeda dari galeri produk: unggahannya tidak ditahan.**
+Form produk menahan berkas di browser sampai "Simpan" karena staff sering
+menambah lalu membatalkan banyak gambar sekaligus sehingga R2 penuh berkas
+yatim. Di sini berkasnya diunggah saat dipilih — jumlahnya paling banyak empat,
+dan preset menyimpan `images: string[]`, jadi menahan berkas berarti panel harus
+memegang objek `File` di state induk dan mengunggahnya di jalur simpan: satu
+jalur baru yang bisa gagal separuh. Konsekuensinya diterima — foto yang
+diunggah lalu dihapus meninggalkan berkas tak terpakai di R2.
+
+**Yang pertama adalah foto utama**, di sini maupun di `parsePrebuildConfig`.
+Tidak ada penanda terpisah; urutan yang menentukan.

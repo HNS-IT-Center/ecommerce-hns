@@ -6,10 +6,10 @@ import { getCurrentCustomer } from "@/lib/auth/customer";
 import {
   createSavedBuild,
   deleteSavedBuild,
-  getSavedBuildForBuilder,
   refreshBuildPrices,
+  updateSavedBuild,
   type CreateSavedBuildInput,
-  type BuilderReadySelections,
+  type UpdateSavedBuildResult,
 } from "@/lib/api/saved-pc-builds";
 
 /**
@@ -29,7 +29,18 @@ export type SaveBuildInput = {
   stepName: string;
 };
 
-export type SaveBuildResult = { ok: true; id: string } | { ok: false; error: string };
+export type SaveBuildResult =
+  | { ok: true; id: string; name: string }
+  | { ok: false; error: string };
+
+/**
+ * Hasil "Simpan Perubahan". `gone` diteruskan apa adanya dari
+ * `UpdateSavedBuildResult` — artinya barisnya sudah tidak ada, dan dialognya
+ * menutup jalan menimpa alih-alih menyuruh mencoba lagi.
+ */
+export type UpdateBuildResult =
+  | { ok: true; name: string }
+  | (Extract<UpdateSavedBuildResult, { ok: false }>);
 
 const DEFAULT_NAME_PREFIX = "Rakitan";
 
@@ -60,9 +71,12 @@ export async function saveBuildAction(name: string, items: SaveBuildInput[]): Pr
 
   const hasil = await createSavedBuild(customer.id, finalName, refs);
 
-  if (hasil.ok) invalidasiHalamanRakitan();
+  if (!hasil.ok) return hasil;
 
-  return hasil;
+  invalidasiHalamanRakitan();
+
+  // Alasan `name` ikut pulang: lihat catatan di `updateSavedBuildAction`.
+  return { ok: true, id: hasil.id, name: finalName };
 }
 
 /**
@@ -99,12 +113,53 @@ export async function deleteSavedBuildAction(id: string): Promise<{ ok: boolean 
   return { ok: deleted };
 }
 
-/** Dipakai tombol "Lanjutkan di Builder" di halaman detail rakitan tersimpan. */
-export async function loadSavedBuildForBuilderAction(id: string): Promise<BuilderReadySelections | null> {
+/**
+ * Menimpa rakitan yang sedang dibuka lewat `/build-pc?build=<id>`.
+ *
+ * Bentuk masukannya sama persis dengan `saveBuildAction` — hanya id komponen,
+ * kuantitas, dan label langkah. Harga acuan tetap diisi server dari katalog
+ * (CLAUDE.md §2.7), jadi "timpa" tidak membuka satu pun jalan baru bagi angka
+ * yang datang dari klien.
+ *
+ * Nama ikut diperbarui: dialognya memuat nama lama dan membolehkannya diubah,
+ * sehingga mengganti nama tidak perlu jadi perjalanan terpisah ke halaman
+ * detail.
+ */
+export async function updateSavedBuildAction(
+  id: string,
+  name: string,
+  items: SaveBuildInput[]
+): Promise<UpdateBuildResult> {
   const customer = await getCurrentCustomer();
-  if (!customer) return null;
+  if (!customer) {
+    return { ok: false, error: "Sesi Anda sudah berakhir. Masuk lagi untuk menyimpan." };
+  }
 
-  return getSavedBuildForBuilder(id, customer.id);
+  if (!Array.isArray(items) || items.length === 0) {
+    return { ok: false, error: "Belum ada komponen yang dipilih." };
+  }
+
+  const trimmedName = name.trim().slice(0, 120);
+  const finalName = trimmedName || fallbackName();
+
+  const refs: CreateSavedBuildInput[] = items.map((item) => ({
+    stepId: item.stepId,
+    stepName: item.stepName,
+    productId: item.productId,
+    quantity: item.quantity,
+  }));
+
+  const hasil = await updateSavedBuild(id, customer.id, finalName, refs);
+
+  if (!hasil.ok) return hasil;
+
+  invalidasiHalamanRakitan();
+
+  // Nama BALIK dari server, bukan ditebak ulang di klien: kalau kolom nama
+  // dikosongkan, yang tersimpan adalah `fallbackName()` di atas, dan bar
+  // "Mengedit rakitan tersimpan" harus menyebut nama yang benar-benar ada di
+  // database — bukan nama sementara yang cuma hidup di layar.
+  return { ok: true, name: finalName };
 }
 
 /** Dipakai tombol "Perbarui Harga Acuan" di halaman detail rakitan tersimpan. */

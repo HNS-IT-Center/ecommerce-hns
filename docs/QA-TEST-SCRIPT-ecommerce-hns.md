@@ -249,9 +249,12 @@
 | AUT-502 | Lupa password — email ada | Email reset terkirim, respons UI netral | P0 |
 | AUT-503 | Lupa password — email tidak ada | Respons UI **sama persis** (cegah enumeration) | P0 |
 | AUT-504 | Reset token sekali pakai | Setelah dipakai, token invalid | P0 |
-| AUT-505 | Reset password | Semua session lama ter-invalidate | P1 |
-| AUT-506 | Ganti password (login) | Wajib masukkan password lama | P0 |
-| AUT-507 | Akun OAuth-only ganti password | Ditangani dengan benar (opsi set password atau disembunyikan) | P1 |
+| AUT-505 | Reset password | Semua session lama ter-invalidate — **cookie toko DAN cookie panel**, untuk akun staff | P1 |
+| AUT-506 | Ganti password (login) | Cukup password baru + konfirmasi; password lama **tidak** diminta lagi (23 Sep 2026) | P0 |
+| AUT-507 | Akun Google **pasang** password pertama | Berhasil; tombol berbunyi "Pasang Password"; setelahnya bisa masuk lewat email/username + password **dan** tetap bisa lewat Google | P0 |
+| AUT-508 | Lupa password — email akun **staff** | Email reset terkirim; tautannya berlaku dan password panel berubah | P0 |
+| AUT-509 | Ganti password sendiri, lalu buka `/profile` | Tidak ikut terlempar keluar — sesi perangkat ini diterbitkan ulang | P1 |
+| AUT-510 | Kirim ulang verifikasi dengan email staff | Respons netral, **tidak** ada email terkirim (jalur itu tetap khusus pelanggan) | P1 |
 
 ## 2.6 Proteksi Route
 

@@ -1,3 +1,4 @@
+import { requirePageView } from "@/lib/auth"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
@@ -17,6 +18,8 @@ type Props = {
 }
 
 export default async function AdminProdukEditPage({ params, searchParams }: Props) {
+  await requirePageView("produk")
+
   const { id } = await params
   // Saringan daftar asal, dipakai tombol Kembali dan redirect setelah simpan.
   const returnQuery = sanitizeListQuery((await searchParams)[BACK_PARAM])

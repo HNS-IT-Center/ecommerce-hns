@@ -153,11 +153,19 @@ export async function prepareBuildWhatsApp(
 }
 
 /**
- * Mencatat rakitan sebagai quotation, sama seperti halaman `/build-pc/print`.
+ * Menerbitkan rakitan sebagai quotation bernomor, sama seperti tombol Print.
  *
- * Kodenya deterministik dari `productId:qty:harga` (lihat `computeContentHash`),
- * jadi rakitan yang sama pada harga yang sama mendapat kode yang SAMA dengan
- * PDF yang dicetak pelanggan — CS dan kasir melihat satu dokumen, bukan dua.
+ * **Perubahan 21 September 2026 — baca ini sebelum mengubah perilakunya.**
+ * Dulu kodenya deterministik dari `productId:qty:harga`, sehingga rakitan yang
+ * sama pada harga yang sama mendapat kode yang SAMA dengan PDF yang dicetak
+ * pelanggan: satu dokumen untuk dua jalur. Dedupe itu sudah dilepas bersama
+ * masuknya nomor urut dan kepemilikan quotation.
+ *
+ * Artinya sekarang: pelanggan yang menekan Print LALU Konsultasi WA menerima
+ * DUA nomor untuk rakitan yang sama. Itu konsekuensi yang diterima, bukan bug —
+ * keduanya memang dua peristiwa berbeda (satu dokumen dibawa pulang, satu
+ * prospek masuk ke CS), dan menyatukannya kembali berarti menghidupkan lagi
+ * dedupe yang membuat dua penawaran untuk dua orang bisa bertukar pemilik.
  *
  * Yang dicatat adalah hasil `priceCartFromCatalog`, yaitu angka yang persis
  * tertulis di pesan WhatsApp. Snapshot di /verify harus cocok dengan pesan

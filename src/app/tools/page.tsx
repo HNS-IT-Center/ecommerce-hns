@@ -125,11 +125,11 @@ export default function ToolsPage() {
   const baseUrl = env.NEXT_PUBLIC_SITE_URL.replace(/\/$/, "");
 
   return (
-    <div className="flex min-h-screen flex-col bg-page">
+    <div className="flex min-h-dvh flex-col bg-page">
       <JsonLd data={buildToolJsonLd(baseUrl)} />
       <JsonLd data={buildFaqJsonLd()} />
       <Header />
-      <main className="flex-1 pb-16">
+      <main className="min-h-content flex-1 pb-16">
         <div className="mx-auto w-full px-4 py-8 md:px-6 2xl:px-8">
           <div className="mx-auto mb-8 max-w-3xl space-y-3 text-center">
             <h1 className="text-3xl font-bold tracking-tight md:text-4xl">

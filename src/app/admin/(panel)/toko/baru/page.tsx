@@ -1,6 +1,9 @@
+import { requirePageView } from "@/lib/auth"
 import { StoreForm } from "../store-form";
 
-export default function AdminTokoBaruPage() {
+export default async function AdminTokoBaruPage() {
+  await requirePageView("toko")
+
   return (
     <div className="mx-auto max-w-3xl">
       <h1 className="text-2xl font-bold">Tambah Toko</h1>

@@ -20,9 +20,9 @@ export default function SupportPage() {
   )
 
   return (
-    <div className="flex min-h-screen flex-col bg-page">
+    <div className="flex min-h-dvh flex-col bg-page">
       <Header />
-      <main className="flex-1 flex items-center justify-center py-20 bg-muted/20">
+      <main className="min-h-content flex-1 flex items-center justify-center py-20 bg-muted/20">
         <div className="container mx-auto px-4 max-w-3xl">
           <SupportTicketForm waUrl={waUrl} />
         </div>

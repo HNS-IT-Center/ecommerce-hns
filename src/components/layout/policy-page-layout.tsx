@@ -10,10 +10,10 @@ interface PolicyPageLayoutProps {
 
 export function PolicyPageLayout({ title, breadcrumbLabel, children }: PolicyPageLayoutProps) {
   return (
-    <div className="flex min-h-screen flex-col bg-page">
+    <div className="flex min-h-dvh flex-col bg-page">
       <Header />
       <Breadcrumb items={[{ label: "Beranda", href: "/" }, { label: breadcrumbLabel }]} />
-      <main className="flex-1">
+      <main className="min-h-content flex-1">
         <div className="mx-auto max-w-3xl px-4 py-8 md:px-6 md:py-12">
           <h1 className="text-3xl font-extrabold tracking-tight">{title}</h1>
           <div className="prose prose-sm mt-6 max-w-none">{children}</div>

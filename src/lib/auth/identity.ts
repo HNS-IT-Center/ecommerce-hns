@@ -103,6 +103,11 @@ export type IdentityLookup = {
   /// Verifikasi email (pelanggan email+password). Login terpadu menolak
   /// pelanggan yang belum verifikasi; admin tak punya nilai ini (null = lolos).
   emailVerifiedAt: Date | null
+  /// Peran RBAC dinamis. Dibutuhkan login terpadu untuk menghitung TUJUAN
+  /// sesudah masuk (`landingPathFor`): tanpa ini `muatIzinUser` jatuh ke
+  /// fallback owner/staff, dan Kasir yang sudah punya peran dinamis akan
+  /// terbaca seolah berizin penuh lalu diantar ke panel yang kosong baginya.
+  roleId: string | null
 }
 
 /**
@@ -119,7 +124,14 @@ export async function findUserByIdentifier(raw: string): Promise<IdentityLookup 
 
   return getPrisma().user.findFirst({
     where: isEmail(identifier) ? { email: identifier } : { username: identifier },
-    select: { id: true, email: true, passwordHash: true, role: true, emailVerifiedAt: true },
+    select: {
+      id: true,
+      email: true,
+      passwordHash: true,
+      role: true,
+      emailVerifiedAt: true,
+      roleId: true,
+    },
   })
 }
 

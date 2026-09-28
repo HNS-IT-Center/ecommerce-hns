@@ -1,3 +1,4 @@
+import { requirePageView } from "@/lib/auth"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { getAllCategories } from "@/lib/api/woocommerce/categories"
@@ -11,6 +12,8 @@ type Props = {
 }
 
 export default async function AdminProdukBaruPage({ searchParams }: Props) {
+  await requirePageView("produk")
+
   // Hanya untuk tombol Kembali (batal). Setelah produk dibuat, form sengaja
   // membuka daftar polos supaya produk barunya tampil di baris pertama.
   const returnQuery = sanitizeListQuery((await searchParams)[BACK_PARAM])

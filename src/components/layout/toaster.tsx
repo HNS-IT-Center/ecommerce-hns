@@ -50,24 +50,76 @@ export function Toaster() {
   const { toasts } = useToastManager()
   const pathname = usePathname()
   const isBuildPc = pathname?.startsWith("/build-pc")
-  // Panel admin menaruh notifikasi di kiri atas: sudut kanan bawah di sana
-  // ditempati tombol WhatsApp mengambang dan dock mobile, yang menutupi toast
-  // tepat saat aksi AI selesai.
+  // Panel admin menaruh notifikasi di KIRI atas: sudut kanan di sana ditempati
+  // tombol WhatsApp mengambang dan dock mobile.
   const isAdmin = pathname?.startsWith("/admin")
 
+  /**
+   * SATU ATURAN, tiga rute: toast selalu menggantung di bawah chrome atas yang
+   * berlaku di rute itu.
+   *
+   * Sebelumnya hanya `/admin` dan `/build-pc` yang diposisikan, dan sisanya —
+   * yaitu seluruh toko — memakai bawaan `bottom-4`. Di ponsel titik itu tepat
+   * di belakang MobileDock (`fixed bottom-0`, tinggi 60px) dan bersebelahan
+   * dengan tombol WhatsApp (`bottom-[90px]`), jadi "Ditambahkan ke keranjang"
+   * muncul di balik tumpukan tombol. Sudut bawah kanan di ponsel sudah penuh;
+   * sudut atas tidak, dan satu-satunya yang ada di sana adalah header.
+   *
+   * `bottom-auto` (beserta `sm:bottom-auto`) WAJIB ikut di setiap posisi:
+   * viewport bawaannya `bottom-4 sm:bottom-6`, dan tanpa lawan yang setara
+   * `tailwind-merge` tidak punya alasan membuangnya — toast akan tertarik ke
+   * bawah lagi begitu layar mencapai `sm`. Hal yang sama berlaku untuk
+   * `right-auto` di panel admin.
+   */
   const positionClassName = isAdmin
-    ? "!top-4 !left-4 !right-auto !bottom-auto sm:!top-6 sm:!left-6 sm:!right-auto sm:!bottom-auto"
+    // 56px (`AdminMobileBar`, `h-14`) + 12px napas. Bilahnya `md:hidden`, jadi
+    // dari `md` ke atas tidak ada yang perlu dihindari lagi.
+    ? "top-[68px] bottom-auto left-4 right-auto sm:bottom-auto sm:left-6 sm:right-auto md:top-6"
     : isBuildPc
-      // Kanan atas. `!bottom-auto` wajib di semua breakpoint karena viewport
-      // bawaan memasang `bottom-4 sm:bottom-6` — tanpa itu toast tetap
-      // tertarik ke bawah di layar sm ke atas.
-      // Di mobile posisinya diturunkan ke bawah bar pencarian mengambang
-      // (judul step + kolom cari + tombol sort) supaya tidak menutupinya;
-      // di desktop bar itu tidak ada, jadi cukup jarak di bawah header.
-      ? "!top-[140px] !bottom-auto sm:!bottom-auto md:!top-24"
-      : ""
+      // 140px = tinggi bilah mengambang `/build-pc` di ponsel (judul step +
+      // kolom cari + tombol sort), diukur, bukan diturunkan dari satu kelas.
+      // Di `md` ke atas bilah itu tidak ada dan yang tersisa cuma header toko.
+      ? "top-[140px] bottom-auto sm:bottom-auto md:top-24"
+      // 64px (`Header`, `h-16`) + 12px napas.
+      : "top-[76px] bottom-auto sm:bottom-auto"
 
-  const viewportClassName = `no-print print:hidden ${positionClassName}`.trim()
+  /**
+   * `z-[60]`, bukan `z-50` bawaan viewport.
+   *
+   * Header toko (`fixed top-0 z-50`) dan MobileDock (`fixed bottom-0 z-50`)
+   * berada di angka yang SAMA dengan toast. Saat z-index seri, yang menang
+   * adalah urutan DOM — dan toast di-portal ke `<body>`, jadi urutannya tidak
+   * dijamin. Itulah sebabnya toast kadang tampil utuh dan kadang tertutup
+   * header tanpa pola yang jelas. Satu angka di atas chrome menghapus
+   * pertanyaannya.
+   *
+   * Tetap di BAWAH lapisan yang memang harus menutupi segalanya: laci
+   * `/build-pc` (`z-[55]`) sengaja dilewati — ia lebih rendah — tapi dialog dan
+   * lightbox galeri (`z-[100]`) tetap menang atas toast, dan itu benar: yang
+   * sedang dibaca orang tidak boleh ditimpa kabar sekilas.
+   */
+  const viewportClassName = `no-print print:hidden z-[60] ${positionClassName}`.trim()
+
+  /**
+   * Toast TUMBUH KE BAWAH dari titik jangkarnya.
+   *
+   * `ToastViewport` adalah kotak setinggi NOL (isinya diposisikan absolut), dan
+   * `ToastRoot` bawaannya `absolute inset-x-0 bottom-0` — tepi BAWAH toast yang
+   * menempel di jangkar, lalu badannya memanjang KE ATAS. Itu benar selama
+   * jangkarnya di bawah layar; sekarang ketiga rute berjangkar di ATAS, dan
+   * perilaku lama berarti badan toast memanjang ke arah header — yaitu keluar
+   * layar, persis gejala "kotak hijau yang terpotong" yang dulu dilaporkan di
+   * panel admin.
+   *
+   * Karena itu jangkarnya dibalik untuk SEMUA rute, bukan cuma `/admin`: tepi
+   * ATAS yang menempel, badannya memanjang ke bawah — ke arah ruang kosong.
+   */
+  //
+  // `-translate-y-2` di keadaan awal ikut dibalik karena alasan yang sama:
+  // animasi bawaan (`translate-y-2`) menggeser toast masuk DARI BAWAH, arah
+  // yang hanya masuk akal untuk toast yang berjangkar di bawah layar. Sekarang
+  // ia datang dari arah header, tempat asalnya yang sebenarnya.
+  const rootPositionClassName = "top-0 bottom-auto data-starting-style:-translate-y-2"
 
   return (
     <ToastPortal>
@@ -94,10 +146,10 @@ export function Toaster() {
               ? VARIANT_STYLES[variant]
               : null
           return (
-          <ToastRoot 
-            key={toast.id} 
+          <ToastRoot
+            key={toast.id}
             toast={toast}
-            className={styles?.root ?? ""}
+            className={`${rootPositionClassName} ${styles?.root ?? ""}`.trim()}
           >
             <ToastContent className={styles?.content ?? ""}>
               <div className="flex min-w-0 flex-1 flex-col gap-0">

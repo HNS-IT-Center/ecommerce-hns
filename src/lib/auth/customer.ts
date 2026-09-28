@@ -25,8 +25,7 @@ import {
   type CustomerSessionPayload,
 } from "./customer-session"
 import { SESSION_COOKIE, isIssuedBeforeRevocation, verifySession } from "./session"
-import { bisaAkses, muatIzinUser } from "./permissions"
-import { parseAdminRole } from "./roles"
+import { bisaAkses, capIzin, muatIzinUser, punyaAksesPanel } from "./permissions"
 
 export {
   CUSTOMER_SESSION_COOKIE,
@@ -42,6 +41,22 @@ export type CurrentCustomer = {
   username: string | null
   phoneNumber: string | null
   /**
+   * Foto profil, atau `null` kalau belum pernah diunggah.
+   *
+   * Selalu URL di bucket R2 kita sendiri: `updateStaffProfileAction`
+   * (features/account/actions.ts) menolak apa pun yang tidak diawali
+   * `NEXT_PUBLIC_R2_PUBLIC_URL`, dan login Google TIDAK pernah menulis kolom
+   * ini. Itu yang membuatnya aman dirender `next/image` — hostnya sudah
+   * terdaftar di `remotePatterns`, bukan host sembarang.
+   *
+   * Ikut dikirim ke klien lewat `/api/auth/me`. Tidak apa-apa: isinya alamat
+   * berkas publik, sama dengan yang sudah tampil di halaman profilnya sendiri.
+   *
+   * Sampai hari ini hanya STAFF yang punya pengunggahnya (`/profile`);
+   * pelanggan biasa bernilai `null` dan jatuh ke avatar inisial.
+   */
+  image: string | null
+  /**
    * Browser ini juga memegang sesi admin yang sah. HANYA untuk navigasi
    * (tautan "Panel Admin") — bukan izin. Akses panel tetap diputuskan
    * `requirePageView`/`requirePermission`, dan status ini TIDAK BOLEH masuk
@@ -54,6 +69,36 @@ export type CurrentCustomer = {
    * `/verify` tetap menjaga dirinya sendiri lewat `requirePageView`.
    */
   canVerify: boolean
+  /**
+   * Sesi admin itu punya setidaknya SATU halaman yang terbuka di dalam panel.
+   *
+   * Beda dari `isAdmin`, dan bedanya itu yang penting: `isAdmin` cuma berarti
+   * "peramban ini memegang sesi admin yang sah". Peran Sales dan Kasir memegang
+   * sesi seperti itu, tapi seluruh izinnya ada di LUAR panel — `/admin` akan
+   * memantulkan mereka ke `landingPathFor()` begitu tautannya ditekan.
+   *
+   * Sama seperti `isAdmin` dan `canVerify`: HANYA untuk menampilkan tautan,
+   * bukan izin. Panel tetap menjaga dirinya lewat `requirePageView`.
+   */
+  canOpenPanel: boolean
+  /**
+   * Cap izin sesi ADMIN di peramban ini, atau `null` kalau tidak ada.
+   *
+   * BUKAN izin, dan tidak memutuskan apa pun — satu-satunya gunanya adalah
+   * dibandingkan dengan cap sebelumnya oleh `SessionProvider` di klien. Begitu
+   * berbeda, tampilan yang sudah terlanjur dirender dianggap basi dan halaman
+   * disegarkan; server tetap yang memutuskan akses pada setiap permintaan.
+   *
+   * Tanpa ini, perubahan peran hanya terdeteksi di DALAM panel admin (lewat
+   * `PermissionWatcher`). Di luar sana — menu akun di header, `/verify`,
+   * `/profile/quotation` — akses baru tidak terlihat sampai halaman dimuat
+   * ulang penuh, dan satu-satunya cara yang diketahui staff untuk memaksanya
+   * adalah keluar lalu masuk lagi.
+   *
+   * Isinya sama persis dengan yang sudah dikirim panel admin ke peramban lewat
+   * `/api/admin/permission-version`, jadi tidak ada yang baru yang ikut keluar.
+   */
+  permissionVersion: string | null
 }
 
 /** Payload sesi dari cookie, atau null. Tidak menyentuh database. */
@@ -68,8 +113,12 @@ const ACCOUNT_SELECT = {
   name: true,
   username: true,
   phoneNumber: true,
+  image: true,
   role: true,
   roleId: true,
+  // Ikut dibaca demi `permissionVersion`. Join kunci primer di baris yang
+  // memang sudah diambil — bukan query tambahan.
+  roleRef: { select: { updatedAt: true } },
   sessionsRevokedAt: true,
   passwordChangedAt: true,
 } as const
@@ -128,13 +177,12 @@ export async function getCurrentCustomer(): Promise<CurrentCustomer | null> {
   // Izin dihitung dari akun ADMIN (pemilik cookie admin), bukan akun yang
   // tampil — sama dengan yang diperiksa `requirePageView` di `/verify`.
   // Pelanggan biasa tidak memicu query izin apa pun.
-  const canVerify = adminAccount
-    ? bisaAkses(
-        await muatIzinUser({ ...adminAccount, role: parseAdminRole(adminAccount.role) }),
-        "verify",
-        "view"
-      )
-    : false
+  //
+  // Dimuat SEKALI lalu dipakai dua penanda di bawah. Memanggil `muatIzinUser`
+  // dua kali berarti dua kali kerja yang sama untuk jawaban yang dijamin sama.
+  const izinAdmin = adminAccount ? await muatIzinUser(adminAccount) : null
+  const canVerify = izinAdmin ? bisaAkses(izinAdmin, "verify", "view") : false
+  const canOpenPanel = izinAdmin ? punyaAksesPanel(izinAdmin) : false
 
   // Dibentuk ulang secara eksplisit — `role` dan penanda pencabutan tidak ada
   // urusannya di luar berkas ini, dan objek ini ikut dikirim `/api/auth/me`.
@@ -144,8 +192,24 @@ export async function getCurrentCustomer(): Promise<CurrentCustomer | null> {
     name: account.name,
     username: account.username,
     phoneNumber: account.phoneNumber,
+    // Dari akun yang TAMPIL, bukan dari `adminAccount`. Foto adalah bagian dari
+    // identitas yang sedang ditunjukkan header; kalau admin sedang menguji akun
+    // pelanggan di peramban yang sama, yang harus terlihat adalah wajah akun
+    // pelanggan itu — sama seperti nama dan emailnya di atas.
+    image: account.image,
     isAdmin: adminAccount !== null,
     canVerify,
+    canOpenPanel,
+    // Dari akun ADMIN, sumber yang sama dengan `canVerify` — bukan dari akun
+    // yang kebetulan tampil. Pelanggan biasa tidak punya izin yang bisa
+    // berubah, jadi capnya memang `null`.
+    permissionVersion: adminAccount
+      ? capIzin({
+          role: adminAccount.role,
+          roleId: adminAccount.roleId,
+          roleUpdatedAt: adminAccount.roleRef?.updatedAt,
+        })
+      : null,
   }
 }
 

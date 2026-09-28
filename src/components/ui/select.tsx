@@ -80,10 +80,37 @@ function SelectContent({
         alignItemWithTrigger={alignItemWithTrigger}
         className="isolate z-50"
       >
+        {/*
+          TANPA animasi buka/tutup — dihapus 24 September 2026, dan bukan
+          karena selera.
+
+          Popup ini sudah berada di layar 7ms setelah diklik. Animasi lamanya
+          (`animate-in fade-in-0 zoom-in-95` + `duration-100`) menambahkan 100ms
+          DI ATAS itu, sehingga yang dirasakan orang adalah dropdown yang butuh
+          ~107ms untuk muncul. Terukur di production build:
+
+            dengan animasi : klik→DOM 7,3ms · klik→tampil penuh 106,5ms
+            tanpa animasi  : klik→DOM 7,0ms · selesai
+
+          Keluhannya datang dari halaman paket PC Prebuild, tempat dropdown
+          dipakai berulang-ulang untuk membandingkan komponen — di sana 100ms
+          per buka menumpuk jadi terasa berat. Dropdown yang diklik sekali
+          (sortir toko) menyembunyikan masalah yang sama, bukan tidak punya.
+
+          Kelas `data-[side=*]:slide-in-from-*` ikut dibuang: ia cuma menentukan
+          ARAH `animate-in` dan tidak melakukan apa pun tanpa animasinya. Begitu
+          juga `data-[align-trigger=true]:animate-none` — dulu ia mematikan
+          animasi khusus mode sejajar-pemicu; sekarang tidak ada yang perlu
+          dimatikan.
+
+          Kalau suatu hari animasi dikembalikan, ukur lagi — bukan pakai waktu
+          popup masuk DOM, tapi waktu sampai animasinya usai. Angka pertama
+          terlihat bagus justru saat yang kedua buruk.
+        */}
         <SelectPrimitive.Popup
           data-slot="select-content"
           data-align-trigger={alignItemWithTrigger}
-          className={cn("relative isolate z-50 max-h-(--available-height) w-(--anchor-width) min-w-36 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 data-[align-trigger=true]:animate-none data-[side=bottom]:slide-in-from-top-2 data-[side=inline-end]:slide-in-from-left-2 data-[side=inline-start]:slide-in-from-right-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95", className )}
+          className={cn("relative isolate z-50 max-h-(--available-height) w-(--anchor-width) min-w-36 origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-lg bg-popover text-popover-foreground shadow-md ring-1 ring-foreground/10", className )}
           {...props}
         >
           <SelectScrollUpButton />

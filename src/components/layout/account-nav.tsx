@@ -4,6 +4,8 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { FileSearch, LayoutDashboard, LogIn, LogOut, User } from "lucide-react"
 
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,16 +15,52 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { useCustomer } from "@/hooks/use-customer"
+import { useCustomer, useSessionActions } from "@/components/providers/session-provider"
 
 type AccountNavProps = {
   logoutAction: () => Promise<void>
 }
 
 /**
+ * Foto profil bulat, dengan inisial sebagai cadangan.
+ *
+ * Cadangannya menutup DUA keadaan yang berbeda: akun yang memang belum punya
+ * foto (semua pelanggan — pengunggahnya baru ada untuk staff), dan foto yang
+ * tercatat tapi gagal dimuat (berkasnya lenyap dari bucket, jaringan kantor
+ * memblokir domainnya). Keadaan kedua ditangani `Avatar` bawaan Base UI, yang
+ * memunculkan fallback-nya sendiri saat `<img>` gagal — itu sebabnya komponen
+ * ini memakainya alih-alih `next/image` dengan `onError` sendiri.
+ *
+ * Konsekuensi lain yang kebetulan tepat: `AvatarImage` adalah `<img>` biasa,
+ * jadi foto 28px ini tidak lewat pengoptimal gambar sama sekali. Berkasnya
+ * sudah dikecilkan ke maksimal 512px saat diunggah (`compressImage` di kartu
+ * profil staff), jadi tidak ada yang tersisa untuk dihemat — sementara header
+ * ini ikut dirender di SETIAP halaman toko.
+ *
+ * `aria-hidden`: namanya sudah tertulis utuh di sebelahnya, jadi membacakan
+ * avatarnya lagi cuma mengulang.
+ */
+function AccountAvatar({ name, image }: { name: string; image: string | null }) {
+  return (
+    <Avatar aria-hidden="true" className="size-7">
+      {image && <AvatarImage src={image} alt="" />}
+      <AvatarFallback className="bg-brand-green/10 text-xs font-bold text-brand-green">
+        {name.charAt(0).toUpperCase()}
+      </AvatarFallback>
+    </Avatar>
+  )
+}
+
+/**
  * Menu akun di header desktop. Guest melihat satu tautan "Masuk"; pelanggan
- * yang sudah login melihat avatar inisial (BUKAN foto — Sprint 1 sengaja
- * tidak menyimpan foto profil Google) yang membuka dropdown.
+ * yang sudah login melihat avatarnya yang membuka dropdown.
+ *
+ * Avatarnya foto kalau ada, inisial kalau tidak. Sampai 23 September 2026 ia
+ * SELALU inisial, dengan alasan "Sprint 1 sengaja tidak menyimpan foto profil
+ * Google" — dan itu masih benar: fotonya memang bukan dari Google, melainkan
+ * yang diunggah sendiri lewat `/profile` ke bucket R2 kita. Staff sudah bisa
+ * mengunggahnya sejak kartu profil staff ada, tapi tidak ada satu pun tempat
+ * yang menampilkannya, jadi ia mengira unggahannya gagal.
  *
  * Admin ikut dikenali di sini (Satu Login Fase B): ia melihat avatarnya
  * sendiri, bukan "Masuk", dan dropdown-nya menambah "Panel Admin" di samping
@@ -37,6 +75,35 @@ type AccountNavProps = {
 export function AccountNav({ logoutAction }: AccountNavProps) {
   const router = useRouter()
   const { loading, customer } = useCustomer()
+  const { refresh, announce } = useSessionActions()
+
+  /**
+   * Keluar, dengan urutan yang disengaja.
+   *
+   * Dulu barisnya cuma `void logoutAction()`. Cookie-nya memang tercabut, tapi
+   * aksi itu mengantar ke beranda — halaman yang sering kali SEDANG dibuka —
+   * sehingga tidak ada satu pun komponen yang unmount, dan menu ini terus
+   * menampilkan nama orang yang baru saja keluar sampai ia berpindah halaman
+   * sendiri. Itulah keluhan "sudah ke-logout tapi seolah belum".
+   *
+   * 1. `await` sampai server benar-benar mencabut cookie. Menanyakan status
+   *    lebih cepat dari ini akan dijawab "masih masuk" — jawaban yang benar
+   *    pada saat itu, dan salah sedetik kemudian.
+   * 2. `refresh()` — tab ini bertanya ulang dan header berganti seketika.
+   * 3. `announce()` — tab lain menyusul tanpa menunggu orangnya berpindah ke
+   *    sana.
+   * 4. Baru berpindah ke beranda, menggantikan `redirect()` yang dulu
+   *    dikerjakan server action (lihat `customerLogoutActionForClient`).
+   *    `replace`, bukan `push`: halaman yang baru ditinggalkan bisa saja
+   *    halaman yang kini tidak boleh lagi dibuka, dan tombol Back tidak
+   *    seharusnya mengantar orang kembali ke sana.
+   */
+  async function keluar() {
+    await logoutAction()
+    await refresh(true)
+    announce()
+    router.replace("/")
+  }
 
   // Selama fetch /api/auth/me belum selesai, JANGAN merender "Masuk".
   //
@@ -74,8 +141,6 @@ export function AccountNav({ logoutAction }: AccountNavProps) {
     )
   }
 
-  const initial = customer.name.charAt(0).toUpperCase()
-
   return (
     /* `modal={false}`. Bawaan Base UI untuk `modal` adalah `true`, dan itu
        MENGUNCI gulir <body> selama menu terbuka. Akibatnya pelanggan yang
@@ -85,12 +150,7 @@ export function AccountNav({ logoutAction }: AccountNavProps) {
        menutup saat diklik di luar maupun ditekan Esc. */
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger className="flex items-center gap-2 rounded-lg px-1.5 py-1.5 transition-colors hover:bg-muted">
-        <span
-          aria-hidden="true"
-          className="grid size-7 shrink-0 place-items-center rounded-full bg-brand-green/10 text-xs font-bold text-brand-green"
-        >
-          {initial}
-        </span>
+        <AccountAvatar name={customer.name} image={customer.image} />
         <span className="max-w-[8rem] truncate text-sm font-semibold">{customer.name}</span>
       </DropdownMenuTrigger>
       {/* `max-h-[min(--available-height,70svh)]` + `overscroll-contain`
@@ -135,8 +195,14 @@ export function AccountNav({ logoutAction }: AccountNavProps) {
           Profil Saya
         </DropdownMenuItem>
         {/* Hanya navigasi. Menyembunyikan butir ini bukan pengamanan panel —
-            itu tugas `requirePageView` di sana. */}
-        {customer.isAdmin && (
+            itu tugas `requirePageView` di sana.
+
+            `canOpenPanel`, BUKAN `isAdmin`. Sales dan Kasir memegang sesi admin
+            yang sah (jadi `isAdmin` menyala) tapi seluruh izinnya di luar panel,
+            sehingga `/admin` memantulkan mereka kembali ke `landingPathFor()` —
+            butir menu yang selalu memulangkan penekannya ke tempat ia
+            berangkat. */}
+        {customer.canOpenPanel && (
           <DropdownMenuItem onClick={() => router.push("/admin")}>
             <LayoutDashboard className="h-4 w-4" />
             Panel Admin
@@ -153,7 +219,7 @@ export function AccountNav({ logoutAction }: AccountNavProps) {
         <DropdownMenuItem
           variant="destructive"
           onClick={() => {
-            void logoutAction()
+            void keluar()
           }}
         >
           <LogOut className="h-4 w-4" />

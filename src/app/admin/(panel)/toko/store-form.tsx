@@ -10,6 +10,7 @@ import {
 import type { StoreHours } from "@/lib/utils/opening-hours";
 import { createStore, updateStore } from "./actions";
 import { StoreHoursEditor } from "./store-hours-editor";
+import { StorePhotoField } from "./store-photo-field";
 import { EMPTY_STORE_STATE } from "./state";
 
 type StoreFormProps = {
@@ -23,6 +24,7 @@ type StoreFormProps = {
     latitude: number | null;
     longitude: number | null;
     googlePlaceId: string | null;
+    imageUrl: string | null;
     hours: StoreHours[];
     sortOrder: number;
   };
@@ -224,6 +226,8 @@ export function StoreForm({ store }: StoreFormProps) {
                   belum tahu; peta akan memakai alamat sebagai gantinya.
                 </p>
               </div>
+
+              <StorePhotoField initial={store?.imageUrl ?? null} />
 
               <div>
                 <label className={labelClass} htmlFor="googlePlaceId">

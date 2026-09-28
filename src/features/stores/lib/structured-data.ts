@@ -20,6 +20,7 @@ type StoreForSeo = {
   latitude: number | null;
   longitude: number | null;
   hours: StoreHours[];
+  imageUrl: string | null;
 };
 
 /**
@@ -72,6 +73,9 @@ export function buildStoreJsonLd(
     url: `${siteUrl}/stores`,
     address: toPostalAddress(store.address),
     telephone: normalizePhone(store.phone),
+    // Foto depan toko — properti yang direkomendasikan Google untuk LocalBusiness.
+    // Dilewati kalau belum ada, bukan diisi logo: `image` menyatakan tempatnya.
+    ...(store.imageUrl && { image: store.imageUrl }),
     ...(punyaKoordinat && {
       geo: {
         "@type": "GeoCoordinates",

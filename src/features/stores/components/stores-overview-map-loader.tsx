@@ -2,22 +2,26 @@
 
 import dynamic from "next/dynamic";
 
-import type { MapStore } from "./stores-overview-map";
+import type {
+  MapSelection,
+  MapStoreItem,
+} from "./stores-overview-map-maplibre";
 
 /**
  * Pemuat peta ikhtisar.
  *
- * Leaflet menyentuh `window` saat modulnya dievaluasi, jadi ia mustahil dirender
- * di server — karena itu `ssr: false`. Pembungkus ini ada karena `next/dynamic`
- * dengan `ssr: false` hanya boleh dipanggil dari Client Component, sedangkan
- * halaman `/stores` adalah Server Component yang membaca database.
+ * MapLibre menyentuh `window` dan `document` saat dirender, jadi ia mustahil
+ * dirender di server — karena itu `ssr: false`. Pembungkus ini ada karena
+ * `next/dynamic` dengan `ssr: false` hanya boleh dipanggil dari Client
+ * Component.
  *
  * Penampungnya diberi tinggi yang sama persis dengan peta jadinya. Tanpa itu,
  * halaman melompat begitu peta selesai dimuat — dan lompatannya terjadi tepat
  * saat pembaca mulai membaca kartu toko di bawahnya.
  */
 const StoresOverviewMap = dynamic(
-  () => import("./stores-overview-map").then((m) => m.StoresOverviewMap),
+  () =>
+    import("./stores-overview-map-maplibre").then((m) => m.StoresOverviewMap),
   {
     ssr: false,
     loading: () => (
@@ -28,12 +32,10 @@ const StoresOverviewMap = dynamic(
   },
 );
 
-export function StoresOverviewMapLoader({
-  stores,
-  showLabels,
-}: {
-  stores: MapStore[];
-  showLabels?: boolean;
+export function StoresOverviewMapLoader(props: {
+  stores: MapStoreItem[];
+  selection: MapSelection | null;
+  onSelect: (id: string | null) => void;
 }) {
-  return <StoresOverviewMap stores={stores} showLabels={showLabels} />;
+  return <StoresOverviewMap {...props} />;
 }

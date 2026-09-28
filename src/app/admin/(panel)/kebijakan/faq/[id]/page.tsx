@@ -1,3 +1,4 @@
+import { requirePageView } from "@/lib/auth"
 import { notFound } from "next/navigation"
 import { getFaqItem } from "@/lib/api/policy"
 import { FaqForm } from "../faq-form"
@@ -7,6 +8,8 @@ type Props = {
 }
 
 export default async function AdminFaqEditPage({ params }: Props) {
+  await requirePageView("kebijakan")
+
   const { id } = await params
   // Lihat catatan di halaman sunting toko — saringan `deletedAt` mencegah baris
   // yang sudah dihapus dibuka lalu dihidupkan lagi lewat Simpan.
