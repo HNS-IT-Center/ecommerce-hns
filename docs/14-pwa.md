@@ -42,6 +42,16 @@ Service worker hanya didaftarkan di **production** (`NODE_ENV === "production"`)
 Untuk menguji lokal: `npm run build:app && npm start`, lalu buka DevTools →
 Application → Manifest / Service Workers.
 
+**`npm start` meninggalkan service worker di `localhost:3000`.** Pendaftaran SW
+menempel di browser per origin dan tidak hilang saat server dimatikan. Setelah
+kembali ke `npm run dev`, SW itu terus menyajikan `/_next/static/*` dari cache —
+padahal nama chunk dev TIDAK berganti saat isinya berubah. Gejalanya (September
+2026): "module factory is not available" di kunjungan pertama, CSS tanpa kelas
+yang baru ditambahkan, hydration mismatch — semuanya hilang dengan Ctrl+Shift+R
+lalu muncul lagi. Karena itu `PwaRegister` di mode dev **mencabut** SW yang
+tersisa, menghapus cache `hns-static-*`, dan me-reload sekali. Jangan hapus
+cabang itu dengan alasan "di dev SW memang tidak didaftarkan".
+
 ## 3. Tombol Install — Sengaja Tidak Mengganggu
 
 Keputusan user 19 September 2026: pasif + satu chip.
