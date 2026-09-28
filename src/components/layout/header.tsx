@@ -24,10 +24,33 @@ export async function Header() {
   // dynamic, termasuk yang sebelumnya statis (/cart, /faq, dst). `AccountNav`
   // membaca statusnya sendiri lewat `/api/auth/me` di klien.
   const [categories, theme, prebuild] = await Promise.all([
-    getCategories({ hideEmpty: true, perPage: 100 }),
+    // `perPage` harus menampung SELURUH kategori, bukan 100 pertama.
+    // Daftarnya diurutkan alfabetis, jadi batas 100 memotong ekor abjad tanpa
+    // pesan apa pun: menambah 10 sub-kategori berhuruf A–R pada 28 September
+    // 2026 mendorong "SOFTWARE" keluar dari 100 besar, dan kategori utama itu
+    // lenyap dari menu. Angkanya disamakan dengan /shop dan /search (500).
+    getCategories({ hideEmpty: true, perPage: 500 }),
     getThemeSettings(),
     getPcPrebuildConfig(),
   ]);
+
+  // Kategori yang ADA demi fitur lain, bukan untuk dijelajahi lewat menu.
+  //
+  // "Jasa Rakit" menampung satu produk (JASA RAKIT PC) yang dipakai PC Builder
+  // sebagai step WAJIB — `PC_BUILDER_CONFIG` menyebut kategorinya lewat
+  // `categoryIds: [179]`, `isRequired: true`. Pelanggan memilih jasa rakit di
+  // dalam alur builder, jadi memunculkannya lagi sebagai kategori di dropdown
+  // KATEGORI cuma menawarkan jalan kedua yang membingungkan.
+  //
+  // Disaring DI SINI saja, bukan di `getCategories`: penyaringan di lapisan
+  // data ikut menghilangkannya dari /shop, /search, dan sitemap — dan itu di
+  // luar yang diminta. Yang disembunyikan hanya dropdown menu ini; filter
+  // katalog dan halaman produknya tetap apa adanya.
+  //
+  // Kategorinya sendiri TIDAK boleh dihapus: menghapusnya memutus step wajib
+  // PC Builder.
+  const SLUG_TERSEMBUNYI_DI_MENU = ["laptop-pc-jasa-rakit"];
+  const categoriesMenu = categories.filter((c) => !SLUG_TERSEMBUNYI_DI_MENU.includes(c.slug));
 
   // Tautan PC Prebuild hanya dirender kalau sakelarnya menyala. Bacanya di
   // sini, bukan di MegaMenu: komponen itu `use client` dan tidak boleh
@@ -65,7 +88,7 @@ export async function Header() {
             </Link>
 
             {/* Desktop Navigation */}
-            <MegaMenu categories={categories} showPrebuild={showPrebuild} />
+            <MegaMenu categories={categoriesMenu} showPrebuild={showPrebuild} />
 
             {/* Search Bar */}
             <div className="flex flex-1 items-center justify-center px-4 lg:px-8">

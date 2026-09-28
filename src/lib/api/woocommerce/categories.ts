@@ -15,6 +15,43 @@ type GetCategoriesParams = {
   slug?: string;
 };
 
+/**
+ * Klausa `where` untuk `hideEmpty`: kategori dianggap TIDAK kosong kalau ia
+ * sendiri ATAU keturunannya punya produk.
+ *
+ * Versi pertama aturan ini hanya memeriksa tautan langsung
+ * (`products: { some: {} }`). Itu benar selama setiap kategori induk masih
+ * menyimpan sebagian produknya sendiri, dan diam-diam salah begitu isi sebuah
+ * induk dipindahkan SELURUHNYA ke sub-kategori: induknya jadi nol tautan
+ * langsung, tersaring keluar, dan hilang dari menu header, /shop, /search,
+ * serta sitemap — membawa serta seluruh anaknya yang justru penuh produk.
+ * `NETWORK TOOLS` kena persis begitu saat 68 produknya dipecah ke 10
+ * sub-kategori pada 28 September 2026.
+ *
+ * Kedalaman pohon ini 3 (mis. KOMPONEN PC > MONITOR PC > MONITOR FLAT), jadi
+ * cucu ikut diperiksa. Ditulis eksplisit dua tingkat, bukan rekursif: Prisma
+ * tidak punya kueri leluhur, dan dua tingkat bersarang tetap terbaca sekali
+ * lihat. Kalau suatu saat pohonnya lebih dalam, tingkat berikutnya ditambahkan
+ * di sini — dan `scripts/uji-hideempty-networking.mts` akan menangkapnya.
+ *
+ * Diekspor supaya skrip verifikasi bisa menguji klausa yang BENAR-BENAR
+ * dipakai produksi. `getCategories` sendiri terbungkus `unstable_cache`, yang
+ * menuntut runtime Next.js dan tidak bisa dipanggil dari skrip Node.
+ */
+export function hideEmptyWhere(): Prisma.CategoryWhereInput {
+  return {
+    AND: [
+      {
+        OR: [
+          { products: { some: {} } },
+          { children: { some: { products: { some: {} } } } },
+          { children: { some: { children: { some: { products: { some: {} } } } } } },
+        ],
+      },
+    ],
+  };
+}
+
 export async function getCategories(
   params: GetCategoriesParams = {}
 ): Promise<ProductCategory[]> {
@@ -31,9 +68,12 @@ export async function getCategories(
       if (params.slug) {
         where.slug = params.slug;
       }
-      // If hideEmpty is true, we should only fetch categories with products.
+      // Ditaruh di `AND`, bukan `where.OR` langsung: kalau suatu saat ada
+      // pemanggil yang menggabungkan `hideEmpty` dengan penyaring lain yang
+      // juga memakai OR, menulis ke `where.OR` akan saling menimpa tanpa
+      // pesan galat.
       if (params.hideEmpty) {
-        where.products = { some: {} };
+        where.AND = hideEmptyWhere().AND;
       }
 
       const categories = await getPrisma().category.findMany({
