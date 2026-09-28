@@ -44,6 +44,7 @@ function readOptionalNumber(formData: FormData, key: string): number | null {
 
 function readStoreInput(formData: FormData): StoreInput {
   const placeId = String(formData.get("googlePlaceId") ?? "").trim();
+  const imageUrl = String(formData.get("imageUrl") ?? "").trim();
 
   return {
     id: String(formData.get("id") ?? "").trim(),
@@ -56,6 +57,7 @@ function readStoreInput(formData: FormData): StoreInput {
     latitude: readOptionalNumber(formData, "latitude"),
     longitude: readOptionalNumber(formData, "longitude"),
     googlePlaceId: placeId === "" ? null : placeId,
+    imageUrl: imageUrl === "" ? null : imageUrl,
     sortOrder: Number(formData.get("sortOrder") ?? 0),
   };
 }

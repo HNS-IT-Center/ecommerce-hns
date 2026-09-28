@@ -1,29 +1,29 @@
 "use client";
 
-import { Clock, MapPin, MessageCircle, Navigation } from "lucide-react";
+import { forwardRef } from "react";
+import Image from "next/image";
+import { Clock, MapPin, MessageCircle, Navigation, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { useOpenStatus } from "@/hooks/use-open-status";
+import { cn } from "@/lib/utils";
 import {
   DAY_NAMES,
   sortForDisplay,
   type StoreHours,
 } from "@/lib/utils/opening-hours";
 
-import { StoresOverviewMapLoader } from "./stores-overview-map-loader";
+import { OpenStatusBadge } from "./open-status-badge";
 
 /**
- * Satu cabang, satu panel.
+ * Detail satu cabang: foto, status, alamat, jam, dan tombol aksi.
  *
- * Halaman ini menampilkan seluruh cabang berdampingan alih-alih daftar dengan
- * satu yang terpilih. Alasannya jumlah: dengan dua cabang, pola "pilih dulu baru
- * lihat" menyembunyikan setengah isi halaman di balik klik yang belum tentu
- * terjadi — dan orang yang tidak tahu ada cabang kedua akan pergi ke cabang yang
- * lebih jauh.
+ * Tampil setelah pengunjung memilih cabang di peta `/stores` — menempel di atas
+ * peta mulai tablet, di bawah peta pada HP (lihat `StoresLocator`). Tidak lagi
+ * berupa kartu yang selalu terbuka: nama dan status tiap cabang sudah terlihat
+ * di daftar ringkas di atas peta, jadi pengunjung tetap tahu ada berapa cabang
+ * tanpa harus mengklik apa pun.
  *
- * Komponen ini klien HANYA karena lencana buka/tutup bergantung pada jam
- * sekarang. Sisanya — nama, alamat, jam, tautan — sudah ada di HTML dari server,
- * jadi tetap terbaca tanpa JavaScript.
+ * Komponen ini klien karena lencana buka/tutup bergantung pada jam sekarang.
  */
 
 export type PanelStore = {
@@ -38,135 +38,150 @@ export type PanelStore = {
   longitude: number | null;
   phone: string;
   googlePlaceId: string | null;
+  /** Foto depan toko di R2, atau null — tanpa foto, panel dimulai dari nama. */
+  imageUrl: string | null;
 };
 
-export function StorePanel({ store }: { store: PanelStore }) {
-  const status = useOpenStatus(store.hours);
-  const jam = sortForDisplay(store.hours);
+type Props = {
+  store: PanelStore;
+  onClose: () => void;
+  className?: string;
+};
 
-  const punyaKoordinat = store.latitude !== null && store.longitude !== null;
+/**
+ * `ref` menunjuk tombol Tutup — pemanggil memindahkan fokus ke sana saat panel
+ * dibuka, supaya pengguna papan ketik tidak tertinggal di daftar yang baru saja
+ * disembunyikan.
+ */
+export const StorePanel = forwardRef<HTMLButtonElement, Props>(
+  function StorePanel({ store, onClose, className }, tombolTutup) {
+    const jam = sortForDisplay(store.hours);
 
-  return (
-    /* `h-full` + `flex-col`: panel bersaudara diregangkan sama tinggi oleh grid,
-       dan `mt-auto` pada tombol mendorongnya ke dasar. Tanpa itu, panel dengan
-       alamat lebih pendek menyisakan tombol menggantung di tengah. */
-    <article className="flex h-full flex-col overflow-hidden rounded-2xl border bg-card shadow-sm transition-shadow hover:shadow-md">
-      {/* Peta kecil hanya muncul kalau koordinatnya ada. Tanpa foto dan tanpa
-          koordinat, panel langsung dimulai dari nama — bukan kotak abu-abu. */}
-      {punyaKoordinat && (
-        <div className="h-40 w-full bg-muted sm:h-48">
-          <StoresOverviewMapLoader
-            showLabels={false}
-            stores={[
-              {
-                id: store.id,
-                name: store.name,
-                address: store.address,
-                phone: store.phone,
-                googlePlaceId: store.googlePlaceId,
-                latitude: store.latitude as number,
-                longitude: store.longitude as number,
-              },
-            ]}
-          />
-        </div>
-      )}
+    return (
+      <article
+        className={cn(
+          "relative flex flex-col overflow-hidden rounded-2xl border bg-card shadow-lg",
+          className,
+        )}
+      >
+        <button
+          ref={tombolTutup}
+          type="button"
+          onClick={onClose}
+          aria-label="Tutup detail toko"
+          className={cn(
+            "absolute right-2 top-2 z-10 inline-flex size-8 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+            // Di atas foto butuh latar gelap; tanpa foto, ikon polos cukup.
+            store.imageUrl
+              ? "bg-black/60 text-white hover:bg-black/80"
+              : "text-foreground hover:bg-muted",
+          )}
+        >
+          <X className="size-4" />
+        </button>
 
-      <div className="flex flex-1 flex-col gap-3 p-5 sm:p-6">
-        <h2 className="text-lg font-bold sm:text-xl">{store.name}</h2>
-
-        {/* Satu lencana, bukan lencana ditambah baris jam di bawahnya: keduanya
-            mengatakan hal yang sama dan memaksa mata membaca dua kali. Ditahan
-            sampai hidrasi selesai supaya tidak sempat menampilkan status keliru. */}
-        {status && (
-          <span
-            className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${
-              status.state === "open"
-                ? "bg-brand-green/10 text-brand-green"
-                : status.state === "closed"
-                  ? "bg-muted text-muted-foreground"
-                  : "bg-muted text-muted-foreground"
-            }`}
-          >
-            <span
-              className="h-1.5 w-1.5 rounded-full bg-current"
-              aria-hidden="true"
+        {/* Rasio 2:1 sama dengan pratinjau di admin, supaya potongan yang
+            dilihat staff saat mengunggah adalah potongan yang dilihat pelanggan. */}
+        {store.imageUrl && (
+          <div className="relative aspect-2/1 w-full shrink-0 bg-muted">
+            <Image
+              src={store.imageUrl}
+              alt={`Tampak depan ${store.name}`}
+              fill
+              sizes="(min-width: 768px) 320px, 100vw"
+              className="object-cover object-center"
             />
-            {status.label}
-          </span>
+          </div>
         )}
 
-        <p className="flex items-start gap-2.5 text-sm leading-relaxed text-muted-foreground">
-          <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand-green" />
-          {store.address}
-        </p>
-
-        {/* `<details>`, bukan tautan yang selalu berdampingan dengan daftarnya.
-            Ia bekerja tanpa JavaScript, bisa dibuka lewat papan ketik, dan tidak
-            menampilkan pemicu bersamaan dengan isi yang dipicunya. */}
-        {jam.length > 0 && (
-          <details className="group text-sm">
-            <summary className="flex cursor-pointer list-none items-center gap-2.5 text-muted-foreground marker:content-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
-              <Clock className="h-4 w-4 shrink-0 text-sale-red" />
-              <span className="underline underline-offset-2 group-open:hidden">
-                Lihat jam lengkap
-              </span>
-              <span className="hidden underline underline-offset-2 group-open:inline">
-                Tutup jam lengkap
-              </span>
-            </summary>
-            <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-5 gap-y-1 pl-6.5 text-sm text-muted-foreground">
-              {jam.map((h) => (
-                <div key={h.dayOfWeek} className="contents">
-                  <dt className="text-foreground">{DAY_NAMES[h.dayOfWeek]}</dt>
-                  <dd className="tabular-nums">
-                    {h.isClosed
-                      ? "Tutup"
-                      : `${h.opensAt.replace(":", ".")}–${h.closesAt.replace(":", ".")}`}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </details>
-        )}
-
-        <div className="mt-auto grid grid-cols-2 gap-3 pt-2">
-          {/*
-            `nativeButton={false}` WAJIB menyertai `render={<a/>}`.
-
-            Tanpa itu Base UI memperingatkan di konsol setiap kali halaman ini
-            dibuka: komponen mengaku tombol native padahal yang dirender <a>,
-            dan semantik tombolnya hilang — yang berdampak pada pembaca layar,
-            bukan sekadar peringatan kosmetik.
-
-            Pola yang sama sudah dipakai benar di `admin/(panel)/banner`.
-          */}
-          <Button
-            variant="outline"
-            nativeButton={false}
-            render={
-              <a
-                href={store.directionsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              />
-            }
+        <div className="flex flex-col gap-3 p-4">
+          <h2
+            className={cn(
+              "text-base font-bold leading-tight",
+              !store.imageUrl && "pr-8",
+            )}
           >
-            <Navigation className="h-4 w-4" />
-            Petunjuk Arah
-          </Button>
-          <Button
-            variant="whatsapp"
-            nativeButton={false}
-            render={
-              <a href={store.waUrl} target="_blank" rel="noopener noreferrer" />
-            }
-          >
-            <MessageCircle className="h-4 w-4" />
-            WhatsApp
-          </Button>
+            {store.name}
+          </h2>
+
+          <OpenStatusBadge hours={store.hours} />
+
+          <p className="flex items-start gap-2.5 text-sm leading-relaxed text-muted-foreground">
+            <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand-green" />
+            {store.address}
+          </p>
+
+          {/* `<details>`, bukan tautan yang selalu berdampingan dengan daftarnya.
+              Ia bisa dibuka lewat papan ketik dan tidak menampilkan pemicu
+              bersamaan dengan isi yang dipicunya. */}
+          {jam.length > 0 && (
+            <details className="group text-sm">
+              <summary className="flex cursor-pointer list-none items-center gap-2.5 text-muted-foreground marker:content-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+                <Clock className="h-4 w-4 shrink-0 text-sale-red" />
+                <span className="underline underline-offset-2 group-open:hidden">
+                  Lihat jam lengkap
+                </span>
+                <span className="hidden underline underline-offset-2 group-open:inline">
+                  Tutup jam lengkap
+                </span>
+              </summary>
+              <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-5 gap-y-1 pl-6.5 text-sm text-muted-foreground">
+                {jam.map((h) => (
+                  <div key={h.dayOfWeek} className="contents">
+                    <dt className="text-foreground">{DAY_NAMES[h.dayOfWeek]}</dt>
+                    <dd className="tabular-nums">
+                      {h.isClosed
+                        ? "Tutup"
+                        : `${h.opensAt.replace(":", ".")}–${h.closesAt.replace(":", ".")}`}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </details>
+          )}
+
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            {/*
+              `nativeButton={false}` WAJIB menyertai `render={<a/>}`.
+
+              Tanpa itu Base UI memperingatkan di konsol setiap kali halaman ini
+              dibuka: komponen mengaku tombol native padahal yang dirender <a>,
+              dan semantik tombolnya hilang — yang berdampak pada pembaca layar,
+              bukan sekadar peringatan kosmetik.
+
+              Pola yang sama sudah dipakai benar di `admin/(panel)/banner`.
+            */}
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={
+                <a
+                  href={store.directionsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                />
+              }
+            >
+              <Navigation className="h-4 w-4" />
+              Petunjuk Arah
+            </Button>
+            <Button
+              variant="whatsapp"
+              nativeButton={false}
+              render={
+                <a
+                  href={store.waUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                />
+              }
+            >
+              <MessageCircle className="h-4 w-4" />
+              WhatsApp
+            </Button>
+          </div>
         </div>
-      </div>
-    </article>
-  );
-}
+      </article>
+    );
+  },
+);

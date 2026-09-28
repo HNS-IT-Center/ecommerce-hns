@@ -4,7 +4,7 @@ import { JsonLd } from "@/components/seo/json-ld";
 import { getActiveStores } from "@/lib/api/stores";
 import { getDirectionsUrl, getWhatsAppUrl } from "@/features/stores/lib/maps";
 import { buildStoreJsonLd } from "@/features/stores/lib/structured-data";
-import { StorePanel } from "@/features/stores/components/store-panel";
+import { StoresLocator } from "@/features/stores/components/stores-locator";
 import { env } from "@/config/env";
 
 export const metadata = {
@@ -54,6 +54,7 @@ export default async function StoresPage() {
     googlePlaceId: store.googlePlaceId,
     latitude: store.latitude,
     longitude: store.longitude,
+    imageUrl: store.imageUrl,
     waUrl: getWhatsAppUrl(store),
     directionsUrl: getDirectionsUrl(store),
   }));
@@ -109,14 +110,9 @@ export default async function StoresPage() {
                 </div>
               </dl>
 
-              {/* Grid meregangkan anaknya sama tinggi secara bawaan; `h-full` di
-                  dalam panel dan `mt-auto` pada barisan tombol yang membuat
-                  tombolnya rata di dasar walau alamatnya berbeda panjang. */}
-              <div className="mt-6 grid gap-6 md:grid-cols-2">
-                {panels.map((store) => (
-                  <StorePanel key={store.id} store={store} />
-                ))}
-              </div>
+              {/* Satu peta untuk semua cabang; daftar dan detailnya menempel
+                  di peta (di bawah peta pada HP). */}
+              <StoresLocator stores={panels} />
             </>
           )}
 

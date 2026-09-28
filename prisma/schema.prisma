@@ -255,6 +255,18 @@ model Store {
   /// membuka listing yang persis alih-alih sekadar menuju sepasang koordinat.
   googlePlaceId String? @map("google_place_id") @db.VarChar(191)
 
+  /// Foto depan toko, tampil di popup peta dan kartu cabang di `/stores`.
+  ///
+  /// Satu foto saja, bukan galeri: yang dibutuhkan pengunjung adalah mengenali
+  /// muka tokonya saat tiba, bukan album. Nullable karena toko lama belum punya
+  /// foto — tanpa foto, popup dan kartu tampil tanpa area gambar sama sekali,
+  /// bukan kotak abu-abu pengganti.
+  ///
+  /// Selalu URL bucket R2 hasil `POST /api/admin/media`; `assertImageUrlValid`
+  /// menolak host lain supaya `next/image` tidak pernah menerima host yang tidak
+  /// terdaftar di `remotePatterns` — yang akan menjatuhkan seluruh halaman.
+  imageUrl String? @map("image_url") @db.VarChar(1024)
+
   // Jam buka pindah ke tabel sendiri, satu baris per hari. Sebelumnya ia satu
   // string bebas ("SETIAP HARI SENIN SAMPAI SABTU 09.00 - 21.00, MINGGU ...")
   // yang tidak bisa dibaca mesin: `openingHoursSpecification` untuk Google

@@ -26,6 +26,18 @@ const eslintConfig = defineConfig([
     // di src/, bukan yang ini.
     ".claude/**",
   ]),
+  {
+    // Berkas vendor mapcn (`npx shadcn add @mapcn/map`). Ia sengaja memakai pola
+    // "latest ref" (`ref.current = …` saat render) untuk callback yang dipasang
+    // ke objek MapLibre imperatif — pola yang ditolak aturan React Compiler.
+    // Dimatikan di sini, bukan lewat komentar di berkasnya, supaya tetap berlaku
+    // kalau berkas itu dipasang ulang dari registry.
+    files: ["src/components/ui/map.tsx"],
+    rules: {
+      "react-hooks/refs": "off",
+      "react-hooks/set-state-in-effect": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

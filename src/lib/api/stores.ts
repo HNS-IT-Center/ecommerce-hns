@@ -12,6 +12,7 @@
  * action, supaya fungsi di sini tetap bisa dipakai dari script.
  */
 import { unstable_cache } from "next/cache";
+import { env } from "@/config/env";
 import { getPrisma } from "@/lib/prisma/client";
 import type { Store } from "@prisma/client";
 import {
@@ -50,6 +51,8 @@ export type StoreInput = {
   latitude: number | null;
   longitude: number | null;
   googlePlaceId: string | null;
+  /** URL foto toko di bucket R2, atau `null` kalau belum ada foto. */
+  imageUrl: string | null;
   sortOrder: number;
 };
 
@@ -283,7 +286,30 @@ function assertFilled(input: StoreInput): void {
     throw new StoreOperationError("Urutan tampil harus berupa angka.");
   }
   assertCoordinatesValid(input.latitude, input.longitude);
+  assertImageUrlValid(input.imageUrl);
   assertHoursValid(input.hours);
+}
+
+/**
+ * Foto toko wajib berasal dari bucket R2 kita sendiri.
+ *
+ * Formulir hanya bisa mengisinya lewat unggahan, tapi server action punya
+ * alamatnya sendiri dan nilainya bisa dikirim apa saja. Host yang tidak terdaftar
+ * di `remotePatterns` membuat `next/image` melempar galat saat render — yang
+ * jatuh bukan fotonya saja, melainkan seluruh halaman `/stores`.
+ */
+function assertImageUrlValid(imageUrl: string | null): void {
+  if (imageUrl === null) return;
+
+  const prefix = env.NEXT_PUBLIC_R2_PUBLIC_URL;
+  if (!prefix || !imageUrl.startsWith(`${prefix.replace(/\/+$/, "")}/`)) {
+    throw new StoreOperationError(
+      "Foto toko harus diunggah lewat tombol unggah di formulir ini.",
+    );
+  }
+  if (imageUrl.length > 1024) {
+    throw new StoreOperationError("Alamat foto toko terlalu panjang.");
+  }
 }
 
 /**
