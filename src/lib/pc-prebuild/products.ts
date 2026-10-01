@@ -80,8 +80,9 @@ export type PrebuildPickerProduct = {
   /** Harga induk. Untuk VARIABLE ini sering 0 — yang berlaku ada di variannya. */
   price: number
   /**
-   * Harga yang TAMPIL di kartu grid: `price` kalau induknya sendiri berharga,
-   * kalau tidak harga varian termurah yang masih ada stoknya.
+   * Harga yang TAMPIL di kartu grid: untuk produk bervarian, harga varian
+   * termurah yang masih ada stoknya — harga induk diabaikan, lihat `hargaKartu`.
+   * Produk tanpa varian memakai `price`.
    *
    * Dipisah dari `price` dengan sengaja. `price` dipakai menghitung subtotal
    * barang yang belum punya `variationId`, dan di sana nol adalah jawaban yang
@@ -188,9 +189,12 @@ function labelVarian(varian: BarisProduk["variations"][number]): string {
  * dipakai mengurutkan "Harga: rendah ke tinggi".
  *
  * Aturannya sama persis dengan `hargaKartu` di `features/builder/actions.ts`:
- * harga induk kalau ia berharga, kalau tidak varian termurah yang masih ada
- * stoknya. Yang dilakukan cuma MEMILIH satu angka katalog dari beberapa angka
- * katalog — tidak ada perhitungan (CLAUDE.md §2.7).
+ * produk yang punya varian SELALU memakai varian termurah yang masih ada
+ * stoknya, dan harga induknya diabaikan — harga itu sisa impor WooCommerce yang
+ * tidak bisa disunting staff (alasan lengkapnya di sana). Harga induk baru
+ * dipakai kalau tidak ada satu pun varian berharga. Yang dilakukan cuma MEMILIH
+ * satu angka katalog dari beberapa angka katalog — tidak ada perhitungan
+ * (CLAUDE.md §2.7).
  */
 function hargaKartu(
   baris: {
@@ -207,7 +211,7 @@ function hargaKartu(
   }>
 ): number {
   const sendiri = hargaBerlaku(baris.regularPrice, baris.salePrice, baris.saleEndDate)
-  if (sendiri.price > 0 || variasi.length === 0) return sendiri.price
+  if (variasi.length === 0) return sendiri.price
 
   const varian = variasi.map((v) => ({
     price: hargaBerlaku(v.regularPrice, v.salePrice, v.saleEndDate).price,
@@ -233,11 +237,11 @@ function petakan(p: BarisProduk): PrebuildPickerProduct {
     }
   })
 
-  // Induk VARIABLE menumpang variannya untuk harga coret juga: harga normalnya
-  // sendiri hampir selalu nol, dan kartu yang memakainya akan menampilkan
-  // potongan 100%.
+  // Induk VARIABLE menumpang variannya untuk harga coret juga — selalu, bukan
+  // hanya saat harganya sendiri nol. Harga normal & obral induk adalah sisa
+  // impor yang bisa berbeda dari variannya; lihat `hargaKartu`.
   const termurah =
-    variations.length > 0 && harga.price <= 0 ? cheapestAvailableVariation(variations) : null
+    variations.length > 0 ? cheapestAvailableVariation(variations) : null
 
   return {
     id: p.id,

@@ -1354,6 +1354,31 @@ lewat, bukan hanya `price`, supaya kartu tidak menampilkan harga coret untuk
 potongan yang sudah tidak berlaku. `cart-pricing.ts` sengaja tidak disentuh — ia
 sudah benar, dan dialah yang menentukan angka yang dikirim ke CS.
 
+### Produk bervarian: harga induk diabaikan di kartu PC Builder (1 Oktober 2026)
+
+`hargaKartu()` dan pemetaan kartu di `features/builder/actions.ts`
+(`fetchBuilderProducts`, `fetchBuilderProductsByIds`) serta salinannya di
+`lib/pc-prebuild/products.ts` kini memakai **varian termurah yang tersedia**
+untuk setiap produk yang punya varian terbit — termasuk harga coret dan persen
+diskonnya. Harga milik baris induk hanya dipakai kalau tidak ada satu pun varian
+berharga. Ini aturan yang sama dengan `prismaProductToWoo` (`db-mapper.ts`),
+yang dipakai halaman toko dan halaman produk sejak 25 Juli 2026.
+
+Dulu harga induk menang selama nilainya > 0. Masalahnya, 796 dari 814 induk
+VARIABLE masih membawa harga sisa impor WooCommerce, dan form admin
+menyembunyikan kolom harga induk untuk produk bervarian — staff tidak bisa
+melihat atau mengubahnya. Kasus yang memicu perbaikan: RAM ADATA D35G 16GB
+tampil "Mulai dari Rp 2.250.000 (-8%)" di grid `/build-pc` karena obral di
+induknya tidak punya tanggal berakhir, padahal staff sudah menghapus obral di
+kedua variannya dan pemilih varian menawarkan Rp 2.440.000. Gejalanya terbaca
+seperti cache yang macet; padahal jalur ini memang tidak di-cache.
+
+Yang tidak berubah: `resolve.ts` dan `analysis-input.ts` membaca harga per baris
+yang ditunjuk paket, dan paket PC Prebuild selalu menunjuk id varian untuk
+produk bervarian. Kolom harga induk di database belum dibersihkan — itu tugas
+terpisah (skrip data, uji di Docker lokal dulu). Selama belum, jangan menulis
+jalur baca baru yang memakai `regularPrice`/`salePrice` induk VARIABLE.
+
 ### `revalidatePath` setelah rakitan disimpan
 
 `saveBuildAction`, `deleteSavedBuildAction`, dan `refreshBuildPricesAction`
