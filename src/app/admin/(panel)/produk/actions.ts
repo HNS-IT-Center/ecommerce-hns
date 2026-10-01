@@ -16,6 +16,7 @@ import {
 import { periksaKode, tautkanKode } from "@/lib/api/accurate/price-table"
 import type { BulkApplyState, BulkPreviewState } from "./state"
 import { getPrisma } from "@/lib/prisma/client"
+import { ProductType } from "@prisma/client"
 import { buildProductLogEntries, diffProductChanges } from "@/lib/logs/product-log"
 import {
   STOCK_DISPLAY_CACHE_TAG,
@@ -209,6 +210,24 @@ export async function updateProductPriceAction(
     const prisma = getPrisma()
     const product = await prisma.product.findUnique({ where: { wooId: id } })
     if (!product) throw new Error("Produk tidak ditemukan")
+
+    /**
+     * Produk bervarian tidak punya harga sendiri — ditolak dengan pesan, bukan
+     * ditulis lalu ditimpa diam-diam.
+     *
+     * `updateProduct` menyamakan harga induk VARIABLE dengan variannya di setiap
+     * penyimpanan (`syncVariableParentPrice`). Kalau jalur ini dibiarkan menulis
+     * ke induk, angkanya langsung tertimpa di transaksi yang sama: pemanggil
+     * menerima "berhasil", log mencatat perubahan, tapi harganya tidak pernah
+     * berubah. Kolom Harga Jual dan penerapan harga Accurate bisa menunjuk
+     * induk yang tertaut kode Accurate.
+     */
+    if (product.type === ProductType.VARIABLE) {
+      return {
+        error:
+          "Produk bervarian tidak punya harga sendiri. Ubah harga di variannya lewat edit produk.",
+      }
+    }
 
     /**
      * Peringatan lonjakan harga — perlu satu konfirmasi, bukan penolakan.

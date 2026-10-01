@@ -1375,9 +1375,41 @@ seperti cache yang macet; padahal jalur ini memang tidak di-cache.
 
 Yang tidak berubah: `resolve.ts` dan `analysis-input.ts` membaca harga per baris
 yang ditunjuk paket, dan paket PC Prebuild selalu menunjuk id varian untuk
-produk bervarian. Kolom harga induk di database belum dibersihkan — itu tugas
-terpisah (skrip data, uji di Docker lokal dulu). Selama belum, jangan menulis
-jalur baca baru yang memakai `regularPrice`/`salePrice` induk VARIABLE.
+produk bervarian.
+
+### Harga induk VARIABLE adalah nilai turunan (1 Oktober 2026)
+
+Kolom harga induk **tidak dikosongkan**, karena sort "Harga" dan filter harga
+min/max di `/shop` (`buildPrismaOrderBy`, `buildPrismaWhere`) membacanya
+langsung di database. Kalau NULL, produk bervarian naik ke atas urutan
+termurah dan hilang dari filter rentang harga. Kolomnya kini dijaga oleh
+`syncVariableParentPrice()` (`lib/api/woocommerce/products.ts`):
+
+```
+regularPrice = harga normal varian termurah (> 0, semua varian)
+salePrice    = NULL
+saleEndDate  = NULL
+```
+
+- `createProduct` dan `updateProduct` memanggilnya di transaksi yang sama,
+  baik saat induknya disimpan (form selalu mengirim balik harga induk basi dari
+  kolom yang disembunyikannya) maupun saat harga sebuah VARIATION diubah
+  langsung. Untuk kasus kedua, cache halaman induknya (`product-<slug induk>`,
+  `product-<wooId induk>-variations`) juga ikut dibuang. Sebelumnya harga
+  varian yang diubah langsung baru tampil di halaman produk setelah cache-nya
+  habis.
+- `updateProductPriceAction` menolak induk VARIABLE dengan pesan. Kalau
+  diizinkan menulis, angkanya langsung tertimpa sinkronisasi: "berhasil" dan
+  tercatat di log, padahal harganya tidak berubah.
+- Induk tanpa satu pun varian berharga dibiarkan, karena kolomnya adalah
+  satu-satunya harga produk itu.
+
+Data lama disamakan sekali lewat `scripts/sinkron-harga-induk-variable.mts`
+(uji kering bawaan, `--tulis` untuk menulis, berkas pemulihan di `backup/`). Di
+database lokal Docker saat diuji: 146 dari 850 induk berbeda, 100 di antaranya
+membawa obral sisa impor. Tidak ada harga yang dilihat pelanggan
+yang berubah karena skrip ini; yang bergeser hanya posisi produk bervarian di
+sort/filter harga `/shop`.
 
 ### `revalidatePath` setelah rakitan disimpan
 
