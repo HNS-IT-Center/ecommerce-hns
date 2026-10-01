@@ -84,10 +84,11 @@ export async function issueQuotationAction(
   /**
    * Batas laju per IP untuk penerbitan oleh pengunjung.
    *
-   * Nomor berurutan bisa "dipompa": menekan Print berkali-kali menghabiskan
-   * nomor bulan itu, dan nomor yang melompat jauh membuat pembukuan toko
-   * terlihat seperti kehilangan dokumen. Risiko itu diterima secara sadar saat
-   * memilih nomor urut — ini mitigasinya.
+   * Sejak 1 Oktober 2026 pengunjung mendapat kode acak, bukan nomor urut, jadi
+   * penghitung bulanan tidak lagi bisa "dipompa" dari sini. Batasnya tetap
+   * dipertahankan: setiap penerbitan tetap satu baris di database, dan menekan
+   * Print berkali-kali — atau skrip yang memanggil action ini — tetap memenuhi
+   * tab Pengunjung di /verify.
    *
    * **Staff dikecualikan.** Seluruh gerai keluar lewat satu IP NAT yang sama,
    * jadi lima penerbitan per menit adalah jatah untuk seisi toko, bukan per
@@ -105,7 +106,9 @@ export async function issueQuotationAction(
   }
 
   /**
-   * Pengunjung & pelanggan biasa: anonim, apa pun yang mereka kirim.
+   * Pengunjung & pelanggan biasa: anonim, apa pun yang mereka kirim — dan
+   * karena tanpa pemilik, kodenya acak (`HNSPC-261001-7K3M`), bukan nomor urut.
+   * Nomor urut hanya untuk pemegang `quotation-terbit` di bawah (docs/17 §1).
    *
    * Medan identitas DIBUANG, bukan ditolak dengan pesan error. Yang mengirimnya
    * tanpa izin bukan orang yang salah isi formulir — formulirnya memang tidak

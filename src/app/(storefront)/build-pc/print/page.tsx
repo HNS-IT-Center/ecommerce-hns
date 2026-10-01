@@ -101,7 +101,7 @@ export default async function PrintPcBuilderPage({
     if (typeof params.items === "string" && params.items.length > 0) {
       return (
         <ErrorState
-          message="Tautan cetak versi lama sudah tidak berlaku. Buka lagi rakitan Anda di halaman Rakit PC, lalu tekan Print untuk menerbitkan quotation bernomor."
+          message="Tautan cetak versi lama sudah tidak berlaku. Buka lagi rakitan Anda di halaman Rakit PC, lalu tekan Print untuk menerbitkan quotation baru."
           action={
             <Link
               href="/build-pc"

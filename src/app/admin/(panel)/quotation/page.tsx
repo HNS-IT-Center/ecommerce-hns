@@ -8,7 +8,9 @@ import {
   ADMIN_QUOTATION_PAGE_SIZE,
   listQuotationOwners,
   listQuotationsForAdmin,
+  parseQuoteAsal,
   summarizeSalesByMonth,
+  type QuoteAsal,
 } from "@/lib/api/pc-build-quotes"
 import { AdminPagination } from "@/components/admin/admin-pagination"
 import { formatRupiah } from "@/lib/utils"
@@ -30,6 +32,7 @@ type Props = {
     periode?: string
     sales?: string
     status?: string
+    asal?: string
     page?: string
   }>
 }
@@ -48,14 +51,17 @@ export default async function AdminQuotationPage({ searchParams }: Props) {
   const { izin } = await requirePageView("quotation")
   const bolehBatalkan = bisaAkses(izin, "quotation", "edit")
 
-  const { q, periode: periodeRaw, sales, status, page } = await searchParams
+  const { q, periode: periodeRaw, sales, status, asal: asalRaw, page } = await searchParams
+  // Bawaan Internal, sama dengan /verify: quotation pengunjung jumlahnya jauh
+  // lebih banyak dan, tanpa saringan, mengubur penawaran yang dibuat sales.
+  const asal = parseQuoteAsal(asalRaw)
   const periode = /^\d{6}$/.test(periodeRaw ?? "") ? periodeRaw! : jakartaPeriod(new Date())
   // `?page=abc` dan `?page=0` sama-sama jatuh ke halaman 1 — bukan ke `skip`
   // negatif yang membuat Prisma melempar dan seluruh halaman gagal dirender.
   const halaman = Math.max(1, Number(page ?? 1) || 1)
 
   const [daftar, rekap, owners] = await Promise.all([
-    listQuotationsForAdmin({ q, ownerUserId: sales, status, page: halaman }),
+    listQuotationsForAdmin({ q, ownerUserId: sales, status, asal, page: halaman }),
     summarizeSalesByMonth(periode),
     listQuotationOwners(),
   ])
@@ -82,7 +88,7 @@ export default async function AdminQuotationPage({ searchParams }: Props) {
               {unitRekap} quotation terjual · {formatRupiah(totalRekap)}
             </p>
           </div>
-          <PemilihPeriode aktif={periode} q={q} sales={sales} status={status} />
+          <PemilihPeriode aktif={periode} q={q} sales={sales} status={status} asal={asal} />
         </div>
 
         {rekap.length === 0 ? (
@@ -143,6 +149,17 @@ export default async function AdminQuotationPage({ searchParams }: Props) {
           <option value="">Semua status</option>
           <option value="terbit">Terbit</option>
           <option value="closing">Terjual</option>
+        </select>
+
+        <select
+          name="asal"
+          defaultValue={asal}
+          aria-label="Asal quotation"
+          className="rounded-xl border border-input bg-muted/50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-background"
+        >
+          <option value="internal">Internal</option>
+          <option value="pengunjung">Pengunjung</option>
+          <option value="semua">Semua asal</option>
         </select>
 
         <button
@@ -280,11 +297,13 @@ function PemilihPeriode({
   q,
   sales,
   status,
+  asal,
 }: {
   aktif: string
   q?: string
   sales?: string
   status?: string
+  asal: QuoteAsal
 }) {
   const pilihan: string[] = []
   const kini = jakartaPeriod(new Date())
@@ -306,6 +325,7 @@ function PemilihPeriode({
         if (q) params.set("q", q)
         if (sales) params.set("sales", sales)
         if (status) params.set("status", status)
+        if (asal !== "internal") params.set("asal", asal)
         params.set("periode", p)
         return (
           <Link

@@ -153,7 +153,12 @@ export async function prepareBuildWhatsApp(
 }
 
 /**
- * Menerbitkan rakitan sebagai quotation bernomor, sama seperti tombol Print.
+ * Menerbitkan rakitan sebagai quotation, sama seperti tombol Print.
+ *
+ * Selalu berkode ACAK, tidak pernah nomor urut: jalur ini tidak membawa
+ * pemilik, jadi ia jatuh ke tab Pengunjung — walau yang menekan "Kirim ke HNS"
+ * kebetulan staff. Nomor urut hanya lahir dari tombol Print oleh pemegang
+ * `quotation-terbit` (docs/17 §1).
  *
  * **Perubahan 21 September 2026 — baca ini sebelum mengubah perilakunya.**
  * Dulu kodenya deterministik dari `productId:qty:harga`, sehingga rakitan yang

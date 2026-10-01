@@ -216,6 +216,14 @@ export function VerifySearchForm() {
                         TERJUAL
                       </span>
                     )}
+                    {/* Pencarian sengaja lintas kedua tab — kasir mencari kode
+                        dari kertas pelanggan, bukan memilih tab dulu. Penanda
+                        ini yang memberi tahu dari mana asalnya. */}
+                    {!quote.internal && (
+                      <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 font-sans text-[10px] font-bold text-muted-foreground">
+                        PENGUNJUNG
+                      </span>
+                    )}
                     {quote.customerName && (
                       <span className="truncate font-sans text-xs font-normal text-muted-foreground">
                         {quote.customerName}

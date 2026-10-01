@@ -7,6 +7,7 @@ import { Breadcrumb } from "@/components/seo/breadcrumb"
 import { requirePageView } from "@/lib/auth"
 import {
   listRecentQuotes,
+  parseQuoteAsal,
   parseQuoteSort,
   type QuoteSort,
   type QuoteSummary,
@@ -30,6 +31,29 @@ const SORT_OPTIONS: { value: QuoteSort; label: string }[] = [
   { value: "dicetak", label: "Terakhir dicetak" },
   { value: "dibuat", label: "Tanggal dibuat" },
 ]
+
+type VerifyTab = "internal" | "pengunjung"
+
+/**
+ * Internal = diterbitkan staff, bernomor urut. Pengunjung = Print/Konsultasi WA
+ * dari pengunjung situs, kode acak (docs/17 §1). Tab Internal jadi bawaan
+ * karena itulah yang dicari kasir: pengunjung yang sekadar mencoba-coba
+ * rakitan menerbitkan jauh lebih banyak dokumen daripada yang pernah sampai ke
+ * meja kasir, dan dalam satu grid mereka mengubur penawaran toko.
+ */
+const TAB_OPTIONS: { value: VerifyTab; label: string }[] = [
+  { value: "internal", label: "Internal" },
+  { value: "pengunjung", label: "Pengunjung" },
+]
+
+/** Bawaan tidak ditulis ke URL, supaya `/verify` polos tetap alamat utamanya. */
+function verifyHref(tab: VerifyTab, sort: QuoteSort): string {
+  const params = new URLSearchParams()
+  if (tab !== "internal") params.set("asal", tab)
+  if (sort !== "dicetak") params.set("urut", sort)
+  const query = params.toString()
+  return query ? `/verify?${query}` : "/verify"
+}
 
 function QuoteCard({ quote, sort }: { quote: QuoteSummary; sort: QuoteSort }) {
   // Tanggal yang ditampilkan mengikuti urutan yang dipilih — kalau grid
@@ -94,8 +118,11 @@ export default async function VerifyBuildPage({
   // Khusus kasir & admin (izin `verify`). Tanpa akses → beranda; lihat src/proxy.ts.
   await requirePageView("verify", { deniedRedirect: "/" })
 
-  const sort = parseQuoteSort((await searchParams).urut)
-  const quotes = await listRecentQuotes(sort, RECENT_LIMIT)
+  const params = await searchParams
+  const sort = parseQuoteSort(params.urut)
+  // `?asal=semua` tidak berarti apa pun di sini — /verify hanya punya dua tab.
+  const tab: VerifyTab = parseQuoteAsal(params.asal) === "pengunjung" ? "pengunjung" : "internal"
+  const quotes = await listRecentQuotes(sort, tab, RECENT_LIMIT)
 
   return (
     <div className="flex min-h-dvh flex-col bg-page">
@@ -121,7 +148,29 @@ export default async function VerifyBuildPage({
             </div>
           </div>
 
-          <div className="mt-8 flex shrink-0 flex-wrap items-center justify-between gap-3">
+          <nav
+            aria-label="Asal quotation"
+            className="mt-8 flex shrink-0 gap-1 border-b border-border"
+          >
+            {TAB_OPTIONS.map((option) => (
+              <Link
+                key={option.value}
+                href={verifyHref(option.value, sort)}
+                aria-current={tab === option.value ? "page" : undefined}
+                scroll={false}
+                className={cn(
+                  "-mb-px border-b-2 px-4 py-2 text-sm font-semibold transition-colors",
+                  tab === option.value
+                    ? "border-primary text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {option.label}
+              </Link>
+            ))}
+          </nav>
+
+          <div className="mt-4 flex shrink-0 flex-wrap items-center justify-between gap-3">
             <h2 className="text-sm font-bold uppercase tracking-wide text-muted-foreground">
               {RECENT_LIMIT} rakitan terakhir
             </h2>
@@ -129,7 +178,7 @@ export default async function VerifyBuildPage({
               {SORT_OPTIONS.map((option) => (
                 <Link
                   key={option.value}
-                  href={option.value === "dicetak" ? "/verify" : `/verify?urut=${option.value}`}
+                  href={verifyHref(tab, option.value)}
                   aria-current={sort === option.value ? "page" : undefined}
                   scroll={false}
                   className={cn(
@@ -150,7 +199,9 @@ export default async function VerifyBuildPage({
               <FileSearch className="h-8 w-8 text-muted-foreground" />
               <p className="mt-3 text-sm font-semibold">Belum ada quotation</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Quotation tercatat otomatis setiap kali pelanggan mencetak rakitan dari halaman Rakit PC.
+                {tab === "internal"
+                  ? "Quotation internal muncul di sini setiap kali staff menerbitkannya dari halaman Rakit PC."
+                  : "Quotation tercatat otomatis setiap kali pengunjung mencetak rakitan dari halaman Rakit PC."}
               </p>
             </div>
           ) : (
