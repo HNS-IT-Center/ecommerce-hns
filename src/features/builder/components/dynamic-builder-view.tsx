@@ -190,6 +190,28 @@ export function DynamicBuilderView({
   const [loadingMore, setLoadingMore] = useState(false)
   const [search, setSearch] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
+
+  /**
+   * Kata kunci pencarian milik SATU langkah — dikosongkan begitu langkahnya
+   * berganti, dari jalur mana pun (sidebar, Lanjut/Kembali, tombol ubah di
+   * My Build, pengingat langkah wajib).
+   *
+   * Dulu ia terbawa: "d35g" yang diketik di langkah RAM ikut menyaring langkah
+   * Casing, dan grid berikutnya tampil kosong seolah tidak ada komponen yang
+   * cocok.
+   *
+   * Direset SAAT RENDER, bukan di `useEffect`. Lewat efek, render pertama
+   * langkah baru sudah memicu fetch grid dengan kata kunci lama, lalu fetch
+   * kedua setelah kosong — satu kueri sia-sia per perpindahan langkah, dan
+   * hasil yang salah sempat berkedip di layar.
+   */
+  const [searchStepId, setSearchStepId] = useState(activeStepId)
+  if (searchStepId !== activeStepId) {
+    setSearchStepId(activeStepId)
+    setSearch("")
+    setDebouncedSearch("")
+  }
+
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
   const [sortMode, setSortMode] = useState<"default" | "name_asc" | "name_desc" | "price_asc" | "price_desc">("default")
