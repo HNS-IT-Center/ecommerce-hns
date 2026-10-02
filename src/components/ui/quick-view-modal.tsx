@@ -27,6 +27,7 @@ import {
   ProductVariantSelector,
   type VariantAttribute,
 } from "@/features/product/components/product-variant-selector"
+import { StockConfirmNotice } from "@/features/product/components/stock-confirm-notice"
 
 interface QuickViewModalProps {
   product: Product
@@ -215,6 +216,7 @@ export function QuickViewModal({ product, isOpen, onClose }: QuickViewModalProps
   const waMessage = `${productUrl}
 
 Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRupiah(hasDiscount ? product.regular_price! : product.price)}${hasDiscount ? ` dengan harga discount ${formatRupiah(product.price)}` : ""}`
+  const waUrl = buildWhatsAppUrl(process.env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER || "", waMessage)
 
   // Tanpa foto sama sekali, galeri menerima daftar kosong dan menggambar
   // placeholder-nya sendiri.
@@ -327,6 +329,8 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
 
              </div>
 
+             <StockConfirmNotice waUrl={waUrl} className="mb-3" />
+
              {/* 6. Buttons Add to Cart and WhatsApp in 1 row */}
              <div className="flex gap-2 md:gap-3 mb-4">
                 <button
@@ -358,7 +362,7 @@ Hallo Saya ingin menanyakan soal Product ${product.name} dengan harga ${formatRu
                 </button>
                 
                 <a 
-                  href={buildWhatsAppUrl(process.env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER || "", waMessage)}
+                  href={waUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex-1 flex flex-row items-center justify-center gap-1.5 md:gap-2 rounded-lg border border-[#25D366] text-[#25D366] bg-[#25D366]/5 px-2 py-2 md:py-3 text-[10px] sm:text-xs md:text-sm font-semibold transition-all hover:bg-[#25D366]/10 cursor-pointer text-center leading-tight whitespace-nowrap"

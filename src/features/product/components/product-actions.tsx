@@ -4,6 +4,7 @@ import { ShoppingCart, TriangleAlert } from "lucide-react"
 import WhatsappIcon from "@/components/icons/whatsapp-icon"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { cn, formatRupiah } from "@/lib/utils"
+import { StockConfirmNotice } from "./stock-confirm-notice"
 
 type ProductActionsProps = {
   onAddToCart: (e: React.MouseEvent) => void
@@ -146,29 +147,9 @@ export function ProductActions({
     <>
       {/* Desktop: mengalir normal di dalam panel informasi. */}
       <div className="hidden flex-col gap-2 md:flex">
-        {/* Stok di katalog tidak selalu sama dengan stok fisik di toko, jadi
-            pembeli diminta konfirmasi ke CS sebelum membeli. Hanya tampil saat
-            tombol keranjang ada — tanpa tombol itu, jalurnya sudah WhatsApp. */}
-        {showCartButton && (
-          <div
-            role="note"
-            className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
-          >
-            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-            <p>
-              Stok dapat berubah sewaktu-waktu. Wajib konfirmasi ketersediaan ke Customer
-              Service sebelum membeli.{" "}
-              <a
-                href={waUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-semibold underline underline-offset-2"
-              >
-                Tanya CS via WhatsApp
-              </a>
-            </p>
-          </div>
-        )}
+        {/* Hanya tampil saat tombol keranjang ada — tanpa tombol itu,
+            jalurnya sudah WhatsApp. */}
+        {showCartButton && <StockConfirmNotice waUrl={waUrl} />}
         {addToCartHint && <p className="text-xs text-muted-foreground">{addToCartHint}</p>}
         <div className="flex items-center gap-3">
           {cartButton}
