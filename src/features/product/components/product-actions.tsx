@@ -200,9 +200,9 @@ export function ProductActions({
           {showCartButton && (
             <p
               role="note"
-              className="mb-2 flex items-center justify-center gap-1 truncate text-[11px] font-semibold leading-4 text-amber-800"
+              className="mb-2 flex items-center justify-center gap-1 truncate text-xs font-semibold leading-4 text-amber-800"
             >
-              <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+              <TriangleAlert className="h-4 w-4 shrink-0" />
               <span className="truncate">Konfirmasi stok ke CS sebelum membeli</span>
             </p>
           )}
