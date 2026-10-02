@@ -442,17 +442,19 @@ export function ProductInfo({
           Terlihat "kosong" memang wujud yang benar: tugasnya menyediakan ruang,
           bukan menampilkan sesuatu.
 
-          TINGGINYA HARUS IKUT TINGGI BAR. Sejak bar memakai tata letak dua
-          baris (harga di atas, tombol lebar di bawah), ukurannya jadi:
+          TINGGINYA HARUS IKUT TINGGI BAR. Bar memakai tata letak tiga baris
+          (peringatan stok, harga, tombol lebar), ukurannya jadi:
 
             border-t          1px
-            pt-2              8px
+            pt-4             16px
+            peringatan stok  16px  (leading-4)
+            mb-2              8px
             baris harga     ~22px
             mb-2              8px
             tombol h-12      48px
             pb-2.5           10px
             ─────────────────────
-                             97px  →  h-24 (96px)
+                            129px  →  h-32 (128px)
 
           Sisa satu piksel ditanggung `pb-safe` milik bar, yang di ponsel modern
           selalu menambah ruang di bawahnya.
@@ -460,7 +462,7 @@ export function ProductInfo({
           Kalau tata letak bar diubah lagi, angka ini ikut diperbarui — kalau
           tidak, QR kembali tertutup (ganjalan kekecilan) atau muncul celah
           putih di ujung halaman (kebesaran). */}
-      <div className="order-last h-24 md:hidden" aria-hidden="true" />
+      <div className="order-last h-32 md:hidden" aria-hidden="true" />
     </div>
   );
 }

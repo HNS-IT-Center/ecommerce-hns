@@ -1,6 +1,6 @@
 "use client"
 
-import { ShoppingCart } from "lucide-react"
+import { ShoppingCart, TriangleAlert } from "lucide-react"
 import WhatsappIcon from "@/components/icons/whatsapp-icon"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { cn, formatRupiah } from "@/lib/utils"
@@ -146,6 +146,29 @@ export function ProductActions({
     <>
       {/* Desktop: mengalir normal di dalam panel informasi. */}
       <div className="hidden flex-col gap-2 md:flex">
+        {/* Stok di katalog tidak selalu sama dengan stok fisik di toko, jadi
+            pembeli diminta konfirmasi ke CS sebelum membeli. Hanya tampil saat
+            tombol keranjang ada — tanpa tombol itu, jalurnya sudah WhatsApp. */}
+        {showCartButton && (
+          <div
+            role="note"
+            className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
+          >
+            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>
+              Stok dapat berubah sewaktu-waktu. Wajib konfirmasi ketersediaan ke Customer
+              Service sebelum membeli.{" "}
+              <a
+                href={waUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold underline underline-offset-2"
+              >
+                Tanya CS via WhatsApp
+              </a>
+            </p>
+          </div>
+        )}
         {addToCartHint && <p className="text-xs text-muted-foreground">{addToCartHint}</p>}
         <div className="flex items-center gap-3">
           {cartButton}
@@ -190,6 +213,18 @@ export function ProductActions({
             `backdrop-blur` dilepas: ia hanya berguna kalau latarnya tembus
             pandang, sementara di sini justru kepekatan yang dibutuhkan. */}
         <div className="border-t border-border bg-[var(--background-50)] px-3 pb-2.5 pt-4 shadow-[0_-4px_20px_rgba(0,0,0,0.14)]">
+          {/* Versi ringkas peringatan stok. Satu baris tetap (`truncate`,
+              `leading-4`) supaya tinggi bar bisa dihitung — ganjalan di
+              product-info.tsx bergantung pada angka itu. */}
+          {showCartButton && (
+            <p
+              role="note"
+              className="mb-2 flex items-center justify-center gap-1 truncate text-[11px] font-medium leading-4 text-amber-700 dark:text-amber-400"
+            >
+              <TriangleAlert className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">Konfirmasi stok ke CS sebelum membeli</span>
+            </p>
+          )}
           {/* Hint "pilih varian dulu" tidak diulang di sini: di mobile tombol
               keranjangnya sudah mengantar ke pemilih varian, jadi kalimatnya
               hanya memakan ruang layar. Hint lain (mis. "varian ini habis")
