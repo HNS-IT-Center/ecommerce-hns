@@ -12,13 +12,17 @@ type StockConfirmNoticeProps = {
  * selalu sama dengan stok fisik di toko, jadi pembeli diminta konfirmasi ke
  * CS sebelum membeli. Dipakai halaman produk (desktop) dan Quick View —
  * versi ringkas untuk bar mobile ada langsung di product-actions.tsx.
+ *
+ * Tanpa varian `dark:`. Storefront tidak pernah memasang class `.dark`, tapi
+ * di Tailwind v4 `dark:` bawaan mengikuti `prefers-color-scheme` — di HP yang
+ * dark mode, teksnya berubah kuning terang di atas latar yang tetap putih.
  */
 export function StockConfirmNotice({ waUrl, className }: StockConfirmNoticeProps) {
   return (
     <div
       role="note"
       className={cn(
-        "flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-800 dark:text-amber-300",
+        "flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900",
         className,
       )}
     >
