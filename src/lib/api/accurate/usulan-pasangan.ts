@@ -59,6 +59,8 @@ export type HasilUsulan = {
    */
   rekap: Record<Keyakinan, number>
   keyakinan: Keyakinan | ""
+  /** Kategori terpilih — gabungan ATAU, bukan ketat ke semuanya (lihat filter di bawah). */
+  kategori: string[]
 }
 
 const PER_PAGE = 25
@@ -73,6 +75,7 @@ export async function listUsulanPasangan(opsi: {
   page?: number
   q?: string
   keyakinan?: Keyakinan | ""
+  kategori?: string[]
 }): Promise<HasilUsulan> {
   const prisma = getPrisma()
 
@@ -114,12 +117,22 @@ export async function listUsulanPasangan(opsi: {
 
   const katalog = bangunIndeks(produk)
 
+  // Disaring sebelum diperingkat (bukan sesudah) karena memeringkat kandidat
+  // untuk SELURUH antrean itulah bagian yang mahal (906 ms/5.033 baris, lihat
+  // catatan di atas) — makin sedikit baris yang masuk tahap itu, makin cepat.
   const cari = opsi.q?.trim().toUpperCase() ?? ""
-  const tersaring = cari
-    ? antrean.filter(
-        (a) => a.nama.toUpperCase().includes(cari) || a.kode.toUpperCase().includes(cari),
-      )
-    : antrean
+  const kategoriDipilih = opsi.kategori?.filter(Boolean) ?? []
+  const tersaring = antrean.filter((a) => {
+    // Gabungan ATAU: satu barang Accurate cuma punya satu nilai KATEGORI, jadi
+    // cocok kalau masuk SALAH SATU kategori yang dipilih.
+    if (kategoriDipilih.length > 0 && (!a.kategori || !kategoriDipilih.includes(a.kategori))) {
+      return false
+    }
+    if (cari && !a.nama.toUpperCase().includes(cari) && !a.kode.toUpperCase().includes(cari)) {
+      return false
+    }
+    return true
+  })
 
   const semua: BarisUsulan[] = tersaring.map((a) => {
     const kandidat = peringkatKandidat(a.nama, katalog, 3)
@@ -170,5 +183,6 @@ export async function listUsulanPasangan(opsi: {
     perPage: PER_PAGE,
     rekap,
     keyakinan,
+    kategori: kategoriDipilih,
   }
 }

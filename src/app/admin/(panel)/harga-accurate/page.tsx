@@ -237,12 +237,25 @@ async function TabDaftar({
  * kalau ia menekan tombolnya, yang menolak adalah server, bukan tampilan.
  */
 async function TabUsulan({ searchParams }: { searchParams: Awaited<Props["searchParams"]> }) {
-  const data = await listUsulanPasangan({
-    page: Number(searchParams.page ?? 1) || 1,
-    q: searchParams.q,
-    // Nilai dari alamat divalidasi di sini; `?keyakinan=apa-saja` jatuh ke
-    // "semua", bukan menampilkan daftar kosong yang terbaca seperti habis.
-    keyakinan: isKeyakinan(searchParams.keyakinan) ? searchParams.keyakinan : "",
-  })
-  return <UsulanView data={data} q={searchParams.q?.trim() ?? ""} />
+  // Daftar kategori dibaca dari sumber yang sama dengan tab Daftar Harga
+  // (§2.3 — reuse, bukan query baru) supaya pilihannya konsisten di kedua tab.
+  //
+  // Beberapa kategori terpilih sekaligus disimpan di SATU parameter alamat
+  // dipisah koma (`?kategori=Laptop,Monitor`), bukan parameter berulang —
+  // aman karena tidak ada nama kategori Accurate yang memuat koma (diukur
+  // langsung ke data, bukan diasumsikan).
+  const kategoriDipilih = searchParams.kategori?.split(",").map((k) => k.trim()).filter(Boolean) ?? []
+
+  const [data, opsi] = await Promise.all([
+    listUsulanPasangan({
+      page: Number(searchParams.page ?? 1) || 1,
+      q: searchParams.q,
+      // Nilai dari alamat divalidasi di sini; `?keyakinan=apa-saja` jatuh ke
+      // "semua", bukan menampilkan daftar kosong yang terbaca seperti habis.
+      keyakinan: isKeyakinan(searchParams.keyakinan) ? searchParams.keyakinan : "",
+      kategori: kategoriDipilih,
+    }),
+    ambilOpsiFilter(),
+  ])
+  return <UsulanView data={data} q={searchParams.q?.trim() ?? ""} kategoriOpsi={opsi.kategori} />
 }

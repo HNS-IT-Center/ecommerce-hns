@@ -2,10 +2,12 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { AlertTriangle, Link2, Loader2, Search } from "lucide-react"
+import { AlertTriangle, ChevronDown, Link2, Loader2, Search, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 import type { BarisUsulan, HasilUsulan } from "@/lib/api/accurate/usulan-pasangan"
 import type { Keyakinan } from "@/lib/api/accurate/pencocokan-nama"
@@ -45,7 +47,15 @@ const KELAS_KEYAKINAN: Record<Keyakinan, string> = {
  * dan itu batas atas dari kunci jawaban yang bias. Artinya sekitar satu dari
  * empermpat belas barang TIDAK punya jawaban benar di layar sama sekali.
  */
-export function UsulanView({ data, q }: { data: HasilUsulan; q: string }) {
+export function UsulanView({
+  data,
+  q,
+  kategoriOpsi,
+}: {
+  data: HasilUsulan
+  q: string
+  kategoriOpsi: string[]
+}) {
   const router = useRouter()
   const [teksCari, setTeksCari] = React.useState(q)
   const [pending, startTransition] = React.useTransition()
@@ -62,13 +72,20 @@ export function UsulanView({ data, q }: { data: HasilUsulan; q: string }) {
   /** Barang yang sedang ditandai tidak dijual di web. */
   const [mengabaikan, setMengabaikan] = React.useState<BarisUsulan | null>(null)
 
-  function url(ubahan: { page?: number; q?: string; keyakinan?: Keyakinan | "" }) {
+  function url(ubahan: {
+    page?: number
+    q?: string
+    keyakinan?: Keyakinan | ""
+    kategori?: string[]
+  }) {
     const sp = new URLSearchParams()
     sp.set("tab", "usulan")
     const cari = ubahan.q ?? q
     if (cari) sp.set("q", cari)
     const k = ubahan.keyakinan ?? data.keyakinan
     if (k) sp.set("keyakinan", k)
+    const kat = ubahan.kategori ?? data.kategori
+    if (kat.length > 0) sp.set("kategori", kat.join(","))
     const page = ubahan.page ?? data.page
     if (page > 1) sp.set("page", String(page))
     return `/admin/harga-accurate?${sp.toString()}`
@@ -188,6 +205,14 @@ export function UsulanView({ data, q }: { data: HasilUsulan; q: string }) {
           Cari
         </Button>
       </form>
+
+      <div className="mt-2 flex flex-wrap gap-2">
+        <PilihanKategoriMulti
+          nilai={data.kategori}
+          opsi={kategoriOpsi}
+          onUbah={(v) => router.replace(url({ kategori: v, page: 1 }))}
+        />
+      </div>
 
       {pesan && (
         <p className="mt-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm">{pesan}</p>
@@ -372,5 +397,103 @@ export function UsulanView({ data, q }: { data: HasilUsulan; q: string }) {
         onConfirm={abaikan}
       />
     </div>
+  )
+}
+
+/**
+ * Filter kategori BISA PILIH LEBIH DARI SATU — beda dari `PilihanCari` di tab
+ * Daftar Harga (satu nilai). Satu barang Accurate cuma punya satu `KATEGORI`,
+ * jadi memilih beberapa berarti gabungan ATAU: cocok kalau masuk SALAH SATU
+ * yang dicentang (lihat filter di `listUsulanPasangan`).
+ *
+ * Dibangun dari primitif yang sudah ada (`Popover` + `Checkbox`), bukan
+ * `Combobox` — komponen itu satu nilai per desain (dipakai luas di tempat lain
+ * untuk itu) dan menambah mode banyak-nilai ke sana akan mengubah perilaku
+ * seluruh pemakainya.
+ */
+function PilihanKategoriMulti({
+  nilai,
+  opsi,
+  onUbah,
+}: {
+  nilai: string[]
+  opsi: string[]
+  onUbah: (nilai: string[]) => void
+}) {
+  const [buka, setBuka] = React.useState(false)
+  const [cari, setCari] = React.useState("")
+
+  const tersaring = React.useMemo(() => {
+    const q = cari.trim().toLowerCase()
+    return q ? opsi.filter((o) => o.toLowerCase().includes(q)) : opsi
+  }, [opsi, cari])
+
+  function toggle(v: string) {
+    onUbah(nilai.includes(v) ? nilai.filter((x) => x !== v) : [...nilai, v])
+  }
+
+  const labelTombol =
+    nilai.length === 0
+      ? "Semua Kategori"
+      : nilai.length <= 2
+        ? nilai.join(", ")
+        : `${nilai.length} kategori dipilih`
+
+  return (
+    <Popover open={buka} onOpenChange={setBuka}>
+      <PopoverTrigger
+        className="flex items-center gap-1.5 rounded-lg border border-input bg-background px-3 py-2 text-sm"
+      >
+        <span className="max-w-48 truncate">{labelTombol}</span>
+        {nilai.length > 0 && (
+          <span
+            role="button"
+            tabIndex={0}
+            aria-label="Hapus semua kategori terpilih"
+            onClick={(e) => {
+              e.stopPropagation()
+              onUbah([])
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" && e.key !== " ") return
+              e.stopPropagation()
+              e.preventDefault()
+              onUbah([])
+            }}
+            className="rounded-full p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <X className="h-3 w-3" />
+          </span>
+        )}
+        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-64 p-2">
+        <Input
+          autoFocus
+          placeholder="Cari kategori…"
+          value={cari}
+          onChange={(e) => setCari(e.target.value)}
+          className="mb-2 text-xs"
+        />
+        <div className="max-h-60 space-y-0.5 overflow-y-auto">
+          {tersaring.length === 0 ? (
+            <p className="px-2 py-1.5 text-xs text-muted-foreground">Tidak ada kategori yang cocok.</p>
+          ) : (
+            tersaring.map((o) => {
+              const dicentang = nilai.includes(o)
+              return (
+                <label
+                  key={o}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted"
+                >
+                  <Checkbox checked={dicentang} onCheckedChange={() => toggle(o)} />
+                  <span className="truncate">{o}</span>
+                </label>
+              )
+            })
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }
