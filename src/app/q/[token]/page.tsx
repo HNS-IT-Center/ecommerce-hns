@@ -13,6 +13,7 @@ import { getPcBuilderConfig, getPcBuilderDisplayConfig } from "@/lib/pc-builder/
 import { PUBLIC_TOKEN_PATTERN } from "@/lib/utils/public-token"
 import { formatRupiah } from "@/lib/utils"
 import { formatQuoteDateLong } from "@/app/verify/format"
+import { summarizeBuildSavings } from "@/lib/pc-builder/savings"
 
 /**
  * Penawaran rakitan PC seperti yang dibaca PELANGGAN — alamat pendek
@@ -97,6 +98,7 @@ export default async function PenawaranPublikPage({
 
   const terjual = quote.status === "closing"
   const kedaluwarsa = quote.umurHari > HARI_KEDALUWARSA
+  const { totalBeforeDiscount, savings } = summarizeBuildSavings(quote.items, quote.total)
 
   // Dikelompokkan per kategori mengikuti urutan step di builder, sama seperti
   // PDF-nya — supaya yang dibaca di layar dan yang dipegang di kertas punya
@@ -235,10 +237,29 @@ export default async function PenawaranPublikPage({
               ))}
             </div>
 
-            <div className="mt-5 flex items-baseline justify-between border-t border-border pt-4">
+            {/* Dari snapshot yang sama dengan PDF — lihat `lib/pc-builder/savings.ts`.
+                Quotation lama tanpa harga normal tercatat: blok ini tidak muncul. */}
+            {savings > 0 && (
+              <div className="mt-5 flex items-baseline justify-between gap-4 border-t border-border pt-4 text-sm">
+                <span className="text-muted-foreground">Total sebelum diskon</span>
+                <span className="text-muted-foreground line-through">
+                  {formatRupiah(totalBeforeDiscount)}
+                </span>
+              </div>
+            )}
+            <div
+              className={`flex items-baseline justify-between ${
+                savings > 0 ? "mt-1" : "mt-5 border-t border-border pt-4"
+              }`}
+            >
               <span className="font-bold">Total</span>
               <span className="text-xl font-extrabold">{formatRupiah(quote.total)}</span>
             </div>
+            {savings > 0 && (
+              <p className="mt-1 text-right text-sm font-semibold text-brand-green">
+                Anda hemat {formatRupiah(savings)}
+              </p>
+            )}
           </section>
 
           {/* ---------- Tindakan ---------- */}

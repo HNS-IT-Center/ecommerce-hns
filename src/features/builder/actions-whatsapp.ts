@@ -6,6 +6,7 @@ import { recordPcBuildQuote } from "@/lib/api/pc-build-quotes";
 import { resolveSiteUrl } from "@/lib/utils/site-url";
 import { normalizePhone } from "@/features/stores/lib/maps";
 import { displayVariationName } from "@/lib/utils/variation";
+import { discountedRegularPrice } from "@/lib/pc-builder/savings";
 
 /**
  * Menyiapkan pesan WhatsApp untuk rakitan PC, dengan harga dari katalog.
@@ -38,6 +39,11 @@ export type PrepareBuildResult =
       total: number;
       /** Harga satuan katalog per id produk, untuk menyamakan angka di layar. */
       unitPriceByProductId: Record<number, number>;
+      /**
+       * Harga normal katalog per id produk — HANYA untuk coretan "Total
+       * sebelum diskon" di panel. Lihat `lib/pc-builder/savings.ts`.
+       */
+      regularUnitPriceByProductId: Record<number, number>;
       /** Komponen yang sudah tidak terbit — tidak ikut ke pesan. */
       unavailableProductIds: number[];
       summarised: boolean;
@@ -138,7 +144,11 @@ export async function prepareBuildWhatsApp(
   const perluRingkas = urlRinci.length > MAX_URL_LENGTH;
 
   const unitPriceByProductId: Record<number, number> = {};
-  for (const l of priced.lines) unitPriceByProductId[l.productId] = l.unitPrice;
+  const regularUnitPriceByProductId: Record<number, number> = {};
+  for (const l of priced.lines) {
+    unitPriceByProductId[l.productId] = l.unitPrice;
+    regularUnitPriceByProductId[l.productId] = l.regularUnitPrice;
+  }
 
   return {
     ok: true,
@@ -147,6 +157,7 @@ export async function prepareBuildWhatsApp(
       : urlRinci,
     total: priced.total,
     unitPriceByProductId,
+    regularUnitPriceByProductId,
     unavailableProductIds: priced.unavailableProductIds,
     summarised: perluRingkas,
   };
@@ -194,6 +205,7 @@ async function catatQuotation(
           variationLabel: l.variationLabel,
           sku: l.sku || null,
           price: l.unitPrice,
+          regularPrice: discountedRegularPrice(l.regularUnitPrice, l.unitPrice) ?? undefined,
           quantity: l.quantity,
           stepName: stepPerId.get(l.productId) ?? null,
         })),
