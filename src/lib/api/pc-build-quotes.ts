@@ -6,6 +6,7 @@ import type { Prisma } from "@prisma/client"
 
 import { getPrisma } from "@/lib/prisma/client"
 import { generatePublicToken } from "@/lib/utils/public-token"
+import { discountedRegularPrice } from "@/lib/pc-builder/savings"
 import { jakartaMonthRange, jakartaPeriod, jakartaYyyymmdd } from "@/lib/utils/timezone"
 
 export type QuoteLineItem = {
@@ -38,6 +39,21 @@ export type QuoteLineItem = {
    */
   parentName?: string | null
   variationLabel?: string | null
+  /**
+   * Harga normal katalog (`regularPrice`) PADA SAAT baris ini diberi harga —
+   * hanya diisi kalau ia benar-benar di atas `price`, yaitu kalau komponen ini
+   * sedang didiskon. Dipakai mencetak "Total sebelum diskon" dan "Anda hemat"
+   * (`lib/pc-builder/savings.ts`).
+   *
+   * Opsional karena alasan yang sama dengan `image`: quotation yang terbit
+   * sebelum 6 Oktober 2026 tidak memilikinya, dan untuknya baris hemat tidak
+   * tampil sama sekali. **Jangan mengisinya dari katalog hari ini** — angka
+   * hemat di dokumen lama akan bergeser setiap kali harga normal berubah,
+   * padahal pelanggan tidak pernah mendapat potongan itu.
+   *
+   * Tidak ikut ke `computeContentHash`, sama seperti medan varian.
+   */
+  regularPrice?: number
 }
 
 /**
@@ -462,6 +478,7 @@ export async function issueQuotation(
       sku: line.sku || null,
       image: currentInfo.get(line.productId)?.image ?? undefined,
       price: line.unitPrice,
+      regularPrice: discountedRegularPrice(line.regularUnitPrice, line.unitPrice) ?? undefined,
       quantity: line.quantity,
       stepName: stepId ? stepNameById.get(stepId) ?? null : null,
     }
@@ -1032,6 +1049,12 @@ export type RevisionSeedItem = {
   stepName: string | null
   /** Harga satuan pada revisi terakhir — yang akan dipertahankan secara bawaan. */
   price: number
+  /**
+   * Harga normal yang tercatat BERSAMA `price` di revisi terakhir. Ikut
+   * dipertahankan bersamanya: harga lama yang dipasangkan dengan harga normal
+   * hari ini menghasilkan angka hemat dari dua waktu yang berbeda.
+   */
+  regularPrice?: number
 }
 
 export type RevisionSeed = {
@@ -1104,6 +1127,7 @@ export async function getQuotationForRevision(
       quantity: item.quantity,
       stepName: item.stepName ?? null,
       price: item.price,
+      regularPrice: item.regularPrice,
     })),
   }
 }
@@ -1183,14 +1207,21 @@ export async function reviseQuotation(
     return { ok: false, error: "Komponen yang dipilih tidak ditemukan di katalog." }
   }
 
-  const hargaSebelumnya = new Map(seed.items.map((item) => [item.productId, item.price]))
+  const hargaSebelumnya = new Map(seed.items.map((item) => [item.productId, item]))
   const currentInfo = await getQuoteProductsCurrentInfo(priced.lines.map((l) => l.productId))
   const stepNameById = new Map(stepsConfig.map((step) => [step.id, step.name]))
   const stepIdByProduct = new Map(input.selections.map((s) => [s.productId, s.stepId]))
 
   const items: QuoteLineItem[] = priced.lines.map((line) => {
     const lama = hargaSebelumnya.get(line.productId)
-    const price = !input.useLatestPrices && lama !== undefined ? lama : line.unitPrice
+    const pakaiLama = !input.useLatestPrices && lama !== undefined
+    const price = pakaiLama ? lama.price : line.unitPrice
+    // Harga normal SELALU berpasangan dengan harga yang dipakai: yang lama
+    // dengan yang lama (boleh tidak ada — quotation sebelum medan ini ada),
+    // yang katalog dengan yang katalog. Lihat `QuoteLineItem.regularPrice`.
+    const regularPrice = pakaiLama
+      ? discountedRegularPrice(lama.regularPrice, price)
+      : discountedRegularPrice(line.regularUnitPrice, price)
     const stepId = stepIdByProduct.get(line.productId) ?? null
 
     return {
@@ -1201,6 +1232,7 @@ export async function reviseQuotation(
       sku: line.sku || null,
       image: currentInfo.get(line.productId)?.image ?? undefined,
       price,
+      regularPrice: regularPrice ?? undefined,
       quantity: line.quantity,
       stepName: stepId ? stepNameById.get(stepId) ?? null : null,
     }

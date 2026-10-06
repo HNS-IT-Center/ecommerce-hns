@@ -744,6 +744,41 @@ Keduanya juga TIDAK ikut ke `computeContentHash` — varian berbeda sudah pasti
 id berbeda, jadi menambahkannya tidak memisahkan apa pun yang belum terpisah,
 tapi akan menerbitkan kode baru untuk quotation lama yang isinya tidak berubah.
 
+### "Total sebelum diskon" & "Anda hemat" (6 Oktober 2026)
+
+Panel `/build-pc`, PDF quotation (`/build-pc/print`), dan `/q/<token>`
+menampilkan total normal yang dicoret, total akhir, dan "Anda hemat Rp …" —
+HANYA kalau ada komponen yang benar-benar didiskon katalog (`salePrice` yang
+masih berlaku). Ketiganya memakai satu rumus,
+[`lib/pc-builder/savings.ts`](../src/lib/pc-builder/savings.ts): hemat =
+Σ (`regularPrice` − harga dibayar) × qty untuk baris yang `regularPrice`-nya di
+atas harga dibayar; total sebelum diskon = total tersimpan + hemat. Tidak ada
+harga baru yang lahir — keduanya angka katalog, hemat hanya keterangan atas
+selisihnya (CLAUDE.md §2.7).
+
+| Lapisan | Medan baru |
+|---|---|
+| `PricedCartLine` (`cart-pricing.ts`) | `regularUnitPrice` — checkout tidak membacanya |
+| `PrepareBuildResult` (`actions-whatsapp.ts`) / `BuilderPricing` | `regularUnitPriceByProductId` |
+| `QuoteLineItem` (`pc-build-quotes.ts`) | `regularPrice?` — diisi hanya untuk baris yang didiskon |
+| `RevisionSeedItem` / `RevisionLoad` | `regularPrice?` / `hargaNormalSnapshot` |
+
+Aturan yang wajib dijaga:
+
+- **Quotation yang terbit sebelum medan ini ada TIDAK diberi hemat.** Harga
+  normal pada hari itu tidak pernah dicatat, dan mengisinya dari katalog hari
+  ini membuat angka di dokumen lama bergeser sendiri — melanggar jaminan
+  "alamat yang sama selalu memberi dokumen yang sama persis" di halaman cetak.
+- **Harga normal selalu berpasangan dengan harga yang dipakai.** Revisi yang
+  mempertahankan harga lama ikut mempertahankan harga normal lamanya (boleh
+  tidak ada); "Gunakan harga terbaru" mengambil keduanya dari katalog.
+- **Panel builder memakai urutan sumber yang sama dengan `unitPriceOf`**
+  (revisi → katalog server → data saat komponen dipilih), dan baris hemat
+  disembunyikan sampai katalog terbaca minimal sekali serta selama pemeriksaan
+  harga `loading`/`error` — supaya obral basi di localStorage tidak terbaca
+  sebagai hemat.
+- `regularPrice` TIDAK ikut ke `computeContentHash`.
+
 ---
 
 ## ~~Sinkronisasi WooCommerce~~ — DIHAPUS 22 September 2026
