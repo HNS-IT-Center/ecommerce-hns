@@ -9,8 +9,10 @@ import {
   listQuotationOwners,
   listQuotationsForAdmin,
   parseQuoteAsal,
+  parseQuoteJenis,
   summarizeSalesByMonth,
   type QuoteAsal,
+  type QuoteJenis,
 } from "@/lib/api/pc-build-quotes"
 import { AdminPagination } from "@/components/admin/admin-pagination"
 import { formatRupiah } from "@/lib/utils"
@@ -33,6 +35,7 @@ type Props = {
     sales?: string
     status?: string
     asal?: string
+    jenis?: string
     page?: string
   }>
 }
@@ -51,17 +54,20 @@ export default async function AdminQuotationPage({ searchParams }: Props) {
   const { izin } = await requirePageView("quotation")
   const bolehBatalkan = bisaAkses(izin, "quotation", "edit")
 
-  const { q, periode: periodeRaw, sales, status, asal: asalRaw, page } = await searchParams
+  const { q, periode: periodeRaw, sales, status, asal: asalRaw, jenis: jenisRaw, page } =
+    await searchParams
   // Bawaan Internal, sama dengan /verify: quotation pengunjung jumlahnya jauh
   // lebih banyak dan, tanpa saringan, mengubur penawaran yang dibuat sales.
   const asal = parseQuoteAsal(asalRaw)
+  // PC Build / PC Prebuild (docs/17 §18). Bawaan semua jenis.
+  const jenis = parseQuoteJenis(jenisRaw)
   const periode = /^\d{6}$/.test(periodeRaw ?? "") ? periodeRaw! : jakartaPeriod(new Date())
   // `?page=abc` dan `?page=0` sama-sama jatuh ke halaman 1 — bukan ke `skip`
   // negatif yang membuat Prisma melempar dan seluruh halaman gagal dirender.
   const halaman = Math.max(1, Number(page ?? 1) || 1)
 
   const [daftar, rekap, owners] = await Promise.all([
-    listQuotationsForAdmin({ q, ownerUserId: sales, status, asal, page: halaman }),
+    listQuotationsForAdmin({ q, ownerUserId: sales, status, asal, jenis, page: halaman }),
     summarizeSalesByMonth(periode),
     listQuotationOwners(),
   ])
@@ -88,7 +94,14 @@ export default async function AdminQuotationPage({ searchParams }: Props) {
               {unitRekap} quotation terjual · {formatRupiah(totalRekap)}
             </p>
           </div>
-          <PemilihPeriode aktif={periode} q={q} sales={sales} status={status} asal={asal} />
+          <PemilihPeriode
+            aktif={periode}
+            q={q}
+            sales={sales}
+            status={status}
+            asal={asal}
+            jenis={jenis}
+          />
         </div>
 
         {rekap.length === 0 ? (
@@ -162,6 +175,17 @@ export default async function AdminQuotationPage({ searchParams }: Props) {
           <option value="semua">Semua asal</option>
         </select>
 
+        <select
+          name="jenis"
+          defaultValue={jenis}
+          aria-label="Jenis rakitan"
+          className="rounded-xl border border-input bg-muted/50 px-3 py-2.5 text-sm outline-none focus:border-primary focus:bg-background"
+        >
+          <option value="semua">Semua jenis</option>
+          <option value="build">PC Build</option>
+          <option value="prebuild">PC Prebuild</option>
+        </select>
+
         <button
           type="submit"
           className="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
@@ -214,6 +238,11 @@ export default async function AdminQuotationPage({ searchParams }: Props) {
                       {row.dioperDariCs && (
                         <span className="mt-1 block text-[11px] text-primary">
                           Dioper dari CS{row.dioperOleh ? ` · ${row.dioperOleh}` : ""}
+                        </span>
+                      )}
+                      {row.prebuildName && (
+                        <span className="mt-1 block max-w-[220px] truncate text-[11px] font-semibold text-brand-green">
+                          PC Prebuild · {row.prebuildName}
                         </span>
                       )}
                     </td>
@@ -298,12 +327,14 @@ function PemilihPeriode({
   sales,
   status,
   asal,
+  jenis,
 }: {
   aktif: string
   q?: string
   sales?: string
   status?: string
   asal: QuoteAsal
+  jenis: QuoteJenis
 }) {
   const pilihan: string[] = []
   const kini = jakartaPeriod(new Date())
@@ -326,6 +357,7 @@ function PemilihPeriode({
         if (sales) params.set("sales", sales)
         if (status) params.set("status", status)
         if (asal !== "internal") params.set("asal", asal)
+        if (jenis !== "semua") params.set("jenis", jenis)
         params.set("periode", p)
         return (
           <Link

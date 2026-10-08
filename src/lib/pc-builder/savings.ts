@@ -46,8 +46,13 @@ export type BuildSavings = {
   total: number
   /** `total` + `savings`. Sama dengan `total` kalau tidak ada yang didiskon. */
   totalBeforeDiscount: number
-  /** Selalu ≥ 0. Nol = jangan tampilkan baris "Anda hemat" sama sekali. */
+  /**
+   * Selalu ≥ 0. Nol = jangan tampilkan baris "Anda hemat" sama sekali.
+   * Termasuk potongan paket PC Prebuild kalau pemanggil mengopernya.
+   */
   savings: number
+  /** Potongan paket PC Prebuild yang ikut dijumlahkan ke `savings`; 0 = tidak ada. */
+  packageDiscount: number
 }
 
 /**
@@ -59,6 +64,14 @@ export type BuildSavings = {
 export function summarizeBuildSavings(
   lines: Iterable<SavingsLine>,
   total: number,
+  /**
+   * Potongan paket PC Prebuild yang SUDAH dikurangkan dari `total` — yaitu
+   * `pc_build_quotes.discount` yang tersimpan, bukan angka yang dihitung ulang
+   * di sini (docs/17 §18). Ikut "Anda hemat" karena memang selisih yang
+   * diterima pelanggan, dan ikut "Total sebelum diskon" supaya baris coret ditambah
+   * potongan selalu sama persis dengan total yang tercetak.
+   */
+  packageDiscount = 0,
 ): BuildSavings {
   let savings = 0
   for (const line of lines) {
@@ -67,5 +80,7 @@ export function summarizeBuildSavings(
     const qty = Number.isFinite(line.quantity) && line.quantity > 0 ? line.quantity : 0
     savings += (regular - line.price) * qty
   }
-  return { total, totalBeforeDiscount: total + savings, savings }
+  const potongan = Number.isFinite(packageDiscount) && packageDiscount > 0 ? packageDiscount : 0
+  savings += potongan
+  return { total, totalBeforeDiscount: total + savings, savings, packageDiscount: potongan }
 }

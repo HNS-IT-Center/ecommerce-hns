@@ -6,9 +6,7 @@ import { fetchBuilderProductsByIds } from "@/features/builder/actions"
 import { getPcBuilderConfig } from "@/lib/pc-builder/config"
 import { getPcPrebuildConfig } from "@/lib/pc-prebuild/config"
 import { getCurrentCustomer } from "@/lib/auth/customer"
-import { getCurrentUser } from "@/lib/auth"
-import { bisaAkses, muatIzinUser } from "@/lib/auth/permissions"
-import { listQuotationSalesUsers } from "@/lib/api/admin-users"
+import { getQuotationIssuer } from "@/lib/api/quotation-issuer"
 import { getQuotationForRevision } from "@/lib/api/pc-build-quotes"
 import { getSavedBuildForBuilder } from "@/lib/api/saved-pc-builds"
 import { priceCartFromCatalog } from "@/lib/api/woocommerce/cart-pricing"
@@ -40,40 +38,15 @@ export default async function BuildPcPage({
     ])
 
   /**
-   * Peran penerbit quotation, dihitung di SERVER.
-   *
-   * Sengaja lewat `getCurrentUser()` (sesi admin), bukan `customer.isAdmin`:
-   * yang menentukan izin adalah akun admin pemilik cookie panel, dan seseorang
-   * bisa punya dua sesi sekaligus di peramban yang sama. Pengunjung biasa tidak
-   * memicu satu kueri izin pun.
+   * Peran penerbit quotation — dihitung di server lewat helper yang sama
+   * dengan halaman paket PC Prebuild (`lib/api/quotation-issuer.ts`).
    */
-  const staff = await getCurrentUser()
-  let quotationMode: "anon" | "sendiri" | "oper" = "anon"
-  let salesOptions: { id: string; displayName: string }[] = []
-  /**
-   * Apakah akun ini TUJUAN operan — dipakai memasang toast notifikasi.
-   *
-   * Dipisah dari `quotationMode`, dan itu perubahan yang perlu: sejak mengoper
-   * punya izinnya sendiri, mode penerbitan tidak lagi menjawab "orang ini sales
-   * atau bukan". Menumpang pada mode akan membuat toast operan muncul untuk CS
-   * dan hilang untuk sales yang merangkap CS — dua-duanya salah orang.
-   */
-  let adalahSales = false
-
-  if (staff) {
-    const izin = await muatIzinUser(staff)
-    adalahSales = bisaAkses(izin, "quotation-sales", "edit")
-    if (bisaAkses(izin, "quotation-terbit", "edit")) {
-      // Yang menentukan sekarang izin `quotation-oper`, bukan lagi "bukan
-      // sales". Dulu satu-satunya cara boleh mengoper adalah dengan TIDAK
-      // berperan sales — aturan yang tak pernah terlihat di panel, dan yang
-      // menutup rangkap tugas yang biasa terjadi di toko kecil.
-      quotationMode = bisaAkses(izin, "quotation-oper", "edit") ? "oper" : "sendiri"
-      // Daftar operan hanya dibutuhkan yang boleh mengoper; memuatnya untuk
-      // yang lain cuma kueri sia-sia.
-      if (quotationMode === "oper") salesOptions = await listQuotationSalesUsers(staff.id)
-    }
-  }
+  const {
+    staff,
+    mode: quotationMode,
+    salesOptions,
+    adalahSales,
+  } = await getQuotationIssuer()
 
   /**
    * Mode Revisi: `?quotation=HNSPC-…`.
@@ -91,7 +64,10 @@ export default async function BuildPcPage({
 
   if (quotationCode && staff && quotationMode !== "anon") {
     const seed = await getQuotationForRevision(quotationCode, staff.id)
-    if (seed) {
+    // Quotation paket PC Prebuild tidak direvisi komponennya di sini (docs/17
+    // §18) — halaman terbuka sebagai rakitan biasa, dan `reviseQuotation` juga
+    // menolaknya kalau ada yang memaksa.
+    if (seed && seed.kind !== "prebuild") {
       /**
        * Ketersediaan dan harga katalog dibaca lewat `priceCartFromCatalog`,
        * BUKAN dari `fetchBuilderProductsByIds`.

@@ -2118,3 +2118,24 @@ Hostinger (403 firewall, 413 berkas kebesaran, 502/503/504 saat restart). Staff
 melihat pesan per status, bukan `Unexpected token '<'`. Quick Edit produk
 bervariasi **mengunci tombol Simpan** selama varian belum termuat, dan
 menyediakan tombol "Coba lagi".
+
+---
+
+## 31. Quotation PC Prebuild (8 Oktober 2026)
+
+- **Server action baru** `issuePrebuildQuotationAction({ presetId, selection,
+  customerName, customerPhone?, internalNote?, salesUserId? })` di
+  `features/builder/actions-quotation.ts`. Khusus `quotation-terbit`; tanpa medan
+  harga. Memanggil `issuePrebuildQuotation()` di `lib/api/pc-build-quotes.ts`.
+- `recordPcBuildQuote(items, owner?, prebuild?)` — parameter ketiga menulis `kind`,
+  `prebuildId`, `prebuildName`, `discount`.
+- `reviseQuotation(..., jalur = "builder" | "refresh")` — quotation paket ditolak
+  di jalur builder.
+- `listQuotationsForAdmin({ jenis })`, `listQuotationsForUser(userId, { jenis })`;
+  `QuotationHistoryRow` dan `PublicQuote` kini membawa `prebuildName` & `discount`.
+- `summarizeBuildSavings(lines, total, packageDiscount = 0)` — parameter ketiga.
+- `getQuotationIssuer()` (`lib/api/quotation-issuer.ts`) menggantikan blok izin di
+  `/build-pc/page.tsx`; dipakai juga `/pc-prebuild/[id]`.
+- `printHref()` pindah ke `features/builder/quotation-print-href.ts`.
+
+Rincian keputusan dan alasannya: docs/17 §18.

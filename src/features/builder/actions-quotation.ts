@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { z } from "zod";
 
 import {
+  issuePrebuildQuotation,
   issueQuotation,
   reviseQuotation,
   type IssueQuotationResult,
@@ -135,6 +136,65 @@ export async function issueQuotationAction(
 
   return issueQuotation(data.items, {
     customerName,
+    customerPhone: data.customerPhone?.trim() || null,
+    internalNote: data.internalNote?.trim() || null,
+    ...owner.value,
+  });
+}
+
+/**
+ * Pilihan tukar paket: kunci komponen (`<stepId>#<indeks>`) → id pilihan.
+ * Sama seperti `SelectionSchema`, TIDAK ada medan harga — susunan dan harganya
+ * dibaca server dari konfigurasi paket dan katalog (CLAUDE.md §2.7).
+ */
+const PrebuildInputSchema = z.object({
+  presetId: z.string().min(1).max(64),
+  selection: z
+    .record(z.string().max(80), z.number().int().positive())
+    .refine((r) => Object.keys(r).length <= MAX_ITEMS),
+  customerName: z.string().trim().min(2).max(MAX_CUSTOMER_NAME),
+  customerPhone: z.string().trim().regex(PHONE_PATTERN).optional().or(z.literal("")),
+  internalNote: z.string().trim().max(MAX_INTERNAL_NOTE).optional().or(z.literal("")),
+  salesUserId: z.string().max(64).optional(),
+});
+
+/**
+ * Terbitkan quotation dari halaman paket PC Prebuild (docs/17 §18).
+ *
+ * **Khusus staff** pemegang `quotation-terbit` — keputusan 8 Oktober 2026.
+ * Berbeda dari tombol Print di builder, pengunjung TIDAK punya jalur anonim di
+ * sini: mereka sudah punya lembar spesifikasi PDF paket, dan quotation paket
+ * ada untuk mencatat penjualan sales. Karena itu juga tidak perlu batas laju
+ * per IP — semua pemanggil yang lolos adalah staff yang sudah masuk.
+ *
+ * Pemilik & nama sales ditentukan oleh `resolveOwner` yang sama dengan builder,
+ * jadi aturan oper CS → Sales tidak punya dua versi.
+ */
+export async function issuePrebuildQuotationAction(
+  input: unknown,
+): Promise<IssueQuotationActionResult> {
+  const parsed = PrebuildInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: "Data yang dikirim tidak valid. Pastikan nama pelanggan terisi." };
+  }
+  const data = parsed.data;
+
+  const user = await getCurrentUser();
+  const izin = user ? await muatIzinUser(user) : null;
+  if (!user || !izin || !bisaAkses(izin, "quotation-terbit", "edit")) {
+    return { ok: false, error: "Anda tidak punya izin menerbitkan quotation." };
+  }
+
+  const owner = await resolveOwner({
+    user,
+    adalahSales: bisaAkses(izin, "quotation-sales", "edit"),
+    bolehOper: bisaAkses(izin, "quotation-oper", "edit"),
+    salesUserId: data.salesUserId,
+  });
+  if ("error" in owner) return { ok: false, error: owner.error };
+
+  return issuePrebuildQuotation(data.presetId, data.selection, {
+    customerName: data.customerName.trim(),
     customerPhone: data.customerPhone?.trim() || null,
     internalNote: data.internalNote?.trim() || null,
     ...owner.value,

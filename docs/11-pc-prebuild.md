@@ -1366,3 +1366,17 @@ diunggah lalu dihapus meninggalkan berkas tak terpakai di R2.
 
 **Yang pertama adalah foto utama**, di sini maupun di `parsePrebuildConfig`.
 Tidak ada penanda terpisah; urutan yang menentukan.
+
+---
+
+## 17. Quotation dari halaman paket (8 Oktober 2026)
+
+Staff berizin `quotation-terbit` melihat tombol **Terbitkan Quotation** di samping
+"Bagikan PDF" di `/pc-prebuild/<id>`. Bedanya: "Bagikan PDF" adalah lembar
+spesifikasi yang tidak tercatat (§13), sedangkan quotation bernomor, tercatat di
+Quotation & Penjualan atas nama sales, dan membawa potongan paket (§12).
+
+Potongan di quotation dinilai server dengan rumus yang sama (`discount.ts`), dan
+mengikuti konfigurasi paket hari ini saat sales menekan "Gunakan Harga Terbaru".
+Quotation paket tidak bisa direvisi komponennya di `/build-pc` — rinciannya di
+docs/17 §18.

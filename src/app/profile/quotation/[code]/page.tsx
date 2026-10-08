@@ -143,6 +143,11 @@ export default async function DetailQuotationPage({
                     </span>
                   )}
                 </p>
+                {quote.prebuildName && (
+                  <p className="mt-1 text-sm font-semibold break-words">
+                    PC Prebuild · {quote.prebuildName}
+                  </p>
+                )}
                 <p className="mt-1 text-sm text-muted-foreground">
                   Diterbitkan {formatQuoteDateTime(quote.createdAt)}
                   {quote.closedAt && ` · Ditandai terjual ${formatQuoteDateTime(quote.closedAt)}`}
@@ -170,7 +175,10 @@ export default async function DetailQuotationPage({
                 {/* Hanya pemilik, dan hanya selama belum ditandai terjual.
                     Syarat yang sama ditegakkan ulang di server — tombol yang
                     hilang bukan pengamanan, ia cuma tombol yang hilang. */}
-                {quote.isOwner && !terjual && (
+                {/* Quotation PC Prebuild tidak direvisi komponennya di builder
+                    (docs/17 §18) — ganti komponen berarti terbitkan baru dari
+                    halaman paket. "Gunakan Harga Terbaru" di bawah tetap ada. */}
+                {quote.isOwner && !terjual && quote.kind !== "prebuild" && (
                   <Link
                     href={`/build-pc?quotation=${encodeURIComponent(quote.code)}`}
                     className={QUOTE_ACTION_PRIMARY}
@@ -279,7 +287,25 @@ export default async function DetailQuotationPage({
                 </li>
               ))}
             </ul>
-            <div className="mt-3 flex items-baseline justify-between border-t border-border pt-3">
+            {quote.discount > 0 && (
+              <div className="mt-3 space-y-1 border-t border-border pt-3 text-sm">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-muted-foreground">Subtotal komponen</span>
+                  <span>{formatRupiah(quote.subtotal)}</span>
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-muted-foreground">Potongan paket</span>
+                  <span className="font-semibold text-sale-red">
+                    &minus;{formatRupiah(quote.discount)}
+                  </span>
+                </div>
+              </div>
+            )}
+            <div
+              className={`flex items-baseline justify-between ${
+                quote.discount > 0 ? "mt-1" : "mt-3 border-t border-border pt-3"
+              }`}
+            >
               <span className="text-sm font-bold">Total</span>
               <span className="text-lg font-extrabold">{formatRupiah(quote.total)}</span>
             </div>

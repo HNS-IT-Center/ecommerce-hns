@@ -8,6 +8,7 @@ import { getPcBuilderConfig } from "@/lib/pc-builder/config"
 import { getPcPrebuildConfig, getPcPrebuildGames } from "@/lib/pc-prebuild/config"
 import { resolvePrebuildPresets } from "@/lib/pc-prebuild/resolve"
 import { getStockDisplayMode } from "@/lib/api/stock-display"
+import { getQuotationIssuer } from "@/lib/api/quotation-issuer"
 
 type Props = { params: Promise<{ id: string }> }
 
@@ -48,7 +49,13 @@ export default async function PrebuildDetailPage({ params }: Props) {
   const preset = config.presets.find((p) => p.id === id)
   if (!preset) notFound()
 
-  const [steps, games] = await Promise.all([getPcBuilderConfig(), getPcPrebuildGames()])
+  const [steps, games, issuer] = await Promise.all([
+    getPcBuilderConfig(),
+    getPcPrebuildGames(),
+    // Staff berizin `quotation-terbit` mendapat tombol Terbitkan Quotation
+    // (docs/17 §18). Pengunjung: mode "anon", tombolnya tidak dirender.
+    getQuotationIssuer(),
+  ])
   const stockDisplayMode = await getStockDisplayMode()
   const [resolved] = await resolvePrebuildPresets([preset], steps, stockDisplayMode)
   const view = toPrebuildView(resolved, steps)
@@ -57,7 +64,12 @@ export default async function PrebuildDetailPage({ params }: Props) {
     <div className="flex min-h-dvh flex-col bg-page">
       <Header />
       <main className="min-h-content flex-1">
-        <PrebuildDetail view={view} games={games} />
+        <PrebuildDetail
+          view={view}
+          games={games}
+          quotationMode={issuer.mode}
+          salesOptions={issuer.salesOptions}
+        />
       </main>
       <Footer />
     </div>

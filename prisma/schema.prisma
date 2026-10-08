@@ -977,6 +977,28 @@ model PcBuildQuote {
   createdByUserId String? @map("created_by_user_id")
   createdBy       User?   @relation("QuoteCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
 
+  /// Asal rakitan: "build" (disusun di PC Builder) atau "prebuild" (paket PC
+  /// Prebuild). String union, bukan enum Prisma (docs/06 §1.4). Seluruh baris
+  /// lama otomatis "build" — memang hanya itu jalur yang ada sebelum 8 Okt 2026.
+  ///
+  /// Quotation "prebuild" TIDAK bisa direvisi komponennya di PC Builder: potongan
+  /// paket hanya sah untuk komponen paket itu (docs/17 §18).
+  kind String @default("build") @db.VarChar(16)
+
+  /// Id paket di `PC_PREBUILD_CONFIG` — dipakai menilai ulang potongan saat
+  /// "Gunakan Harga Terbaru". Bukan foreign key: paketnya hidup di JSON
+  /// pengaturan, dan boleh dihapus staff tanpa ikut menghapus quotation-nya.
+  prebuildId String? @map("prebuild_id") @db.VarChar(64)
+
+  /// SALINAN nama paket saat terbit, yang dicetak di PDF. Disalin, bukan dibaca
+  /// dari konfigurasi, dengan alasan yang sama seperti `salesName`.
+  prebuildName String? @map("prebuild_name") @db.VarChar(191)
+
+  /// Potongan paket (Rp, untuk SELURUH quotation) yang sudah dikurangkan dari
+  /// `subtotal` menjadi `total`. Ditetapkan staff di `/admin/pc-prebuild`, dihitung
+  /// lewat `lib/pc-prebuild/discount.ts` — CLAUDE.md §2.7. 0 untuk PC Build.
+  discount Decimal @default(0) @db.Decimal(14, 2)
+
   /// Nomor revisi terakhir. Mulai dari 1; kode TIDAK ikut berubah saat direvisi.
   revision Int @default(1)
 
@@ -1067,6 +1089,7 @@ model PcBuildQuote {
   /// terbit — quotation Agustus yang deal September adalah penjualan September.
   @@index([status, closedAt])
   @@index([customerName])
+  @@index([kind])
   @@map("pc_build_quotes")
 }
 
@@ -1090,6 +1113,10 @@ model PcBuildQuoteRevision {
   items       Json
   subtotal    Decimal @db.Decimal(14, 2)
   assemblyFee Decimal @map("assembly_fee") @db.Decimal(14, 2)
+  /// Potongan paket PC Prebuild pada revisi ini — lihat `PcBuildQuote.discount`.
+  /// Ikut diversikan karena ia bagian dari harga: "Gunakan Harga Terbaru" bisa
+  /// mengubahnya bila masa berlaku potongan paketnya sudah lewat.
+  discount    Decimal @default(0) @db.Decimal(14, 2)
   total       Decimal @db.Decimal(14, 2)
   itemCount   Int     @map("item_count")
 

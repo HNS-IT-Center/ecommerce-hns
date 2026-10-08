@@ -1,0 +1,11 @@
+{
+  "//": "Seperti tsconfig.uji.json, ditambah stub next/cache (scripts/stubs/next-cache.ts) supaya modul yang memakai unstable_cache/revalidateTag bisa diuji dari Node. Jalankan: npx tsx --tsconfig scripts/tsconfig.uji-next.json --conditions=react-server <skrip>",
+  "extends": "./tsconfig.uji.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["../src/*"],
+      "server-only": ["./stubs/server-only.ts"],
+      "next/cache": ["./stubs/next-cache.ts"]
+    }
+  }
+}

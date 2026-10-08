@@ -98,7 +98,11 @@ export default async function PenawaranPublikPage({
 
   const terjual = quote.status === "closing"
   const kedaluwarsa = quote.umurHari > HARI_KEDALUWARSA
-  const { totalBeforeDiscount, savings } = summarizeBuildSavings(quote.items, quote.total)
+  const { totalBeforeDiscount, savings, packageDiscount } = summarizeBuildSavings(
+    quote.items,
+    quote.total,
+    quote.discount,
+  )
 
   // Dikelompokkan per kategori mengikuti urutan step di builder, sama seperti
   // PDF-nya — supaya yang dibaca di layar dan yang dipegang di kertas punya
@@ -137,8 +141,11 @@ export default async function PenawaranPublikPage({
           {/* ---------- Kepala dokumen ---------- */}
           <section className="rounded-2xl border border-border bg-card p-5 shadow-sm sm:p-6">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Penawaran Rakitan PC
+              {quote.prebuildName ? "Penawaran PC Prebuild" : "Penawaran Rakitan PC"}
             </p>
+            {quote.prebuildName && (
+              <p className="mt-1 text-base font-bold break-words">{quote.prebuildName}</p>
+            )}
             <h1 className="mt-1 font-mono text-xl font-extrabold tracking-tight sm:text-2xl">
               {quote.code}
               {quote.revision > 1 && (
@@ -239,8 +246,22 @@ export default async function PenawaranPublikPage({
 
             {/* Dari snapshot yang sama dengan PDF — lihat `lib/pc-builder/savings.ts`.
                 Quotation lama tanpa harga normal tercatat: blok ini tidak muncul. */}
-            {savings > 0 && (
+            {/* Potongan paket PC Prebuild sebagai baris sendiri — selisih antara
+                rincian dan total harus terbaca asal-usulnya (docs/17 §18). */}
+            {packageDiscount > 0 && (
               <div className="mt-5 flex items-baseline justify-between gap-4 border-t border-border pt-4 text-sm">
+                <span className="text-muted-foreground">Potongan paket</span>
+                <span className="font-semibold text-sale-red">
+                  &minus;{formatRupiah(packageDiscount)}
+                </span>
+              </div>
+            )}
+            {savings > 0 && (
+              <div
+                className={`flex items-baseline justify-between gap-4 text-sm ${
+                  packageDiscount > 0 ? "mt-1" : "mt-5 border-t border-border pt-4"
+                }`}
+              >
                 <span className="text-muted-foreground">Total sebelum diskon</span>
                 <span className="text-muted-foreground line-through">
                   {formatRupiah(totalBeforeDiscount)}

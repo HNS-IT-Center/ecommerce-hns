@@ -248,7 +248,13 @@ export default async function PrintPcBuilderPage({
    * `regularPrice` dicatat tidak memilikinya, dan untuknya `savings` nol: blok
    * hemat tidak tampil, dokumennya persis seperti dulu.
    */
-  const { totalBeforeDiscount, savings } = summarizeBuildSavings(snapshot, total)
+  const { totalBeforeDiscount, savings, packageDiscount } = summarizeBuildSavings(
+    snapshot,
+    total,
+    // Potongan paket PC Prebuild yang TERSIMPAN — 0 untuk PC Build (docs/17 §18).
+    Number(quote.discount),
+  )
+  const prebuildName = quote.kind === "prebuild" ? quote.prebuildName : null
 
   /**
    * Tanggal TERBIT, bukan tanggal cetak, dan dikunci ke WIB.
@@ -305,8 +311,15 @@ export default async function PrintPcBuilderPage({
               Quotation
             </h1>
             <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/60">
-              Rakitan PC
+              {prebuildName ? "PC Prebuild" : "Rakitan PC"}
             </p>
+            {/* Nama paket disalin saat terbit (`prebuild_name`), jadi tetap
+                sama walau staff mengganti nama paketnya kemudian. */}
+            {prebuildName && (
+              <p className="mt-1 max-w-[70mm] text-[12px] font-bold leading-tight break-words">
+                {prebuildName}
+              </p>
+            )}
             <dl className="mt-2.5 space-y-1 text-[11px]">
               <div className="flex items-baseline justify-end gap-2">
                 <dt className="text-white/60">No.</dt>
@@ -503,6 +516,20 @@ export default async function PrintPcBuilderPage({
                 >
                   <span style={{ color: INK_GRAY }}>Subtotal komponen</span>
                   <span className="font-semibold">{formatRupiah(subtotal)}</span>
+                </div>
+              )}
+              {/* Potongan paket tampil sebagai baris tersendiri, tidak hanya
+                  melebur ke "Anda hemat": kasir yang mencocokkan subtotal
+                  dengan total harus bisa melihat dari mana selisihnya. */}
+              {packageDiscount > 0 && (
+                <div
+                  className="flex items-baseline justify-between border-t py-1.5 text-[11px]"
+                  style={{ borderColor: INK_HAIRLINE }}
+                >
+                  <span style={{ color: INK_GRAY }}>Potongan paket</span>
+                  <span className="font-semibold" style={{ color: INK_RED }}>
+                    &minus;{formatRupiah(packageDiscount)}
+                  </span>
                 </div>
               )}
               {savings > 0 && (

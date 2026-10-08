@@ -8,6 +8,8 @@ import { getCurrentUser } from "@/lib/auth"
 import { bisaAkses, muatIzinUser } from "@/lib/auth/permissions"
 import {
   listQuotationsForUser,
+  parseQuoteJenis,
+  type QuoteJenis,
   summarizeSalesMonth,
   type QuotationHistoryRow,
 } from "@/lib/api/pc-build-quotes"
@@ -37,7 +39,7 @@ export const metadata = {
 export default async function QuotationSayaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; tab?: string; periode?: string }>
+  searchParams: Promise<{ q?: string; tab?: string; periode?: string; jenis?: string }>
 }) {
   const user = await getCurrentUser()
   if (!user) redirect("/login?next=/profile/quotation")
@@ -45,14 +47,16 @@ export default async function QuotationSayaPage({
   const izin = await muatIzinUser(user)
   if (!bisaAkses(izin, "quotation-terbit", "edit")) redirect("/profile")
 
-  const { q, tab, periode: periodeRaw } = await searchParams
+  const { q, tab, periode: periodeRaw, jenis: jenisRaw } = await searchParams
+  // PC Build / PC Prebuild (docs/17 §18).
+  const jenis = parseQuoteJenis(jenisRaw)
   const adalahSales = bisaAkses(izin, "quotation-sales", "edit")
   const bolehOper = bisaAkses(izin, "quotation-oper", "edit")
   const lihatOperan = tab === "dioper"
   const periode = /^\d{6}$/.test(periodeRaw ?? "") ? periodeRaw! : jakartaPeriod(new Date())
 
   const [rows, rekap, profil] = await Promise.all([
-    listQuotationsForUser(user.id, { peran: lihatOperan ? "dioper" : "milik", q }),
+    listQuotationsForUser(user.id, { peran: lihatOperan ? "dioper" : "milik", q, jenis }),
     summarizeSalesMonth(user.id, periode),
     getStaffProfile(user.id),
   ])
@@ -119,7 +123,7 @@ export default async function QuotationSayaPage({
                 </p>
               </div>
 
-              <PemilihBulan periodeAktif={periode} q={q} tab={tab} />
+              <PemilihBulan periodeAktif={periode} q={q} tab={tab} jenis={jenis} />
             </div>
           </section>
 
@@ -129,13 +133,33 @@ export default async function QuotationSayaPage({
               punya operan untuk dilihat. */}
           {bolehOper && (
             <div className="flex gap-2">
-              <FilterLink label="Milik saya" href={hrefDengan({ q, tab: undefined })} aktif={!lihatOperan} />
-              <FilterLink label="Yang saya oper" href={hrefDengan({ q, tab: "dioper" })} aktif={lihatOperan} />
+              <FilterLink label="Milik saya" href={hrefDengan({ q, tab: undefined, jenis })} aktif={!lihatOperan} />
+              <FilterLink label="Yang saya oper" href={hrefDengan({ q, tab: "dioper", jenis })} aktif={lihatOperan} />
             </div>
           )}
 
+          {/* Jenis rakitan — saringan terpisah dari tab di atas, jadi keduanya
+              bisa digabung ("yang saya oper" + "PC Prebuild"). */}
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                ["semua", "Semua jenis"],
+                ["build", "PC Build"],
+                ["prebuild", "PC Prebuild"],
+              ] as const
+            ).map(([nilai, label]) => (
+              <FilterLink
+                key={nilai}
+                label={label}
+                href={hrefDengan({ q, tab, jenis: nilai })}
+                aktif={jenis === nilai}
+              />
+            ))}
+          </div>
+
           <form action="/profile/quotation" className="flex gap-2">
             {lihatOperan && <input type="hidden" name="tab" value="dioper" />}
+            {jenis !== "semua" && <input type="hidden" name="jenis" value={jenis} />}
             <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
@@ -178,10 +202,11 @@ export default async function QuotationSayaPage({
   )
 }
 
-function hrefDengan({ q, tab }: { q?: string; tab?: string }): string {
+function hrefDengan({ q, tab, jenis }: { q?: string; tab?: string; jenis?: QuoteJenis }): string {
   const params = new URLSearchParams()
   if (q) params.set("q", q)
   if (tab) params.set("tab", tab)
+  if (jenis && jenis !== "semua") params.set("jenis", jenis)
   const qs = params.toString()
   return qs ? `/profile/quotation?${qs}` : "/profile/quotation"
 }
@@ -210,10 +235,12 @@ function PemilihBulan({
   periodeAktif,
   q,
   tab,
+  jenis,
 }: {
   periodeAktif: string
   q?: string
   tab?: string
+  jenis: QuoteJenis
 }) {
   const pilihan: string[] = []
   const kini = jakartaPeriod(new Date())
@@ -241,6 +268,7 @@ function PemilihBulan({
         const params = new URLSearchParams()
         if (q) params.set("q", q)
         if (tab) params.set("tab", tab)
+        if (jenis !== "semua") params.set("jenis", jenis)
         params.set("periode", p)
         return (
           <Link
@@ -309,6 +337,11 @@ function KartuQuotation({ row, bisaDibuka }: { row: QuotationHistoryRow; bisaDib
           {row.dioperDariCs && (
             <p className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
               Dioper dari CS{row.dioperOleh ? ` · ${row.dioperOleh}` : ""}
+            </p>
+          )}
+          {row.prebuildName && (
+            <p className="mt-1.5 truncate text-xs font-semibold text-brand-green">
+              PC Prebuild · {row.prebuildName}
             </p>
           )}
         </div>

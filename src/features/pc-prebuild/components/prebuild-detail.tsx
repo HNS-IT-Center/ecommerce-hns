@@ -2,12 +2,20 @@
 
 import Link from "next/link"
 import { useMemo, useState } from "react"
-import { ArrowLeft, FileDown, ImageOff, Layers } from "lucide-react"
+import { ArrowLeft, FileDown, FileText, ImageOff, Layers } from "lucide-react"
 
 import { ProductGallery, type GalleryImage } from "@/features/product/components/product-gallery"
 import { useAddToCartToast } from "@/features/cart/hooks/use-add-to-cart-toast"
 import type { PrebuildGame } from "@/lib/pc-prebuild/games"
 import { useCartStore } from "@/store/cart"
+import { issuePrebuildQuotationAction } from "@/features/builder/actions-quotation"
+import {
+  IssueQuotationDialog,
+  type QuotationFormValues,
+  type SalesOption,
+} from "@/features/builder/components/issue-quotation-dialog"
+import { printHref } from "@/features/builder/quotation-print-href"
+import { prepareInternalOpen } from "@/features/pwa/lib/open-internal"
 
 import {
   builderUrl,
@@ -45,10 +53,18 @@ import { PrebuildActionBar } from "./prebuild-action-bar"
 type Props = {
   view: PrebuildView
   games: PrebuildGame[]
+  /**
+   * Peran penerbit quotation, dihitung server (`getQuotationIssuer`). `"anon"`
+   * = pengunjung atau staff tanpa izin `quotation-terbit`: tombol Terbitkan
+   * Quotation tidak dirender sama sekali (docs/17 §18).
+   */
+  quotationMode: "anon" | "sendiri" | "oper"
+  salesOptions: SalesOption[]
 }
 
-export function PrebuildDetail({ view, games }: Props) {
+export function PrebuildDetail({ view, games, quotationMode, salesOptions }: Props) {
   const [selection, setSelection] = useState<PrebuildSelection>({})
+  const [quotationOpen, setQuotationOpen] = useState(false)
   const addBundle = useCartStore((s) => s.addBundle)
   const cartItems = useCartStore((s) => s.items)
   const toast = useAddToCartToast()
@@ -83,6 +99,35 @@ export function PrebuildDetail({ view, games }: Props) {
     if (lines.length === 0) return
     addBundle(lines)
     toast(view.name)
+  }
+
+  /**
+   * Terbitkan quotation paket ini dengan pilihan tukar yang sedang aktif, lalu
+   * buka halaman cetaknya — alur yang sama dengan tombol Print di builder.
+   *
+   * Yang dikirim hanya id paket, pilihan tukar, dan identitas pelanggan.
+   * Susunan rakitan, harga, dan potongan paket dibaca ulang server dari
+   * konfigurasi dan katalog (CLAUDE.md §2.7).
+   */
+  async function terbitkanQuotation(
+    values: QuotationFormValues
+  ): Promise<{ ok: boolean; error?: string }> {
+    // Tab disiapkan SEBELUM await: browser hanya mengizinkan membuka tab selama
+    // gestur klik masih berjalan. Lihat `prepareInternalOpen`.
+    const tab = prepareInternalOpen()
+    try {
+      const hasil = await issuePrebuildQuotationAction({ presetId: view.id, selection, ...values })
+      if (!hasil.ok) {
+        tab.cancel()
+        return { ok: false, error: hasil.error }
+      }
+      tab.go(printHref(hasil.code, hasil.token))
+      return { ok: true }
+    } catch (error) {
+      console.error("[pc-prebuild] gagal menerbitkan quotation:", error)
+      tab.cancel()
+      return { ok: false, error: "Periksa koneksi lalu coba lagi." }
+    }
   }
 
   return (
@@ -128,15 +173,33 @@ export function PrebuildDetail({ view, games }: Props) {
                 membagikan berkasnya dari HP/PC. Pilihan tukar yang sedang aktif
                 ikut terbawa, begitu juga harganya. Tidak dicatat sebagai
                 quotation (lihat app/pc-prebuild/[id]/print/page.tsx). */}
-            <a
-              href={pdfHref}
-              target="_blank"
-              rel="noopener"
-              className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl border bg-card px-4 text-sm font-bold transition-colors hover:border-brand-green hover:text-brand-green"
-            >
-              <FileDown className="h-4 w-4" />
-              Bagikan PDF
-            </a>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <a
+                href={pdfHref}
+                target="_blank"
+                rel="noopener"
+                className="inline-flex h-10 items-center gap-2 rounded-xl border bg-card px-4 text-sm font-bold transition-colors hover:border-brand-green hover:text-brand-green"
+              >
+                <FileDown className="h-4 w-4" />
+                Bagikan PDF
+              </a>
+
+              {/* Khusus staff (docs/17 §18). Berbeda dari "Bagikan PDF" di
+                  sebelahnya: ini menerbitkan quotation BERNOMOR yang tercatat
+                  di Quotation & Penjualan atas nama sales, lengkap dengan
+                  potongan paketnya. */}
+              {quotationMode !== "anon" && (
+                <button
+                  type="button"
+                  onClick={() => setQuotationOpen(true)}
+                  disabled={lines.length === 0}
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-primary/40 bg-primary/5 px-4 text-sm font-bold text-primary transition-colors enabled:hover:bg-primary/10 disabled:opacity-50"
+                >
+                  <FileText className="h-4 w-4" />
+                  Terbitkan Quotation
+                </button>
+              )}
+            </div>
           </div>
 
           <section>
@@ -199,6 +262,16 @@ export function PrebuildDetail({ view, games }: Props) {
         disabled={lines.length === 0}
         builderHref={href}
       />
+
+      {quotationMode !== "anon" && (
+        <IssueQuotationDialog
+          open={quotationOpen}
+          onOpenChange={setQuotationOpen}
+          mode={quotationMode}
+          salesOptions={salesOptions}
+          onSubmit={terbitkanQuotation}
+        />
+      )}
     </div>
   )
 }

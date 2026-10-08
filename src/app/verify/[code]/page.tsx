@@ -147,10 +147,12 @@ export default async function VerifyQuotePage({
   // 0 (jasa rakit sudah jadi baris item tersendiri), sedangkan untuk quotation
   // lama `subtotal` sudah memuatnya — menjumlahkannya sekali lagi membuat total
   // harga terkini lebih mahal dari yang seharusnya.
-  const currentTotal = rows.reduce(
-    (acc, r) => acc + (r.currentPrice ?? r.price) * r.quantity,
-    0
-  )
+  // Potongan paket PC Prebuild (docs/17 §18). "Total harga terkini" ikut
+  // dikurangi potongan yang TERCATAT di dokumen, supaya kasir membandingkan
+  // apel dengan apel: yang berubah di baris itu hanya harga komponen.
+  const potonganPaket = Number(quote.discount)
+  const currentTotal =
+    rows.reduce((acc, r) => acc + (r.currentPrice ?? r.price) * r.quantity, 0) - potonganPaket
 
   const issued = quote.createdAt.toLocaleDateString("id-ID", {
     day: "numeric",
@@ -184,6 +186,11 @@ export default async function VerifyQuotePage({
                 <h1 className="mt-1 font-mono text-xl font-black tracking-tight md:text-2xl">
                   {quote.code}
                 </h1>
+                {quote.kind === "prebuild" && quote.prebuildName && (
+                  <p className="mt-1 text-sm font-semibold break-words">
+                    PC Prebuild · {quote.prebuildName}
+                  </p>
+                )}
                 <p className="mt-1 text-sm text-muted-foreground">Diterbitkan {issued}</p>
               </div>
               {/* Tiga lencana, satu bentuk, mengalir ke bawah baris kode di HP.
@@ -333,6 +340,20 @@ export default async function VerifyQuotePage({
                 dengan total — jadi cukup satu baris saja. Jasa rakit sekarang
                 muncul sebagai komponen biasa di daftar di atas. */}
             <div className="mt-5 space-y-1.5 border-t border-border pt-4">
+              {potonganPaket > 0 && (
+                <>
+                  <div className="flex items-baseline justify-between text-sm">
+                    <span className="text-muted-foreground">Subtotal komponen</span>
+                    <span className="tabular-nums">{formatRupiah(Number(quote.subtotal))}</span>
+                  </div>
+                  <div className="flex items-baseline justify-between text-sm">
+                    <span className="text-muted-foreground">Potongan paket</span>
+                    <span className="font-semibold tabular-nums text-sale-red">
+                      &minus;{formatRupiah(potonganPaket)}
+                    </span>
+                  </div>
+                </>
+              )}
               <div className="flex items-baseline justify-between">
                 <span className="text-sm font-bold">Total saat diterbitkan</span>
                 <span className="text-lg font-black tabular-nums text-sale-red">

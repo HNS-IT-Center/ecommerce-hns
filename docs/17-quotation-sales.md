@@ -681,3 +681,91 @@ muncul di dua halaman sementara baris lain tidak pernah muncul.
 Formulir saringan dan pemilih periode sengaja tidak membawa `page`: menyaring
 ulang selalu kembali ke halaman pertama, karena "halaman 7" dari saringan lama
 tidak menunjuk apa pun setelah saringannya berganti.
+
+---
+
+## 18. Quotation PC Prebuild (8 Oktober 2026)
+
+Sales bisa menerbitkan quotation langsung dari halaman paket `/pc-prebuild/<id>`,
+lengkap dengan **potongan paket** yang ditetapkan staff di `/admin/pc-prebuild/<id>`
+(docs/11 §12). Sebelumnya satu-satunya jalan adalah merakit ulang paketnya di
+`/build-pc` — dan potongannya hilang, sehingga harga di quotation berbeda dari harga
+yang tampil di halaman paket.
+
+### Satu tabel, bukan sistem kedua
+
+Quotation paket masuk ke `pc_build_quotes` yang sama: nomor urut, closing di
+`/verify`, DP, operan CS, dan rekap penjualan sales tetap satu. Kolom tambahannya
+(migrasi `20261008075012_quote_prebuild_kind_discount`):
+
+| Kolom | Isi |
+|---|---|
+| `kind` | `"build"` (bawaan, termasuk seluruh baris lama) atau `"prebuild"` |
+| `prebuild_id` | Id paket di `PC_PREBUILD_CONFIG` — bukan foreign key; paket boleh dihapus |
+| `prebuild_name` | SALINAN nama paket saat terbit, yang dicetak di PDF |
+| `discount` | Potongan (Rp) yang sudah dikurangkan: `total = subtotal − discount` |
+| `pc_build_quote_revisions.discount` | Potongan per revisi — ia bagian dari harga |
+
+Rekap penjualan tidak perlu diubah: ia menjumlahkan `total`, yang sudah bersih.
+
+### Keputusan (8 Oktober 2026)
+
+| Pertanyaan | Keputusan |
+|---|---|
+| Siapa yang menerbitkan | **Staff saja** (`quotation-terbit`). Pengunjung tetap memakai "Bagikan PDF", yang tidak tercatat |
+| Pilihan tukar komponen | **Boleh** — pilihan yang aktif di halaman paket ikut terbawa |
+| Ganti komponen setelah terbit | **Terbitkan baru** dari halaman paket. Tidak ada "Revisi" di builder untuk quotation paket |
+| Potongan saat "Gunakan Harga Terbaru" | **Ikut konfigurasi paket hari ini** — kedaluwarsa atau dicabut staff → 0 |
+
+### Susunan rakitan dibaca server, bukan klien
+
+`issuePrebuildQuotationAction` hanya menerima id paket, pilihan tukar
+(`<stepId>#<indeks>` → `variationId ?? productId`, bentuk `PrebuildSelection`), dan
+identitas pelanggan. `issuePrebuildQuotation()` menyusun ulang rakitannya dari
+konfigurasi paket: setiap pilihan dicocokkan dengan bawaan + pilihan tukar barang
+itu, dan yang tidak cocok **jatuh ke bawaan**. Tanpa penjaga ini potongan paket bisa
+ditempelkan ke rakitan apa pun yang dikirim seseorang.
+
+Harga lewat `priceQuoteSelections()` — fungsi yang sama dengan `issueQuotation()`
+builder. Potongan lewat `currentPrebuildDiscount()`, yang memakai
+`isPrebuildDiscountActive` + `applicablePrebuildDiscount` dari
+`lib/pc-prebuild/discount.ts` (CLAUDE.md §2.7, pengecualian potongan paket).
+Komponen yang seluruh pilihannya hilang dari katalog **membatalkan** penerbitan.
+
+### Revisi
+
+`reviseQuotation(code, userId, input, jalur)` menolak `kind = "prebuild"` pada
+`jalur = "builder"`. `refreshQuotationPrices` memanggilnya dengan `"refresh"` —
+isi rakitan sama, harga katalog terbaru, potongan dinilai ulang. `previewLatestPrices`
+memakai rumus yang sama, jadi angka di dialog sama dengan yang tersimpan.
+`/build-pc?quotation=<kode paket>` membuka builder kosong biasa; tombol Revisi di
+`/profile/quotation/<kode>` tidak dirender untuk quotation paket.
+
+### Tampilan
+
+PDF (`/build-pc/print`), `/q/<token>`, `/verify/<kode>`, dan detail di profil
+menampilkan "PC Prebuild · <nama paket>" dan baris **Potongan paket**.
+"Anda hemat" dan "Total sebelum diskon" ikut memasukkan potongan lewat parameter
+ketiga `summarizeBuildSavings(lines, total, packageDiscount)` — satu rumus untuk
+semua halaman. `/verify` mengurangkan potongan TERCATAT dari "Total harga terkini"
+supaya kasir membandingkan apel dengan apel.
+
+### Filter "Jenis"
+
+`/admin/quotation` dan `/profile/quotation`: **Semua jenis / PC Build / PC Prebuild**
+(`?jenis=build|prebuild`). Dinamai "jenis" karena "asal" sudah dipakai untuk
+Internal/Pengunjung (`QuoteAsal`).
+
+### Peran penerbit — satu helper
+
+`getQuotationIssuer()` (`lib/api/quotation-issuer.ts`) menghitung mode `anon` /
+`sendiri` / `oper` dan daftar sales untuk `/build-pc` maupun halaman paket.
+Sebelumnya logikanya hanya ada di `/build-pc/page.tsx`.
+
+### Uji
+
+`scripts/uji-quotation-prebuild.mts` (34 pemeriksaan, HANYA database lokal). Memakai
+`scripts/tsconfig.uji-next.json`, yang menambahkan stub `next/cache`
+(`scripts/stubs/next-cache.ts`) — konfigurasi paket dibaca lewat `unstable_cache`,
+yang tidak hidup di luar Next. Konfigurasi paket, quotation uji, dan penghitung
+nomor urut dikembalikan di akhir.

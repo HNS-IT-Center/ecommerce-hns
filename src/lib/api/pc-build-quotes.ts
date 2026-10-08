@@ -245,6 +245,20 @@ export type QuotationOwner = {
 }
 
 /**
+ * Data paket yang menempel pada quotation PC Prebuild (docs/17 §18).
+ *
+ * `discount` adalah potongan untuk SELURUH quotation yang sudah dinilai server —
+ * masa berlakunya lewat `isPrebuildDiscountActive`, besarnya lewat
+ * `applicablePrebuildDiscount` terhadap total normal komponen. Tidak pernah
+ * datang dari klien (CLAUDE.md §2.7).
+ */
+export type QuotePrebuild = {
+  prebuildId: string
+  prebuildName: string
+  discount: number
+}
+
+/**
  * Tulis satu quotation baru dari snapshot yang SUDAH berharga.
  *
  * Nomor urut hanya untuk penerbitan staff (`owner.createdByUserId` terisi);
@@ -276,11 +290,16 @@ export type QuotationOwner = {
  */
 export async function recordPcBuildQuote(
   items: QuoteLineItem[],
-  owner?: QuotationOwner
+  owner?: QuotationOwner,
+  prebuild?: QuotePrebuild
 ): Promise<{ code: string; token: string }> {
   const prisma = getPrisma()
   const contentHash = computeContentHash(items)
   const subtotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0)
+  // Potongan sudah lolos penjaga `applicablePrebuildDiscount` di pemanggilnya;
+  // di sini hanya dikurangkan. 0 untuk quotation PC Build.
+  const discount = prebuild?.discount ?? 0
+  const total = subtotal - discount
   const issuedAt = new Date()
 
   /**
@@ -324,7 +343,8 @@ export async function recordPcBuildQuote(
           // ikut di `subtotal`. Kolomnya dipertahankan untuk membaca quotation lama
           // yang biayanya masih terpisah.
           assemblyFee: 0,
-          total: subtotal,
+          discount,
+          total,
           itemCount: items.length,
           code,
           contentHash,
@@ -332,6 +352,13 @@ export async function recordPcBuildQuote(
           sequence,
           publicToken,
           createdAt: issuedAt,
+          ...(prebuild
+            ? {
+                kind: "prebuild",
+                prebuildId: prebuild.prebuildId,
+                prebuildName: prebuild.prebuildName.slice(0, 191),
+              }
+            : {}),
           ...(owner
             ? {
                 customerName: owner.customerName,
@@ -364,7 +391,8 @@ export async function recordPcBuildQuote(
           items,
           subtotal,
           assemblyFee: 0,
-          total: subtotal,
+          discount,
+          total,
           itemCount: items.length,
           usedLatestPrices: true,
           createdByUserId: owner?.createdByUserId ?? null,
@@ -424,6 +452,27 @@ export async function issueQuotation(
     return { ok: false, error: "Belum ada komponen yang dipilih." }
   }
 
+  const priced = await priceQuoteSelections(selections)
+  if (!priced.ok) return priced
+
+  try {
+    const { code, token } = await recordPcBuildQuote(priced.items, owner)
+    return { ok: true, code, token }
+  } catch (error) {
+    console.error("[quotation] gagal menerbitkan:", error)
+    return { ok: false, error: "Gagal menerbitkan quotation. Coba lagi sebentar lagi." }
+  }
+}
+
+/**
+ * Pilihan komponen → baris quotation berharga katalog. Dipakai bersama oleh
+ * `issueQuotation` (PC Builder) dan `issuePrebuildQuotation` (paket), supaya
+ * kedua jalur tidak pernah berbeda soal harga, nama varian, atau komponen yang
+ * hilang dari katalog.
+ */
+async function priceQuoteSelections(
+  selections: QuotationSelection[]
+): Promise<{ ok: true; items: QuoteLineItem[] } | { ok: false; error: string }> {
   const { priceCartFromCatalog } = await import("@/lib/api/woocommerce/cart-pricing")
   const { getPcBuilderConfig } = await import("@/lib/pc-builder/config")
 
@@ -484,11 +533,101 @@ export async function issueQuotation(
     }
   })
 
+  return { ok: true, items }
+}
+
+/**
+ * Potongan paket yang berlaku SAAT INI untuk total normal tertentu — 0 kalau
+ * paketnya sudah dihapus, potongannya kedaluwarsa, atau potongannya ≥ total.
+ *
+ * Satu-satunya tempat quotation menilai potongan paket, untuk penerbitan dan
+ * untuk "Gunakan Harga Terbaru" (keputusan 8 Oktober 2026: potongan mengikuti
+ * konfigurasi paket hari ini, sama seperti harga komponennya). Jamnya jam
+ * server, sama seperti `prepareCheckoutWhatsApp`.
+ */
+async function currentPrebuildDiscount(prebuildId: string, normalTotal: number): Promise<number> {
+  const [{ getPcPrebuildConfig }, { isPrebuildDiscountActive, applicablePrebuildDiscount }] =
+    await Promise.all([import("@/lib/pc-prebuild/config"), import("@/lib/pc-prebuild/discount")])
+  const preset = (await getPcPrebuildConfig()).presets.find((p) => p.id === prebuildId)
+  if (!preset || !isPrebuildDiscountActive(preset.discount, Date.now())) return 0
+  return applicablePrebuildDiscount(preset.discount.amount, normalTotal)
+}
+
+/**
+ * Pilihan tukar paket dari halaman `/pc-prebuild/<id>`, dikunci
+ * `PrebuildComponent.key` (`<stepId>#<indeks>`) → id pilihan
+ * (`variationId ?? productId`) — bentuk yang sama dengan `PrebuildSelection`
+ * di klien. Kunci yang hilang atau tidak dikenal jatuh ke bawaan.
+ */
+export type PrebuildQuoteSelection = Record<string, number>
+
+/**
+ * Terbitkan quotation dari satu paket PC Prebuild (docs/17 §18).
+ *
+ * **Susunan rakitan dibaca dari konfigurasi paket di server**, bukan dari
+ * klien. Klien hanya menyebut pilihan tukar yang dipilih, dan setiap pilihan
+ * dicocokkan dengan bawaan + pilihan tukar barang itu; yang tidak cocok jatuh
+ * ke bawaan. Tanpa penjaga ini potongan paket bisa ditempelkan ke rakitan apa
+ * pun yang dikirim seseorang — padahal potongan itu sah hanya untuk paketnya.
+ *
+ * Komponen yang SELURUH pilihannya hilang dari katalog membatalkan penerbitan,
+ * aturan yang sama dengan `issueQuotation`: penawaran atas paket yang
+ * kehilangan satu komponennya bukan penawaran yang bisa dipenuhi.
+ */
+export async function issuePrebuildQuotation(
+  presetId: string,
+  selection: PrebuildQuoteSelection,
+  owner: QuotationOwner
+): Promise<IssueQuotationResult> {
+  const [{ getPcPrebuildConfig }, { resolvePrebuildPresets }, { getPcBuilderConfig }] =
+    await Promise.all([
+      import("@/lib/pc-prebuild/config"),
+      import("@/lib/pc-prebuild/resolve"),
+      import("@/lib/pc-builder/config"),
+    ])
+
+  const config = await getPcPrebuildConfig()
+  const preset = config.enabled ? config.presets.find((p) => p.id === presetId) : undefined
+  if (!preset) return { ok: false, error: "Paket ini sudah tidak tersedia." }
+
+  // `actual`: yang diperiksa di sini keberadaan produk, bukan tampilan stok.
+  const [resolved] = await resolvePrebuildPresets([preset], await getPcBuilderConfig(), "actual")
+
+  const selections: QuotationSelection[] = []
+  for (const [index, item] of resolved.items.entries()) {
+    const kandidat = [item, ...item.alternatives].filter((ref) => ref.product !== null)
+    if (kandidat.length === 0) {
+      return {
+        ok: false,
+        error: "Salah satu komponen paket ini sudah tidak tersedia di katalog. Hubungi admin untuk memperbarui paketnya.",
+      }
+    }
+    const diminta = selection[`${item.stepId}#${index}`]
+    const dipilih = kandidat.find((ref) => (ref.variationId ?? ref.productId) === diminta) ?? kandidat[0]
+    selections.push({
+      stepId: item.stepId,
+      // Pemegang harga: barisnya varian kalau ada — sama dengan `priceBearingId`
+      // di checkout.
+      productId: dipilih.variationId ?? dipilih.productId,
+      quantity: dipilih.quantity,
+    })
+  }
+
+  const priced = await priceQuoteSelections(selections)
+  if (!priced.ok) return priced
+
+  const normal = priced.items.reduce((acc, item) => acc + item.price * item.quantity, 0)
+  const discount = await currentPrebuildDiscount(preset.id, normal)
+
   try {
-    const { code, token } = await recordPcBuildQuote(items, owner)
+    const { code, token } = await recordPcBuildQuote(priced.items, owner, {
+      prebuildId: preset.id,
+      prebuildName: preset.name,
+      discount,
+    })
     return { ok: true, code, token }
   } catch (error) {
-    console.error("[quotation] gagal menerbitkan:", error)
+    console.error("[quotation] gagal menerbitkan quotation paket:", error)
     return { ok: false, error: "Gagal menerbitkan quotation. Coba lagi sebentar lagi." }
   }
 }
@@ -523,6 +662,10 @@ export type PublicQuote = {
   salesPhone: string | null
   items: QuoteLineItem[]
   total: number
+  /** Potongan paket PC Prebuild yang sudah dikurangkan dari `total`; 0 untuk PC Build. */
+  discount: number
+  /** Nama paket (salinan saat terbit) — `null` untuk quotation PC Build. */
+  prebuildName: string | null
   itemCount: number
   createdAt: string
   /**
@@ -571,6 +714,9 @@ export async function getQuoteByPublicToken(token: string): Promise<PublicQuote 
       salesName: true,
       items: true,
       total: true,
+      discount: true,
+      kind: true,
+      prebuildName: true,
       itemCount: true,
       createdAt: true,
       // Hanya nomornya. Nama sales sudah ada sebagai snapshot di `salesName`,
@@ -603,6 +749,8 @@ export async function getQuoteByPublicToken(token: string): Promise<PublicQuote 
     salesPhone: row.owner?.phoneNumber ?? null,
     items,
     total: Number(row.total),
+    discount: Number(row.discount),
+    prebuildName: row.kind === "prebuild" ? row.prebuildName : null,
     itemCount: row.itemCount,
     createdAt: row.createdAt.toISOString(),
     // Quotation lama bisa saja tidak punya baris revisi sama sekali; tanggal
@@ -683,6 +831,21 @@ export function parseQuoteSort(value: unknown): QuoteSort {
  *
  * `semua` hanya dipakai di `/admin/quotation`. `/verify` cuma punya dua tab.
  */
+/**
+ * Jenis rakitan pada quotation — filter "Jenis" di `/admin/quotation` dan
+ * `/profile/quotation` (docs/17 §18). Dinamai "jenis", bukan "asal", karena
+ * `QuoteAsal` di bawah sudah dipakai untuk Internal/Pengunjung.
+ */
+export type QuoteJenis = "semua" | "build" | "prebuild"
+
+export function parseQuoteJenis(value: unknown): QuoteJenis {
+  return value === "build" || value === "prebuild" ? value : "semua"
+}
+
+function quoteJenisWhere(jenis: QuoteJenis): Prisma.PcBuildQuoteWhereInput {
+  return jenis === "semua" ? {} : { kind: jenis }
+}
+
 export type QuoteAsal = "internal" | "pengunjung" | "semua"
 
 /** Bawaannya `internal` — penawaran toko adalah yang dicari, bukan coba-coba pengunjung. */
@@ -855,6 +1018,12 @@ export type QuotationHistoryRow = {
   dioperDariCs: boolean
   /** Nama yang mengoper, untuk badge "Dioper dari CS · <nama>". */
   dioperOleh: string | null
+  /** "build" | "prebuild" — lihat `PcBuildQuote.kind`. */
+  kind: string
+  /** Salinan nama paket saat terbit; `null` untuk PC Build. */
+  prebuildName: string | null
+  /** Potongan paket yang sudah dikurangkan dari `total`; 0 untuk PC Build. */
+  discount: number
 }
 
 const HISTORY_SELECT = {
@@ -873,6 +1042,9 @@ const HISTORY_SELECT = {
   ownerUserId: true,
   createdByUserId: true,
   createdBy: { select: { name: true, salesDisplayName: true } },
+  kind: true,
+  prebuildName: true,
+  discount: true,
 } as const
 
 function toHistoryRow(row: {
@@ -891,6 +1063,9 @@ function toHistoryRow(row: {
   ownerUserId: string | null
   createdByUserId: string | null
   createdBy: { name: string; salesDisplayName: string | null } | null
+  kind: string
+  prebuildName: string | null
+  discount: { toString(): string }
 }): QuotationHistoryRow {
   const dioper = row.createdByUserId !== null && row.createdByUserId !== row.ownerUserId
   return {
@@ -908,6 +1083,9 @@ function toHistoryRow(row: {
     publicToken: row.publicToken,
     dioperDariCs: dioper,
     dioperOleh: dioper ? (row.createdBy?.salesDisplayName ?? row.createdBy?.name ?? null) : null,
+    kind: row.kind,
+    prebuildName: row.kind === "prebuild" ? row.prebuildName : null,
+    discount: Number(row.discount),
   }
 }
 
@@ -926,9 +1104,9 @@ function toHistoryRow(row: {
  */
 export async function listQuotationsForUser(
   userId: string,
-  opts: { peran?: "milik" | "dioper"; q?: string; take?: number } = {}
+  opts: { peran?: "milik" | "dioper"; q?: string; take?: number; jenis?: QuoteJenis } = {}
 ): Promise<QuotationHistoryRow[]> {
-  const { peran = "milik", q, take = 50 } = opts
+  const { peran = "milik", q, take = 50, jenis = "semua" } = opts
   const term = q?.trim() ?? ""
 
   const rows = await getPrisma().pcBuildQuote.findMany({
@@ -938,6 +1116,7 @@ export async function listQuotationsForUser(
         : // Yang ia terbitkan TAPI bukan miliknya — kalau tidak, quotation yang
           // ia pegang sendiri akan muncul di dua tab sekaligus.
           { createdByUserId: userId, NOT: { ownerUserId: userId } }),
+      ...quoteJenisWhere(jenis),
       ...(term.length >= 3
         ? {
             OR: [
@@ -1066,6 +1245,11 @@ export type RevisionSeed = {
   customerName: string | null
   customerPhone: string | null
   internalNote: string | null
+  /** "build" | "prebuild" — quotation paket tidak boleh direvisi komponennya di builder. */
+  kind: string
+  prebuildId: string | null
+  /** Potongan paket pada revisi yang berlaku. 0 untuk PC Build. */
+  discount: number
   items: RevisionSeedItem[]
 }
 
@@ -1099,6 +1283,9 @@ export async function getQuotationForRevision(
       customerName: true,
       customerPhone: true,
       internalNote: true,
+      kind: true,
+      prebuildId: true,
+      discount: true,
       revisions: {
         select: { items: true },
         orderBy: { revision: "desc" },
@@ -1122,6 +1309,9 @@ export async function getQuotationForRevision(
     customerName: quote.customerName,
     customerPhone: quote.customerPhone,
     internalNote: quote.internalNote,
+    kind: quote.kind,
+    prebuildId: quote.prebuildId,
+    discount: Number(quote.discount),
     items: items.map((item) => ({
       productId: item.productId,
       quantity: item.quantity,
@@ -1168,7 +1358,12 @@ class RevisiBentrokError extends Error {}
 export async function reviseQuotation(
   code: string,
   userId: string,
-  input: ReviseQuotationInput
+  input: ReviseQuotationInput,
+  /**
+   * `"builder"` — revisi komponen dari `/build-pc`. `"refresh"` — hanya
+   * menyegarkan harga, isi rakitan sama (`refreshQuotationPrices`).
+   */
+  jalur: "builder" | "refresh" = "builder"
 ): Promise<IssueQuotationResult> {
   const seed = await getQuotationForRevision(code, userId)
   if (!seed) {
@@ -1176,6 +1371,17 @@ export async function reviseQuotation(
       ok: false,
       error:
         "Quotation ini tidak bisa direvisi — mungkin sudah ditandai terjual, atau bukan milik Anda.",
+    }
+  }
+
+  // Keputusan 8 Oktober 2026: quotation paket tidak direvisi komponennya.
+  // Potongan paket sah hanya untuk komponen paket itu, dan builder tidak tahu
+  // komponen mana yang masih termasuk paket. Ganti komponen = terbitkan baru.
+  if (seed.kind === "prebuild" && jalur === "builder") {
+    return {
+      ok: false,
+      error:
+        "Quotation PC Prebuild tidak bisa direvisi komponennya. Terbitkan quotation baru dari halaman paketnya.",
     }
   }
 
@@ -1239,6 +1445,13 @@ export async function reviseQuotation(
   })
 
   const subtotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0)
+  // Potongan paket dinilai ulang terhadap subtotal yang baru — paket yang sudah
+  // dihapus atau potongannya kedaluwarsa jatuh ke 0.
+  const discount =
+    seed.kind === "prebuild" && seed.prebuildId
+      ? await currentPrebuildDiscount(seed.prebuildId, subtotal)
+      : 0
+  const total = subtotal - discount
   const revisiBaru = seed.revision + 1
   const now = new Date()
 
@@ -1259,7 +1472,8 @@ export async function reviseQuotation(
             items,
             subtotal,
             assemblyFee: 0,
-            total: subtotal,
+            discount,
+            total,
             itemCount: items.length,
             customerName: input.customerName,
             customerPhone: input.customerPhone,
@@ -1283,7 +1497,8 @@ export async function reviseQuotation(
             items,
             subtotal,
             assemblyFee: 0,
-            total: subtotal,
+            discount,
+            total,
             itemCount: items.length,
             usedLatestPrices: input.useLatestPrices,
             createdByUserId: userId,
@@ -1374,24 +1589,36 @@ export async function previewLatestPrices(
   )
 
   if (priced.unavailableProductIds.length > 0) {
+    const jumlah = priced.unavailableProductIds.length === 1
+      ? "Satu komponen sudah"
+      : `${priced.unavailableProductIds.length} komponen sudah`
     return {
       ok: false,
+      // Quotation paket tidak punya jalur Revisi di Builder (docs/17 §18).
       error:
-        priced.unavailableProductIds.length === 1
-          ? "Satu komponen sudah tidak ada di katalog. Buka Revisi di Builder untuk menggantinya."
-          : `${priced.unavailableProductIds.length} komponen sudah tidak ada di katalog. Buka Revisi di Builder untuk menggantinya.`,
+        seed.kind === "prebuild"
+          ? `${jumlah} tidak ada di katalog. Terbitkan quotation baru dari halaman paketnya.`
+          : `${jumlah} tidak ada di katalog. Buka Revisi di Builder untuk menggantinya.`,
     }
   }
 
   const hargaLama = new Map(seed.items.map((item) => [item.productId, item.price]))
-  let totalBaru = 0
+  let subtotalBaru = 0
   let barisBerubah = 0
   for (const line of priced.lines) {
-    totalBaru += line.unitPrice * line.quantity
+    subtotalBaru += line.unitPrice * line.quantity
     if (hargaLama.get(line.productId) !== line.unitPrice) barisBerubah += 1
   }
 
-  const totalSekarang = seed.items.reduce((acc, item) => acc + item.price * item.quantity, 0)
+  // Quotation paket: potongan ikut dinilai ulang, dengan rumus yang sama persis
+  // dengan `reviseQuotation` — angka di dialog harus sama dengan yang tersimpan.
+  const potonganBaru =
+    seed.kind === "prebuild" && seed.prebuildId
+      ? await currentPrebuildDiscount(seed.prebuildId, subtotalBaru)
+      : 0
+  const totalBaru = subtotalBaru - potonganBaru
+  const totalSekarang =
+    seed.items.reduce((acc, item) => acc + item.price * item.quantity, 0) - seed.discount
 
   return {
     ok: true,
@@ -1442,7 +1669,7 @@ export async function refreshQuotationPrices(
     customerPhone: seed.customerPhone,
     internalNote: seed.internalNote,
     useLatestPrices: true,
-  })
+  }, "refresh")
 }
 
 /**
@@ -1693,6 +1920,8 @@ export type AdminQuotationFilter = {
   status?: string
   /** Bawaan `semua` di lapisan ini; halaman admin sendiri yang memilih `internal`. */
   asal?: QuoteAsal
+  /** PC Build / PC Prebuild. Bawaan `semua`. */
+  jenis?: QuoteJenis
   /** Halaman, mulai dari 1. */
   page?: number
 }
@@ -1729,13 +1958,14 @@ export type AdminQuotationListResult = {
 export async function listQuotationsForAdmin(
   filter: AdminQuotationFilter = {}
 ): Promise<AdminQuotationListResult> {
-  const { q, periode, ownerUserId, status, asal = "semua" } = filter
+  const { q, periode, ownerUserId, status, asal = "semua", jenis = "semua" } = filter
   const page = Math.max(1, filter.page ?? 1)
   const term = q?.trim() ?? ""
   const rentang = periode && /^\d{6}$/.test(periode) ? jakartaMonthRange(periode) : null
 
   const where = {
     ...quoteAsalWhere(asal),
+    ...quoteJenisWhere(jenis),
     ...(rentang ? { createdAt: { gte: rentang.mulai, lt: rentang.sesudah } } : {}),
     ...(ownerUserId ? { ownerUserId } : {}),
     ...(status === "terbit" || status === "closing" ? { status } : {}),
