@@ -1990,3 +1990,38 @@ menggantikan blok Estimasi Performa yang tidak dicetak lagi. Halaman itu tidak
 lagi memanggil `getPcPrebuildGames()`; datanya kini hanya konfigurasi paket,
 langkah PC Builder, mode tampilan stok, dan katalog lewat
 `resolvePrebuildPresets` — semuanya seperti sebelumnya.
+
+---
+
+## 30. `PUT /api/admin/products`: ubah produk bervariasi jadi produk biasa (8 Oktober 2026)
+
+Payload kini menerima **`remove_variations: true`**. Bersama `type: "simple"` pada
+produk yang tersimpan sebagai `VARIABLE`, `updateProduct` menghapus seluruh varian
+(baris `parent_id = induk`, beserta gambar & atributnya lewat cascade) **di dalam
+transaksi yang sama** dengan perubahan tipe.
+
+| Kiriman | Hasil |
+|---|---|
+| `type: "simple"` saja, varian masih ada | Ditolak 400 (`ProductVariationError`), tidak ada yang berubah |
+| `type: "simple"` + `remove_variations: true` | Tipe jadi `SIMPLE`, varian terhapus, harga/stok induk dipakai |
+
+**Kenapa penanda eksplisit, bukan otomatis dari `type`.** Sebelumnya alur ini
+buntu dari dua sisi: server menolak "hapus varian dulu", sementara form menolak
+produk bervariasi tanpa varian. Menghapus otomatis setiap kali `type: "simple"`
+datang akan membuat pemanggil lain (skrip, jalur harga) bisa menghapus varian
+tanpa sengaja. Penanda ini hanya dikirim form produk setelah staff melihat daftar
+varian yang akan hilang di dialog konfirmasi.
+
+Log produk mencatat `type: "variable (N varian)" → "simple, varian dihapus"` —
+setelah ini barisnya sudah tidak ada, jadi log itulah jejak satu-satunya.
+
+Uji: `scripts/uji-varian-ke-simple.mts` (menulis, hanya di Docker lokal).
+
+### Balasan non-JSON di form admin
+
+Form produk dan Quick Edit membaca balasan lewat `readJsonResponse()`
+(`lib/utils/read-json-response.ts`). Route `/api/admin/*` selalu membalas JSON;
+HTML datang dari halaman galat CDN Hostinger saat server restart atau timeout.
+Staff kini melihat pesan "server sedang tidak bisa dihubungi (HTTP xxx), coba
+lagi", bukan `Unexpected token '<'`. Quick Edit produk bervariasi **mengunci
+tombol Simpan** selama varian belum termuat, dan menyediakan tombol "Coba lagi".

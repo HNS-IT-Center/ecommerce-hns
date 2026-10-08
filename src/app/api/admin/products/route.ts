@@ -114,6 +114,12 @@ export async function PUT(request: NextRequest) {
       },
     })
 
+    // Dihitung SEBELUM update: setelahnya varian yang dihapus sudah tidak ada.
+    const variationCount =
+      existingRaw && input.remove_variations
+        ? await prisma.product.count({ where: { parentId: existingRaw.id } })
+        : undefined
+
     const product = await updateProduct(id, input)
 
     if (existingRaw) {
@@ -121,7 +127,9 @@ export async function PUT(request: NextRequest) {
       // dan harga sekaligus menghasilkan dua baris log, bukan satu. Aturannya
       // ada di `lib/logs/product-log.ts` bersama jalur quick edit harga, supaya
       // nama field dan format nilainya tidak berbeda antar jalur.
-      const entries = buildProductLogEntries(diffProductChanges(existingRaw, input))
+      const entries = buildProductLogEntries(
+        diffProductChanges({ ...existingRaw, variationCount }, input),
+      )
 
       if (entries.length > 0) {
         await prisma.productLog.createMany({

@@ -1633,13 +1633,19 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
 
   // Produk yang punya anak tidak boleh diturunkan jadi SIMPLE begitu saja —
   // anak-anaknya akan menggantung dengan parentId yang tidak lagi bermakna
-  // (schema memakai onDelete: SetNull, jadi kerusakannya senyap). Admin harus
-  // menghapus varian lebih dulu kalau memang mau mengubahnya jadi produk biasa.
-  if (input.type === "simple" && existing.type === ProductType.VARIABLE) {
+  // (schema memakai onDelete: SetNull, jadi kerusakannya senyap).
+  //
+  // Variannya ikut dihapus HANYA kalau pemanggil menyetujuinya lewat
+  // `remove_variations`. Dulu satu-satunya jalan adalah "hapus varian dulu",
+  // padahal form menolak produk bervariasi tanpa varian — dua aturan itu saling
+  // mengunci sehingga produk varian tidak pernah bisa diubah jadi produk biasa.
+  const removeVariations =
+    input.type === "simple" && existing.type === ProductType.VARIABLE && input.remove_variations === true;
+  if (input.type === "simple" && existing.type === ProductType.VARIABLE && !removeVariations) {
     const variationCount = await prisma.product.count({ where: { parentId: existing.id } });
     if (variationCount > 0) {
       throw new ProductVariationError(
-        `Produk ini punya ${variationCount} varian. Hapus semua varian dulu sebelum mengubahnya jadi produk biasa.`,
+        `Produk ini punya ${variationCount} varian. Konfirmasi penghapusan varian untuk mengubahnya jadi produk biasa.`,
       );
     }
   }
@@ -1719,6 +1725,13 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
 
     if (input.categories || input.images || input.attributes) {
       await replaceProductRelations(tx, product.id, input as ProductInput);
+    }
+
+    // Di dalam transaksi yang sama dengan perubahan tipe: kalau penghapusan
+    // gagal, produk tidak boleh tertinggal sebagai SIMPLE yang masih punya anak.
+    // Gambar & atribut varian ikut terhapus lewat onDelete: Cascade.
+    if (removeVariations) {
+      await tx.product.deleteMany({ where: { parentId: product.id } });
     }
 
     // Sama seperti createProduct: harus setelah replaceProductRelations supaya

@@ -35,6 +35,7 @@ import { Button } from "@/components/ui/button"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { RupiahInput } from "@/components/ui/rupiah-input"
 import { cn } from "@/lib/utils"
+import { readJsonResponse } from "@/lib/utils/read-json-response"
 
 /** Disamakan dengan formulir produk penuh — lihat produk-form.tsx. */
 const FIELD_TEXT = "text-xs md:text-xs"
@@ -100,6 +101,25 @@ export function QuickEditModal({
   // benar-benar terbuka.
   const [isLoadingVariations, setIsLoadingVariations] = useState(isVariable)
   const [variationsError, setVariationsError] = useState<string | null>(null)
+  /** Dinaikkan tombol "Coba lagi" untuk memuat ulang varian tanpa menutup modal. */
+  const [variationsAttempt, setVariationsAttempt] = useState(0)
+
+  /**
+   * Produk bervariasi yang variannya belum termuat TIDAK boleh disimpan.
+   *
+   * Dulu tetap boleh, dengan catatan "varian tidak akan diubah". Masalahnya,
+   * staff yang membuka Quick Edit produk bervariasi hampir selalu datang untuk
+   * mengubah harga — dan harga produk bervariasi hidup di variannya. Menyimpan
+   * dalam keadaan ini berakhir dengan "tersimpan" tanpa satu pun harga berubah,
+   * dan pelanggan tetap melihat harga lama.
+   */
+  const variationsBlocked = isVariable && (isLoadingVariations || variationsError !== null)
+
+  function retryVariations() {
+    setVariationsError(null)
+    setIsLoadingVariations(true)
+    setVariationsAttempt((n) => n + 1)
+  }
 
   const {
     register,
@@ -166,7 +186,7 @@ export function QuickEditModal({
     async function load() {
       try {
         const res = await fetch(`/api/admin/products/variations?id=${product.id}`)
-        const data = await res.json()
+        const data = await readJsonResponse<ProductVariation[] & { error?: string }>(res)
         if (!res.ok) throw new Error(data.error || "Gagal memuat varian")
         if (cancelled) return
 
@@ -219,7 +239,7 @@ export function QuickEditModal({
     // `variationAttributeNames` diturunkan dari `raw` yang tidak berubah selama
     // modal terbuka, jadi tidak perlu ikut jadi dependensi.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isVariable, product.id, setValue])
+  }, [isVariable, product.id, setValue, variationsAttempt])
 
   /**
    * Unggah gambar varian yang masih ditahan di klien, sama seperti di formulir
@@ -238,7 +258,7 @@ export function QuickEditModal({
       const formData = new FormData()
       formData.append("file", variation.imageFile)
       const res = await fetch("/api/admin/media", { method: "POST", body: formData })
-      const data = await res.json()
+      const data = await readJsonResponse<{ error?: string; source_url?: string }>(res)
       if (!res.ok) throw new Error(data.error || "Upload gambar varian gagal")
       urls.push(data.source_url as string)
     }
@@ -247,6 +267,9 @@ export function QuickEditModal({
 
   async function onSubmit(values: ProductFormValues) {
     setSubmitError(null)
+    // Penjaga kedua di samping tombol yang dinonaktifkan: Enter di salah satu
+    // isian tetap bisa mengirim form.
+    if (variationsBlocked) return
 
     // Varian hanya dikirim kalau benar-benar termuat. Mengirim array kosong
     // berarti "hapus semua varian" bagi server, jadi kegagalan pemuatan tidak
@@ -323,7 +346,7 @@ export function QuickEditModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
-      const data = await res.json()
+      const data = await readJsonResponse<{ error?: string }>(res)
       if (!res.ok) throw new Error(data.error || "Gagal menyimpan produk")
 
       startTransition(() => {
@@ -353,7 +376,13 @@ export function QuickEditModal({
             <Button type="button" variant="ghost" size="sm" onClick={onClose}>
               Batal
             </Button>
-            <Button type="submit" form="quick-edit-form" disabled={isBusy} className="gap-2">
+            <Button
+              type="submit"
+              form="quick-edit-form"
+              disabled={isBusy || variationsBlocked}
+              title={variationsError ? "Varian belum termuat — muat ulang dulu sebelum menyimpan" : undefined}
+              className="gap-2"
+            >
               {isBusy && <Loader2 className="h-4 w-4 animate-spin" />}
               Simpan
             </Button>
@@ -720,9 +749,25 @@ export function QuickEditModal({
                     Memuat varian…
                   </p>
                 ) : variationsError ? (
-                  <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-3 text-xs text-destructive">
-                    {variationsError} — varian tidak akan diubah saat menyimpan.
-                  </p>
+                  <div className="flex flex-col gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-3 text-xs sm:flex-row sm:items-center sm:justify-between">
+                    <div className="text-destructive">
+                      <p className="font-medium">Varian gagal dimuat.</p>
+                      <p className="mt-0.5">{variationsError}</p>
+                      <p className="mt-1 text-muted-foreground">
+                        Tombol Simpan dikunci sampai varian termuat — harga produk ini ada di variannya,
+                        jadi menyimpan sekarang tidak akan mengubah harga apa pun.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={retryVariations}
+                      className="shrink-0"
+                    >
+                      Coba lagi
+                    </Button>
+                  </div>
                 ) : (
                   <>
                     <p className="mb-2 text-[11px] text-muted-foreground">

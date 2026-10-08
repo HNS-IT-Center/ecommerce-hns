@@ -50,6 +50,13 @@ export type ProductSnapshot = {
   stockQty: number | null
   categories: Array<{ categoryId: number }>
   images: Array<{ url: string }>
+  /** Enum database (`SIMPLE`/`VARIABLE`). Opsional: tidak semua pemanggil memuatnya. */
+  type?: string
+  /**
+   * Jumlah varian sebelum disimpan. Diisi pemanggil hanya saat perubahan tipe
+   * ikut menghapus varian, supaya log menyebut berapa yang hilang.
+   */
+  variationCount?: number
 }
 
 /**
@@ -101,6 +108,21 @@ export function diffProductChanges(
       // Tanda pisah dipakai untuk "tidak ada SKU": sel log yang kosong tidak
       // bisa dibedakan dari data yang hilang saat riwayat ditelusuri balik.
       changes.push({ field: "sku", old: oldSku || "—", new: newSku || "—" })
+    }
+  }
+
+  if (input.type !== undefined && existing.type !== undefined) {
+    const oldType = existing.type.toLowerCase()
+    if (oldType !== input.type) {
+      // Varian yang terhapus disebut di nilai lama: barisnya sudah tidak ada
+      // setelah ini, jadi log inilah satu-satunya jejak bahwa mereka pernah ada.
+      const removed =
+        input.remove_variations && existing.variationCount ? ` (${existing.variationCount} varian)` : ""
+      changes.push({
+        field: "type",
+        old: `${oldType}${removed}`,
+        new: removed ? `${input.type}, varian dihapus` : input.type,
+      })
     }
   }
 

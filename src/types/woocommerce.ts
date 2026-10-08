@@ -191,6 +191,16 @@ export type ProductInput = {
   /** Daftar varian lengkap. Varian lama yang tak ada di sini akan dihapus. */
   variations?: ProductVariationInput[];
   /**
+   * Persetujuan eksplisit untuk menghapus seluruh varian saat produk bervariasi
+   * diubah jadi `type: "simple"`. Dikirim form produk hanya setelah staff
+   * melihat peringatannya di dialog konfirmasi.
+   *
+   * Tanpa penanda ini perubahan tipe tetap ditolak selama variannya masih ada —
+   * pemanggil lain (skrip, jalur harga) tidak boleh menghapus varian hanya
+   * karena mengirim `type: "simple"`.
+   */
+  remove_variations?: boolean;
+  /**
    * SKU produk ini (`products.sku`). Opsional — mayoritas katalog belum punya.
    *
    * BUKAN `accurate_code`. Keduanya sama-sama "kode barang" di mata staff, tapi

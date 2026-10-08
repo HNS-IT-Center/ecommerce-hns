@@ -57,6 +57,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { cn, formatRupiah } from "@/lib/utils"
+import { readJsonResponse } from "@/lib/utils/read-json-response"
 
 type ProdukFormProps = {
   categories: ProductCategory[]
@@ -193,7 +194,15 @@ export function ProdukForm({
   const variationAttributes = watch("variationAttributes") ?? []
   const variations = watch("variations") ?? []
   const isVariableProduct = productType === "variable"
-  const hasExistingVariations = (defaultValues?.variations?.length ?? 0) > 0
+  const existingVariationCount = defaultValues?.variations?.length ?? 0
+  const hasExistingVariations = existingVariationCount > 0
+  /**
+   * Produk bervariasi yang sedang diubah jadi produk biasa. Variannya hanya
+   * terhapus saat disimpan, dan dialog konfirmasi menyebutnya lebih dulu —
+   * berganti pilihan tipe lalu kembali lagi tidak menyentuh apa pun.
+   */
+  const isRemovingVariations =
+    isEdit && defaultValues?.type === "variable" && hasExistingVariations && productType === "simple"
 
   /**
    * Pesan galat per baris varian, dikunci indeksnya.
@@ -291,7 +300,7 @@ export function ProdukForm({
       const formData = new FormData()
       formData.append("file", variation.imageFile)
       const res = await fetch("/api/admin/media", { method: "POST", body: formData })
-      const data = await res.json()
+      const data = await readJsonResponse<{ error?: string; source_url?: string }>(res)
       if (!res.ok) throw new Error(data.error || "Upload gambar varian gagal")
       urls.push(data.source_url as string)
     }
@@ -317,7 +326,7 @@ export function ProdukForm({
       const formData = new FormData()
       formData.append("file", image.file)
       const res = await fetch("/api/admin/media", { method: "POST", body: formData })
-      const data = await res.json()
+      const data = await readJsonResponse<{ error?: string; source_url?: string }>(res)
       if (!res.ok) throw new Error(data.error || "Upload gambar gagal")
       urls.push(data.source_url as string)
     }
@@ -406,6 +415,9 @@ export function ProdukForm({
             image_url: variationImageUrls[index] ?? variation.imageUrl ?? null,
           })),
         }),
+        // Persetujuan yang sudah dilihat staff di dialog konfirmasi. Tanpanya
+        // server menolak perubahan tipe selama varian lama masih ada.
+        ...(isRemovingVariations && { remove_variations: true }),
         images: imageUrls.map((url) => ({ url })),
         video_url: values.videoUrl || null,
         brand: values.brand || null,
@@ -416,7 +428,7 @@ export function ProdukForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(isEdit ? { id: productId, ...payload } : payload),
       })
-      const data = await res.json()
+      const data = await readJsonResponse<{ error?: string; id?: number }>(res)
       if (!res.ok) throw new Error(data.error || "Gagal menyimpan produk")
 
       // Edit kembali ke daftar asal, dengan saringannya. Produk baru ke daftar
@@ -841,8 +853,15 @@ export function ProdukForm({
                   </RadioGroup>
                   {isVariableProduct && hasExistingVariations && (
                     <p className="mt-1.5 text-[11px] text-muted-foreground">
-                      Produk ini punya {defaultValues?.variations?.length} varian. Untuk mengubahnya jadi
-                      produk biasa, hapus semua varian dulu di tabel di bawah.
+                      Produk ini punya {existingVariationCount} varian. Kalau diubah jadi Produk Biasa,
+                      semua varian akan dihapus saat disimpan.
+                    </p>
+                  )}
+                  {isRemovingVariations && (
+                    <p className="mt-1.5 flex items-start gap-1.5 text-[11px] font-medium text-destructive">
+                      <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" />
+                      {existingVariationCount} varian akan dihapus permanen saat disimpan. Isi harga
+                      dan stok produk di bawah — itulah yang dipakai setelah varian hilang.
                     </p>
                   )}
                 </div>
@@ -1239,16 +1258,47 @@ export function ProdukForm({
             </div>
           )}
 
+          {/* Satu-satunya penyimpanan di form ini yang menghapus data permanen,
+              jadi variannya disebut satu per satu — staff harus bisa melihat
+              persis apa yang akan hilang, bukan sekadar angkanya. */}
+          {isRemovingVariations && (
+            <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs">
+              <p className="font-medium text-destructive">
+                {existingVariationCount} varian akan dihapus permanen
+              </p>
+              <ul className="mt-1.5 list-disc space-y-0.5 pl-4 text-muted-foreground">
+                {(defaultValues?.variations ?? []).map((variation, index) => {
+                  const label = Object.values(variation.attributes).filter(Boolean).join(" / ")
+                  return (
+                    <li key={variation.id ?? index} className="break-words">
+                      {label || `Varian ${index + 1}`}
+                      {variation.sku && ` — SKU ${variation.sku}`}
+                    </li>
+                  )
+                })}
+              </ul>
+              <p className="mt-1.5 text-muted-foreground">
+                Harga, stok, gambar, dan Kode Accurate milik varian ikut hilang. Produk ini lalu
+                dijual dengan harga dan stok di atas.
+              </p>
+            </div>
+          )}
+
           <AlertDialogFooter>
             <AlertDialogCancel>
               {!isEdit && galatKodeAccurate ? "Kembali Betulkan" : "Periksa Lagi"}
             </AlertDialogCancel>
-            <AlertDialogAction onClick={saveProduct}>
-              {isEdit
-                ? "Ya, Simpan"
-                : galatKodeAccurate
-                  ? "Buat Tanpa Tautan"
-                  : "Ya, Buat Produk"}
+            <AlertDialogAction
+              onClick={saveProduct}
+              variant={isRemovingVariations ? "destructive" : undefined}
+            >
+              {isRemovingVariations
+                ? "Hapus Varian & Simpan"
+                : isEdit
+                  ? "Ya, Simpan"
+                  : galatKodeAccurate
+                    ? "Buat Tanpa Tautan"
+                    : "Ya, Buat Produk"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
