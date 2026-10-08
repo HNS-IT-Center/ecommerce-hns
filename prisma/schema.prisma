@@ -472,6 +472,17 @@ model Product {
   /// kembali beserta contohnya.
   accurateCode String? @unique @map("accurate_code") @db.VarChar(50)
 
+  /// Kapan stok baris ini terakhir ditulis sinkron stok Accurate (docs/13 §10).
+  /// NULL = stoknya belum pernah dikelola Accurate — diisi staff, atau barangnya
+  /// tidak tertaut. Terisi = stok mengikuti Accurate; suntingan manual akan
+  /// tertimpa pada sinkron berikutnya.
+  ///
+  /// Juga penanda aturan "prioritas yang ada stok" (keputusan 9 Okt 2026):
+  /// produk tertaut yang stoknya 0 TIDAK disentuh selama kolom ini masih NULL,
+  /// tapi produk yang pernah disinkron tetap diperbarui walau stoknya habis —
+  /// kalau tidak, barang yang laku habis membeku dengan stok lamanya.
+  stockSyncedAt DateTime? @map("stock_synced_at")
+
   name String @db.VarChar(500)
   slug String @unique @db.VarChar(191)
 
@@ -1649,4 +1660,80 @@ model AccurateIgnored {
   ditandaiAt   DateTime @default(now()) @map("ditandai_at")
 
   @@map("accurate_ignored")
+}
+
+/// Salinan barang Accurate dari API Data Accurate (`data.hnsitcenter.id/api/v1`),
+/// diisi sinkron stok (docs/13 §10). Satu baris per barang Accurate — termasuk
+/// yang belum punya produk web, supaya daftar "berstok tapi belum ada di web"
+/// bisa dibaca tanpa menelepon API.
+///
+/// **HPP (`cost`) SENGAJA tinggal di sini, bukan di `products`.** Halaman toko
+/// membaca `products` di banyak tempat tanpa `select` eksplisit; kolom HPP di sana
+/// tinggal selangkah dari ikut terkirim ke peramban pelanggan. Di tabel ini ia
+/// hanya terbaca lewat jalur admin yang memeriksa izin `harga-modal`.
+///
+/// Dipisah juga dari `accurate_products.CP`: itu angka modal yang DISUNTING staff
+/// di halaman Update Harga, sedangkan `cost` adalah HPP rata-rata Accurate.
+/// Keduanya beda sumber dan tidak boleh saling menimpa.
+model AccurateItem {
+  /// Id barang di Accurate — kunci tetap, tidak pernah berubah.
+  id Int @id
+  /// Kode barang (SKU Accurate), dicocokkan dengan `products.accurate_code`.
+  /// Bisa berubah dan (jarang) dipakai ulang, jadi BUKAN kunci.
+  code         String  @db.VarChar(50)
+  name         String  @db.VarChar(255)
+  type         String  @db.VarChar(16)
+  categoryName String? @map("category_name") @db.VarChar(191)
+  brandName    String? @map("brand_name") @db.VarChar(191)
+  unit         String? @db.VarChar(32)
+  /// active | inactive | deleted
+  status       String  @db.VarChar(16)
+
+  /// Stok di gudang yang dihitung sebagai stok web (`GUDANG_STOK_WEB` di
+  /// lib/api/accurate/stock-sync.ts). Inilah yang ditulis ke `products.stock_qty`.
+  stockWeb      Decimal @default(0) @map("stock_web") @db.Decimal(14, 2)
+  /// `stock.total` Accurate apa adanya (semua gudang kecuali scrap/transit).
+  stockTotal    Decimal @default(0) @map("stock_total") @db.Decimal(14, 2)
+  /// `[{ id, name, quantity }]` — rincian per gudang dari Accurate.
+  stockByWarehouse Json @map("stock_by_warehouse")
+
+  /// HPP rata-rata Accurate. Hanya untuk pemegang izin `harga-modal`.
+  cost Decimal? @db.Decimal(14, 2)
+
+  accurateUpdatedAt DateTime? @map("accurate_updated_at")
+  /// `changedAt` dari API — terakhir data barang ini berubah di sana.
+  changedAt DateTime? @map("changed_at")
+  syncedAt  DateTime  @default(now()) @map("synced_at")
+
+  @@index([code])
+  @@index([stockWeb])
+  @@map("accurate_items")
+}
+
+/// Satu kali sinkron stok Accurate — dari tombol admin atau kiriman webhook.
+model AccurateSyncRun {
+  id       Int    @id @default(autoincrement())
+  /// "manual" | "webhook"
+  trigger  String @db.VarChar(16)
+  /// Nama staff (tombol) — disalin sebagai teks, sama seperti log lain.
+  userName String? @map("user_name") @db.VarChar(191)
+  /// `X-HNS-Delivery` untuk kiriman webhook. UNIK: kiriman ganda dari Data
+  /// Accurate (balasan kami terlambat) diabaikan, bukan diproses dua kali.
+  deliveryId String? @unique @map("delivery_id") @db.VarChar(64)
+
+  startedAt  DateTime  @default(now()) @map("started_at")
+  finishedAt DateTime? @map("finished_at")
+
+  itemsReceived        Int @default(0) @map("items_received")
+  productsUpdated      Int @default(0) @map("products_updated")
+  /// Tertaut, stok 0, dan belum pernah disinkron — sengaja dilewati.
+  productsSkippedZero  Int @default(0) @map("products_skipped_zero")
+  /// Barang berstok yang belum punya produk web (dihitung dari seluruh `accurate_items`).
+  unlinkedWithStock    Int @default(0) @map("unlinked_with_stock")
+  /// `lastSyncAt` Data Accurate saat ditarik — seberapa segar datanya.
+  sourceSyncedAt DateTime? @map("source_synced_at")
+  error String? @db.Text
+
+  @@index([startedAt])
+  @@map("accurate_sync_runs")
 }

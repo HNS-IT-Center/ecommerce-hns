@@ -7,6 +7,7 @@ import { updateProductPriceAction } from "../produk/actions"
 import { buildAccuratePricePreview } from "@/lib/services/accurate-price"
 import { tolakHargaKatalog } from "@/lib/api/woocommerce/products"
 import { importDariSheet, type ImportResult } from "@/lib/api/accurate/import-sheet"
+import { syncAccurateStockFull } from "@/lib/api/accurate/stock-sync"
 import {
   simpanHargaInternal,
   cariProdukWeb,
@@ -450,5 +451,42 @@ export async function batalkanAbaikanMassalAction(input: {
       hasil: null,
       error: error instanceof Error ? error.message : "Gagal membatalkan penandaan.",
     }
+  }
+}
+
+export type SinkronStokHasil =
+  | {
+      ok: true
+      itemsReceived: number
+      productsUpdated: number
+      productsSkippedZero: number
+      unlinkedWithStock: number
+    }
+  | { ok: false; error: string }
+
+/**
+ * Tombol "Sinkron Stok Sekarang" di tab Stok Accurate (docs/13 §10).
+ *
+ * Menarik SELURUH barang dari API Data Accurate (±13 permintaan) lalu menulis
+ * stok produk yang tertaut. Ikut izin EDIT halaman ini — ia mengubah stok yang
+ * dilihat pelanggan. Harga tidak pernah disentuh.
+ */
+export async function sinkronStokAccurateAction(): Promise<SinkronStokHasil> {
+  try {
+    const user = await requirePermission("harga-accurate", "edit")
+    const userName = user && typeof user === "object" && "name" in user ? String(user.name) : null
+    const hasil = await syncAccurateStockFull(userName)
+    revalidatePath("/admin/harga-accurate")
+    if ("duplicate" in hasil) return { ok: false, error: "Sinkron yang sama sedang berjalan." }
+    return {
+      ok: true,
+      itemsReceived: hasil.itemsReceived,
+      productsUpdated: hasil.productsUpdated,
+      productsSkippedZero: hasil.productsSkippedZero,
+      unlinkedWithStock: hasil.unlinkedWithStock,
+    }
+  } catch (error) {
+    console.error("[stok-accurate] sinkron manual gagal:", error)
+    return { ok: false, error: error instanceof Error ? error.message : "Sinkron stok gagal." }
   }
 }

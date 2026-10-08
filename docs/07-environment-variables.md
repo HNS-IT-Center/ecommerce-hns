@@ -440,6 +440,32 @@ Batas laju per menit (TPM) dijaga di
 [`lib/api/groq/rate-limit.ts`](../src/lib/api/groq/rate-limit.ts); angkanya
 mengikuti tier akun, jadi kalau tier dinaikkan, perbarui tabel di berkas itu.
 
+### 2.12 OPSIONAL — Sinkron Stok & HPP dari Data Accurate (9 Oktober 2026)
+
+```env
+HNS_API_URL=https://data.hnsitcenter.id/api/v1
+HNS_API_TOKEN=hns_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+HNS_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx   # hanya kalau webhook dipasang
+```
+
+| Variabel | Dari mana |
+|---|---|
+| `HNS_API_URL` | Tetap `https://data.hnsitcenter.id/api/v1` |
+| `HNS_API_TOKEN` | data.hnsitcenter.id → Pengaturan → API & Integrasi → client "HNS IT Center (Ecommerce)". Tampil **sekali**; kalau hilang, "Ganti token" |
+| `HNS_WEBHOOK_SECRET` | Muncul saat URL webhook diisi di client yang sama. URL-nya `https://hnsitcenter.id/api/hns-webhook` |
+
+Izin client yang dibutuhkan: **Stok** dan **HPP**, semua gudang. Harga jual
+TIDAK — web adalah sumber harga (docs/13 §1). Rincian alur: docs/13 §10.
+
+**Opsional, gagalnya sopan.** Tanpa token, tombol "Sinkron Stok Sekarang" di
+`/admin/harga-accurate?tab=stok` menolak dengan pesan, dan webhook membalas 503.
+Tanpa secret, webhook menolak semua kiriman (401) — sengaja: kiriman yang tidak
+bisa diverifikasi tidak boleh menulis stok.
+
+**Bukan `NEXT_PUBLIC_*`, dan hanya dipanggil dari server.** Token ini membuka HPP
+seluruh barang — angka yang tidak boleh terlihat pelanggan maupun peran tanpa
+izin `harga-modal`.
+
 ---
 
 ## 3. Setup Lokal (Developer Baru)

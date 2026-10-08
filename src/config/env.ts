@@ -68,6 +68,15 @@ const EnvSchema = z.object({
   GEMINI_API_KEY: z.string().min(1).optional(),
   GROQ_API_KEY: z.string().min(1).optional(),
 
+  // API Data Accurate (data.hnsitcenter.id) — sinkron stok & HPP, docs/13 §10.
+  // Opsional dengan alasan yang sama seperti R2 di bawah: menandainya wajib
+  // mematikan seluruh aplikasi di mesin yang belum punya token. Yang mati tanpa
+  // keduanya hanya tombol "Sinkron Stok" dan webhook-nya, dengan pesan jelas.
+  // `HNS_WEBHOOK_SECRET` hanya dibutuhkan kalau webhook dipasang di Data Accurate.
+  HNS_API_URL: z.string().url().optional(),
+  HNS_API_TOKEN: z.string().min(1).optional(),
+  HNS_WEBHOOK_SECRET: z.string().min(1).optional(),
+
   // Cloudflare R2 — penyimpanan gambar produk. Opsional dengan alasan yang
   // sama seperti AUTH_SECRET di atas: skema ini di-parse saat modul dimuat,
   // jadi menandainya wajib akan mematikan SELURUH aplikasi (storefront ikut
@@ -164,6 +173,9 @@ export const env = EnvSchema.parse({
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   GROQ_API_KEY: process.env.GROQ_API_KEY,
+  HNS_API_URL: process.env.HNS_API_URL,
+  HNS_API_TOKEN: process.env.HNS_API_TOKEN,
+  HNS_WEBHOOK_SECRET: process.env.HNS_WEBHOOK_SECRET,
   R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
   R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
   R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,

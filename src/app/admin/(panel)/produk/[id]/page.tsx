@@ -1,4 +1,7 @@
 import { requirePageView } from "@/lib/auth"
+import { bisaAkses } from "@/lib/auth/permissions"
+import { getAccurateInfoForProduct } from "@/lib/api/accurate/stock-sync"
+import { AccurateStockCard } from "./accurate-stock-card"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
@@ -18,7 +21,10 @@ type Props = {
 }
 
 export default async function AdminProdukEditPage({ params, searchParams }: Props) {
-  await requirePageView("produk")
+  const { izin } = await requirePageView("produk")
+  // HPP Accurate hanya untuk pemegang `harga-modal` (keputusan 9 Okt 2026:
+  // PIC & CS tidak). Disaring di server — tanpa izin, angkanya tidak dikirim.
+  const bolehLihatModal = bisaAkses(izin, "harga-modal", "view")
 
   const { id } = await params
   // Saringan daftar asal, dipakai tombol Kembali dan redirect setelah simpan.
@@ -36,6 +42,8 @@ export default async function AdminProdukEditPage({ params, searchParams }: Prop
   ])
 
   if (!product) notFound()
+
+  const dataAccurate = await getAccurateInfoForProduct(product.id, bolehLihatModal)
 
   const isVariable = product.type === "variable"
 
@@ -91,6 +99,11 @@ export default async function AdminProdukEditPage({ params, searchParams }: Prop
         Kembali ke daftar produk
       </Link>
       <h1 className="text-2xl font-bold">Edit Produk — {product.name}</h1>
+      {dataAccurate.length > 0 && (
+        <div className="mt-4">
+          <AccurateStockCard rows={dataAccurate} bolehLihatModal={bolehLihatModal} />
+        </div>
+      )}
       <div className="mt-6">
         <ProdukForm
           categories={categories}

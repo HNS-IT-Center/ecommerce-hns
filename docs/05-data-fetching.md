@@ -2139,3 +2139,20 @@ menyediakan tombol "Coba lagi".
 - `printHref()` pindah ke `features/builder/quotation-print-href.ts`.
 
 Rincian keputusan dan alasannya: docs/17 §18.
+
+---
+
+## 32. Sinkron stok & HPP Accurate (9 Oktober 2026)
+
+- **Klien API baru** `lib/api/hns-data/client.ts` — `getHnsStatus()`,
+  `fetchAllHnsItems()` (status=all, 500/halaman, tunggu `Retry-After` pada 429).
+  Server-only; token membuka HPP.
+- **Layanan** `lib/api/accurate/stock-sync.ts` — `syncAccurateItems()`,
+  `syncAccurateStockFull()`, `listRecentSyncRuns()`, `listUnlinkedWithStock()`,
+  `getAccurateInfoForProduct(wooId, bolehLihatModal)`.
+- **Route baru** `POST /api/hns-webhook` (publik, HMAC). **Server action**
+  `sinkronStokAccurateAction()` di `admin/(panel)/harga-accurate/actions.ts`.
+- **Tabel** `accurate_items`, `accurate_sync_runs`; kolom `products.stock_synced_at`
+  (migrasi `20261008170317_accurate_stock_sync`).
+
+Rincian & keputusan: docs/13 §10. Env: docs/07 §2.12.

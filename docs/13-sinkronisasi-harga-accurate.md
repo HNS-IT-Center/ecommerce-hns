@@ -504,3 +504,76 @@ Catatan kalau jalur Accurate dihidupkan lagi: `product_logs.product_id` menyimpa
 - `scripts/laporan-tautan-per-kategori.mts`,
   `scripts/lepas-tautan-accurate-mati.mts`
 - CLAUDE.md §2.2 (Prisma sumber tunggal produk) & §2.7 (aturan harga)
+
+---
+
+## 10. Sinkron stok & HPP dari API Data Accurate (9 Oktober 2026)
+
+Stok produk yang tertaut (`products.accurate_code`) kini mengikuti Accurate,
+dibaca dari **API Data Accurate** (`data.hnsitcenter.id/api/v1`) — bukan dari
+salinan impor `accurate_products`. Harga jual **tidak disentuh** (§1).
+
+### Keputusan pemilik project
+
+| Pertanyaan | Keputusan |
+|---|---|
+| Yang disinkron | **Prioritas yang ada stok.** Tertaut + stok 0 + belum pernah disinkron → dilewati. Yang pernah disinkron tetap diperbarui walau habis |
+| Barang berstok tanpa produk web (±1.400 di produksi) | **Didaftar** untuk ditautkan staff (tab Stok Accurate), tidak dibuatkan produk otomatis |
+| Gudang stok web | GUDANG UTAMA, GUDANG BATAM, GATEWAY, GRIYA, NAGOYAHILL + **GUDANG DISPLAY GATEWAY & NAGOYAHILL**. Tidak: HADIAH, INVENTARIS, PAMERAN, OTW, KLAIM GARANSI, Transit |
+| HPP | Dibawa, **hanya untuk pemegang `harga-modal`**. PIC & CS dicabut izinnya (dilakukan pemilik project di Manajemen User) |
+
+### Alur
+
+| Jalur | Kapan | Di mana |
+|---|---|---|
+| Webhook | Otomatis tiap Data Accurate selesai sinkron (09.00/12.00/17.00 WIB + ±5 menit setelah perubahan) | `POST /api/hns-webhook` — HMAC `X-HNS-Signature`, timestamp ≤ 5 menit, `deliveryId` unik |
+| Tombol | "Sinkron Stok Sekarang" | `/admin/harga-accurate?tab=stok`, izin `harga-accurate: edit` |
+
+Keduanya lewat `syncAccurateItems()` di `lib/api/accurate/stock-sync.ts`:
+
+1. Salin barang ke `accurate_items` (INSERT … ON DUPLICATE KEY UPDATE per 300).
+2. Cocokkan kode ↔ `products.accurate_code`; hanya jenis `INVENTORY` yang menulis stok.
+3. Tulis `stock_qty`, `stock_status`, `stock_synced_at` — dikelompokkan per
+   (jumlah, status), satu UPDATE per kelompok.
+4. Induk produk bervarian tanpa kode sendiri diselaraskan: Tersedia kalau ada
+   satu saja varian yang tersedia (db-mapper membaca status induk dari kolomnya
+   sendiri).
+5. Invalidasi cache produk + induknya; catat ke `accurate_sync_runs`.
+
+Satu sinkron penuh ±7.300 barang: ±6 detik tarik API + ±2 detik terapkan.
+
+**Stok yang dikelola Accurate menimpa suntingan manual.** `stock_synced_at`
+terisi = stok mengikuti Accurate; halaman edit produk menampilkan kartu "Data
+Accurate" yang mengatakannya.
+
+### HPP tidak pernah masuk `products`
+
+`accurate_items.cost` saja. Halaman toko membaca `products` di banyak tempat
+tanpa `select` eksplisit — kolom HPP di sana tinggal selangkah dari terkirim ke
+peramban pelanggan. HPP dibaca lewat `getAccurateInfoForProduct(wooId,
+bolehLihatModal)`, yang mengosongkannya tanpa izin `harga-modal` (bukan sekadar
+disembunyikan di tampilan). Tab Stok Accurate sengaja tidak menampilkan HPP.
+
+`accurate_items.cost` (HPP rata-rata Accurate) **berbeda** dari
+`accurate_products.CP` (modal yang disunting staff di Daftar Harga). Keduanya
+tidak saling menimpa.
+
+### Webhook gagal tidak boleh hilang
+
+Kiriman yang gagal diproses melepas `delivery_id`-nya, supaya kiriman ULANG
+dari Data Accurate (yang membawa id sama) diproses lagi — bukan dianggap ganda.
+Kiriman yang berhasil lalu datang lagi (balasan kami terlambat) diabaikan.
+
+### Yang harus disiapkan di produksi
+
+1. hPanel → Environment variables: `HNS_API_URL`, `HNS_API_TOKEN` (docs/07 §2.12).
+2. Client API di Data Accurate: izin **Stok + HPP**, semua gudang; harga jual OFF.
+3. Webhook (opsional tapi disarankan): URL `https://hnsitcenter.id/api/hns-webhook`,
+   lalu `HNS_WEBHOOK_SECRET` di hPanel. Tanpa secret semua kiriman ditolak 401.
+4. Tekan "Sinkron Stok Sekarang" sekali untuk tarikan pertama — client baru
+   tidak menerima tumpukan perubahan lama lewat webhook.
+
+### Uji
+
+`scripts/uji-sinkron-stok-accurate.mts` (22 pemeriksaan, API sungguhan, tulis
+HANYA ke database lokal). Pakai `scripts/tsconfig.uji-next.json`.

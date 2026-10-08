@@ -13,6 +13,16 @@ import { isKeyakinan, listUsulanPasangan } from "@/lib/api/accurate/usulan-pasan
 import { TabelHargaView } from "./tabel-harga-view"
 import { ImportSheetButton } from "./import-sheet-button"
 import { UsulanView } from "./usulan-view"
+import { SinkronStokButton } from "./sinkron-stok-button"
+import {
+  GUDANG_STOK_WEB,
+  UNLINKED_PAGE_SIZE,
+  countStockManagedProducts,
+  listRecentSyncRuns,
+  listUnlinkedWithStock,
+} from "@/lib/api/accurate/stock-sync"
+import { AdminPagination } from "@/components/admin/admin-pagination"
+import { formatQuoteDateTime } from "@/app/verify/format"
 
 /**
  * Dua tab, dua pekerjaan yang benar-benar berbeda.
@@ -27,6 +37,10 @@ import { UsulanView } from "./usulan-view"
 const TABS = [
   { key: "daftar", label: "Daftar Harga" },
   { key: "usulan", label: "Usulan Pasangan" },
+  // Stok & HPP dari API Data Accurate (docs/13 §10, 9 Oktober 2026). Layarnya
+  // beda isi — status sinkron dan antrean barang berstok yang belum tertaut —
+  // jadi pantas jadi tab, bukan penyaring di Daftar Harga.
+  { key: "stok", label: "Stok Accurate" },
 ] as const
 
 /**
@@ -135,6 +149,8 @@ export default async function HargaAccuratePage({ searchParams }: Props) {
       <div className="mt-6">
         {tab === "usulan" ? (
           <TabUsulan searchParams={sp} />
+        ) : tab === "stok" ? (
+          <TabStok searchParams={sp} bolehEdit={bolehEdit} />
         ) : (
           <TabDaftar
             searchParams={sp}
@@ -258,4 +274,175 @@ async function TabUsulan({ searchParams }: { searchParams: Awaited<Props["search
     ambilOpsiFilter(),
   ])
   return <UsulanView data={data} q={searchParams.q?.trim() ?? ""} kategoriOpsi={opsi.kategori} />
+}
+
+const angka = (n: number) => n.toLocaleString("id-ID")
+
+/** Jalur sinkron yang dibaca orang: "Otomatis" atau "Manual · <nama>". */
+function labelJalur(trigger: string, userName: string | null): string {
+  if (trigger === "webhook") return "Otomatis"
+  return userName ? `Manual · ${userName}` : "Manual"
+}
+
+/**
+ * Tab Stok Accurate — sinkron stok dari API Data Accurate (docs/13 §10).
+ *
+ * HPP sengaja TIDAK tampil di tab ini, bahkan untuk pemegang `harga-modal`:
+ * daftarnya dibuka siapa pun yang boleh melihat halaman Update Harga, dan HPP
+ * per produk sudah ada di halaman edit produk dengan pemeriksaan izinnya
+ * sendiri. Satu tempat untuk angka sensitif lebih mudah dijaga daripada dua.
+ */
+async function TabStok({
+  searchParams,
+  bolehEdit,
+}: {
+  searchParams: Awaited<Props["searchParams"]>
+  bolehEdit: boolean
+}) {
+  const halaman = Math.max(1, Number(searchParams.page ?? 1) || 1)
+  const [runs, dikelola, belum] = await Promise.all([
+    listRecentSyncRuns(5),
+    countStockManagedProducts(),
+    listUnlinkedWithStock({ q: searchParams.q, page: halaman }),
+  ])
+  const terakhir = runs[0]
+
+  return (
+    <div className="space-y-6">
+      <section className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-5 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-1.5 text-sm">
+          <p>
+            Stok <strong>{angka(dikelola)}</strong> produk web kini mengikuti Accurate. Suntingan stok
+            manual pada produk itu akan tertimpa sinkron berikutnya.
+          </p>
+          <p className="text-muted-foreground">
+            Dihitung dari gudang: {[...GUDANG_STOK_WEB.values()].join(", ")}.
+          </p>
+          <p className="text-muted-foreground">
+            Produk tertaut yang stoknya 0 dan belum pernah disinkron dilewati dulu — prioritas
+            barang yang ada stok.
+          </p>
+          {terakhir ? (
+            <p className={terakhir.error ? "font-medium text-destructive" : "text-muted-foreground"}>
+              Sinkron terakhir {formatQuoteDateTime(terakhir.startedAt)} (
+              {labelJalur(terakhir.trigger, terakhir.userName)})
+              {terakhir.error ? ` — GAGAL: ${terakhir.error}` : ""}
+            </p>
+          ) : (
+            <p className="font-medium text-amber-600">Belum pernah disinkron.</p>
+          )}
+        </div>
+        {bolehEdit && <SinkronStokButton />}
+      </section>
+
+      {runs.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-sm font-semibold">Riwayat sinkron</h2>
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-left">
+                <tr>
+                  <th className="p-2.5 font-medium">Waktu</th>
+                  <th className="p-2.5 font-medium">Jalur</th>
+                  <th className="p-2.5 text-right font-medium">Barang dibaca</th>
+                  <th className="p-2.5 text-right font-medium">Produk diperbarui</th>
+                  <th className="p-2.5 text-right font-medium">Stok 0 dilewati</th>
+                  <th className="p-2.5 font-medium">Keterangan</th>
+                </tr>
+              </thead>
+              <tbody>
+                {runs.map((r) => (
+                  <tr key={r.id} className="border-t border-border">
+                    <td className="whitespace-nowrap p-2.5">{formatQuoteDateTime(r.startedAt)}</td>
+                    <td className="p-2.5">{labelJalur(r.trigger, r.userName)}</td>
+                    <td className="p-2.5 text-right tabular-nums">{angka(r.itemsReceived)}</td>
+                    <td className="p-2.5 text-right tabular-nums">{angka(r.productsUpdated)}</td>
+                    <td className="p-2.5 text-right tabular-nums">{angka(r.productsSkippedZero)}</td>
+                    <td className="p-2.5 text-xs">
+                      {r.error ? (
+                        <span className="text-destructive">{r.error}</span>
+                      ) : r.finishedAt ? (
+                        <span className="text-muted-foreground">Selesai</span>
+                      ) : (
+                        <span className="text-amber-600">Berjalan / terputus</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      <section>
+        <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold">
+              Berstok tapi belum ada di web ({angka(belum.total)})
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Urut stok terbanyak. Tautkan lewat kolom Kode Accurate di produknya, atau tandai di tab
+              Usulan Pasangan kalau memang tidak dijual di web.
+            </p>
+          </div>
+          <form action="/admin/harga-accurate" className="flex gap-2">
+            <input type="hidden" name="tab" value="stok" />
+            <input
+              type="search"
+              name="q"
+              defaultValue={searchParams.q ?? ""}
+              placeholder="Cari nama, kode, kategori…"
+              className="w-full rounded-lg border border-input bg-muted/50 px-3 py-2 text-sm outline-none focus:border-primary focus:bg-background sm:w-64"
+            />
+            <button
+              type="submit"
+              className="rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground"
+            >
+              Cari
+            </button>
+          </form>
+        </div>
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-left">
+              <tr>
+                <th className="p-2.5 font-medium">Kode</th>
+                <th className="p-2.5 font-medium">Nama barang</th>
+                <th className="p-2.5 font-medium">Kategori · Merek</th>
+                <th className="p-2.5 text-right font-medium">Stok web</th>
+              </tr>
+            </thead>
+            <tbody>
+              {belum.rows.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="p-6 text-center text-muted-foreground">
+                    {terakhir ? "Tidak ada barang yang cocok." : "Jalankan sinkron dulu untuk mengisi daftar ini."}
+                  </td>
+                </tr>
+              ) : (
+                belum.rows.map((r) => (
+                  <tr key={r.code} className="border-t border-border align-top">
+                    <td className="whitespace-nowrap p-2.5 font-mono text-xs">{r.code}</td>
+                    <td className="p-2.5">{r.name}</td>
+                    <td className="p-2.5 text-xs text-muted-foreground">
+                      {[r.categoryName, r.brandName].filter(Boolean).join(" · ") || "—"}
+                    </td>
+                    <td className="p-2.5 text-right font-semibold tabular-nums">{angka(r.stockWeb)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        <AdminPagination
+          page={belum.page}
+          pageCount={belum.pageCount}
+          total={belum.total}
+          pageSize={UNLINKED_PAGE_SIZE}
+          labelBaris="barang"
+        />
+      </section>
+    </div>
+  )
 }
