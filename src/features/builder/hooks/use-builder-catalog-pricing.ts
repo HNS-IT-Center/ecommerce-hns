@@ -29,6 +29,8 @@ export type BuilderPricing = {
   total: number;
   /** Harga satuan katalog per id produk. */
   unitPriceByProductId: Record<number, number>;
+  /** Harga normal katalog per id produk — hanya untuk coretan "sebelum diskon". */
+  regularUnitPriceByProductId: Record<number, number>;
   /** Id komponen yang sudah tidak terbit di katalog. */
   unavailableProductIds: number[];
   /** Selisih terhadap harga yang tersimpan di store. */
@@ -129,6 +131,7 @@ export function useBuilderCatalogPricing({ auto = false }: Options = {}) {
       const hasilPricing: BuilderPricing = {
         total: hasil.total,
         unitPriceByProductId: hasil.unitPriceByProductId,
+        regularUnitPriceByProductId: hasil.regularUnitPriceByProductId,
         unavailableProductIds: hasil.unavailableProductIds,
         changes,
         waUrl: hasil.waUrl,

@@ -16,10 +16,36 @@ tidak tahu apa yang ditukar untuk mendapatkannya.
 
 Dua format beredar, dan **keduanya harus selamanya diterima** di `/verify`:
 
-| Format | Contoh | Sejak |
+| Format | Contoh | Dipakai untuk |
 |---|---|---|
-| Nomor urut | `HNSPC-20260921-0001` | 21 Sep 2026 |
-| Warisan (hash) | `HNSPC-260804-7K3M` | sebelumnya |
+| Nomor urut | `HNSPC-20261001-0048` | **Internal** — staff berizin `quotation-terbit` (sejak 1 Okt 2026). 21–30 Sep 2026: semua orang |
+| Tanggal 6 digit + 4 karakter | `HNSPC-261001-7K3M` | **Pengunjung** — kode acak (sejak 1 Okt 2026). Sebelum 21 Sep 2026: akhiran dari hash isi |
+
+### Nomor urut hanya untuk internal (1 Oktober 2026)
+
+Selama 21–30 September nomor urut dipakai semua orang, termasuk pengunjung anonim. Dalam
+seminggu 800+ nomor habis oleh orang yang sekadar mencoba-coba rakitan, dan nomor yang
+seharusnya mencerminkan penawaran toko berhenti berarti apa pun. Keputusan "nomor urut untuk
+semua" dibalik:
+
+- **Internal** = `issueQuotationAction` oleh pemegang `quotation-terbit: edit` (Sales, CS).
+  Tidak ada izin terpisah untuk "boleh nomor urut" — dengan begitu quotation bernama selalu
+  bernomor urut dan selalu masuk tab Internal; kombinasi "bernama tapi kode acak" tidak bisa
+  terjadi.
+- **Pengunjung** = tombol Print tanpa izin itu, **dan seluruh jalur "Kirim ke HNS"** (ia tidak
+  membawa pemilik, walau yang menekannya staff). Kodenya `buildRandomQuoteCode()`:
+  `randomInt` dari `crypto`, tanpa `0 O 1 I L` karena kasir mengetiknya dari kertas. `period` dan
+  `sequence` dibiarkan NULL — **pengunjung tidak menyentuh penghitung sama sekali.**
+
+Yang memutuskan di `recordPcBuildQuote` adalah `owner.createdByUserId`. Kolom yang sama menjadi
+pembeda tab Internal/Pengunjung di `/verify` dan saringan asal di `/admin/quotation`
+(`quoteAsalWhere`) — **bukan** `sequence IS NOT NULL`. Dengan begitu 800+ baris pengunjung
+bernomor urut dari September, dan kode hash warisan, jatuh ke Pengunjung tanpa backfill.
+
+**Tidak ada migrasi dan tidak ada data yang diubah.** Penghitung Oktober yang sudah terisi oleh
+pengunjung pada 1 Oktober dibiarkan; nomor internal melanjutkan dari angka terakhirnya. Baris
+pengunjung yang sudah bernomor urut **tetap memakai kodenya** — PDF-nya sudah di tangan orang.
+Akibat yang diterima: nomor internal Oktober berlubang di awal; mulai 1 November bersih dari 0001.
 
 Polanya hidup di satu tempat: `QUOTE_CODE_PATTERN` (`src/app/verify/format.ts`).
 Menyempitkannya berarti ratusan PDF yang sudah di tangan pelanggan ditolak sebagai "kode tidak
@@ -45,13 +71,27 @@ Nomor dan barisnya lahir di **satu** transaksi supaya insert yang gagal tidak me
 lubang permanen di urutan.
 
 ### Risiko yang diterima
-1. **Volume bocor** — dua dokumen cukup untuk memperkirakan jumlah quotation per bulan.
-2. **Counter bisa dipompa** — pengunjung menekan Print berkali-kali menghabiskan nomor.
+1. **Volume bocor** — dua dokumen internal cukup untuk memperkirakan jumlah penawaran toko per
+   bulan.
+2. ~~**Counter bisa dipompa**~~ — tertutup sejak 1 Oktober 2026: pengunjung tidak lagi mengambil
+   nomor.
 
-Mitigasinya, dan keduanya harus tetap ada:
-- Nomor **hanya** terbit lewat server action, tidak pernah lewat GET.
-- **Rate limit per IP** untuk non-staff (bucket `quote_issue`). **Staff dikecualikan** — seluruh
-  gerai keluar lewat satu IP NAT, jadi batas per-IP adalah jatah seisi toko, bukan per orang.
+Yang tetap harus ada:
+- Kode **hanya** terbit lewat server action, tidak pernah lewat GET.
+- **Rate limit per IP** untuk non-staff (bucket `quote_issue`). Walau penghitung tidak lagi bisa
+  dipompa, setiap penerbitan tetap satu baris yang memenuhi tab Pengunjung. **Staff
+  dikecualikan** — seluruh gerai keluar lewat satu IP NAT, jadi batas per-IP adalah jatah seisi
+  toko, bukan per orang.
+
+### Tab di `/verify` dan saringan di `/admin/quotation`
+
+`/verify` punya dua tab: **Internal** (bawaan, `/verify`) dan **Pengunjung**
+(`/verify?asal=pengunjung`), digabung dengan pilihan urutan. Pencarian kode tetap **lintas
+keduanya** — kasir mencari kode dari kertas pelanggan, bukan memilih tab dulu — dan hasil dari
+pengunjung diberi penanda PENGUNJUNG.
+
+`/admin/quotation` punya saringan Asal: Internal (bawaan) / Pengunjung / Semua asal. Rekap
+penjualan bulanan tidak ikut disaring; ia memang hanya menghitung quotation berpemilik.
 
 ---
 
@@ -71,9 +111,9 @@ dipertanggungjawabkan.
 
 Tautan lama `?items=…` tidak lagi menerbitkan apa pun; ia mengarahkan orang kembali ke Rakit PC.
 
-**Dua jalur menerbitkan nomor,** dan keduanya disengaja: tombol Print, dan "Kirim ke HNS"
-(Konsultasi WA). Akibatnya pelanggan yang menekan keduanya mendapat **dua nomor** untuk rakitan
-yang sama. Itu diterima — keduanya dua peristiwa berbeda (satu dokumen dibawa pulang, satu
+**Dua jalur menerbitkan kode,** dan keduanya disengaja: tombol Print, dan "Kirim ke HNS"
+(Konsultasi WA — selalu kode acak, lihat §1). Akibatnya pelanggan yang menekan keduanya mendapat
+**dua kode** untuk rakitan yang sama. Itu diterima — keduanya dua peristiwa berbeda (satu dokumen dibawa pulang, satu
 prospek masuk ke CS).
 
 ---

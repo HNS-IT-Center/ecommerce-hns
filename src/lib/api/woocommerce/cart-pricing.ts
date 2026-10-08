@@ -34,6 +34,12 @@ export type PricedCartLine = {
   quantity: number;
   /** Harga satuan menurut katalog, sesudah obral yang masih berlaku. */
   unitPrice: number;
+  /**
+   * `regularPrice` katalog apa adanya — HANYA keterangan untuk coretan
+   * "sebelum diskon" di PC Builder dan quotation (`lib/pc-builder/savings.ts`).
+   * Tidak pernah dijumlahkan ke total, dan checkout tidak membacanya.
+   */
+  regularUnitPrice: number;
   lineTotal: number;
   /**
    * Terisi HANYA kalau barisnya sebuah varian: nama induknya, dan nilai atribut
@@ -207,6 +213,7 @@ export async function priceCartFromCatalog(
       sku: row.sku ?? "",
       quantity,
       unitPrice,
+      regularUnitPrice: Number(row.regularPrice ?? 0),
       lineTotal: unitPrice * quantity,
       parentName: row.parent ? decodeHtmlEntities(row.parent.name) : null,
       // Atribut hanya berarti sebagai "varian" kalau barisnya memang punya

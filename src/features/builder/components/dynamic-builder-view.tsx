@@ -11,6 +11,7 @@ import {
 } from "@/store/new-builder"
 import { PcBuilderStepConfig } from "@/lib/pc-builder/config"
 import { buildAttributeRequirementGroups } from "@/lib/pc-builder/compatibility"
+import { summarizeBuildSavings } from "@/lib/pc-builder/savings"
 import { formatRupiah } from "@/lib/utils"
 import { fetchBuilderProducts } from "../actions"
 import { saveBuildAction, updateSavedBuildAction } from "../actions-save"
@@ -86,6 +87,13 @@ export type RevisionLoad = {
   internalNote: string
   selections: Record<string, BuilderSelection[]>
   hargaSnapshot: Record<number, number>
+  /**
+   * Pasangan `hargaSnapshot`: harga normal yang tercatat bersama harga lama
+   * itu, HANYA untuk komponen yang memang didiskon saat revisi itu terbit.
+   * Quotation sebelum 6 Oktober 2026 tidak pernah mencatatnya — petanya kosong,
+   * dan panel tidak menampilkan hemat untuk komponen lamanya.
+   */
+  hargaNormalSnapshot: Record<number, number>
   perubahanHarga: { name: string; hargaLama: number; hargaBaru: number }[]
   /** Komponen yang sudah lenyap dari katalog dan tidak bisa dimuat ulang. */
   komponenHilang: string[]
@@ -190,6 +198,28 @@ export function DynamicBuilderView({
   const [loadingMore, setLoadingMore] = useState(false)
   const [search, setSearch] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
+
+  /**
+   * Kata kunci pencarian milik SATU langkah — dikosongkan begitu langkahnya
+   * berganti, dari jalur mana pun (sidebar, Lanjut/Kembali, tombol ubah di
+   * My Build, pengingat langkah wajib).
+   *
+   * Dulu ia terbawa: "d35g" yang diketik di langkah RAM ikut menyaring langkah
+   * Casing, dan grid berikutnya tampil kosong seolah tidak ada komponen yang
+   * cocok.
+   *
+   * Direset SAAT RENDER, bukan di `useEffect`. Lewat efek, render pertama
+   * langkah baru sudah memicu fetch grid dengan kata kunci lama, lalu fetch
+   * kedua setelah kosong — satu kueri sia-sia per perpindahan langkah, dan
+   * hasil yang salah sempat berkedip di layar.
+   */
+  const [searchStepId, setSearchStepId] = useState(activeStepId)
+  if (searchStepId !== activeStepId) {
+    setSearchStepId(activeStepId)
+    setSearch("")
+    setDebouncedSearch("")
+  }
+
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
   const [sortMode, setSortMode] = useState<"default" | "name_asc" | "name_desc" | "price_asc" | "price_desc">("default")
@@ -339,6 +369,21 @@ export function DynamicBuilderView({
     pricing?.unitPriceByProductId[Number(product.id)] ??
     product.price
 
+  /**
+   * Harga normal pasangan `unitPriceOf` — urutan sumbernya SAMA PERSIS, supaya
+   * coretan "sebelum diskon" tidak pernah membandingkan dua angka dari dua
+   * pembacaan berbeda. Komponen yang harganya dipertahankan dari revisi
+   * memakai harga normal revisi itu juga (boleh tidak ada); mencampurnya
+   * dengan harga normal katalog hari ini menghasilkan hemat karangan.
+   */
+  const regularPriceOf = (product: { id: number; regularPrice?: number }) => {
+    const id = Number(product.id)
+    if (hargaRevisiAktif && hargaRevisiAktif[id] !== undefined) {
+      return revisionLoad?.hargaNormalSnapshot[id]
+    }
+    return pricing?.regularUnitPriceByProductId[id] ?? product.regularPrice
+  }
+
   const isUnavailable = (product: { id: number }) =>
     pricing?.unavailableProductIds.includes(Number(product.id)) ?? false
 
@@ -432,6 +477,37 @@ export function DynamicBuilderView({
     (sel) => unitPriceOf(sel.product),
     (sel) => isUnavailable(sel.product)
   )
+
+  /**
+   * "Total sebelum diskon" & "Anda hemat" — rumusnya di `lib/pc-builder/savings.ts`,
+   * sama dengan PDF quotation dan `/q`. Komponen yang sudah tidak terbit
+   * dikecualikan, persis seperti `displayedTotal`.
+   *
+   * Disembunyikan sampai katalog terbaca minimal sekali, dan selama harga
+   * sedang diperiksa atau gagal diperiksa: di keadaan itu angka yang tampil
+   * masih dari localStorage, dan obral yang sudah berakhir bisa terbaca sebagai
+   * "hemat" yang tidak pernah ada. Komponen yang ditambahkan SESUDAH katalog
+   * terbaca (`pending`) tetap dihitung — data harganya baru saja diambil dari
+   * server saat ia dipilih (`hargaBerlaku` di `features/builder/actions.ts`).
+   */
+  const buildSavings = summarizeBuildSavings(
+    Object.values(selections).flatMap((stepSels) =>
+      Array.isArray(stepSels)
+        ? stepSels
+            .filter((sel) => !isUnavailable(sel.product))
+            .map((sel) => ({
+              price: unitPriceOf(sel.product),
+              regularPrice: regularPriceOf(sel.product),
+              quantity: sel.quantity,
+            }))
+        : []
+    ),
+    displayedTotal
+  )
+  const showSavings =
+    buildSavings.savings > 0 &&
+    pricing !== null &&
+    !(priceUnverified && unverifiedState !== "pending")
 
   useEffect(() => {
     setMounted(true)
@@ -1518,6 +1594,16 @@ export function DynamicBuilderView({
       {/* Ringkasan & aksi selalu menempel di dasar panel, di luar area scroll. */}
       <div className="shrink-0 pt-3 border-t border-border/50">
         <div className="rounded-lg bg-muted/50 dark:bg-muted/20 p-3 mb-3 space-y-1.5">
+          {/* Lihat `buildSavings` di atas — tampil hanya kalau ada komponen
+              yang benar-benar didiskon katalog. */}
+          {showSavings && (
+            <div className="flex justify-between items-baseline gap-2 text-[11px]">
+              <span className="text-muted-foreground">Total sebelum diskon</span>
+              <span className="text-muted-foreground line-through tabular-nums">
+                {formatRupiah(buildSavings.totalBeforeDiscount)}
+              </span>
+            </div>
+          )}
           <div className="flex justify-between items-baseline">
             <span className="text-xs font-bold">Total</span>
             <span className="text-base font-black text-sale-red tabular-nums">
@@ -1527,6 +1613,11 @@ export function DynamicBuilderView({
               {formatRupiah(displayedTotal)}
             </span>
           </div>
+          {showSavings && (
+            <p className="text-right text-[11px] font-semibold text-brand-green tabular-nums">
+              Anda hemat {formatRupiah(buildSavings.savings)}
+            </p>
+          )}
           <div className="flex justify-between items-baseline text-[11px] pt-0.5">
             <span className="text-muted-foreground">Komponen dipilih</span>
             <span className="font-semibold">{selectedStepsCount}/{totalSteps}</span>

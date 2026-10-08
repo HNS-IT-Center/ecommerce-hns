@@ -186,8 +186,7 @@ export function QuickEditModal({
     async function load() {
       try {
         const res = await fetch(`/api/admin/products/variations?id=${product.id}`)
-        const data = await readJsonResponse<ProductVariation[] & { error?: string }>(res)
-        if (!res.ok) throw new Error(data.error || "Gagal memuat varian")
+        const data = await readJsonResponse<ProductVariation[]>(res, "Gagal memuat varian")
         if (cancelled) return
 
         // Nama atribut diambil dari varian kalau induk tidak mencatatnya —
@@ -258,9 +257,8 @@ export function QuickEditModal({
       const formData = new FormData()
       formData.append("file", variation.imageFile)
       const res = await fetch("/api/admin/media", { method: "POST", body: formData })
-      const data = await readJsonResponse<{ error?: string; source_url?: string }>(res)
-      if (!res.ok) throw new Error(data.error || "Upload gambar varian gagal")
-      urls.push(data.source_url as string)
+      const data = await readJsonResponse<{ source_url: string }>(res, "Upload gambar varian gagal")
+      urls.push(data.source_url)
     }
     return urls
   }
@@ -346,8 +344,7 @@ export function QuickEditModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
-      const data = await readJsonResponse<{ error?: string }>(res)
-      if (!res.ok) throw new Error(data.error || "Gagal menyimpan produk")
+      await readJsonResponse<unknown>(res, "Gagal menyimpan produk")
 
       startTransition(() => {
         router.refresh()

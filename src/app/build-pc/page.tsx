@@ -121,6 +121,7 @@ export default async function BuildPcPage({
 
       const selections: Record<string, BuilderSelection[]> = {}
       const hargaSnapshot: Record<number, number> = {}
+      const hargaNormalSnapshot: Record<number, number> = {}
       const perubahan: RevisionLoad["perubahanHarga"] = []
       const hilang: string[] = []
 
@@ -149,6 +150,7 @@ export default async function BuildPcPage({
         if (!stepId) continue
 
         hargaSnapshot[product.id] = item.price
+        if (item.regularPrice !== undefined) hargaNormalSnapshot[product.id] = item.regularPrice
         if (hargaSekarang !== item.price) {
           perubahan.push({
             name: product.name,
@@ -169,6 +171,7 @@ export default async function BuildPcPage({
           internalNote: seed.internalNote ?? "",
           selections,
           hargaSnapshot,
+          hargaNormalSnapshot,
           perubahanHarga: perubahan,
           komponenHilang: hilang,
         }

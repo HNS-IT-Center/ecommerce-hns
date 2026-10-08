@@ -744,6 +744,41 @@ Keduanya juga TIDAK ikut ke `computeContentHash` — varian berbeda sudah pasti
 id berbeda, jadi menambahkannya tidak memisahkan apa pun yang belum terpisah,
 tapi akan menerbitkan kode baru untuk quotation lama yang isinya tidak berubah.
 
+### "Total sebelum diskon" & "Anda hemat" (6 Oktober 2026)
+
+Panel `/build-pc`, PDF quotation (`/build-pc/print`), dan `/q/<token>`
+menampilkan total normal yang dicoret, total akhir, dan "Anda hemat Rp …" —
+HANYA kalau ada komponen yang benar-benar didiskon katalog (`salePrice` yang
+masih berlaku). Ketiganya memakai satu rumus,
+[`lib/pc-builder/savings.ts`](../src/lib/pc-builder/savings.ts): hemat =
+Σ (`regularPrice` − harga dibayar) × qty untuk baris yang `regularPrice`-nya di
+atas harga dibayar; total sebelum diskon = total tersimpan + hemat. Tidak ada
+harga baru yang lahir — keduanya angka katalog, hemat hanya keterangan atas
+selisihnya (CLAUDE.md §2.7).
+
+| Lapisan | Medan baru |
+|---|---|
+| `PricedCartLine` (`cart-pricing.ts`) | `regularUnitPrice` — checkout tidak membacanya |
+| `PrepareBuildResult` (`actions-whatsapp.ts`) / `BuilderPricing` | `regularUnitPriceByProductId` |
+| `QuoteLineItem` (`pc-build-quotes.ts`) | `regularPrice?` — diisi hanya untuk baris yang didiskon |
+| `RevisionSeedItem` / `RevisionLoad` | `regularPrice?` / `hargaNormalSnapshot` |
+
+Aturan yang wajib dijaga:
+
+- **Quotation yang terbit sebelum medan ini ada TIDAK diberi hemat.** Harga
+  normal pada hari itu tidak pernah dicatat, dan mengisinya dari katalog hari
+  ini membuat angka di dokumen lama bergeser sendiri — melanggar jaminan
+  "alamat yang sama selalu memberi dokumen yang sama persis" di halaman cetak.
+- **Harga normal selalu berpasangan dengan harga yang dipakai.** Revisi yang
+  mempertahankan harga lama ikut mempertahankan harga normal lamanya (boleh
+  tidak ada); "Gunakan harga terbaru" mengambil keduanya dari katalog.
+- **Panel builder memakai urutan sumber yang sama dengan `unitPriceOf`**
+  (revisi → katalog server → data saat komponen dipilih), dan baris hemat
+  disembunyikan sampai katalog terbaca minimal sekali serta selama pemeriksaan
+  harga `loading`/`error` — supaya obral basi di localStorage tidak terbaca
+  sebagai hemat.
+- `regularPrice` TIDAK ikut ke `computeContentHash`.
+
 ---
 
 ## ~~Sinkronisasi WooCommerce~~ — DIHAPUS 22 September 2026
@@ -1353,6 +1388,63 @@ Aturannya kini seragam di empat salinan: `features/builder/actions.ts`,
 lewat, bukan hanya `price`, supaya kartu tidak menampilkan harga coret untuk
 potongan yang sudah tidak berlaku. `cart-pricing.ts` sengaja tidak disentuh — ia
 sudah benar, dan dialah yang menentukan angka yang dikirim ke CS.
+
+### Produk bervarian: harga induk diabaikan di kartu PC Builder (1 Oktober 2026)
+
+`hargaKartu()` dan pemetaan kartu di `features/builder/actions.ts`
+(`fetchBuilderProducts`, `fetchBuilderProductsByIds`) serta salinannya di
+`lib/pc-prebuild/products.ts` kini memakai **varian termurah yang tersedia**
+untuk setiap produk yang punya varian terbit — termasuk harga coret dan persen
+diskonnya. Harga milik baris induk hanya dipakai kalau tidak ada satu pun varian
+berharga. Ini aturan yang sama dengan `prismaProductToWoo` (`db-mapper.ts`),
+yang dipakai halaman toko dan halaman produk sejak 25 Juli 2026.
+
+Dulu harga induk menang selama nilainya > 0. Masalahnya, 796 dari 814 induk
+VARIABLE masih membawa harga sisa impor WooCommerce, dan form admin
+menyembunyikan kolom harga induk untuk produk bervarian — staff tidak bisa
+melihat atau mengubahnya. Kasus yang memicu perbaikan: RAM ADATA D35G 16GB
+tampil "Mulai dari Rp 2.250.000 (-8%)" di grid `/build-pc` karena obral di
+induknya tidak punya tanggal berakhir, padahal staff sudah menghapus obral di
+kedua variannya dan pemilih varian menawarkan Rp 2.440.000. Gejalanya terbaca
+seperti cache yang macet; padahal jalur ini memang tidak di-cache.
+
+Yang tidak berubah: `resolve.ts` dan `analysis-input.ts` membaca harga per baris
+yang ditunjuk paket, dan paket PC Prebuild selalu menunjuk id varian untuk
+produk bervarian.
+
+### Harga induk VARIABLE adalah nilai turunan (1 Oktober 2026)
+
+Kolom harga induk **tidak dikosongkan**, karena sort "Harga" dan filter harga
+min/max di `/shop` (`buildPrismaOrderBy`, `buildPrismaWhere`) membacanya
+langsung di database. Kalau NULL, produk bervarian naik ke atas urutan
+termurah dan hilang dari filter rentang harga. Kolomnya kini dijaga oleh
+`syncVariableParentPrice()` (`lib/api/woocommerce/products.ts`):
+
+```
+regularPrice = harga normal varian termurah (> 0, semua varian)
+salePrice    = NULL
+saleEndDate  = NULL
+```
+
+- `createProduct` dan `updateProduct` memanggilnya di transaksi yang sama,
+  baik saat induknya disimpan (form selalu mengirim balik harga induk basi dari
+  kolom yang disembunyikannya) maupun saat harga sebuah VARIATION diubah
+  langsung. Untuk kasus kedua, cache halaman induknya (`product-<slug induk>`,
+  `product-<wooId induk>-variations`) juga ikut dibuang. Sebelumnya harga
+  varian yang diubah langsung baru tampil di halaman produk setelah cache-nya
+  habis.
+- `updateProductPriceAction` menolak induk VARIABLE dengan pesan. Kalau
+  diizinkan menulis, angkanya langsung tertimpa sinkronisasi: "berhasil" dan
+  tercatat di log, padahal harganya tidak berubah.
+- Induk tanpa satu pun varian berharga dibiarkan, karena kolomnya adalah
+  satu-satunya harga produk itu.
+
+Data lama disamakan sekali lewat `scripts/sinkron-harga-induk-variable.mts`
+(uji kering bawaan, `--tulis` untuk menulis, berkas pemulihan di `backup/`). Di
+database lokal Docker saat diuji: 146 dari 850 induk berbeda, 100 di antaranya
+membawa obral sisa impor. Tidak ada harga yang dilihat pelanggan
+yang berubah karena skrip ini; yang bergeser hanya posisi produk bervarian di
+sort/filter harga `/shop`.
 
 ### `revalidatePath` setelah rakitan disimpan
 
@@ -2019,9 +2111,10 @@ Uji: `scripts/uji-varian-ke-simple.mts` (menulis, hanya di Docker lokal).
 
 ### Balasan non-JSON di form admin
 
-Form produk dan Quick Edit membaca balasan lewat `readJsonResponse()`
-(`lib/utils/read-json-response.ts`). Route `/api/admin/*` selalu membalas JSON;
-HTML datang dari halaman galat CDN Hostinger saat server restart atau timeout.
-Staff kini melihat pesan "server sedang tidak bisa dihubungi (HTTP xxx), coba
-lagi", bukan `Unexpected token '<'`. Quick Edit produk bervariasi **mengunci
-tombol Simpan** selama varian belum termuat, dan menyediakan tombol "Coba lagi".
+Form produk dan Quick Edit membaca balasan lewat `readJsonResponse(res,
+pesanCadangan)` (`lib/utils/read-json-response.ts`, dibuat Tyo 2 Oktober untuk
+unggah foto). Route `/api/admin/*` selalu membalas JSON; HTML datang dari CDN
+Hostinger (403 firewall, 413 berkas kebesaran, 502/503/504 saat restart). Staff
+melihat pesan per status, bukan `Unexpected token '<'`. Quick Edit produk
+bervariasi **mengunci tombol Simpan** selama varian belum termuat, dan
+menyediakan tombol "Coba lagi".

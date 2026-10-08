@@ -1,9 +1,10 @@
 "use client"
 
-import { ShoppingCart } from "lucide-react"
+import { ShoppingCart, TriangleAlert } from "lucide-react"
 import WhatsappIcon from "@/components/icons/whatsapp-icon"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { cn, formatRupiah } from "@/lib/utils"
+import { StockConfirmNotice } from "./stock-confirm-notice"
 
 type ProductActionsProps = {
   onAddToCart: (e: React.MouseEvent) => void
@@ -146,6 +147,9 @@ export function ProductActions({
     <>
       {/* Desktop: mengalir normal di dalam panel informasi. */}
       <div className="hidden flex-col gap-2 md:flex">
+        {/* Hanya tampil saat tombol keranjang ada — tanpa tombol itu,
+            jalurnya sudah WhatsApp. */}
+        {showCartButton && <StockConfirmNotice waUrl={waUrl} />}
         {addToCartHint && <p className="text-xs text-muted-foreground">{addToCartHint}</p>}
         <div className="flex items-center gap-3">
           {cartButton}
@@ -190,6 +194,18 @@ export function ProductActions({
             `backdrop-blur` dilepas: ia hanya berguna kalau latarnya tembus
             pandang, sementara di sini justru kepekatan yang dibutuhkan. */}
         <div className="border-t border-border bg-[var(--background-50)] px-3 pb-2.5 pt-4 shadow-[0_-4px_20px_rgba(0,0,0,0.14)]">
+          {/* Versi ringkas peringatan stok. Satu baris tetap (`truncate`,
+              `leading-4`) supaya tinggi bar bisa dihitung — ganjalan di
+              product-info.tsx bergantung pada angka itu. */}
+          {showCartButton && (
+            <p
+              role="note"
+              className="mb-2 flex items-center justify-center gap-1 truncate text-xs font-semibold leading-4 text-amber-800"
+            >
+              <TriangleAlert className="h-4 w-4 shrink-0" />
+              <span className="truncate">Konfirmasi stok ke CS sebelum membeli</span>
+            </p>
+          )}
           {/* Hint "pilih varian dulu" tidak diulang di sini: di mobile tombol
               keranjangnya sudah mengantar ke pemilih varian, jadi kalimatnya
               hanya memakan ruang layar. Hint lain (mis. "varian ini habis")

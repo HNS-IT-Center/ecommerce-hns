@@ -111,6 +111,24 @@ function petakanVarian(v: BarisVarian, mode: StockDisplayMode): BuilderVariation
  * (`hargaBerlaku`, lalu `cheapestAvailableVariation` untuk induk VARIABLE),
  * sehingga kunci pengurutan dan angka di layar mustahil berbeda. Keduanya
  * memang memanggil fungsi ini.
+ *
+ * ## Produk yang punya varian SELALU memakai harga variannya
+ *
+ * Harga milik baris induk diabaikan selama ada satu varian berharga — bukan
+ * hanya saat induknya nol. Ini aturan yang sama dengan `prismaProductToWoo`
+ * (halaman toko & halaman produk), dan memang harus begitu: 796 dari 814 induk
+ * VARIABLE masih membawa harga sisa impor WooCommerce, dan form admin
+ * menyembunyikan kolom harga induk untuk produk bervarian, sehingga staff tidak
+ * bisa melihat apalagi mengubahnya.
+ *
+ * Dulu harga induk menang kalau ia > 0. Akibatnya kartu RAM ADATA D35G 16GB
+ * tampil "Mulai dari Rp 2.250.000 (-8%)" — obral yang sudah dihapus staff dari
+ * kedua variannya tapi masih tertinggal di induk tanpa tanggal berakhir — sementara
+ * pemilih varian tepat di bawahnya menawarkan Rp 2.440.000. Angka yang tidak bisa
+ * diperoleh siapa pun (CLAUDE.md §2.7), dan staff mengira cache-nya macet.
+ *
+ * Harga induk hanya dipakai kalau tidak ada satu pun varian berharga, semata
+ * supaya kartunya tidak tampil "Rp 0".
  */
 function hargaKartu(
   baris: {
@@ -128,7 +146,7 @@ function hargaKartu(
   mode: StockDisplayMode
 ): number {
   const sendiri = hargaBerlaku(baris.regularPrice, baris.salePrice, baris.saleEndDate)
-  if (sendiri.price > 0 || variasi.length === 0) return sendiri.price
+  if (variasi.length === 0) return sendiri.price
 
   const varian = variasi.map((v) => ({
     price: hargaBerlaku(v.regularPrice, v.salePrice, v.saleEndDate).price,
@@ -357,9 +375,10 @@ export async function fetchBuilderProducts({
     const variations = p.variations.map((v) => petakanVarian(v, stockDisplayMode))
     const harga = hargaBerlaku(p.regularPrice, p.salePrice, p.saleEndDate)
 
-    // Induk VARIABLE menumpang variannya untuk harga & ketersediaan: harganya
-    // sendiri sering nol, dan stoknya tidak pernah dicatat di baris induk.
-    const termurah = variations.length > 0 && harga.price <= 0 ? cheapestAvailableVariation(variations) : null
+    // Induk VARIABLE menumpang variannya untuk harga & ketersediaan — SELALU,
+    // bukan hanya saat harganya sendiri nol. Harga induk adalah sisa impor yang
+    // tidak bisa disunting staff; lihat `hargaKartu`.
+    const termurah = variations.length > 0 ? cheapestAvailableVariation(variations) : null
 
     return {
       id: p.id,
@@ -498,7 +517,8 @@ export async function fetchBuilderProductsByIds(ids: number[]): Promise<BuilderP
     }
 
     const variations = p.variations.map((v) => petakanVarian(v, stockDisplayMode))
-    const termurah = variations.length > 0 && harga.price <= 0 ? cheapestAvailableVariation(variations) : null
+    // Sama dengan grid: harga induk diabaikan selama ada varian — lihat `hargaKartu`.
+    const termurah = variations.length > 0 ? cheapestAvailableVariation(variations) : null
 
     return {
       id: p.id,

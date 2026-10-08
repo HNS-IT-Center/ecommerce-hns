@@ -1297,6 +1297,53 @@ async function resolveAttributeValueId(
  */
 type VariationOrigin = { source: ProductSource } | undefined
 
+/**
+ * Menyamakan kolom harga baris induk VARIABLE dengan variannya.
+ *
+ * Harga induk produk bervarian TIDAK pernah tampil ke pelanggan — halaman toko,
+ * halaman produk (`prismaProductToWoo`), dan PC Builder (`hargaKartu`) semuanya
+ * membaca harga varian. Tapi kolomnya masih dipakai DATABASE: sort "Harga" dan
+ * filter harga min/max di `/shop` (`buildPrismaOrderBy`, `buildPrismaWhere`)
+ * mengurutkan & menyaring langsung pada `regularPrice` induk. Karena itu ia
+ * diperlakukan sebagai nilai TURUNAN, bukan dikosongkan:
+ *
+ *     regularPrice = harga normal varian termurah (> 0)
+ *     salePrice    = NULL
+ *     saleEndDate  = NULL
+ *
+ * `regularPrice`, bukan harga obral, mengikuti produk SIMPLE: sort `/shop`
+ * memang mengurutkan harga normal untuk semua produk. Seluruh varian dihitung
+ * tanpa memandang status — himpunan yang sama dengan "mulai dari" di
+ * `prismaProductToWoo`.
+ *
+ * Kenapa ini perlu: form admin menyembunyikan kolom harga induk untuk produk
+ * bervarian, sehingga sebelum fungsi ini ada, harga sisa impor WooCommerce
+ * mengendap di 796 dari 814 induk. Salah satunya obral Rp 2.250.000 tanpa
+ * tanggal berakhir di RAM ADATA D35G 16GB, padahal kedua variannya Rp 2.440.000
+ * dan sudah tidak diobral.
+ *
+ * Induk yang tidak punya satu pun varian berharga DIBIARKAN — kolom induknya
+ * adalah satu-satunya harga produk itu.
+ *
+ * Dipanggil dari `createProduct`/`updateProduct` (di dalam transaksi yang sama)
+ * dan dari `scripts/sinkron-harga-induk-variable.mts` untuk data lama.
+ */
+export async function syncVariableParentPrice(
+  tx: Prisma.TransactionClient,
+  parentId: number,
+): Promise<void> {
+  const { _min } = await tx.product.aggregate({
+    where: { parentId, regularPrice: { gt: 0 } },
+    _min: { regularPrice: true },
+  });
+  if (_min.regularPrice === null) return;
+
+  await tx.product.updateMany({
+    where: { id: parentId, type: ProductType.VARIABLE },
+    data: { regularPrice: _min.regularPrice, salePrice: null, saleEndDate: null },
+  });
+}
+
 async function syncProductVariations(
   tx: Prisma.TransactionClient,
   parent: { id: number; name: string; status: ProductStatus },
@@ -1607,6 +1654,7 @@ export async function createProduct(
         input.variations ?? [],
         options.source ? { source: options.source } : undefined,
       );
+      await syncVariableParentPrice(tx, product.id);
     }
     return product;
   },
@@ -1744,11 +1792,37 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
         input.variations,
       );
     }
+
+    // Harga induk adalah turunan variannya — lihat `syncVariableParentPrice`.
+    // Dijalankan untuk SETIAP penyimpanan induk VARIABLE, bukan hanya saat
+    // `variations` dikirim: form mengirim balik harga induk lama dari kolom
+    // yang disembunyikannya, dan nilai itu harus langsung tertimpa lagi.
+    if (nextType === ProductType.VARIABLE) {
+      await syncVariableParentPrice(tx, product.id);
+    } else if (
+      existing.type === ProductType.VARIATION &&
+      existing.parentId !== null &&
+      (input.regular_price !== undefined || input.sale_price !== undefined)
+    ) {
+      await syncVariableParentPrice(tx, existing.parentId);
+    }
     return product;
   }, { timeout: 30000 });
 
   const result = await refetchAsWoo(updated.id);
   invalidateProductCaches({ wooId: id, slugs: [updated.slug] });
+
+  // Harga varian tampil di halaman INDUKNYA, yang di-cache lewat tag induk
+  // (`product-<slug induk>`, `product-<wooId induk>-variations`). Tanpa ini,
+  // harga varian yang diubah langsung baru terlihat di halaman produk setelah
+  // umur cache-nya habis.
+  if (existing.type === ProductType.VARIATION && existing.parentId !== null) {
+    const parent = await prisma.product.findUnique({
+      where: { id: existing.parentId },
+      select: { wooId: true, slug: true },
+    });
+    if (parent) invalidateProductCaches({ wooId: parent.wooId, slugs: [parent.slug] });
+  }
 
   // Antre push ke WooCommerce. Dipasang di sini, bukan di server action, karena
   // SEMUA jalur perubahan produk bermuara ke fungsi ini — pemanggil keempat

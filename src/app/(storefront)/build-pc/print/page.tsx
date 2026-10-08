@@ -19,6 +19,7 @@ import { resolveSiteUrl } from "@/lib/utils/site-url"
 import { formatWhatsAppNumber } from "@/lib/utils/whatsapp-number"
 import { INK_BLACK, INK_GRAY, INK_HAIRLINE, INK_NAVY, INK_RED } from "@/lib/print/ink"
 import { PrintClientComponent } from "@/components/print/print-client-component"
+import { summarizeBuildSavings } from "@/lib/pc-builder/savings"
 
 export const metadata = {
   title: "Quotation Rakitan PC",
@@ -101,7 +102,7 @@ export default async function PrintPcBuilderPage({
     if (typeof params.items === "string" && params.items.length > 0) {
       return (
         <ErrorState
-          message="Tautan cetak versi lama sudah tidak berlaku. Buka lagi rakitan Anda di halaman Rakit PC, lalu tekan Print untuk menerbitkan quotation bernomor."
+          message="Tautan cetak versi lama sudah tidak berlaku. Buka lagi rakitan Anda di halaman Rakit PC, lalu tekan Print untuk menerbitkan quotation baru."
           action={
             <Link
               href="/build-pc"
@@ -240,6 +241,14 @@ export default async function PrintPcBuilderPage({
   const subtotal = Number(quote.subtotal)
   const total = Number(quote.total)
   const totalUnits = lineItems.reduce((acc, item) => acc + item.quantity, 0)
+
+  /**
+   * Harga normal dibaca dari SNAPSHOT, tidak pernah dari katalog hari ini —
+   * dokumen yang sama harus selalu tercetak sama. Quotation yang terbit sebelum
+   * `regularPrice` dicatat tidak memilikinya, dan untuknya `savings` nol: blok
+   * hemat tidak tampil, dokumennya persis seperti dulu.
+   */
+  const { totalBeforeDiscount, savings } = summarizeBuildSavings(snapshot, total)
 
   /**
    * Tanggal TERBIT, bukan tanggal cetak, dan dikunci ke WIB.
@@ -496,6 +505,17 @@ export default async function PrintPcBuilderPage({
                   <span className="font-semibold">{formatRupiah(subtotal)}</span>
                 </div>
               )}
+              {savings > 0 && (
+                <div
+                  className="flex items-baseline justify-between border-t py-1.5 text-[11px]"
+                  style={{ borderColor: INK_HAIRLINE }}
+                >
+                  <span style={{ color: INK_GRAY }}>Total sebelum diskon</span>
+                  <span className="font-semibold line-through" style={{ color: INK_GRAY }}>
+                    {formatRupiah(totalBeforeDiscount)}
+                  </span>
+                </div>
+              )}
               <div
                 className="mt-2 flex items-baseline justify-between rounded px-4 py-2.5 text-white"
                 style={{ backgroundColor: INK_NAVY }}
@@ -503,6 +523,14 @@ export default async function PrintPcBuilderPage({
                 <span className="text-[10px] font-black uppercase tracking-[0.15em]">Total</span>
                 <span className="text-lg font-black">{formatRupiah(total)}</span>
               </div>
+              {savings > 0 && (
+                <p
+                  className="mt-1.5 text-right text-[11px] font-bold"
+                  style={{ color: INK_RED }}
+                >
+                  Anda hemat {formatRupiah(savings)}
+                </p>
+              )}
             </div>
           </div>
 

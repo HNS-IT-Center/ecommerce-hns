@@ -45,6 +45,8 @@ import { RupiahInput } from "@/components/ui/rupiah-input"
 import { Combobox } from "@/components/ui/combobox"
 import { useToastManager } from "@/components/ui/toast"
 import { requestAi } from "@/lib/utils/ai-request"
+import { compressImage } from "@/lib/utils/image-compression"
+import { readJsonResponse } from "@/lib/utils/read-json-response"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,7 +59,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { cn, formatRupiah } from "@/lib/utils"
-import { readJsonResponse } from "@/lib/utils/read-json-response"
 
 type ProdukFormProps = {
   categories: ProductCategory[]
@@ -297,12 +298,20 @@ export function ProdukForm({
       uploaded += 1
       setUploadProgress(`Mengunggah gambar varian ${uploaded} dari ${pending}…`)
 
+      // Dikompres di sini, sama seperti galeri utama yang mengompres saat
+      // berkas dipilih. Dulu foto varian terkirim mentah — foto HP 5-8 MB
+      // ditolak proxy Hostinger dengan halaman HTML 413 sebelum sampai ke
+      // Next. Dikerjakan saat simpan, bukan di `pickImage`, karena editor
+      // varian menulis state dari closure render: menunggu kompresi di sana
+      // bisa menimpa isian lain yang diubah admin selama menunggu.
+      const { file, previewUrl } = await compressImage(variation.imageFile)
+      URL.revokeObjectURL(previewUrl)
+
       const formData = new FormData()
-      formData.append("file", variation.imageFile)
+      formData.append("file", file)
       const res = await fetch("/api/admin/media", { method: "POST", body: formData })
-      const data = await readJsonResponse<{ error?: string; source_url?: string }>(res)
-      if (!res.ok) throw new Error(data.error || "Upload gambar varian gagal")
-      urls.push(data.source_url as string)
+      const data = await readJsonResponse<{ source_url: string }>(res, "Upload gambar varian gagal")
+      urls.push(data.source_url)
     }
 
     setUploadProgress(null)
@@ -326,9 +335,8 @@ export function ProdukForm({
       const formData = new FormData()
       formData.append("file", image.file)
       const res = await fetch("/api/admin/media", { method: "POST", body: formData })
-      const data = await readJsonResponse<{ error?: string; source_url?: string }>(res)
-      if (!res.ok) throw new Error(data.error || "Upload gambar gagal")
-      urls.push(data.source_url as string)
+      const data = await readJsonResponse<{ source_url: string }>(res, "Upload gambar gagal")
+      urls.push(data.source_url)
     }
 
     setUploadProgress(null)
@@ -428,14 +436,13 @@ export function ProdukForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(isEdit ? { id: productId, ...payload } : payload),
       })
-      const data = await readJsonResponse<{ error?: string; id?: number }>(res)
-      if (!res.ok) throw new Error(data.error || "Gagal menyimpan produk")
+      const data = await readJsonResponse<{ id?: number }>(res, "Gagal menyimpan produk")
 
       // Edit kembali ke daftar asal, dengan saringannya. Produk baru ke daftar
       // polos: urutan bawaan "terbaru di atas" menjamin ia ada di baris
       // pertama, sedangkan daftar asal bisa saja halaman 3 atau urut A–Z dan
       // produk barunya tidak kelihatan di sana.
-      const savedId = isEdit ? productId : (data as { id?: number }).id
+      const savedId = isEdit ? productId : data.id
 
       /**
        * Penautan Accurate untuk produk BARU dikerjakan di sini, sesudah

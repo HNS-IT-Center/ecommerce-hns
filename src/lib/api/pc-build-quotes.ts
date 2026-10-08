@@ -1,11 +1,12 @@
 import "server-only"
 
-import { createHash } from "crypto"
+import { createHash, randomInt } from "crypto"
 
 import type { Prisma } from "@prisma/client"
 
 import { getPrisma } from "@/lib/prisma/client"
 import { generatePublicToken } from "@/lib/utils/public-token"
+import { discountedRegularPrice } from "@/lib/pc-builder/savings"
 import { jakartaMonthRange, jakartaPeriod, jakartaYyyymmdd } from "@/lib/utils/timezone"
 
 export type QuoteLineItem = {
@@ -38,6 +39,21 @@ export type QuoteLineItem = {
    */
   parentName?: string | null
   variationLabel?: string | null
+  /**
+   * Harga normal katalog (`regularPrice`) PADA SAAT baris ini diberi harga —
+   * hanya diisi kalau ia benar-benar di atas `price`, yaitu kalau komponen ini
+   * sedang didiskon. Dipakai mencetak "Total sebelum diskon" dan "Anda hemat"
+   * (`lib/pc-builder/savings.ts`).
+   *
+   * Opsional karena alasan yang sama dengan `image`: quotation yang terbit
+   * sebelum 6 Oktober 2026 tidak memilikinya, dan untuknya baris hemat tidak
+   * tampil sama sekali. **Jangan mengisinya dari katalog hari ini** — angka
+   * hemat di dokumen lama akan bergeser setiap kali harga normal berubah,
+   * padahal pelanggan tidak pernah mendapat potongan itu.
+   *
+   * Tidak ikut ke `computeContentHash`, sama seperti medan varian.
+   */
+  regularPrice?: number
 }
 
 /**
@@ -64,6 +80,13 @@ function computeContentHash(items: QuoteLineItem[]): string {
 /**
  * `HNSPC-20260921-0001` — tanggal terbit (WIB) + nomor urut dalam bulan itu.
  *
+ * **Hanya untuk quotation INTERNAL sejak 1 Oktober 2026** — yang diterbitkan
+ * staff berizin `quotation-terbit`. Pengunjung mendapat kode acak dari
+ * `buildRandomQuoteCode()`. Selama sepuluh hari nomor urut dipakai semua orang,
+ * pengunjung yang sekadar mencoba-coba rakitan menghabiskan 800+ nomor dalam
+ * seminggu, dan nomor yang seharusnya mencerminkan penawaran toko jadi tidak
+ * berarti apa pun. Lihat docs/17 §1.
+ *
  * **Keputusan 21 September 2026.** Sampai hari ini kodenya berakhiran 4 karakter
  * dari hash isi, dan komentar di sini menyatakan urutan sengaja dihindari karena
  * "membocorkan berapa banyak quotation yang sudah pernah dibuat". Alasan itu
@@ -85,6 +108,55 @@ function computeContentHash(items: QuoteLineItem[]): string {
  */
 function buildQuoteCode(issuedAt: Date, sequence: number): string {
   return `HNSPC-${jakartaYyyymmdd(issuedAt)}-${String(sequence).padStart(4, "0")}`
+}
+
+/**
+ * Huruf & angka untuk akhiran kode pengunjung. Tanpa `0 O 1 I L`: kasir
+ * mengetik kode ini dari kertas atau layar HP pelanggan, dan pasangan itulah
+ * yang paling sering tertukar. Semuanya tetap di dalam `[A-Z0-9]`, jadi
+ * `QUOTE_CODE_PATTERN` tidak perlu diubah.
+ */
+const RANDOM_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
+
+/**
+ * `HNSPC-261001-7K3M` — kode quotation PENGUNJUNG: tanggal 6 digit (WIB) + 4
+ * karakter acak.
+ *
+ * Bentuknya sama persis dengan kode warisan sebelum 21 September 2026 (yang
+ * akhirannya dari hash isi), jadi `/verify` sudah menerimanya sejak dulu dan
+ * kasir langsung bisa membedakan dari panjang tanggalnya: 6 digit pengunjung,
+ * 8 digit internal.
+ *
+ * Acak kriptografis, bukan dari hash lagi: dedupe `content_hash` sudah dilepas
+ * (docs/17 §3), dan akhiran dari hash membuat dua pengunjung dengan rakitan
+ * identik pada hari yang sama bertabrakan di indeks unik `code`.
+ */
+function buildRandomQuoteCode(issuedAt: Date): string {
+  let suffix = ""
+  for (let i = 0; i < 4; i++) {
+    suffix += RANDOM_CODE_ALPHABET[randomInt(RANDOM_CODE_ALPHABET.length)]
+  }
+  return `HNSPC-${jakartaYyyymmdd(issuedAt).slice(2)}-${suffix}`
+}
+
+/**
+ * Kode pengunjung yang belum dipakai. Ruangnya ±923 ribu per hari, jadi
+ * tabrakan jarang — tapi bukan mustahil, dan penerbitan yang gagal dengan
+ * `Unique constraint failed` di depan pelanggan tidak bisa dijelaskan kepadanya.
+ */
+async function randomQuoteCodeBaru(
+  tx: Prisma.TransactionClient,
+  issuedAt: Date
+): Promise<string> {
+  for (let percobaan = 0; percobaan < 5; percobaan++) {
+    const code = buildRandomQuoteCode(issuedAt)
+    const bentrok = await tx.pcBuildQuote.findUnique({
+      where: { code },
+      select: { id: true },
+    })
+    if (!bentrok) return code
+  }
+  throw new Error("Gagal membuat kode quotation pengunjung yang unik setelah 5 percobaan")
 }
 
 /**
@@ -173,14 +245,18 @@ export type QuotationOwner = {
 }
 
 /**
- * Tulis satu quotation baru bernomor dari snapshot yang SUDAH berharga.
+ * Tulis satu quotation baru dari snapshot yang SUDAH berharga.
+ *
+ * Nomor urut hanya untuk penerbitan staff (`owner.createdByUserId` terisi);
+ * selain itu — pengunjung di tombol Print, dan SELURUH jalur "Kirim ke HNS" —
+ * mendapat kode acak. Lihat `buildRandomQuoteCode`.
  *
  * Lapisan terendah: ia tidak membaca katalog dan tidak memeriksa izin apa pun.
  * Pemanggil yang sudah memegang harga hasil `priceCartFromCatalog` (jalur
  * "Kirim ke HNS") memakainya langsung; jalur cetak lewat `issueQuotation()`
  * di bawah, yang membaca katalog lebih dulu.
  *
- * **Satu panggilan = satu dokumen baru bernomor.** Sampai 21 September 2026
+ * **Satu panggilan = satu dokumen baru.** Sampai 21 September 2026
  * fungsi ini men-dedupe per `contentHash`: rakitan dengan isi dan harga sama
  * persis memakai ulang baris yang sudah ada. Itu dilepas bersamaan dengan
  * masuknya pemilik, nama pelanggan, dan status jual — dua penawaran untuk dua
@@ -206,7 +282,19 @@ export async function recordPcBuildQuote(
   const contentHash = computeContentHash(items)
   const subtotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0)
   const issuedAt = new Date()
-  const period = jakartaPeriod(issuedAt)
+
+  /**
+   * Internal = ada staff yang menerbitkannya. `createdByUserId` hanya diisi oleh
+   * `issueQuotationAction` untuk pemegang `quotation-terbit`, jadi kolom yang
+   * sama sekaligus menjadi pembeda tab Internal/Pengunjung di `/verify` dan
+   * `/admin/quotation` (`quoteAsalWhere`). Kalau aturan siapa yang mendapat
+   * nomor urut berubah, keduanya ikut berubah bersama — itulah gunanya.
+   *
+   * Pengunjung TIDAK menyentuh penghitung sama sekali: `period` & `sequence`
+   * dibiarkan NULL, seperti baris warisan sebelum nomor urut ada.
+   */
+  const internal = Boolean(owner?.createdByUserId)
+  const period = internal ? jakartaPeriod(issuedAt) : null
 
   /**
    * Nomor dan barisnya lahir di SATU transaksi.
@@ -221,7 +309,11 @@ export async function recordPcBuildQuote(
    */
   const quote = await prisma.$transaction(
     async (tx) => {
-      const sequence = await nextQuoteSequence(tx, period)
+      const sequence = period ? await nextQuoteSequence(tx, period) : null
+      const code =
+        period && sequence !== null
+          ? buildQuoteCode(issuedAt, sequence)
+          : await randomQuoteCodeBaru(tx, issuedAt)
       const publicToken = await tokenUnikBaru(tx)
 
       const created = await tx.pcBuildQuote.create({
@@ -234,7 +326,7 @@ export async function recordPcBuildQuote(
           assemblyFee: 0,
           total: subtotal,
           itemCount: items.length,
-          code: buildQuoteCode(issuedAt, sequence),
+          code,
           contentHash,
           period,
           sequence,
@@ -386,6 +478,7 @@ export async function issueQuotation(
       sku: line.sku || null,
       image: currentInfo.get(line.productId)?.image ?? undefined,
       price: line.unitPrice,
+      regularPrice: discountedRegularPrice(line.regularUnitPrice, line.unitPrice) ?? undefined,
       quantity: line.quantity,
       stepName: stepId ? stepNameById.get(stepId) ?? null : null,
     }
@@ -562,6 +655,8 @@ export type QuoteSummary = {
    * yang paling sering dibuka karena dikira belum.
    */
   dpAt: string | null
+  /** Diterbitkan staff (bernomor urut) — lihat `QuoteAsal`. */
+  internal: boolean
 }
 
 /**
@@ -578,6 +673,29 @@ export function parseQuoteSort(value: unknown): QuoteSort {
   return value === "dibuat" ? "dibuat" : "dicetak"
 }
 
+/**
+ * Asal quotation: diterbitkan staff (`internal`) atau pengunjung situs.
+ *
+ * Pembedanya `created_by_user_id`, bukan ada-tidaknya `sequence`. Selama
+ * 21 September – 30 September 2026 pengunjung pun mendapat nomor urut; dengan
+ * `created_by_user_id`, 800+ baris itu tetap jatuh ke Pengunjung tanpa backfill
+ * apa pun, begitu pula kode hash warisan sebelumnya.
+ *
+ * `semua` hanya dipakai di `/admin/quotation`. `/verify` cuma punya dua tab.
+ */
+export type QuoteAsal = "internal" | "pengunjung" | "semua"
+
+/** Bawaannya `internal` — penawaran toko adalah yang dicari, bukan coba-coba pengunjung. */
+export function parseQuoteAsal(value: unknown): QuoteAsal {
+  return value === "pengunjung" || value === "semua" ? value : "internal"
+}
+
+function quoteAsalWhere(asal: QuoteAsal): Prisma.PcBuildQuoteWhereInput {
+  if (asal === "internal") return { createdByUserId: { not: null } }
+  if (asal === "pengunjung") return { createdByUserId: null }
+  return {}
+}
+
 const QUOTE_SUMMARY_SELECT = {
   code: true,
   total: true,
@@ -589,6 +707,7 @@ const QUOTE_SUMMARY_SELECT = {
   salesName: true,
   revision: true,
   dpAt: true,
+  createdByUserId: true,
 } as const
 
 function toQuoteSummary(row: {
@@ -602,6 +721,7 @@ function toQuoteSummary(row: {
   salesName: string | null
   revision: number
   dpAt: Date | null
+  createdByUserId: string | null
 }): QuoteSummary {
   return {
     code: row.code,
@@ -614,12 +734,20 @@ function toQuoteSummary(row: {
     salesName: row.salesName,
     revision: row.revision,
     dpAt: row.dpAt?.toISOString() ?? null,
+    // `createdByUserId` sendiri tidak dikirim: daftar ini ikut terkirim sebagai
+    // JSON ke peramban kasir, dan yang dibutuhkan cuma "internal atau bukan".
+    internal: row.createdByUserId !== null,
   }
 }
 
-/** Quotation terakhir untuk grid di /verify. */
-export async function listRecentQuotes(sort: QuoteSort, limit = 15): Promise<QuoteSummary[]> {
+/** Quotation terakhir untuk grid di /verify, per tab asal. */
+export async function listRecentQuotes(
+  sort: QuoteSort,
+  asal: Exclude<QuoteAsal, "semua">,
+  limit = 15
+): Promise<QuoteSummary[]> {
   const rows = await getPrisma().pcBuildQuote.findMany({
+    where: quoteAsalWhere(asal),
     select: QUOTE_SUMMARY_SELECT,
     orderBy: sort === "dibuat" ? { createdAt: "desc" } : { updatedAt: "desc" },
     take: limit,
@@ -921,6 +1049,12 @@ export type RevisionSeedItem = {
   stepName: string | null
   /** Harga satuan pada revisi terakhir — yang akan dipertahankan secara bawaan. */
   price: number
+  /**
+   * Harga normal yang tercatat BERSAMA `price` di revisi terakhir. Ikut
+   * dipertahankan bersamanya: harga lama yang dipasangkan dengan harga normal
+   * hari ini menghasilkan angka hemat dari dua waktu yang berbeda.
+   */
+  regularPrice?: number
 }
 
 export type RevisionSeed = {
@@ -993,6 +1127,7 @@ export async function getQuotationForRevision(
       quantity: item.quantity,
       stepName: item.stepName ?? null,
       price: item.price,
+      regularPrice: item.regularPrice,
     })),
   }
 }
@@ -1072,14 +1207,21 @@ export async function reviseQuotation(
     return { ok: false, error: "Komponen yang dipilih tidak ditemukan di katalog." }
   }
 
-  const hargaSebelumnya = new Map(seed.items.map((item) => [item.productId, item.price]))
+  const hargaSebelumnya = new Map(seed.items.map((item) => [item.productId, item]))
   const currentInfo = await getQuoteProductsCurrentInfo(priced.lines.map((l) => l.productId))
   const stepNameById = new Map(stepsConfig.map((step) => [step.id, step.name]))
   const stepIdByProduct = new Map(input.selections.map((s) => [s.productId, s.stepId]))
 
   const items: QuoteLineItem[] = priced.lines.map((line) => {
     const lama = hargaSebelumnya.get(line.productId)
-    const price = !input.useLatestPrices && lama !== undefined ? lama : line.unitPrice
+    const pakaiLama = !input.useLatestPrices && lama !== undefined
+    const price = pakaiLama ? lama.price : line.unitPrice
+    // Harga normal SELALU berpasangan dengan harga yang dipakai: yang lama
+    // dengan yang lama (boleh tidak ada — quotation sebelum medan ini ada),
+    // yang katalog dengan yang katalog. Lihat `QuoteLineItem.regularPrice`.
+    const regularPrice = pakaiLama
+      ? discountedRegularPrice(lama.regularPrice, price)
+      : discountedRegularPrice(line.regularUnitPrice, price)
     const stepId = stepIdByProduct.get(line.productId) ?? null
 
     return {
@@ -1090,6 +1232,7 @@ export async function reviseQuotation(
       sku: line.sku || null,
       image: currentInfo.get(line.productId)?.image ?? undefined,
       price,
+      regularPrice: regularPrice ?? undefined,
       quantity: line.quantity,
       stepName: stepId ? stepNameById.get(stepId) ?? null : null,
     }
@@ -1548,6 +1691,8 @@ export type AdminQuotationFilter = {
   periode?: string
   ownerUserId?: string
   status?: string
+  /** Bawaan `semua` di lapisan ini; halaman admin sendiri yang memilih `internal`. */
+  asal?: QuoteAsal
   /** Halaman, mulai dari 1. */
   page?: number
 }
@@ -1584,12 +1729,13 @@ export type AdminQuotationListResult = {
 export async function listQuotationsForAdmin(
   filter: AdminQuotationFilter = {}
 ): Promise<AdminQuotationListResult> {
-  const { q, periode, ownerUserId, status } = filter
+  const { q, periode, ownerUserId, status, asal = "semua" } = filter
   const page = Math.max(1, filter.page ?? 1)
   const term = q?.trim() ?? ""
   const rentang = periode && /^\d{6}$/.test(periode) ? jakartaMonthRange(periode) : null
 
   const where = {
+    ...quoteAsalWhere(asal),
     ...(rentang ? { createdAt: { gte: rentang.mulai, lt: rentang.sesudah } } : {}),
     ...(ownerUserId ? { ownerUserId } : {}),
     ...(status === "terbit" || status === "closing" ? { status } : {}),
