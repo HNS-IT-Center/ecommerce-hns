@@ -13,7 +13,7 @@ import { getAvailableBrands } from "@/lib/api/woocommerce/brands"
 import { getPrisma } from "@/lib/prisma/client"
 import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper"
 import { getStockDisplayMode } from "@/lib/api/stock-display"
-import { collectCategoryAndDescendantIds } from "@/lib/utils/category-tree"
+import { resolveCategoryFilterIds } from "@/lib/utils/category-tree"
 import { ShopFilterBubble } from "@/features/shop/components/shop-filter-bubble"
 import { SearchEmptyState } from "@/features/search/components/search-empty-state"
 import { countActiveShopFilters } from "@/lib/utils/shop-filters"
@@ -81,19 +81,13 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
 
   const maxPriceLimit = maxPriceAgg._max.regularPrice ? Number(maxPriceAgg._max.regularPrice) : 100000000
 
-  let categoryIds: number[] | undefined = undefined
-  if (resolvedParams.category) {
-    const slugs = Array.isArray(resolvedParams.category) ? resolvedParams.category : [resolvedParams.category]
-    categoryIds = []
-    for (const slug of slugs) {
-      const matchedCategory = categories.find((c) => c.slug === slug)
-      if (matchedCategory) {
-        categoryIds.push(...collectCategoryAndDescendantIds(matchedCategory.id, categories))
-      }
-    }
-    categoryIds = Array.from(new Set(categoryIds))
-    if (categoryIds.length === 0) categoryIds = undefined
-  }
+  // Aturan yang sama dengan `/shop` — lihat `resolveCategoryFilterIds`.
+  const categoryIds = resolvedParams.category
+    ? resolveCategoryFilterIds(
+        Array.isArray(resolvedParams.category) ? resolvedParams.category : [resolvedParams.category],
+        categories,
+      )
+    : undefined
 
   /**
    * Sama seperti `/shop`: dihitung setelah `categoryIds` supaya facet merek

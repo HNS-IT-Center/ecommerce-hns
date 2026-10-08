@@ -7,6 +7,7 @@ import { ChevronDown, ChevronRight, Search } from "lucide-react"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import type { Brand } from "@/lib/api/woocommerce/brands"
+import { toggleCategorySlug } from "@/lib/utils/category-tree"
 import { LiveSearch } from "./live-search"
 
 interface ShopSidebarProps {
@@ -139,14 +140,12 @@ export function ShopSidebar({
   const handleCategoryChange = (slug: string, checked: boolean) => {
     const params = new URLSearchParams(searchParams.toString())
     params.delete("page")
-    if (checked) {
-      if (!currentCategories.includes(slug)) params.append("category", slug)
-    } else {
-      params.delete("category")
-      currentCategories.forEach(c => {
-        if (c !== slug) params.append("category", c)
-      })
-    }
+    // Mencentang anak melepas induknya (dan sebaliknya) — tanpa itu induk yang
+    // sudah tercentang menelan pilihan anaknya dan hasilnya tidak berubah.
+    params.delete("category")
+    toggleCategorySlug(currentCategories, slug, checked, categories).forEach(c => {
+      params.append("category", c)
+    })
     router.push(`${basePath}?${params.toString()}`, { scroll: false })
   }
 

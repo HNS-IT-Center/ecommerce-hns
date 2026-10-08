@@ -10,7 +10,7 @@ import { getAvailableBrands } from "@/lib/api/woocommerce/brands"
 import { getPrisma } from "@/lib/prisma/client"
 import { mapWooProductToUI } from "@/lib/api/woocommerce/mapper"
 import { getStockDisplayMode } from "@/lib/api/stock-display"
-import { collectCategoryAndDescendantIds } from "@/lib/utils/category-tree"
+import { resolveCategoryFilterIds } from "@/lib/utils/category-tree"
 import type { GetProductsParams } from "@/types/woocommerce"
 
 /**
@@ -70,19 +70,13 @@ export default async function ShopPage({ searchParams }: ShopPageProps) {
   })
   const maxPriceLimit = maxPriceAgg._max.regularPrice ? Number(maxPriceAgg._max.regularPrice) : 100000000
 
-  let categoryIds: number[] | undefined = undefined
-  if (resolvedParams.category) {
-    const slugs = Array.isArray(resolvedParams.category) ? resolvedParams.category : [resolvedParams.category]
-    categoryIds = []
-    for (const slug of slugs) {
-       const matchedCategory = categories.find((c) => c.slug === slug)
-       if (matchedCategory) {
-         categoryIds.push(...collectCategoryAndDescendantIds(matchedCategory.id, categories))
-       }
-    }
-    categoryIds = Array.from(new Set(categoryIds))
-    if (categoryIds.length === 0) categoryIds = undefined
-  }
+  // Induk yang anaknya ikut dicentang diabaikan — lihat `resolveCategoryFilterIds`.
+  const categoryIds = resolvedParams.category
+    ? resolveCategoryFilterIds(
+        Array.isArray(resolvedParams.category) ? resolvedParams.category : [resolvedParams.category],
+        categories,
+      )
+    : undefined
 
   /**
    * Daftar merek sengaja dihitung SETELAH `categoryIds` terbentuk, supaya
