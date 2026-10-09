@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { BadgePercent } from "lucide-react"
 
 import {
   getPcBuilderConfig,
@@ -17,9 +18,17 @@ import { QUOTE_CODE_PATTERN, formatQuoteDateLong } from "@/app/verify/format"
 import { env } from "@/config/env"
 import { resolveSiteUrl } from "@/lib/utils/site-url"
 import { formatWhatsAppNumber } from "@/lib/utils/whatsapp-number"
-import { INK_BLACK, INK_GRAY, INK_HAIRLINE, INK_NAVY, INK_RED } from "@/lib/print/ink"
+import {
+  INK_BLACK,
+  INK_GRAY,
+  INK_GREEN,
+  INK_GREEN_TINT,
+  INK_HAIRLINE,
+  INK_NAVY,
+  INK_RED,
+} from "@/lib/print/ink"
 import { PrintClientComponent } from "@/components/print/print-client-component"
-import { summarizeBuildSavings } from "@/lib/pc-builder/savings"
+import { savingsPercent, summarizeBuildSavings } from "@/lib/pc-builder/savings"
 
 export const metadata = {
   title: "Quotation Rakitan PC",
@@ -248,12 +257,14 @@ export default async function PrintPcBuilderPage({
    * `regularPrice` dicatat tidak memilikinya, dan untuknya `savings` nol: blok
    * hemat tidak tampil, dokumennya persis seperti dulu.
    */
-  const { totalBeforeDiscount, savings, packageDiscount } = summarizeBuildSavings(
+  const buildSavings = summarizeBuildSavings(
     snapshot,
     total,
     // Potongan paket PC Prebuild yang TERSIMPAN — 0 untuk PC Build (docs/17 §18).
     Number(quote.discount),
   )
+  const { totalBeforeDiscount, savings, packageDiscount } = buildSavings
+  const savingsPct = savingsPercent(buildSavings)
   const prebuildName = quote.kind === "prebuild" ? quote.prebuildName : null
 
   /**
@@ -532,13 +543,20 @@ export default async function PrintPcBuilderPage({
                   </span>
                 </div>
               )}
+              {/* Harga coret dibuat lebih besar dari baris rincian di atasnya:
+                  ia pembanding langsung bagi TOTAL di bawahnya. */}
               {savings > 0 && (
                 <div
-                  className="flex items-baseline justify-between border-t py-1.5 text-[11px]"
+                  className="flex items-baseline justify-between border-t py-1.5"
                   style={{ borderColor: INK_HAIRLINE }}
                 >
-                  <span style={{ color: INK_GRAY }}>Total sebelum diskon</span>
-                  <span className="font-semibold line-through" style={{ color: INK_GRAY }}>
+                  <span className="text-[11.5px] font-semibold" style={{ color: INK_GRAY }}>
+                    Total sebelum diskon
+                  </span>
+                  <span
+                    className="text-[13px] font-bold line-through decoration-[1.5px]"
+                    style={{ color: INK_GRAY }}
+                  >
                     {formatRupiah(totalBeforeDiscount)}
                   </span>
                 </div>
@@ -550,13 +568,45 @@ export default async function PrintPcBuilderPage({
                 <span className="text-[10px] font-black uppercase tracking-[0.15em]">Total</span>
                 <span className="text-lg font-black">{formatRupiah(total)}</span>
               </div>
+              {/* Kartu hemat: latar tipis + bingkai, bukan blok hijau penuh —
+                  hemat tinta, dan di printer hitam-putih tetap terbaca sebagai
+                  kotak abu muda, bukan blok gelap. */}
               {savings > 0 && (
-                <p
-                  className="mt-1.5 text-right text-[11px] font-bold"
-                  style={{ color: INK_RED }}
+                <div
+                  className="mt-2 flex items-center justify-between gap-3 rounded border-[1.5px] px-4 py-2"
+                  style={{ borderColor: INK_GREEN, backgroundColor: INK_GREEN_TINT }}
                 >
-                  Anda hemat {formatRupiah(savings)}
-                </p>
+                  <div className="flex items-center gap-2.5">
+                    <BadgePercent
+                      className="h-6 w-6 shrink-0"
+                      strokeWidth={2.25}
+                      style={{ color: INK_GREEN }}
+                      aria-hidden
+                    />
+                    <div>
+                      <p
+                        className="text-[9.5px] font-black uppercase leading-none tracking-[0.15em]"
+                        style={{ color: INK_GREEN }}
+                      >
+                        Anda hemat
+                      </p>
+                      <p
+                        className="mt-1 text-[17px] font-black leading-none"
+                        style={{ color: INK_GREEN }}
+                      >
+                        {formatRupiah(savings)}
+                      </p>
+                    </div>
+                  </div>
+                  {savingsPct > 0 && (
+                    <span
+                      className="shrink-0 rounded px-2 py-1 text-[12px] font-black leading-none text-white"
+                      style={{ backgroundColor: INK_GREEN }}
+                    >
+                      &minus;{savingsPct}%
+                    </span>
+                  )}
+                </div>
               )}
             </div>
           </div>

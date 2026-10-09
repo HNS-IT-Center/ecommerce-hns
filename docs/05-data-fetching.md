@@ -778,6 +778,10 @@ Aturan yang wajib dijaga:
   harga `loading`/`error` — supaya obral basi di localStorage tidak terbaca
   sebagai hemat.
 - `regularPrice` TIDAK ikut ke `computeContentHash`.
+- **Lencana persen (9 Oktober 2026).** Kartu "Anda hemat" di PDF dan `/q/<token>`
+  menampilkan `−N%` dari `savingsPercent()` di berkas yang sama: hemat ÷ total
+  sebelum diskon, dibulatkan KE BAWAH supaya tidak pernah melebihi selisih
+  sebenarnya. Keterangan atas dua angka katalog, bukan sumber potongan.
 
 ---
 

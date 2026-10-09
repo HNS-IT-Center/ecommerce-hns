@@ -84,3 +84,15 @@ export function summarizeBuildSavings(
   savings += potongan
   return { total, totalBeforeDiscount: total + savings, savings, packageDiscount: potongan }
 }
+
+/**
+ * Persentase hemat terhadap total sebelum diskon, sebagai bilangan bulat.
+ *
+ * Keterangan atas dua angka di atas, bukan sumber potongan (CLAUDE.md §2.7).
+ * Dibulatkan KE BAWAH supaya dokumen tidak pernah menjanjikan lebih dari
+ * selisih sebenarnya; 0 berarti lencana persen tidak perlu ditampilkan.
+ */
+export function savingsPercent({ savings, totalBeforeDiscount }: BuildSavings): number {
+  if (!(savings > 0) || !(totalBeforeDiscount > 0)) return 0
+  return Math.floor((savings / totalBeforeDiscount) * 100)
+}
