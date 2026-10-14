@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
-import { CheckCircle2, Clock, Download, MessageCircle } from "lucide-react"
+import { BadgePercent, CheckCircle2, Clock, Download, MessageCircle } from "lucide-react"
 
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
@@ -13,7 +13,7 @@ import { getPcBuilderConfig, getPcBuilderDisplayConfig } from "@/lib/pc-builder/
 import { PUBLIC_TOKEN_PATTERN } from "@/lib/utils/public-token"
 import { formatRupiah } from "@/lib/utils"
 import { formatQuoteDateLong } from "@/app/verify/format"
-import { summarizeBuildSavings } from "@/lib/pc-builder/savings"
+import { savingsPercent, summarizeBuildSavings } from "@/lib/pc-builder/savings"
 
 /**
  * Penawaran rakitan PC seperti yang dibaca PELANGGAN — alamat pendek
@@ -98,11 +98,9 @@ export default async function PenawaranPublikPage({
 
   const terjual = quote.status === "closing"
   const kedaluwarsa = quote.umurHari > HARI_KEDALUWARSA
-  const { totalBeforeDiscount, savings, packageDiscount } = summarizeBuildSavings(
-    quote.items,
-    quote.total,
-    quote.discount,
-  )
+  const buildSavings = summarizeBuildSavings(quote.items, quote.total, quote.discount)
+  const { totalBeforeDiscount, savings, packageDiscount } = buildSavings
+  const savingsPct = savingsPercent(buildSavings)
 
   // Dikelompokkan per kategori mengikuti urutan step di builder, sama seperti
   // PDF-nya — supaya yang dibaca di layar dan yang dipegang di kertas punya
@@ -262,8 +260,8 @@ export default async function PenawaranPublikPage({
                   packageDiscount > 0 ? "mt-1" : "mt-5 border-t border-border pt-4"
                 }`}
               >
-                <span className="text-muted-foreground">Total sebelum diskon</span>
-                <span className="text-muted-foreground line-through">
+                <span className="font-medium text-muted-foreground">Total sebelum diskon</span>
+                <span className="text-base font-semibold text-muted-foreground line-through">
                   {formatRupiah(totalBeforeDiscount)}
                 </span>
               </div>
@@ -276,10 +274,26 @@ export default async function PenawaranPublikPage({
               <span className="font-bold">Total</span>
               <span className="text-xl font-extrabold">{formatRupiah(quote.total)}</span>
             </div>
+            {/* Kartu hemat — padanan layar dari kartu yang sama di PDF. */}
             {savings > 0 && (
-              <p className="mt-1 text-right text-sm font-semibold text-brand-green">
-                Anda hemat {formatRupiah(savings)}
-              </p>
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-brand-green/40 bg-brand-green/10 px-4 py-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <BadgePercent className="h-7 w-7 shrink-0 text-brand-green" aria-hidden />
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold uppercase tracking-wide text-brand-green">
+                      Anda hemat
+                    </p>
+                    <p className="text-lg font-extrabold leading-tight text-brand-green sm:text-xl">
+                      {formatRupiah(savings)}
+                    </p>
+                  </div>
+                </div>
+                {savingsPct > 0 && (
+                  <span className="shrink-0 rounded-lg bg-brand-green px-2.5 py-1 text-sm font-extrabold text-white">
+                    &minus;{savingsPct}%
+                  </span>
+                )}
+              </div>
             )}
           </section>
 

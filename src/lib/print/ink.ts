@@ -41,6 +41,11 @@ export const INK_TINT = "#eef2f8"
 /** ≈ C100 M0 Y100 K15 — hijau proses: potongan harga, FPS mulus. */
 export const INK_GREEN = "#00843d"
 /**
+ * ≈ C8 M0 Y8 K0 — latar tipis bernada hijau untuk kartu "Anda hemat" di
+ * quotation. Cukup terang untuk teks `INK_GREEN` dan teks hitam di atasnya.
+ */
+export const INK_GREEN_TINT = "#eaf5ee"
+/**
  * ≈ C0 M40 Y100 K0 — kuning-jingga proses.
  *
  * Dulu menandai "FPS masih layak dimainkan" di lembar PC Prebuild; tidak ada
