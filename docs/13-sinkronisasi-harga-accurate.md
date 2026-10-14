@@ -521,13 +521,14 @@ salinan impor `accurate_products`. Harga jual **tidak disentuh** (§1).
 | Barang berstok tanpa produk web (±1.400 di produksi) | **Didaftar** untuk ditautkan staff (tab Stok Accurate), tidak dibuatkan produk otomatis |
 | Gudang stok web | GUDANG UTAMA, GUDANG BATAM, GATEWAY, GRIYA, NAGOYAHILL + **GUDANG DISPLAY GATEWAY & NAGOYAHILL**. Tidak: HADIAH, INVENTARIS, PAMERAN, OTW, KLAIM GARANSI, Transit |
 | HPP | Dibawa, **hanya untuk pemegang `harga-modal`**. PIC & CS dicabut izinnya (dilakukan pemilik project di Manajemen User) |
+| Tab Stok Accurate | **Izin sendiri `stok-accurate`** (14 Okt 2026, permintaan pemilik): Lihat = tab muncul, Edit = boleh menekan Sinkron. Bawaan hanya owner & master; peran lain harus diberi di Manajemen User → Peran (di bawah Update Harga). Tanpa izin, tab hilang dan `?tab=stok` jatuh ke Daftar Harga |
 
 ### Alur
 
 | Jalur | Kapan | Di mana |
 |---|---|---|
 | Webhook | Otomatis tiap Data Accurate selesai sinkron (09.00/12.00/17.00 WIB + ±5 menit setelah perubahan) | `POST /api/hns-webhook` — HMAC `X-HNS-Signature`, timestamp ≤ 5 menit, `deliveryId` unik |
-| Tombol | "Sinkron Stok Sekarang" | `/admin/harga-accurate?tab=stok`, izin `harga-accurate: edit` |
+| Tombol | "Sinkron Stok Sekarang" | `/admin/harga-accurate?tab=stok`, izin `stok-accurate: edit` |
 
 Keduanya lewat `syncAccurateItems()` di `lib/api/accurate/stock-sync.ts`:
 

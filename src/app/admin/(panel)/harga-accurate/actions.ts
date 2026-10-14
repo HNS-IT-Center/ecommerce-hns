@@ -473,7 +473,9 @@ export type SinkronStokHasil =
  */
 export async function sinkronStokAccurateAction(): Promise<SinkronStokHasil> {
   try {
-    const user = await requirePermission("harga-accurate", "edit")
+    // Izin tab Stok Accurate, bukan izin edit Update Harga: sinkron menimpa stok
+    // setiap produk tertaut, dan hanya admin yang diberi `stok-accurate` (14 Okt 2026).
+    const user = await requirePermission("stok-accurate", "edit")
     const userName = user && typeof user === "object" && "name" in user ? String(user.name) : null
     const hasil = await syncAccurateStockFull(userName)
     revalidatePath("/admin/harga-accurate")

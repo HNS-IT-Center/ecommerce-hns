@@ -98,9 +98,14 @@ export default async function HargaAccuratePage({ searchParams }: Props) {
   // melihat margin tiap barang.
   const bolehLihatModal = bisaAkses(izin, "harga-modal", "view")
   const bolehEditModal = bisaAkses(izin, "harga-modal", "edit")
+  // Tab Stok Accurate punya izinnya sendiri (`stok-accurate`, 14 Okt 2026) —
+  // tanpa izin itu tabnya tidak muncul dan `?tab=stok` jatuh ke Daftar Harga.
+  const bolehLihatStok = bisaAkses(izin, "stok-accurate", "view")
+  const bolehSinkronStok = bisaAkses(izin, "stok-accurate", "edit")
+  const tabs = TABS.filter((t) => t.key !== "stok" || bolehLihatStok)
 
   const sp = await searchParams
-  const tab = TABS.some((t) => t.key === sp.tab) ? sp.tab : "daftar"
+  const tab = tabs.some((t) => t.key === sp.tab) ? sp.tab : "daftar"
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -128,7 +133,7 @@ export default async function HargaAccuratePage({ searchParams }: Props) {
       </div>
 
       <div className="mt-6 flex items-center gap-2 border-b border-border">
-        {TABS.map((t) => {
+        {tabs.map((t) => {
           const aktif = tab === t.key
           return (
             <Link
@@ -150,7 +155,7 @@ export default async function HargaAccuratePage({ searchParams }: Props) {
         {tab === "usulan" ? (
           <TabUsulan searchParams={sp} />
         ) : tab === "stok" ? (
-          <TabStok searchParams={sp} bolehEdit={bolehEdit} />
+          <TabStok searchParams={sp} bolehEdit={bolehSinkronStok} />
         ) : (
           <TabDaftar
             searchParams={sp}

@@ -317,7 +317,7 @@ terlempar berputar. Sebagai gantinya ia memanggil `punyaAksesPanel(izin)`:
 benar kalau ada setidaknya satu halaman `/admin` yang boleh dilihat, di luar
 
 - `PAGES_BUKAN_PANEL` — kunci yang halamannya ada di luar panel (`verify`) atau
-  yang memang bukan halaman (`harga-modal`, `quotation-terbit`,
+  yang memang bukan halaman (`harga-modal`, `stok-accurate`, `quotation-terbit`,
   `quotation-sales`), dan
 - `PAGES_SELALU_BOLEH` (`akun`), yang dimiliki setiap admin sehingga tidak
   pernah bisa jadi alasan seseorang "punya panel".

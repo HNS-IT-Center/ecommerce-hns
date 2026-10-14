@@ -64,6 +64,17 @@ export const ADMIN_PAGES = {
    * dan menyaringnya, jadi kunci tanpa menu tidak memunculkan apa-apa.
    */
   "harga-modal": "Harga Modal (CP)",
+  /**
+   * BUKAN halaman — saklar izin untuk tab "Stok Accurate" di halaman Update
+   * Harga (docs/13 §10): status & riwayat sinkron, antrean barang berstok yang
+   * belum tertaut, dan tombol "Sinkron Stok Sekarang".
+   *
+   * Dipisah dari `harga-accurate` atas permintaan pemilik (14 Okt 2026): kasir
+   * yang mengisi harga dealer tidak perlu melihat stok seluruh gudang, dan
+   * sinkron menimpa stok setiap produk tertaut sekaligus. Polanya sama dengan
+   * `harga-modal` — satu bagian di dalam halaman yang punya izinnya sendiri.
+   */
+  "stok-accurate": "Stok Accurate",
   "pc-builder": "PC Builder",
   "pc-prebuild": "PC Prebuild",
   banner: "Banner Promo",
@@ -163,6 +174,8 @@ export const ADMIN_PAGE_DESCRIPTIONS: Record<AdminPage, string> = {
     "Halaman Update Harga: menautkan produk ke kode Accurate dan menerapkan harga. Edit = mengubah harga yang berlaku di toko.",
   "harga-modal":
     "Kolom harga modal (CP) di halaman Update Harga — angka yang kita bayar ke pemasok. Tanpa izin ini, halamannya tetap bisa dibuka tapi kolom modalnya tersembunyi, sehingga marginnya tidak ikut terlihat.",
+  "stok-accurate":
+    "Tab Stok Accurate di halaman Update Harga: status sinkron stok dan daftar barang berstok yang belum tertaut ke web. Lihat = membuka tab itu. Edit = menekan Sinkron Stok Sekarang, yang menimpa stok semua produk tertaut dengan angka Accurate. Tanpa izin ini, tabnya tidak muncul.",
   "pc-builder":
     "Konfigurasi wizard Rakit PC: langkah apa saja, urutannya, dan mana yang wajib. Edit = mengubah susunan yang dipakai pelanggan.",
   "pc-prebuild":
@@ -218,6 +231,7 @@ export const ADMIN_PAGE_AUDIENCE: Record<AdminPage, string> = {
   "atribut-brand": "Admin Katalog",
   "harga-accurate": "Admin Harga",
   "harga-modal": "Owner & Admin Harga",
+  "stok-accurate": "Owner",
   "pc-builder": "Admin Katalog",
   "pc-prebuild": "Owner & Admin Katalog",
   banner: "Marketing",
@@ -248,6 +262,7 @@ const PAGES_SELALU_BOLEH: ReadonlySet<string> = new Set<AdminPage>(["akun"])
  *
  * - `verify` — halamannya di `/verify`, sengaja di luar panel untuk kasir.
  * - `harga-modal` — saklar satu KOLOM di halaman Update Harga, bukan halaman.
+ * - `stok-accurate` — saklar satu TAB di halaman Update Harga, bukan halaman.
  * - `quotation-terbit` — kemampuan menerbitkan + riwayat di `/profile/quotation`.
  * - `quotation-sales` — penanda "akun ini Sales", bukan halaman.
  *
@@ -258,6 +273,7 @@ const PAGES_SELALU_BOLEH: ReadonlySet<string> = new Set<AdminPage>(["akun"])
 const PAGES_BUKAN_PANEL: ReadonlySet<string> = new Set<AdminPage>([
   "verify",
   "harga-modal",
+  "stok-accurate",
   "quotation-terbit",
   "quotation-sales",
   "quotation-oper",
@@ -426,7 +442,7 @@ const OPT_IN_SELALU: ReadonlySet<AdminPage> = new Set<AdminPage>([
  * Kunci yang tidak diberikan lewat fallback kepada STAFF, tapi diberikan kepada
  * OWNER.
  *
- * Keduanya memang pekerjaan pemilik, dan menahannya dari owner tidak melindungi
+ * Ketiganya memang pekerjaan pemilik, dan menahannya dari owner tidak melindungi
  * siapa-siapa — ia cuma menyembunyikan angka bisnisnya sendiri dari yang punya:
  *
  * - `harga-modal` — margin tiap barang. Ditahan dari staff (kasir tidak
@@ -436,10 +452,13 @@ const OPT_IN_SELALU: ReadonlySet<AdminPage> = new Set<AdminPage>([
  *   pembatalan status terjual. Seluruh keterangannya menyebut audiensnya
  *   "Owner"; menahannya dari owner membuat menu "Quotation & Penjualan" tidak
  *   pernah muncul di sidebar akun owner lama, tanpa satu pun petunjuk kenapa.
+ * - `stok-accurate` — stok seluruh gudang dan tombol sinkron yang menimpa stok
+ *   setiap produk tertaut. Pemilik meminta tab ini hanya untuk admin
+ *   (14 Okt 2026), bukan untuk setiap orang yang boleh mengisi harga.
  *
  * Staff tetap harus DIBERI eksplisit lewat peran.
  */
-const OPT_IN_STAFF: ReadonlySet<AdminPage> = new Set<AdminPage>(["harga-modal", "quotation"])
+const OPT_IN_STAFF: ReadonlySet<AdminPage> = new Set<AdminPage>(["harga-modal", "quotation", "stok-accurate"])
 
 function isAccessLevel(v: string): v is AccessLevel {
   return v === "none" || v === "view" || v === "edit"
@@ -595,6 +614,8 @@ export const ADMIN_PAGE_LEVEL_MODE: Record<AdminPage, LevelMode> = {
   // `view` = kolom modal terlihat, `edit` = angkanya boleh diubah. Dua-duanya
   // benar-benar dipakai — lihat `harga-accurate/page.tsx` dan `actions.ts`.
   "harga-modal": "view-edit",
+  // `view` = tab Stok Accurate terlihat, `edit` = boleh menekan Sinkron Stok.
+  "stok-accurate": "view-edit",
   "pc-builder": "view-edit",
   "pc-prebuild": "view-edit",
   banner: "view-edit",
@@ -669,7 +690,10 @@ export const ADMIN_PERMISSION_TREE: readonly PermissionNode[] = [
         // Bukan halaman sendiri — satu KOLOM di halaman Update Harga. Ditaruh
         // sebagai anaknya supaya hubungan itu terlihat: tanpa izin induknya,
         // izin ini tidak membuka apa pun.
-        children: [{ key: "harga-modal", label: "Harga Modal (CP)" }],
+        children: [
+          { key: "harga-modal", label: "Harga Modal (CP)" },
+          { key: "stok-accurate", label: "Stok Accurate" },
+        ],
       },
     ],
   },
