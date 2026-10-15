@@ -19,19 +19,20 @@ import { fetchAllHnsItems, type HnsItem } from "@/lib/api/hns-data/client"
  */
 
 /**
- * Gudang yang dihitung sebagai stok web — keputusan 9 Oktober 2026: lima gudang
- * jual ditambah dua gudang DISPLAY (unit pajangan dianggap bisa dijual).
+ * Gudang yang dihitung sebagai stok web — gudang milik toko yang melayani
+ * pembeli: GUDANG UTAMA, dan di tiap toko gudang jual + gudang DISPLAY-nya
+ * (unit pajangan dianggap bisa dijual).
  *
  * Dikunci ID gudang Accurate, bukan nama: nama bisa diganti di Accurate, ID
- * tidak. Yang SENGAJA tidak ikut: HADIAH, INVENTARIS NAGOYA GATEWAY, GUDANG
- * PAMERAN, OTW, KLAIM GARANSI, Transit — barangnya ada tapi bukan untuk dijual.
+ * tidak. Yang SENGAJA tidak ikut: GUDANG BATAM dan GRIYA (dikeluarkan 15 Okt
+ * 2026 — bukan gudang toko; GRIYA memegang ±775 unit yang tidak dijual lewat
+ * web, BATAM bersaldo minus yang ikut mengurangi stok), HADIAH, INVENTARIS
+ * NAGOYA GATEWAY, GUDANG PAMERAN, OTW, KLAIM GARANSI, Transit.
  * Mengubah daftar ini mengubah stok yang dilihat pelanggan; catat di docs/13 §10.
  */
 export const GUDANG_STOK_WEB: ReadonlyMap<number, string> = new Map([
   [50, "GUDANG UTAMA"],
-  [100, "GUDANG BATAM"],
   [250, "GATEWAY"],
-  [350, "GRIYA"],
   [400, "NAGOYAHILL"],
   [500, "GUDANG DISPLAY GATEWAY"],
   [2250, "GUDANG DISPLAY NAGOYAHILL"],
