@@ -114,11 +114,12 @@ async function hitungBelumTertaut(): Promise<number> {
  * Terapkan sekumpulan barang Accurate ke katalog. Dipakai tombol admin (seluruh
  * barang) dan webhook (barang yang berubah saja, 100 per kiriman).
  *
- * **Aturan "prioritas yang ada stok"** (keputusan 9 Oktober 2026): produk
- * tertaut yang stok web-nya 0 dan BELUM PERNAH disinkron (`stock_synced_at`
- * NULL) dilewati — staff memilih mengerjakan yang berstok lebih dulu. Produk
- * yang PERNAH disinkron tetap diperbarui walau stoknya jatuh ke 0, supaya
- * barang yang laku habis tidak membeku dengan stok lamanya.
+ * Semua produk tertaut ditulis, termasuk yang stok web-nya 0 (jadi Habis).
+ * Sampai 15 Oktober 2026 produk tertaut yang stoknya 0 dan BELUM PERNAH
+ * disinkron dilewati ("prioritas yang ada stok", keputusan 9 Okt) — akibatnya
+ * ±1.400 produk kosong tetap berstatus Tersedia warisan WooCommerce. Itu
+ * tertutupi selama mode tampilan stok "Selalu tersedia"; begitu toko beralih ke
+ * "Stok asli", produk itu akan bisa dipesan padahal barangnya tidak ada.
  *
  * Hanya barang ber-jenis INVENTORY yang menulis stok: jasa dan non-persediaan
  * tidak punya stok yang berarti, dan menulis 0 ke produk jasa akan menandainya
@@ -199,16 +200,11 @@ export async function syncAccurateItems(
     // jatuh ke beberapa puluh kueri saja.
     const kelompok = new Map<string, number[]>()
     const berubah: typeof produk = []
-    let dilewatiNol = 0
 
     for (const p of produk) {
       const barang = barangPerKode.get(String(p.accurateCode).trim().toUpperCase())
       if (!barang) continue
       const qty = Math.max(0, Math.floor(hitungStokWeb(barang)))
-      if (qty === 0 && p.stockSyncedAt === null) {
-        dilewatiNol++
-        continue
-      }
       const status = qty > 0 ? StockStatus.INSTOCK : StockStatus.OUTOFSTOCK
       if (p.stockSyncedAt !== null && p.stockQty === qty && p.stockStatus === status) continue
       const kunci = `${qty}|${status}`
@@ -269,7 +265,9 @@ export async function syncAccurateItems(
       data: {
         finishedAt: new Date(),
         productsUpdated: berubah.length + indukBerubah.length,
-        productsSkippedZero: dilewatiNol,
+        // Selalu 0 sejak 15 Okt 2026 (stok 0 tidak dilewati lagi). Kolomnya
+        // dipertahankan untuk riwayat sinkron sebelum tanggal itu.
+        productsSkippedZero: 0,
         unlinkedWithStock,
       },
     })
@@ -279,7 +277,7 @@ export async function syncAccurateItems(
       runId,
       itemsReceived: items.length,
       productsUpdated: berubah.length + indukBerubah.length,
-      productsSkippedZero: dilewatiNol,
+      productsSkippedZero: 0,
       unlinkedWithStock,
     }
   } catch (error) {

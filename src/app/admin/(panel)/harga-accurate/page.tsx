@@ -324,8 +324,7 @@ async function TabStok({
             Dihitung dari gudang: {[...GUDANG_STOK_WEB.values()].join(", ")}.
           </p>
           <p className="text-muted-foreground">
-            Produk tertaut yang stoknya 0 dan belum pernah disinkron dilewati dulu — prioritas
-            barang yang ada stok.
+            Produk tertaut yang stoknya 0 di gudang-gudang itu ditandai Habis.
           </p>
           {terakhir ? (
             <p className={terakhir.error ? "font-medium text-destructive" : "text-muted-foreground"}>

@@ -44,7 +44,7 @@ export function SinkronStokButton() {
           className={`text-xs ${hasil.ok ? "text-muted-foreground" : "font-medium text-destructive"}`}
         >
           {hasil.ok
-            ? `${angka(hasil.itemsReceived)} barang dibaca · ${angka(hasil.productsUpdated)} produk diperbarui · ${angka(hasil.productsSkippedZero)} stok 0 dilewati`
+            ? `${angka(hasil.itemsReceived)} barang dibaca · ${angka(hasil.productsUpdated)} produk diperbarui`
             : hasil.error}
         </p>
       )}

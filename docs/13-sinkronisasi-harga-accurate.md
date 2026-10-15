@@ -517,7 +517,7 @@ salinan impor `accurate_products`. Harga jual **tidak disentuh** (§1).
 
 | Pertanyaan | Keputusan |
 |---|---|
-| Yang disinkron | **Prioritas yang ada stok.** Tertaut + stok 0 + belum pernah disinkron → dilewati. Yang pernah disinkron tetap diperbarui walau habis |
+| Yang disinkron | **Semua produk tertaut**, termasuk yang stoknya 0 (jadi Habis) — 15 Okt 2026, persiapan beralih dari mode tampilan "Selalu tersedia" ke "Stok asli". Sebelumnya (9 Okt, "prioritas yang ada stok") tertaut + stok 0 + belum pernah disinkron dilewati, sehingga ±1.400 produk kosong tetap berstatus Tersedia warisan WooCommerce — tidak terlihat selama mode "Selalu tersedia", tapi akan bisa dipesan begitu mode "Stok asli" dipakai. Kolom `products_skipped_zero` di riwayat sinkron selalu 0 sejak itu |
 | Barang berstok tanpa produk web (±1.400 di produksi) | **Didaftar** untuk ditautkan staff (tab Stok Accurate), tidak dibuatkan produk otomatis |
 | Gudang stok web | **GUDANG UTAMA, GATEWAY, NAGOYAHILL + GUDANG DISPLAY GATEWAY & NAGOYAHILL** (15 Okt 2026, permintaan pemilik — gudang toko yang melayani pembeli). Tidak: GUDANG BATAM, GRIYA, HADIAH, INVENTARIS, PAMERAN, OTW, KLAIM GARANSI, Transit. Sampai 15 Okt GUDANG BATAM & GRIYA ikut terhitung (keputusan 9 Okt): GRIYA memegang ±775 unit yang tidak dijual lewat web — 25 produk tertaut stoknya turun, 9 di antaranya jadi habis (monitor Skyworth, beberapa laptop ASUS/Lenovo); BATAM bersaldo minus (−5) yang ikut mengurangi stok web. Berlaku pada sinkron pertama sesudah deploy |
 | HPP | Dibawa, **hanya untuk pemegang `harga-modal`**. PIC & CS dicabut izinnya (dilakukan pemilik project di Manajemen User) |

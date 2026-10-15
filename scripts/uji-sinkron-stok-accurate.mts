@@ -56,7 +56,7 @@ if (!r1.ok || "duplicate" in r1) process.exit(1)
 cek("ada produk yang diperbarui", r1.productsUpdated > 0, true)
 cek("salinan accurate_items = jumlah barang API", await prisma.accurateItem.count(), items.length)
 
-// Satu produk berstok: stok web = jumlah 7 gudang, status Tersedia, bertanda sinkron.
+// Satu produk berstok: stok web = jumlah gudang web (GUDANG_STOK_WEB), status Tersedia, bertanda sinkron.
 const contoh = items.find((i) => i.type === "INVENTORY" && S.hitungStokWeb(i) >= 1 && i.stock!.warehouses.some((w) => !S.GUDANG_STOK_WEB.has(w.id)))
   ?? items.find((i) => i.type === "INVENTORY" && S.hitungStokWeb(i) >= 1)!
 const pContoh = await prisma.product.findFirst({ where: { accurateCode: contoh.sku.trim() } })
@@ -71,22 +71,22 @@ if (gudangLuar.length > 0) {
   cek("gudang non-web tidak ikut dihitung", S.hitungStokWeb(contoh) < contoh.stock!.warehouses.reduce((a, w) => a + w.quantity, 0), true)
 }
 
-// Aturan prioritas: tertaut, stok 0, belum pernah disinkron → TIDAK disentuh.
+// Tertaut, stok 0, belum pernah disinkron → ikut ditulis jadi 0 & Habis (sejak
+// 15 Okt 2026; sebelumnya dilewati dan tetap berstatus warisan WooCommerce).
 if (nolBelumSinkron.length > 0) {
   const sesudah = await prisma.product.findMany({
     where: { id: { in: nolBelumSinkron.map((p) => p.id) } },
     select: { id: true, stockQty: true, stockStatus: true, stockSyncedAt: true },
   })
   cek(
-    `stok 0 belum pernah sinkron dibiarkan (${sesudah.length} produk)`,
-    sesudah.every((p) => {
-      const lama = nolBelumSinkron.find((x) => x.id === p.id)!
-      return p.stockSyncedAt === null && p.stockQty === lama.stockQty && p.stockStatus === lama.stockStatus
-    }),
+    `stok 0 belum pernah sinkron jadi 0 & OUTOFSTOCK (${sesudah.length} produk)`,
+    sesudah.every((p) => p.stockSyncedAt !== null && p.stockQty === 0 && p.stockStatus === "OUTOFSTOCK"),
     true,
   )
+} else {
+  console.log("INFO   tidak ada produk tertaut stok 0 yang belum pernah disinkron di lokal — cek aturan stok 0 dilewati")
 }
-cek("jumlah dilewati (stok 0) tercatat", r1.productsSkippedZero >= nolBelumSinkron.length, true)
+cek("tidak ada yang dilewati (stok 0)", r1.productsSkippedZero, 0)
 
 // Idempoten: sinkron kedua dengan data yang sama tidak mengubah apa pun.
 const r2 = await S.syncAccurateItems(items, { trigger: "manual", userName: "ZZ TEST" })
