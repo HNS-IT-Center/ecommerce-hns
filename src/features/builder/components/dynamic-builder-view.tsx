@@ -16,6 +16,7 @@ import { formatRupiah } from "@/lib/utils"
 import { fetchBuilderProducts } from "../actions"
 import { saveBuildAction, updateSavedBuildAction } from "../actions-save"
 import { useBuilderCatalogPricing } from "../hooks/use-builder-catalog-pricing"
+import { useIsHydrated } from "@/hooks/use-is-hydrated"
 import {
   PriceChangedBadge,
   UnavailableNotice,
@@ -169,7 +170,7 @@ export function DynamicBuilderView({
   // mana yang sedang diedit — lihat `lepasBuildAsal` & `handleConfirmSaveBuild`.
   const router = useRouter()
 
-  const [mounted, setMounted] = useState(false)
+  const mounted = useIsHydrated()
   const [sendingWA, setSendingWA] = useState(false)
   const [issuingQuote, setIssuingQuote] = useState(false)
   const [isQuotationDialogOpen, setIsQuotationDialogOpen] = useState(false)
@@ -179,8 +180,6 @@ export function DynamicBuilderView({
    */
   const [pakaiHargaTerbaru, setPakaiHargaTerbaru] = useState(false)
   const [products, setProducts] = useState<BuilderProduct[]>([])
-  const [loading, setLoading] = useState(false)
-  const [loadingMore, setLoadingMore] = useState(false)
   const [search, setSearch] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
 
@@ -208,6 +207,19 @@ export function DynamicBuilderView({
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
   const [sortMode, setSortMode] = useState<"default" | "name_asc" | "name_desc" | "price_asc" | "price_desc">("default")
+
+  /**
+   * Halaman grid kembali ke 1 setiap langkah atau urutan berganti — direset
+   * SAAT RENDER, alasannya sama dengan kata kunci di atas. Lewat efek, langkah
+   * baru sempat mengambil halaman lama (mis. halaman 3 milik langkah
+   * sebelumnya) sebelum kembali ke 1: satu kueri sia-sia per perpindahan.
+   */
+  const pageResetKey = `${activeStepId}§${sortMode}`
+  const [pageResetFor, setPageResetFor] = useState(pageResetKey)
+  if (pageResetFor !== pageResetKey) {
+    setPageResetFor(pageResetKey)
+    setPage(1)
+  }
   const [isMobileStepsOpen, setIsMobileStepsOpen] = useState(false)
   const [isMobileMyBuildOpen, setIsMobileMyBuildOpen] = useState(false)
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false)
@@ -494,10 +506,6 @@ export function DynamicBuilderView({
     pricing !== null &&
     !(priceUnverified && unverifiedState !== "pending")
 
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
   /**
    * Memuat quotation yang sedang direvisi dari `?quotation=`.
    *
@@ -644,12 +652,26 @@ export function DynamicBuilderView({
   }, [steps])
   const configuredAttrIdsStr = configuredAttributeIds.join(",")
 
+  /**
+   * Status muat grid DITURUNKAN, bukan disimpan: grid sedang memuat selama
+   * permintaan yang terakhir selesai bukan permintaan yang sedang diminta.
+   *
+   * Dulu `setLoading(true)` dipanggil di awal efek pengambilan. Selain
+   * melanggar `set-state-in-effect`, render pertama setelah pindah langkah
+   * masih bertanda "tidak memuat" — produk langkah sebelumnya sempat berkedip
+   * di bawah judul langkah baru sebelum pemutar muncul.
+   */
+  const requestKey = [activeStep?.id, debouncedSearch, reqAttrIdsStr, configuredAttrIdsStr, page, sortMode].join("§")
+  const [settledKey, setSettledKey] = useState<string | null>(null)
+  const isFetching = activeStep !== undefined && settledKey !== requestKey
+  const loading = isFetching && page === 1
+  const loadingMore = isFetching && page > 1
+
   useEffect(() => {
     if (!activeStep) return
 
     let isMountedLocal = true
-    if (page === 1) setLoading(true)
-    else setLoadingMore(true)
+    const key = requestKey
 
     fetchBuilderProducts({
       categoryIds: activeStep.categoryIds || [],
@@ -667,22 +689,19 @@ export function DynamicBuilderView({
           setProducts(prev => [...prev, ...data.products])
         }
         setHasMore(data.hasMore)
-        setLoading(false)
-        setLoadingMore(false)
+        setSettledKey(key)
       }
     }).catch(e => {
       console.error(e)
-      if (isMountedLocal) {
-        setLoading(false)
-        setLoadingMore(false)
-      }
+      if (isMountedLocal) setSettledKey(key)
     })
 
     return () => { isMountedLocal = false }
-  }, [activeStep?.id, debouncedSearch, reqAttrIdsStr, configuredAttrIdsStr, page, sortMode])
+  }, [activeStep?.id, debouncedSearch, reqAttrIdsStr, configuredAttrIdsStr, page, sortMode, requestKey])
 
+  // Halamannya sudah kembali ke 1 saat render (lihat `pageResetKey`); yang
+  // tersisa di sini hanya menggulir jendela — urusan DOM, memang tempatnya efek.
   useEffect(() => {
-    setPage(1)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [activeStepId, sortMode])
 

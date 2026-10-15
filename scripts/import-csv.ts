@@ -19,7 +19,8 @@ const parsePrice = (val: string) => {
 
 const importData = async () => {
   console.log('Starting CSV import...');
-  const products: any[] = [];
+  // csv-parser emits one object per row, keyed by header, with string cells.
+  const products: Record<string, string>[] = [];
 
   await new Promise((resolve, reject) => {
     fs.createReadStream(CSV_FILE)
@@ -118,8 +119,8 @@ const importData = async () => {
       // Handle Images (optional, you can expand this if you want images to be stored in DB)
       // Since it's clean data from WooCommerce, we're skipping complex taxonomy for now unless requested.
 
-    } catch (e: any) {
-      console.error(`Error importing row ID ${row['ID']}:`, e.message);
+    } catch (e) {
+      console.error(`Error importing row ID ${row['ID']}:`, e instanceof Error ? e.message : e);
     }
   }
 

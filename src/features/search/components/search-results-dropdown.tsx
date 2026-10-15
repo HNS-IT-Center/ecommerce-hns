@@ -134,7 +134,7 @@ export function SearchResultsDropdown({
               onClick={onSelect}
               className="flex w-full items-center justify-center p-3 text-sm font-semibold text-sale-red hover:bg-muted/50 transition-colors"
             >
-              Lihat semua hasil untuk "{query}"
+              Lihat semua hasil untuk &quot;{query}&quot;
             </Link>
           </li>
         </ul>

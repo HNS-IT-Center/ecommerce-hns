@@ -144,13 +144,13 @@ bagian dari pratinjau harian, melainkan tombol terpisah ("Sapuan Penuh").
   kategorinya tidak ketemu, dan sekarang bercampur dengan draft lain tanpa cara
   menyaringnya. Pada sinkronisasi berikutnya mereka **tidak akan** diingatkan
   lagi — statusnya sudah "ada di katalog kita".
-- **7 error ESLint** di tiga berkas lama yang tidak tersentuh pekerjaan ini:
-  `scripts/import-csv.ts` (2× `no-explicit-any`),
-  `features/builder/components/dynamic-builder-view.tsx` (3× `setState` sinkron
-  di dalam effect — ini menyentuh perilaku, periksa hati-hati),
-  `features/search/components/search-results-dropdown.tsx` (2× tanda kutip belum
-  di-escape). `npm run build` tetap lolos, tapi `CLAUDE.md` §5 mensyaratkan lint
-  bersih untuk commit.
+- ~~**7 error ESLint** di tiga berkas lama~~ — **BERES 15 Oktober 2026.**
+  `import-csv.ts` dan `search-results-dropdown.tsx` dirapikan tanpa perubahan
+  perilaku. Di `dynamic-builder-view.tsx`: `mounted` memakai `useIsHydrated`,
+  halaman grid direset saat render (tidak lagi mengambil halaman lama milik
+  langkah sebelumnya), dan status muat grid diturunkan dari kunci permintaan
+  (produk langkah lama tidak lagi berkedip saat pindah langkah). Langkah lint
+  di `.github/workflows/check.yml` kini memblokir.
 - **`NEXT_PUBLIC_IMAGE_DOMAIN` adalah kode mati.** Dideklarasikan di
   `config/env.ts`, tidak dibaca satu berkas pun, dan isinya masih host WordPress
   lama. Jangan membangun di atasnya sebelum dibereskan.

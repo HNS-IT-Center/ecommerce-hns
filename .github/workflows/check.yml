@@ -77,13 +77,7 @@ jobs:
         run: npm run typecheck
 
       - name: Lint
-        # SEMENTARA TIDAK MEMBLOKIR. Ada 7 error lama di tiga berkas yang
-        # tercatat di docs/12-kendala-terbuka.md §4 (setState di dalam effect di
-        # dynamic-builder-view.tsx menyentuh perilaku, jadi tidak dibereskan
-        # sambil lalu). Kalau langkah ini memblokir, setiap push merah sejak hari
-        # pertama, dan tanda merah yang selalu ada berhenti dibaca orang.
-        #
-        # Hasilnya tetap tampil sebagai langkah gagal di tab Actions. Hapus
-        # `continue-on-error` begitu ketujuh error itu beres.
+        # MEMBLOKIR sejak 15 Oktober 2026. Sebelumnya `continue-on-error`
+        # karena 7 error lama (docs/12-kendala-terbuka.md §4) — semuanya sudah
+        # beres, jadi error baru kini langsung memerahkan push.
         run: npm run lint
-        continue-on-error: true
