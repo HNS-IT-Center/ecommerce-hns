@@ -447,6 +447,35 @@ export type HasilTaut =
   | { ok: false; alasan: string }
 
 /**
+ * Nama barang Accurate untuk sebuah kode — atau `null` kalau kodenya tidak dikenal.
+ *
+ * Dua sumber, Sheet dulu lalu API:
+ *  - `accurate_products` — impor Google Sheet, sumber tabel harga. Diisi tangan,
+ *    jadi tertinggal: 14 Okt 2026 sepuluh barang berkode 2610… yang sudah
+ *    berstok di Accurate belum ada di Sheet, dan semuanya tertahan di sini
+ *    dengan "Kode Accurate tidak ditemukan" padahal kodenya sah.
+ *  - `accurate_items` — salinan API Data Accurate dari sinkron stok (docs/13
+ *    §10), selalu memuat seluruh barang. Barang berstatus `deleted` di sana
+ *    TIDAK diakui: kode yang sudah dihapus di Accurate tidak boleh ditautkan.
+ *
+ * Kode yang hanya ada di API boleh ditautkan karena stoknya ikut sinkron;
+ * baris harganya baru muncul di tabel Update Harga setelah Sheet menyusul.
+ */
+export async function namaBarangAccurate(kode: string): Promise<string | null> {
+  const prisma = getPrisma()
+  const dariSheet = await prisma.$queryRawUnsafe<{ nama: string | null }[]>(
+    "SELECT `NAMA BARANG` AS nama FROM accurate_products WHERE `Kode Accurate` = ? LIMIT 1",
+    kode,
+  )
+  if (dariSheet.length > 0) return dariSheet[0]?.nama ?? kode
+  const dariApi = await prisma.$queryRawUnsafe<{ nama: string }[]>(
+    "SELECT name AS nama FROM accurate_items WHERE code = ? AND status <> 'deleted' LIMIT 1",
+    kode,
+  )
+  return dariApi.length > 0 ? dariApi[0]!.nama : null
+}
+
+/**
  * Tautkan satu kode Accurate ke satu produk web — atau lepaskan (`kode: null`).
  *
  * Menolak, bukan menimpa, kalau kodenya sudah menambat produk lain. Kolomnya
@@ -477,11 +506,7 @@ export async function tautkanKode(
   const prisma = getPrisma()
 
   if (kode !== null) {
-    const ada = await prisma.$queryRawUnsafe<{ n: bigint }[]>(
-      "SELECT COUNT(*) AS n FROM accurate_products WHERE `Kode Accurate` = ?",
-      kode,
-    )
-    if (Number(ada[0]?.n ?? 0) === 0) {
+    if ((await namaBarangAccurate(kode)) === null) {
       return { ok: false, alasan: "Kode Accurate tidak ditemukan." }
     }
 
@@ -612,11 +637,8 @@ export async function periksaKode(kode: string): Promise<HasilPeriksaKode> {
   const bersih = kode.trim()
   if (bersih === "") return { ok: false, alasan: "Kode Accurate tidak dikenali." }
 
-  const barang = await prisma.$queryRawUnsafe<{ nama: string | null }[]>(
-    "SELECT `NAMA BARANG` AS nama FROM accurate_products WHERE `Kode Accurate` = ? LIMIT 1",
-    bersih,
-  )
-  if (barang.length === 0) return { ok: false, alasan: "Kode Accurate tidak ditemukan." }
+  const namaBarang = await namaBarangAccurate(bersih)
+  if (namaBarang === null) return { ok: false, alasan: "Kode Accurate tidak ditemukan." }
 
   const dipakai = await prisma.$queryRawUnsafe<{ nama: string }[]>(
     "SELECT name AS nama FROM products WHERE accurate_code = ? LIMIT 1",
@@ -629,7 +651,7 @@ export async function periksaKode(kode: string): Promise<HasilPeriksaKode> {
     }
   }
 
-  return { ok: true, namaBarang: barang[0]?.nama ?? bersih }
+  return { ok: true, namaBarang }
 }
 
 /**
@@ -651,11 +673,7 @@ export async function abaikanKode(
 ): Promise<HasilTaut> {
   const prisma = getPrisma()
 
-  const ada = await prisma.$queryRawUnsafe<{ n: bigint }[]>(
-    "SELECT COUNT(*) AS n FROM accurate_products WHERE `Kode Accurate` = ?",
-    kode,
-  )
-  if (Number(ada[0]?.n ?? 0) === 0) {
+  if ((await namaBarangAccurate(kode)) === null) {
     return { ok: false, alasan: "Kode Accurate tidak ditemukan." }
   }
 
@@ -718,7 +736,8 @@ export const BATAS_MASSAL = 200
  * Menjaga syarat yang sama persis dengan versi satuan, dengan sebab yang
  * dilaporkan per kode, bukan satu kegagalan borongan:
  *
- *  - kode yang tidak ada di `accurate_products` dilewati;
+ *  - kode yang tidak dikenal (tidak ada di `accurate_products` maupun
+ *    `accurate_items`, lihat `namaBarangAccurate`) dilewati;
  *  - kode yang MASIH TERTAUT ke produk web dilewati — menandai "tidak dijual di
  *    web" untuk sesuatu yang sedang dijual di web adalah dua pernyataan yang
  *    bertentangan.
@@ -758,6 +777,20 @@ export async function abaikanKodeMassal(kodes: string[], oleh: string): Promise<
       WHERE a.\`Kode Accurate\` IN (${tanya})`,
     ...bersih,
   )
+  // Kode yang belum ada di Sheet tapi sudah ada di salinan API — lihat
+  // `namaBarangAccurate`. Query terpisah, bukan UNION: dua tabel itu tidak
+  // dijamin satu collation.
+  const belumDiSheet = bersih.filter((k) => !keadaan.some((r) => r.kode === k))
+  if (belumDiSheet.length > 0) {
+    const dariApi = await prisma.$queryRawUnsafe<{ kode: string; produk: string | null }[]>(
+      `SELECT i.code AS kode, p.name AS produk
+         FROM accurate_items i
+         LEFT JOIN products p ON p.accurate_code = i.code
+        WHERE i.status <> 'deleted' AND i.code IN (${belumDiSheet.map(() => "?").join(",")})`,
+      ...belumDiSheet,
+    )
+    keadaan.push(...dariApi)
+  }
 
   const diketahui = new Map(keadaan.map((r) => [r.kode, r.produk]))
   const berhasil: string[] = []

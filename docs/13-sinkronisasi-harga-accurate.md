@@ -521,6 +521,7 @@ salinan impor `accurate_products`. Harga jual **tidak disentuh** (§1).
 | Barang berstok tanpa produk web (±1.400 di produksi) | **Didaftar** untuk ditautkan staff (tab Stok Accurate), tidak dibuatkan produk otomatis |
 | Gudang stok web | GUDANG UTAMA, GUDANG BATAM, GATEWAY, GRIYA, NAGOYAHILL + **GUDANG DISPLAY GATEWAY & NAGOYAHILL**. Tidak: HADIAH, INVENTARIS, PAMERAN, OTW, KLAIM GARANSI, Transit |
 | HPP | Dibawa, **hanya untuk pemegang `harga-modal`**. PIC & CS dicabut izinnya (dilakukan pemilik project di Manajemen User) |
+| Kode yang boleh ditautkan | **Sheet ATAU API** (15 Okt 2026). `namaBarangAccurate()` di `price-table.ts` mengakui kode dari `accurate_products` (Sheet) lalu `accurate_items` (salinan API, kecuali status `deleted`). Dipakai `tautkanKode`, `periksaKode`, `abaikanKode(Massal)`. Sebelumnya hanya Sheet, dan Sheet diisi tangan sehingga tertinggal: 14 Okt sepuluh barang berkode 2610… berstok tertahan "Kode Accurate tidak ditemukan". Kode yang hanya ada di API ikut sinkron stok, tapi baris harganya baru muncul di tabel Update Harga setelah Sheet menyusul |
 | Tab Stok Accurate | **Izin sendiri `stok-accurate`** (14 Okt 2026, permintaan pemilik): Lihat = tab muncul, Edit = boleh menekan Sinkron. Bawaan hanya owner & master; peran lain harus diberi di Manajemen User → Peran (di bawah Update Harga). Tanpa izin, tab hilang dan `?tab=stok` jatuh ke Daftar Harga |
 
 ### Alur
