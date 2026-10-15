@@ -3,6 +3,7 @@ import Link from "next/link"
 
 import { formatRupiah } from "@/lib/utils"
 import { cn } from "@/lib/utils"
+import { catalogDiscountPercent } from "@/lib/utils/product"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { Product } from "@/components/ui/product-card"
 import type { LiveSearchStatus } from "@/features/search/hooks/use-live-search"
@@ -38,6 +39,42 @@ function highlightMatch(text: string, query: string) {
         return <span key={i}>{part}</span>
       })}
     </>
+  )
+}
+
+/**
+ * Harga satu hasil pencarian. Merah HANYA untuk barang yang sedang diskon —
+ * dulu semua harga merah, sehingga warnanya tidak memberi tahu apa-apa dan
+ * diskon tidak terlihat sama sekali.
+ *
+ * Harga coret tidak dipasang di samping rentang harga produk bervarian: satu
+ * angka tercoret di sebelah "Rp X – Rp Y" tidak jelas milik ujung yang mana.
+ * Badge persennya tetap tampil.
+ */
+function SearchResultPrice({ product }: { product: Product }) {
+  const { price, price_max: priceMax, regular_price: regularPrice } = product
+  const discountPercent = catalogDiscountPercent(product)
+
+  return (
+    <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
+      <span
+        className={cn("font-semibold", discountPercent !== null ? "text-sale-red" : "text-foreground")}
+      >
+        {priceMax != null
+          ? `${formatRupiah(price)} – ${formatRupiah(priceMax)}`
+          : formatRupiah(price)}
+      </span>
+      {discountPercent !== null && priceMax == null && regularPrice != null && (
+        <span className="text-xs text-muted-foreground line-through">
+          {formatRupiah(regularPrice)}
+        </span>
+      )}
+      {discountPercent !== null && (
+        <span className="rounded bg-sale-red/10 px-1 py-0.5 text-[10px] font-bold text-sale-red">
+          -{discountPercent}%
+        </span>
+      )}
+    </p>
   )
 }
 
@@ -119,11 +156,7 @@ export function SearchResultsDropdown({
                   <p className="line-clamp-2 text-sm font-medium">
                     {highlightMatch(product.name, query)}
                   </p>
-                  <p className="text-sm font-semibold text-sale-red">
-                    {product.price_max != null
-                      ? `${formatRupiah(product.price)} – ${formatRupiah(product.price_max)}`
-                      : formatRupiah(product.price)}
-                  </p>
+                  <SearchResultPrice product={product} />
                 </div>
               </Link>
             </li>

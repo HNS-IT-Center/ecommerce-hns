@@ -47,6 +47,26 @@ export function getProductBadge(product: WooProduct): ProductBadge {
   return null;
 }
 
+/**
+ * Persen diskon yang ditampilkan untuk satu produk katalog, atau `null` bila
+ * produknya tidak sedang diskon.
+ *
+ * Satu aturan untuk kartu produk dan dropdown pencarian, supaya "sedang
+ * diskon" berarti hal yang sama di keduanya. Persennya hanya KETERANGAN atas
+ * selisih dua angka katalog (`regular_price` → `price`), bukan sumber
+ * potongan — lihat CLAUDE.md §2.7.
+ */
+export function catalogDiscountPercent(product: {
+  price: number;
+  regular_price?: number;
+  on_sale?: boolean;
+}): number | null {
+  if (!product.on_sale || product.regular_price == null || product.regular_price <= product.price) {
+    return null;
+  }
+  return Math.round((1 - product.price / product.regular_price) * 100);
+}
+
 export function getStockStatus(product: WooProduct): "instock" | "lowstock" | "outofstock" {
   if (product.stock_status === "outofstock") return "outofstock";
   if (product.stock_quantity !== null && product.stock_quantity <= 5) return "lowstock";

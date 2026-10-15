@@ -9,7 +9,7 @@ import EyeIcon from "@/components/icons/eye-icon"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
 
 import { formatRupiah } from "@/lib/utils"
-import { buildProductShareUrl } from "@/lib/utils/product"
+import { buildProductShareUrl, catalogDiscountPercent } from "@/lib/utils/product"
 import { FoldedBadge } from "@/components/ui/folded-badge"
 import { useCartStore } from "@/store/cart"
 import { Rating } from "@/components/ui/rating"
@@ -72,13 +72,8 @@ export function ProductCard({ product, priority = false }: ProductCardProps) {
   const [isQuickViewOpen, setIsQuickViewOpen] = useState(false)
 
   const isSimpleProduct = product.type === "simple";
-  const hasDiscount =
-    product.on_sale &&
-    product.regular_price != null &&
-    product.regular_price > product.price;
-  const discountPercent = hasDiscount
-    ? Math.round((1 - product.price / product.regular_price!) * 100)
-    : 0;
+  const discountPercent = catalogDiscountPercent(product);
+  const hasDiscount = discountPercent !== null;
 
   // Produk bervariasi berharga beda-beda cukup ditandai "Mulai" di depan harga
   // termurah — rentang penuh "Rp X – Rp Y" turun ke dua baris di grid 2 kolom
