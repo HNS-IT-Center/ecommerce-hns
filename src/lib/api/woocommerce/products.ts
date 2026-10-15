@@ -12,6 +12,7 @@ import type {
   ProductInput,
 } from "@/types/woocommerce";
 import { decodeHtmlEntities } from "@/lib/utils/html";
+import { normalizeAttributeName } from "@/lib/utils/attribute-name";
 import { CategoryOperationError } from "./categories";
 import { ACTIVE_PRODUCT_STATUSES, parentFlagWhere } from "./product-health";
 
@@ -1122,12 +1123,17 @@ async function replaceProductRelations(
     await tx.productAttribute.deleteMany({ where: { productId } });
     if (input.attributes.length) {
       let position = 0;
+      // Dua baris form bisa jatuh ke atribut yang SAMA setelah namanya dirapikan
+      // ("Socket" dan "Socket:"). Tanpa penjaga ini nilai yang sama tercatat dua
+      // kali dan penyimpanan gagal di unique constraint.
+      const attachedValueIds = new Set<number>();
       for (const attr of input.attributes) {
-        if (!attr.name?.trim()) continue;
+        const name = normalizeAttributeName(attr.name ?? "");
+        if (!name) continue;
 
         const attribute = await tx.attribute.upsert({
-          where: { name: attr.name.trim() },
-          create: { name: attr.name.trim() },
+          where: { name },
+          create: { name },
           update: {},
         });
 
@@ -1143,6 +1149,9 @@ async function replaceProductRelations(
           seen.add(value.toLowerCase());
 
           const valueId = await resolveAttributeValueId(tx, attribute.id, value);
+          if (attachedValueIds.has(valueId)) continue;
+          attachedValueIds.add(valueId);
+
           await tx.productAttribute.create({
             data: {
               productId,
@@ -1434,11 +1443,12 @@ async function syncProductVariations(
     let position = 0;
     for (const attributeName of variationAttributes) {
       const value = variation.attributes[attributeName]?.trim();
-      if (!attributeName.trim() || !value) continue;
+      const normalizedName = normalizeAttributeName(attributeName);
+      if (!normalizedName || !value) continue;
 
       const attribute = await tx.attribute.upsert({
-        where: { name: attributeName.trim() },
-        create: { name: attributeName.trim() },
+        where: { name: normalizedName },
+        create: { name: normalizedName },
         update: {},
       });
       const valueId = await resolveAttributeValueId(tx, attribute.id, value);
@@ -1467,11 +1477,11 @@ async function syncProductVariations(
   const variationAttributeIds: number[] = [];
   const attributeByName = new Map<string, { id: number }>();
   for (const attributeName of variationAttributes) {
-    const trimmedName = attributeName.trim();
-    if (!trimmedName) continue;
+    const name = normalizeAttributeName(attributeName);
+    if (!name) continue;
     const attribute = await tx.attribute.upsert({
-      where: { name: trimmedName },
-      create: { name: trimmedName },
+      where: { name },
+      create: { name },
       update: {},
     });
     attributeByName.set(attributeName, attribute);

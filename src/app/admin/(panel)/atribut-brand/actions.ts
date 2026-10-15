@@ -7,6 +7,7 @@ import { requirePermission } from "@/lib/auth"
 import { getPrisma } from "@/lib/prisma/client"
 import { TAXONOMY_CACHE_TAG } from "@/lib/api/taxonomy"
 import { slugify } from "@/lib/utils/slug"
+import { normalizeAttributeName } from "@/lib/utils/attribute-name"
 
 export type ActionResult = { success: true } | { success: false; error: string }
 
@@ -34,12 +35,21 @@ function isUniqueViolation(error: unknown): boolean {
 
 const NameSchema = z.string().trim().min(1, "Nama wajib diisi").max(191, "Nama terlalu panjang")
 
+/**
+ * Nama ATRIBUT dirapikan sama persis seperti saat produk disimpan, supaya panel
+ * ini tidak bisa melahirkan kembaran "CPU Socket Type:" — kembaran yang di
+ * form produk sudah dilebur otomatis ke atribut aslinya (lihat
+ * `normalizeAttributeName`). Nilai atribut dan nama brand tetap memakai
+ * `NameSchema` — titik dua di sana bisa jadi bagian sah dari isinya.
+ */
+const AttributeNameSchema = z.string().transform(normalizeAttributeName).pipe(NameSchema)
+
 // --------------------------------------------------------------------------- attribute
 
 export async function createAttribute(name: string): Promise<ActionResult> {
   await requirePermission("atribut-brand", "edit")
 
-  const parsed = NameSchema.safeParse(name)
+  const parsed = AttributeNameSchema.safeParse(name)
   if (!parsed.success) return { success: false, error: parsed.error.issues[0].message }
 
   try {
@@ -58,7 +68,7 @@ export async function createAttribute(name: string): Promise<ActionResult> {
 export async function renameAttribute(id: number, name: string): Promise<ActionResult> {
   await requirePermission("atribut-brand", "edit")
 
-  const parsed = NameSchema.safeParse(name)
+  const parsed = AttributeNameSchema.safeParse(name)
   if (!parsed.success) return { success: false, error: parsed.error.issues[0].message }
 
   try {

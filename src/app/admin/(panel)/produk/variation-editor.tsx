@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { RupiahInput } from "@/components/ui/rupiah-input"
 import { cn } from "@/lib/utils"
+import { normalizeAttributeName } from "@/lib/utils/attribute-name"
 import type { ProductVariationValues } from "@/lib/validators/product"
 import { IMAGE_ACCEPT_ATTRIBUTE } from "@/lib/validators/media-upload"
 import type { ProductAttributeTaxonomy } from "@/types/woocommerce"
@@ -103,18 +104,22 @@ export function VariationEditor({
    * akan menambahkan lima atribut: W, WA, WAR, WARN, WARNA.
    */
   function addAttribute(name: string) {
-    const trimmed = name.trim()
+    const normalized = normalizeAttributeName(name)
     setAttributeDraft("")
-    if (!trimmed) return
-    // Dibandingkan tanpa huruf besar/kecil supaya "Warna" dan "WARNA" tidak
-    // jadi dua kolom yang isinya sama.
-    if (attributes.some((a) => a.trim().toLowerCase() === trimmed.toLowerCase())) return
+    if (!normalized) return
+    // Dibandingkan tanpa huruf besar/kecil dan dalam bentuk yang sudah
+    // dirapikan, supaya "Warna", "WARNA", dan "Warna:" tidak jadi tiga kolom
+    // yang sebenarnya satu atribut.
+    const isDuplicate = attributes.some(
+      (a) => normalizeAttributeName(a).toLowerCase() === normalized.toLowerCase(),
+    )
+    if (isDuplicate) return
 
-    onAttributesChange([...attributes, trimmed])
+    onAttributesChange([...attributes, normalized])
     // Varian yang sudah ada ikut mendapat kolom baru dengan nilai kosong,
     // supaya bentuk datanya seragam dan validasi bisa menandainya.
     onVariationsChange(
-      variations.map((v) => ({ ...v, attributes: { ...v.attributes, [trimmed]: "" } })),
+      variations.map((v) => ({ ...v, attributes: { ...v.attributes, [normalized]: "" } })),
     )
   }
 
