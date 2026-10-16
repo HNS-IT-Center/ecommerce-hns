@@ -44,10 +44,18 @@
  *   npx tsx --tsconfig scripts/tsconfig.uji.json scripts/cocokkan-tautan-accurate.mts
  *
  * Keluaran: backup/cocokkan-tautan/usulan.json (+ ringkasan.txt). `backup/`
- * di-gitignore — berkasnya hanya ada di laptop yang menjalankan. Env KELUAR=<folder>
- * mengalihkan keluaran, untuk mencoba aturan baru tanpa menimpa usulan.json.
+ * di-gitignore — berkasnya hanya ada di laptop yang menjalankan.
+ *   --keluar <folder>   alihkan keluaran, untuk mencoba aturan baru tanpa menimpa usulan.json
+ *   --lihat kode1,kode2 cetak rincian penilaian barang-barang itu
+ * (Dulu lewat env KELUAR/LIHAT — diganti argumen 16 Okt 2026: env yang dibaca
+ * kode wajib terdaftar di .env.example, dan ini opsi sekali jalan, bukan konfigurasi.)
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+
+const arg = (nama: string) => {
+  const i = process.argv.indexOf(nama)
+  return i >= 0 ? process.argv[i + 1] : undefined
+}
 
 for (const baris of readFileSync(".env.local", "utf8").split(/\r?\n/)) {
   const m = baris.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/)
@@ -1510,9 +1518,9 @@ for (const { b, k } of keputusan) {
   }
 }
 
-// Periksa satu-dua barang: LIHAT=2608000015,2609000060 npx tsx ... — cetak
+// Periksa satu-dua barang: npx tsx ... --lihat 2608000015,2609000060 — cetak
 // identitas, atribut, kandidat teratas beserta penilaiannya, dan keputusannya.
-for (const kode of (process.env.LIHAT ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
+for (const kode of (arg("--lihat") ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
   const b = barangPerKode.get(kode)
   if (!b) {
     console.log(`\n[LIHAT] ${kode}: tidak ada di accurate_items`)
@@ -1550,7 +1558,7 @@ for (const kode of (process.env.LIHAT ?? "").split(",").map((s) => s.trim()).fil
 // Keluaran
 // ---------------------------------------------------------------------------
 
-const keluar = process.env.KELUAR ?? "backup/cocokkan-tautan"
+const keluar = arg("--keluar") ?? "backup/cocokkan-tautan"
 mkdirSync(keluar, { recursive: true })
 const ringkasProduk = (i: number | null) => {
   if (i == null) return null
