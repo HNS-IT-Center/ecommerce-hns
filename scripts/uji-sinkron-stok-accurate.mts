@@ -115,16 +115,20 @@ if (pernah) {
   cek("kiriman ganda tidak menulis stok", p3.stockStatus, "INSTOCK")
 }
 
-// Induk varian (tanpa kode sendiri) selaras dengan variannya.
+// SEMUA induk varian tanpa kode sendiri selaras dengan variannya — termasuk yang
+// variasinya tidak berubah di sinkron ini (sejak 16 Okt 2026).
 const induk = await prisma.product.findMany({
-  where: { accurateCode: null, variations: { some: { stockSyncedAt: { not: null } } } },
+  where: { type: "VARIABLE", accurateCode: null, variations: { some: {} } },
   select: { stockStatus: true, variations: { select: { stockStatus: true } } },
 })
 cek(
-  `status induk varian selaras (${induk.length} induk)`,
-  induk.every((i) => (i.stockStatus === "INSTOCK") === i.variations.some((v) => v.stockStatus === "INSTOCK")),
+  `status semua induk varian selaras (${induk.length} induk)`,
+  induk.every((i) => i.stockStatus === S.statusIndukDariVariasi(i.variations.map((v) => v.stockStatus))),
   true,
 )
+cek("aturan induk: ada variasi kosong/tersedia → INSTOCK", S.statusIndukDariVariasi([null, "OUTOFSTOCK"]), "INSTOCK")
+cek("aturan induk: hanya pre-order → ONBACKORDER", S.statusIndukDariVariasi(["OUTOFSTOCK", "ONBACKORDER"]), "ONBACKORDER")
+cek("aturan induk: semua habis → OUTOFSTOCK", S.statusIndukDariVariasi(["OUTOFSTOCK", "OUTOFSTOCK"]), "OUTOFSTOCK")
 
 // Daftar berstok-belum-tertaut.
 const belum = await S.listUnlinkedWithStock({ page: 1 })

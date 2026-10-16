@@ -45,6 +45,20 @@ export function hitungStokWeb(item: Pick<HnsItem, "stock">): number {
     .reduce((total, w) => total + (Number.isFinite(w.quantity) ? w.quantity : 0), 0)
 }
 
+/**
+ * Status stok induk produk bervarian, diturunkan dari variasinya — sama dengan
+ * cara toko membacanya: variasi berstatus kosong tampil Tersedia (db-mapper),
+ * dan semua variasi ditampilkan apa pun status terbitnya.
+ *
+ * Tersedia kalau ada satu saja variasi yang tersedia; Pre-order kalau yang bisa
+ * dipesan hanya variasi pre-order; selain itu Habis.
+ */
+export function statusIndukDariVariasi(variasi: (StockStatus | null)[]): StockStatus {
+  if (variasi.some((s) => s === null || s === StockStatus.INSTOCK)) return StockStatus.INSTOCK
+  if (variasi.some((s) => s === StockStatus.ONBACKORDER)) return StockStatus.ONBACKORDER
+  return StockStatus.OUTOFSTOCK
+}
+
 export type SyncTrigger = "manual" | "webhook"
 
 export type SyncResult =
@@ -221,29 +235,31 @@ export async function syncAccurateItems(
     }
 
     // Induk produk bervarian membaca status stok dari kolomnya SENDIRI
-    // (db-mapper), jadi ia diselaraskan dengan variannya: Tersedia kalau ada
-    // satu saja varian yang tersedia. Induk yang punya kode Accurate sendiri
-    // dilewati — stoknya sudah ditulis di atas.
+    // (db-mapper), jadi ia diselaraskan dengan variannya (`statusIndukDariVariasi`).
+    // SEMUA induk tanpa kode diperiksa tiap sinkron, bukan hanya induk dari
+    // varian yang baru berubah: status induk juga bisa melenceng lewat suntingan
+    // staff, skrip pecah/gabung varian, atau kode yang dipindah dari induk ke
+    // variasinya. Sampai 16 Okt 2026 induk seperti itu tidak pernah dirapikan —
+    // ada yang tampil Tersedia padahal semua variasinya habis, dan sebaliknya.
+    // Induk yang punya kode Accurate sendiri dilewati — stoknya sudah ditulis di atas.
     const indukIds = [...new Set(berubah.map((p) => p.parentId).filter((x): x is number => x !== null))]
     const indukBerubah: { wooId: number; slug: string }[] = []
-    for (let i = 0; i < indukIds.length; i += 500) {
-      const induk = await prisma.product.findMany({
-        where: { id: { in: indukIds.slice(i, i + 500) }, accurateCode: null },
-        select: {
-          id: true,
-          wooId: true,
-          slug: true,
-          stockStatus: true,
-          variations: { select: { stockStatus: true } },
-        },
-      })
-      for (const ind of induk) {
-        const ada = ind.variations.some((v) => v.stockStatus === StockStatus.INSTOCK)
-        const status = ada ? StockStatus.INSTOCK : StockStatus.OUTOFSTOCK
-        if (ind.stockStatus === status) continue
-        await prisma.product.update({ where: { id: ind.id }, data: { stockStatus: status } })
-        indukBerubah.push(ind)
-      }
+    const semuaIndukTanpaKode = await prisma.product.findMany({
+      where: { type: "VARIABLE", accurateCode: null },
+      select: {
+        id: true,
+        wooId: true,
+        slug: true,
+        stockStatus: true,
+        variations: { select: { stockStatus: true } },
+      },
+    })
+    for (const ind of semuaIndukTanpaKode) {
+      if (ind.variations.length === 0) continue
+      const status = statusIndukDariVariasi(ind.variations.map((v) => v.stockStatus))
+      if (ind.stockStatus === status) continue
+      await prisma.product.update({ where: { id: ind.id }, data: { stockStatus: status } })
+      indukBerubah.push(ind)
     }
 
     for (const p of [...berubah, ...indukBerubah]) {

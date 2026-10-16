@@ -537,9 +537,14 @@ Keduanya lewat `syncAccurateItems()` di `lib/api/accurate/stock-sync.ts`:
 2. Cocokkan kode ↔ `products.accurate_code`; hanya jenis `INVENTORY` yang menulis stok.
 3. Tulis `stock_qty`, `stock_status`, `stock_synced_at` — dikelompokkan per
    (jumlah, status), satu UPDATE per kelompok.
-4. Induk produk bervarian tanpa kode sendiri diselaraskan: Tersedia kalau ada
-   satu saja varian yang tersedia (db-mapper membaca status induk dari kolomnya
-   sendiri).
+4. **Semua** induk produk bervarian tanpa kode sendiri diselaraskan
+   (`statusIndukDariVariasi`): Tersedia kalau ada satu saja varian yang tersedia
+   (status kosong dihitung tersedia, sama dengan db-mapper), Pre-order kalau yang
+   bisa dipesan hanya varian pre-order, selain itu Habis. db-mapper membaca status
+   induk dari kolomnya sendiri. Sampai 16 Okt 2026 hanya induk dari varian yang
+   baru berubah yang diperiksa, sehingga induk yang melenceng lewat jalur lain
+   (suntingan staff, skrip pecah/gabung varian, kode dipindah dari induk) tidak
+   pernah dirapikan.
 5. Invalidasi cache produk + induknya; catat ke `accurate_sync_runs`.
 
 Satu sinkron penuh ±7.300 barang: ±6 detik tarik API + ±2 detik terapkan.
