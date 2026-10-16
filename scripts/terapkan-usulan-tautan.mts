@@ -79,12 +79,16 @@ if (PRODUKSI) {
 
 type Baris = { kode: string; wooId: number; namaWeb: string; namaAccurate: string; tingkat: string; sumber: string }
 type Abaikan = { kode: string; namaAccurate: string }
-const isiMasukan = JSON.parse(readFileSync(MASUKAN, "utf8")) as { pasangan?: Baris[]; abaikan?: Abaikan[] }
+// `batalkanTanda`: kode yang tanda "tidak dijual di web"-nya dicabut sebelum
+// ditautkan — hanya kode yang juga ada di `pasangan` (16 Okt 2026: Lenovo
+// 82X6006PID/QID ditandai padahal staff sudah membuat & mengisi SKU variasinya).
+const isiMasukan = JSON.parse(readFileSync(MASUKAN, "utf8")) as { pasangan?: Baris[]; abaikan?: Abaikan[]; batalkanTanda?: string[] }
 const masukan = isiMasukan.pasangan ?? []
 const masukanAbaikan = isiMasukan.abaikan ?? []
+const masukanBatal = new Set(isiMasukan.batalkanTanda ?? [])
 
 const { getPrisma } = await import("../src/lib/prisma/client.ts")
-const { tautkanKode, abaikanKodeMassal, BATAS_MASSAL } = await import("../src/lib/api/accurate/price-table.ts")
+const { tautkanKode, abaikanKodeMassal, batalkanAbaikanMassal, BATAS_MASSAL } = await import("../src/lib/api/accurate/price-table.ts")
 const prisma = getPrisma()
 
 const url = new URL((process.env.DATABASE_URL ?? "").replace(/^mysql:/, "http:"))
@@ -171,7 +175,7 @@ for (const b of masukan) {
   else if (p.tipe === "VARIABLE") catat("produk web sudah jadi induk VARIABLE — tautkan ke variasinya", b)
   else if (p.status !== "PUBLISHED" || (p.tipe === "VARIATION" && p.statusInduk !== "PUBLISHED")) catat("produk web tidak tayang", b)
   else if (!diSheet.has(b.kode)) catat("kode tidak dikenal (tidak ada di Sheet maupun API Accurate)", b)
-  else if (diabaikan.has(b.kode)) catat("kode ditandai tidak dijual di web", b)
+  else if (diabaikan.has(b.kode) && !masukanBatal.has(b.kode)) catat("kode ditandai tidak dijual di web", b)
   else if (dipakai.has(b.kode)) {
     // Satu-satunya pemegang yang boleh dilangkahi: induk VARIABLE dari variasi tujuan.
     const pemegang = dipakai.get(b.kode)!
@@ -195,8 +199,25 @@ for (const a of masukanAbaikan) {
   sudahDilihat.add(a.kode)
 }
 
+// Tanda yang dicabut: hanya kode yang benar-benar akan ditautkan di run ini.
+// Nilai lamanya dibaca untuk berkas pemulihan.
+const kodeRencana = new Set(rencana.map((b) => b.kode))
+const cabutTanda = [...masukanBatal].filter((k) => diabaikan.has(k) && kodeRencana.has(k))
+const tandaLama = cabutTanda.length
+  ? await prisma.$queryRawUnsafe<{ kode: string; alasan: string | null; oleh: string; at: Date }[]>(
+      `SELECT kode_accurate AS kode, alasan, ditandai_oleh AS oleh, ditandai_at AS at FROM accurate_ignored WHERE kode_accurate IN (${daftar(cabutTanda)})`,
+      ...cabutTanda,
+    )
+  : []
+const batalDiabaikan = [...masukanBatal].filter((k) => !cabutTanda.includes(k))
+
 const NAMA_TINGKAT: Record<string, string> = { M: "pilihan manual" }
 console.log(`=== RENCANA ===`)
+if (masukanBatal.size) {
+  console.log(`Tanda "tidak dijual" dicabut: ${cabutTanda.length}`)
+  for (const t of tandaLama) console.log(`  ${t.kode} (ditandai ${t.oleh}, ${new Date(t.at).toISOString().slice(0, 10)})`)
+  for (const k of batalDiabaikan) console.log(`  ${k}: tidak dicabut — tidak sedang ditandai, atau pasangannya dilewati`)
+}
 console.log(`Akan ditautkan : ${rencana.length}`)
 const nPindah = rencana.filter((b) => b.dariInduk != null).length
 if (nPindah) console.log(`  (${nPindah} di antaranya DIPINDAH dari produk induk VARIABLE ke variasinya)`)
@@ -261,9 +282,28 @@ writeFileSync(
           .map((a) => `DELETE FROM accurate_ignored WHERE kode_accurate = ${kutip(a.kode)} AND ditandai_oleh = ${kutip(OLEH)};`)
           .join("\n") +
         "\n"
+      : "") +
+    (tandaLama.length
+      ? `\n-- Memasang kembali tanda "tidak dijual di web" yang DICABUT skrip ini (nilai aslinya).\n` +
+        tandaLama
+          .map(
+            (t) =>
+              `INSERT IGNORE INTO accurate_ignored (kode_accurate, alasan, ditandai_oleh, ditandai_at) VALUES (` +
+              `${kutip(t.kode)}, ${t.alasan == null ? "NULL" : kutip(t.alasan)}, ${kutip(t.oleh)}, ` +
+              `${kutip(new Date(t.at).toISOString().replace("T", " ").replace("Z", ""))});`,
+          )
+          .join("\n") +
+        "\n"
       : ""),
 )
 console.log(`\nBerkas pemulihan: ${berkasBackup}`)
+
+let tandaDicabut = 0
+if (cabutTanda.length) {
+  const h = await batalkanAbaikanMassal(cabutTanda)
+  tandaDicabut = h.berhasil.length
+  console.log(`Tanda "tidak dijual" dicabut: ${tandaDicabut} dari ${cabutTanda.length}`)
+}
 
 let berhasil = 0
 let skuDiisi = 0
