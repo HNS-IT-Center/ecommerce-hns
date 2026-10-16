@@ -49,7 +49,10 @@ if (PRODUKSI) {
     console.error("PROD_DATABASE_URL tidak ada di .env.local — berhenti.")
     process.exit(1)
   }
-  process.env.DATABASE_URL = envMap.PROD_DATABASE_URL
+  // Batas sambung bawaan driver 1 dtk. Jaringan ke Hostinger kadang lambat
+  // (16 Okt 2026: 3–17 dtk per sambungan) dan skrip gagal sebelum membaca apa pun.
+  const sep = envMap.PROD_DATABASE_URL.includes("?") ? "&" : "?"
+  process.env.DATABASE_URL = `${envMap.PROD_DATABASE_URL}${sep}connectTimeout=20000`
 }
 
 type Baris = { wooId: number; kode: string; namaWeb: string; habiskan?: boolean; catatan?: string }
