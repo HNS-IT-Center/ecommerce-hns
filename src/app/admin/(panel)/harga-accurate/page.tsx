@@ -283,9 +283,10 @@ async function TabUsulan({ searchParams }: { searchParams: Awaited<Props["search
 
 const angka = (n: number) => n.toLocaleString("id-ID")
 
-/** Jalur sinkron yang dibaca orang: "Otomatis" atau "Manual · <nama>". */
+/** Jalur sinkron yang dibaca orang: "Otomatis", "Terjadwal", atau "Manual · <nama>". */
 function labelJalur(trigger: string, userName: string | null): string {
   if (trigger === "webhook") return "Otomatis"
+  if (trigger === "jadwal") return "Terjadwal"
   return userName ? `Manual · ${userName}` : "Manual"
 }
 

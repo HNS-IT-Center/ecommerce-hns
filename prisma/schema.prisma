@@ -1713,7 +1713,7 @@ model AccurateItem {
 /// Satu kali sinkron stok Accurate — dari tombol admin atau kiriman webhook.
 model AccurateSyncRun {
   id       Int    @id @default(autoincrement())
-  /// "manual" | "webhook"
+  /// "manual" | "webhook" | "jadwal" (cron, sejak 19 Okt 2026)
   trigger  String @db.VarChar(16)
   /// Nama staff (tombol) — disalin sebagai teks, sama seperti log lain.
   userName String? @map("user_name") @db.VarChar(191)

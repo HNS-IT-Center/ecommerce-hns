@@ -446,6 +446,7 @@ mengikuti tier akun, jadi kalau tier dinaikkan, perbarui tabel di berkas itu.
 HNS_API_URL=https://data.hnsitcenter.id/api/v1
 HNS_API_TOKEN=hns_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 HNS_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx   # hanya kalau webhook dipasang
+CRON_SECRET=<64 karakter hex acak>                           # sinkron terjadwal
 ```
 
 | Variabel | Dari mana |
@@ -453,6 +454,14 @@ HNS_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx   # hanya kalau webhoo
 | `HNS_API_URL` | Tetap `https://data.hnsitcenter.id/api/v1` |
 | `HNS_API_TOKEN` | data.hnsitcenter.id → Pengaturan → API & Integrasi → client "HNS IT Center (Ecommerce)". Tampil **sekali**; kalau hilang, "Ganti token" |
 | `HNS_WEBHOOK_SECRET` | Muncul saat URL webhook diisi di client yang sama. URL-nya `https://hnsitcenter.id/api/hns-webhook` |
+| `CRON_SECRET` | **Dibuat sendiri** (19 Oktober 2026): `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Nilai yang sama dipakai di perintah cron hPanel — lihat docs/13 §10 "Sinkron terjadwal" |
+
+**`CRON_SECRET` hanya membuka satu hal:** `POST /api/cron/sinkron-stok`, yang
+menjalankan sinkron penuh tanpa masukan apa pun dari pemanggil, paling sering
+sekali per lima menit. Kalau bocor, akibat terburuknya sinkron tambahan — tetap
+ganti nilainya (di Variabel environment hPanel DAN di perintah cron), lalu
+deploy ulang supaya nilai barunya terbaca. Tanpa nilai ini endpoint menolak
+semua panggilan (401) dan sinkron hanya bisa lewat tombol.
 
 Izin client yang dibutuhkan: **Stok** dan **HPP**, semua gudang. Harga jual
 TIDAK — web adalah sumber harga (docs/13 §1). Rincian alur: docs/13 §10.

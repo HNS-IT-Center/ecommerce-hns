@@ -582,8 +582,9 @@ salinan impor `accurate_products`. Harga jual **tidak disentuh** (§1).
 |---|---|---|
 | Webhook | Otomatis tiap Data Accurate selesai sinkron (09.00/12.00/17.00 WIB + ±5 menit setelah perubahan) | `POST /api/hns-webhook` — HMAC `X-HNS-Signature`, timestamp ≤ 5 menit, `deliveryId` unik |
 | Tombol | "Sinkron Stok Sekarang" | `/admin/harga-accurate?tab=stok`, izin `stok-accurate: edit` |
+| Terjadwal | Cron hPanel, tiap ±2 jam (sejak 19 Oktober 2026) | `POST /api/cron/sinkron-stok` — `Authorization: Bearer <CRON_SECRET>`, jeda minimal 5 menit |
 
-Keduanya lewat `syncAccurateItems()` di `lib/api/accurate/stock-sync.ts`:
+Ketiganya lewat `syncAccurateItems()` di `lib/api/accurate/stock-sync.ts`:
 
 1. Salin barang ke `accurate_items` (INSERT … ON DUPLICATE KEY UPDATE per 300).
 2. Cocokkan kode ↔ `products.accurate_code`; hanya jenis `INVENTORY` yang menulis stok.
@@ -631,6 +632,56 @@ Kiriman yang berhasil lalu datang lagi (balasan kami terlambat) diabaikan.
    lalu `HNS_WEBHOOK_SECRET` di hPanel. Tanpa secret semua kiriman ditolak 401.
 4. Tekan "Sinkron Stok Sekarang" sekali untuk tarikan pertama — client baru
    tidak menerima tumpukan perubahan lama lewat webhook.
+5. Sinkron terjadwal — lihat bagian berikut.
+
+### Sinkron terjadwal (19 Oktober 2026)
+
+**Kenapa:** sampai tanggal ini sinkron hanya berjalan kalau seseorang menekan
+tombol, dan webhook belum bisa dipasang (halaman API & Integrasi Data Accurate
+masih galat). Pada 17–19 Oktober tidak ada yang menekannya — stok di web basi
+dua hari. Begitu mode tampilan stok menjadi "Tampilkan Stok Habis", stok basi
+langsung terlihat pelanggan: barang yang baru datang tetap tampil Habis.
+
+**Endpoint** `POST /api/cron/sinkron-stok` menjalankan `syncAccurateStockFull`
+yang sama dengan tombol, tercatat di riwayat sebagai **"Terjadwal"**
+(`trigger = 'jadwal'`, tanpa nama staff). Penjaganya:
+
+- Header `Authorization: Bearer <CRON_SECRET>`. Tanpa env itu, semua panggilan
+  ditolak 401.
+- Jeda minimal 5 menit sejak sinkron terakhir (jalur apa pun). Yang terlalu
+  cepat dibalas 200 dengan `dilewati`, bukan galat — tombol yang baru ditekan
+  staff bukan kegagalan cron. Ini menjaga batas 500 koneksi per jam database
+  Hostinger dari cron yang terpasang dua kali atau token yang bocor.
+- Hanya POST; GET dibalas 405.
+
+**Kegagalan sekarang selalu meninggalkan jejak.** Kalau API Data Accurate tidak
+bisa ditarik, `syncAccurateStockFull` mencatat baris riwayat bergalat
+("Gagal menarik data dari API Data Accurate: …") sebelum melempar galatnya —
+berlaku juga untuk tombol. Halaman Update Harga menampilkannya merah sebagai
+"Sinkron terakhir … — GAGAL". Endpoint membalas 500 supaya cron hPanel ikut
+mengirim surel peringatan.
+
+**Memasangnya di hPanel** (sekali, dikerjakan pemilik akun):
+
+1. Buat token: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+2. Website → Node.js → Variabel environment: tambahkan `CRON_SECRET=<token>`,
+   lalu deploy ulang supaya terbaca.
+3. Advanced → Cron Jobs → perintah kustom, jadwal `15 */2 * * *` (menit ke-15
+   tiap dua jam):
+
+   ```bash
+   curl -fsS -m 120 -X POST -H "Authorization: Bearer <token>" https://hnsitcenter.id/api/cron/sinkron-stok
+   ```
+4. Tunggu satu putaran, lalu periksa riwayat di `/admin/harga-accurate?tab=stok`
+   — harus ada baris "Terjadwal".
+
+Data Accurate sendiri memperbarui datanya pukul 09.00/12.00/17.00 WIB ditambah
+±5 menit setelah ada perubahan; dua jam sekali cukup menangkap itu. Kalau
+ingin lebih rapat, `15 * * * *` (tiap jam) masih jauh di bawah batas koneksi —
+satu sinkron hanya beberapa detik.
+
+Diuji `scripts/uji-sinkron-terjadwal.mts` (API sungguhan, tulis HANYA ke database
+lokal).
 
 ### Uji
 

@@ -2179,3 +2179,19 @@ Rincian & keputusan: docs/13 §10. Env: docs/07 §2.12.
 
 Aturan apa yang ditautkan & yang sengaja tidak: docs/13 §5. Uji:
 `scripts/uji-tautan-dari-sku.mts` (menulis, hanya ke database lokal Docker).
+
+---
+
+## 34. Sinkron stok terjadwal (19 Oktober 2026)
+
+- **Route baru** `POST /api/cron/sinkron-stok` — publik (di luar proxy `/admin`),
+  dijaga `Authorization: Bearer <CRON_SECRET>` dan jeda minimal 5 menit sejak
+  sinkron terakhir. Dipanggil cron hPanel.
+- `syncAccurateStockFull(userName, trigger = "manual")` — parameter kedua
+  `"manual" | "jadwal"`. Penarikan API yang gagal kini dicatat sebagai baris
+  `accurate_sync_runs` bergalat sebelum galatnya dilempar ulang.
+- **Fungsi baru** `waktuSinkronTerakhir()` di `lib/api/accurate/stock-sync.ts`.
+- `SyncTrigger` bertambah `"jadwal"`; halaman Update Harga menampilkannya
+  "Terjadwal". Kolom `trigger` memang teks — nol migrasi.
+
+Rincian & cara memasang cron: docs/13 §10 "Sinkron terjadwal". Env: docs/07 §2.12.

@@ -59,7 +59,8 @@ export function statusIndukDariVariasi(variasi: (StockStatus | null)[]): StockSt
   return StockStatus.OUTOFSTOCK
 }
 
-export type SyncTrigger = "manual" | "webhook"
+/** `jadwal` = cron hPanel lewat `/api/cron/sinkron-stok` (19 Oktober 2026). */
+export type SyncTrigger = "manual" | "webhook" | "jadwal"
 
 export type SyncResult =
   | {
@@ -314,10 +315,61 @@ export async function syncAccurateItems(
   }
 }
 
-/** Tarik SELURUH barang dari API lalu terapkan — tombol "Sinkron Stok Sekarang". */
-export async function syncAccurateStockFull(userName: string | null): Promise<SyncResult> {
-  const { items, lastSyncAt } = await fetchAllHnsItems()
-  return syncAccurateItems(items, { trigger: "manual", userName, sourceSyncedAt: lastSyncAt })
+/**
+ * Tarik SELURUH barang dari API lalu terapkan — tombol "Sinkron Stok Sekarang"
+ * dan sinkron terjadwal.
+ *
+ * Kalau penarikannya sendiri gagal (API Data Accurate mati, token dicabut),
+ * kegagalan itu DICATAT sebagai baris riwayat bergalat sebelum dilempar ulang.
+ * Tanpa itu, sinkron terjadwal yang gagal tidak meninggalkan jejak apa pun di
+ * halaman Update Harga — persis keadaan 17–19 Oktober 2026, ketika stok basi
+ * dua hari tanpa ada yang tahu. Galat di dalam `syncAccurateItems` sudah
+ * dicatat di sana; yang ini menutup langkah sebelumnya.
+ */
+export async function syncAccurateStockFull(
+  userName: string | null,
+  trigger: Extract<SyncTrigger, "manual" | "jadwal"> = "manual",
+): Promise<SyncResult> {
+  let tarikan: Awaited<ReturnType<typeof fetchAllHnsItems>>
+  try {
+    tarikan = await fetchAllHnsItems()
+  } catch (error) {
+    const sekarang = new Date()
+    await getPrisma()
+      .accurateSyncRun.create({
+        data: {
+          trigger,
+          userName,
+          startedAt: sekarang,
+          finishedAt: sekarang,
+          error: `Gagal menarik data dari API Data Accurate: ${pesanGalat(error)}`.slice(0, 2000),
+        },
+        select: { id: true },
+      })
+      .catch(() => {})
+    throw error
+  }
+  return syncAccurateItems(tarikan.items, { trigger, userName, sourceSyncedAt: tarikan.lastSyncAt })
+}
+
+/**
+ * Pesan galat beserta penyebabnya. `fetch` yang gagal tersambung hanya berkata
+ * "fetch failed"; yang berguna bagi pembaca riwayat ada di `cause`
+ * (mis. "connect ECONNREFUSED", "getaddrinfo ENOTFOUND").
+ */
+function pesanGalat(error: unknown): string {
+  if (!(error instanceof Error)) return String(error)
+  const sebab = error.cause instanceof Error ? error.cause.message : null
+  return sebab ? `${error.message} (${sebab})` : error.message
+}
+
+/** Kapan sinkron terakhir DIMULAI, apa pun jalurnya dan hasilnya. */
+export async function waktuSinkronTerakhir(): Promise<Date | null> {
+  const run = await getPrisma().accurateSyncRun.findFirst({
+    orderBy: { startedAt: "desc" },
+    select: { startedAt: true },
+  })
+  return run?.startedAt ?? null
 }
 
 // ---------------------------------------------------------------- jalur baca

@@ -76,6 +76,10 @@ const EnvSchema = z.object({
   HNS_API_URL: z.string().url().optional(),
   HNS_API_TOKEN: z.string().min(1).optional(),
   HNS_WEBHOOK_SECRET: z.string().min(1).optional(),
+  // Token cron hPanel untuk `/api/cron/sinkron-stok` (docs/13 §10). Opsional:
+  // tanpanya endpoint itu menolak semua panggilan, dan sinkron tetap bisa
+  // ditekan manual.
+  CRON_SECRET: z.string().min(1).optional(),
 
   // Cloudflare R2 — penyimpanan gambar produk. Opsional dengan alasan yang
   // sama seperti AUTH_SECRET di atas: skema ini di-parse saat modul dimuat,
@@ -176,6 +180,7 @@ export const env = EnvSchema.parse({
   HNS_API_URL: process.env.HNS_API_URL,
   HNS_API_TOKEN: process.env.HNS_API_TOKEN,
   HNS_WEBHOOK_SECRET: process.env.HNS_WEBHOOK_SECRET,
+  CRON_SECRET: process.env.CRON_SECRET,
   R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
   R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
   R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,
