@@ -141,6 +141,30 @@ export function selectionPrice(view: PrebuildView, selection: PrebuildSelection)
 }
 
 /**
+ * Kombinasi TERMURAH — yang harganya tampil sebagai "mulai dari" di kartu
+ * paket bercabang.
+ *
+ * Aturannya sama dengan `minTotal` di `resolve.ts`: per barang, pilihan yang
+ * `harga × jumlah`-nya paling kecil. Jadi `selectionTotal(view,
+ * cheapestSelection(view))` selalu sama dengan `view.minTotal`, dan kartu bisa
+ * membaca tangga Diskon++ kombinasi itu lewat `selectionPrice()` yang sama
+ * dengan halaman paket. Seri harga → pilihan yang lebih dulu (bawaan menang).
+ */
+export function cheapestSelection(view: PrebuildView): PrebuildSelection {
+  const selection: PrebuildSelection = {}
+  for (const component of view.components) {
+    let termurah: PrebuildOption | null = null
+    for (const option of component.options) {
+      if (!termurah || option.price * option.quantity < termurah.price * termurah.quantity) {
+        termurah = option
+      }
+    }
+    if (termurah) selection[component.key] = optionId(termurah)
+  }
+  return selection
+}
+
+/**
  * Kunci satu paket DI KERANJANG.
  *
  * Ikut menyertakan kombinasi pilihan, jadi paket yang sama dengan RAM 16GB dan
