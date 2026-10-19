@@ -198,8 +198,15 @@ export function PrebuildCard({ view, games }: Props) {
       <footer className="shrink-0 space-y-3 border-t bg-card p-4">
         <div className="flex items-end justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+            <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
               {view.branchingCount > 0 ? "Mulai dari" : "Harga paket"}
+              {/* Lencana saja — tangga Diskon++ lengkap hanya di halaman paket:
+                  harga normal kombinasi termurah tidak dihitung di sini. */}
+              {harga.discount > 0 && (
+                <span className="rounded bg-sale-red px-1.5 py-0.5 text-[10px] font-black italic leading-none tracking-normal text-white">
+                  DISKON++
+                </span>
+              )}
             </p>
             {harga.discount > 0 && (
               <p className="truncate text-xs text-muted-foreground line-through">

@@ -18,6 +18,7 @@ import {
   INK_BLACK,
   INK_GRAY,
   INK_GREEN,
+  INK_GREEN_TINT,
   INK_HAIRLINE,
   INK_NAVY,
   INK_RED,
@@ -114,6 +115,8 @@ export default async function PrebuildPrintPage({ params, searchParams }: Props)
   const selection = selectionFromPick(view, typeof pick === "string" ? pick : undefined)
   const dipilih = chosenComponents(view, selection)
   const harga = selectionPrice(view, selection)
+  const adaDiskonKomponen = harga.itemSavings > 0
+  const adaDiskonPaket = harga.discount > 0
 
   // Deskripsi PDF ditulis staff sebagai rich text. Yang diperiksa TEKSNYA,
   // bukan panjang HTML-nya: editor menyisakan "<p></p>" untuk kolom yang
@@ -201,35 +204,119 @@ export default async function PrebuildPrintPage({ params, searchParams }: Props)
               )}
             </div>
 
-            <div className="overflow-hidden rounded-lg border-2" style={{ borderColor: INK_NAVY }}>
-              <p
-                className="px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.18em] text-white"
-                style={{ backgroundColor: INK_NAVY }}
+            {/* Tangga Diskon++ (docs/11-pc-prebuild.md §12) — angka yang sama
+                dengan kartu di halaman paket, dari `selectionPrice()`. Kepalanya
+                merah hanya kalau ada potongan paket; tanpa itu tetap navy
+                seperti dulu. Kartu "Total hemat" berlatar tipis + bingkai,
+                bukan blok hijau penuh — alasannya sama dengan quotation
+                (`/build-pc/print`): hemat tinta dan tetap terbaca hitam-putih. */}
+            <div
+              className="overflow-hidden rounded-lg border-2"
+              style={{ borderColor: adaDiskonPaket ? INK_RED : INK_NAVY }}
+            >
+              <div
+                className="flex items-center justify-between gap-2 px-3 py-1.5 text-white"
+                style={{ backgroundColor: adaDiskonPaket ? INK_RED : INK_NAVY }}
               >
-                Harga Paket
-              </p>
-              <div className="px-3 py-2.5">
-                {harga.discount > 0 && (
-                  <>
-                    <p className="text-[10px] line-through" style={{ color: INK_GRAY }}>
-                      {formatRupiah(harga.normal)}
-                    </p>
-                    <p className="text-[9.5px] font-bold" style={{ color: INK_GREEN }}>
-                      Potongan paket {formatRupiah(harga.discount)}
-                    </p>
-                  </>
+                {adaDiskonPaket ? (
+                  <p className="text-[14px] font-black uppercase italic leading-none tracking-tight">
+                    Diskon++
+                  </p>
+                ) : (
+                  <p className="text-[9px] font-black uppercase tracking-[0.18em]">Harga Paket</p>
                 )}
+                {harga.savingsPercent > 0 && (
+                  <span
+                    className="rounded-sm bg-white px-1.5 py-0.5 text-[10px] font-black leading-none"
+                    style={{ color: adaDiskonPaket ? INK_RED : INK_NAVY }}
+                  >
+                    &minus;{harga.savingsPercent}%
+                  </span>
+                )}
+              </div>
+              <div className="px-3 py-2.5">
+                {harga.totalSavings > 0 && (
+                  <div
+                    className="mb-1.5 space-y-[3px] border-b border-dashed pb-1.5 text-[8.5px] leading-tight"
+                    style={{ borderColor: INK_HAIRLINE }}
+                  >
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span style={{ color: INK_GRAY }}>Harga normal komponen</span>
+                      <span className="shrink-0 font-semibold line-through" style={{ color: INK_GRAY }}>
+                        {formatRupiah(harga.regularTotal)}
+                      </span>
+                    </div>
+                    {adaDiskonKomponen && (
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span style={{ color: INK_GRAY }}>Diskon komponen</span>
+                        <span className="shrink-0 font-bold" style={{ color: INK_GREEN }}>
+                          &minus; {formatRupiah(harga.itemSavings)}
+                        </span>
+                      </div>
+                    )}
+                    {adaDiskonKomponen && adaDiskonPaket && (
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="font-semibold">Setelah diskon komponen</span>
+                        <span className="shrink-0 font-bold line-through">
+                          {formatRupiah(harga.normal)}
+                        </span>
+                      </div>
+                    )}
+                    {adaDiskonPaket && (
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="font-semibold">
+                          <span
+                            className="mr-1 rounded-sm px-1 py-px text-[7px] font-black uppercase italic text-white"
+                            style={{ backgroundColor: INK_RED }}
+                          >
+                            Diskon++
+                          </span>
+                          Paket
+                        </span>
+                        <span className="shrink-0 font-bold" style={{ color: INK_GREEN }}>
+                          &minus; {formatRupiah(harga.discount)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <p className="text-[8px] font-black uppercase tracking-[0.15em]" style={{ color: INK_NAVY }}>
+                  Harga paket
+                </p>
                 <p className="text-[19px] font-black leading-tight" style={{ color: INK_RED }}>
                   {formatRupiah(harga.final)}
                 </p>
+                {harga.totalSavings > 0 && (
+                  <div
+                    className="mt-1.5 rounded border-[1.5px] px-2 py-1"
+                    style={{ borderColor: INK_GREEN, backgroundColor: INK_GREEN_TINT }}
+                  >
+                    <p
+                      className="text-[7.5px] font-black uppercase leading-none tracking-[0.15em]"
+                      style={{ color: INK_GREEN }}
+                    >
+                      Total hemat
+                    </p>
+                    <p className="mt-0.5 text-[13px] font-black leading-none" style={{ color: INK_GREEN }}>
+                      {formatRupiah(harga.totalSavings)}
+                    </p>
+                  </div>
+                )}
                 {/* Tanggal lembar ini dibuat — harga dibaca dari katalog saat
                     itu juga, dan berkas PDF-nya tidak ikut berubah sesudahnya. */}
-                <p className="mt-0.5 text-[8.5px] font-semibold" style={{ color: INK_BLACK }}>
+                <p className="mt-1.5 text-[8.5px] font-semibold" style={{ color: INK_BLACK }}>
                   Harga berlaku per {hariTanggal}
                 </p>
-                {view.discountEndsAt && harga.discount > 0 && (
+                {view.discountEndsAt && adaDiskonPaket && (
                   <p className="mt-0.5 text-[8.5px]" style={{ color: INK_GRAY }}>
-                    Potongan berlaku s.d. {formatDiscountEndDate(view.discountEndsAt)}
+                    Diskon++ berlaku s.d. {formatDiscountEndDate(view.discountEndsAt)}
+                  </p>
+                )}
+                {/* Potongan paket tidak ikut ke PC Builder — lihat
+                    `PrebuildPriceLadder`. */}
+                {adaDiskonPaket && (
+                  <p className="mt-0.5 text-[8px] leading-snug" style={{ color: INK_GRAY }}>
+                    Diskon++ khusus pembelian sebagai paket ini.
                   </p>
                 )}
                 {view.missingCount > 0 && (

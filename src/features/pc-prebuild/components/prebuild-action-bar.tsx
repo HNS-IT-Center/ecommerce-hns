@@ -6,7 +6,7 @@ import { Check, ShoppingCart, Wrench } from "lucide-react"
 import { formatDiscountEndDate } from "@/lib/pc-prebuild/discount"
 import { formatRupiah } from "@/lib/utils"
 
-import type { PackagePrice } from "../lib/selection"
+import type { SelectionPrice } from "../lib/selection"
 
 /**
  * Bilah aksi yang menempel di bawah halaman paket.
@@ -41,10 +41,15 @@ import type { PackagePrice } from "../lib/selection"
  * `selectionPrice()`, bukan dihitung di komponen ini (CLAUDE.md §2.7,
  * docs/11-pc-prebuild.md §12).
  * Server tetap menghitung ulang seluruhnya saat pesanan dikirim ke CS.
+ *
+ * Harga coret di sini adalah harga NORMAL komponen (`regularTotal`), dan
+ * "Hemat" adalah seluruh tangga Diskon++ — diskon komponen ditambah potongan
+ * paket. Rinciannya ada di kartu `PrebuildPriceLadder`; bilah ini sengaja
+ * ringkas karena di ponsel ia sudah berbagi layar dengan MobileDock.
  */
 
 type Props = {
-  price: PackagePrice
+  price: SelectionPrice
   /** Hari terakhir potongan paket berlaku (`YYYY-MM-DD`), kalau dibatasi. */
   discountEndsAt: string | null
   /** Jumlah komponen yang seluruh pilihannya hilang dari katalog. */
@@ -85,18 +90,26 @@ export function PrebuildActionBar({
             <p className="truncate text-xl font-extrabold text-sale-red md:text-2xl">
               {formatRupiah(price.final)}
             </p>
-            {price.discount > 0 && (
+            {price.totalSavings > 0 && (
               <p className="text-sm text-muted-foreground line-through">
-                {formatRupiah(price.normal)}
+                {formatRupiah(price.regularTotal)}
               </p>
             )}
           </div>
-          {price.discount > 0 && (
-            <p className="text-xs font-semibold text-brand-green">
-              Hemat {formatRupiah(price.discount)}
-              {discountEndsAt && (
+          {price.totalSavings > 0 && (
+            <p className="flex flex-wrap items-center gap-x-1.5 text-xs font-semibold text-brand-green">
+              {price.discount > 0 && (
+                <span className="rounded bg-sale-red px-1.5 py-0.5 text-[10px] font-black uppercase italic leading-none text-white">
+                  Diskon++
+                </span>
+              )}
+              <span>
+                Hemat {formatRupiah(price.totalSavings)}
+                {price.savingsPercent > 0 && ` (−${price.savingsPercent}%)`}
+              </span>
+              {price.discount > 0 && discountEndsAt && (
                 <span className="font-normal text-muted-foreground">
-                  {" "}· berlaku s.d. {formatDiscountEndDate(discountEndsAt, "short")}
+                  · berlaku s.d. {formatDiscountEndDate(discountEndsAt, "short")}
                 </span>
               )}
             </p>

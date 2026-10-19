@@ -28,6 +28,7 @@ import type { PrebuildView } from "../lib/types"
 import { ComponentPicker } from "./component-picker"
 import { PerformancePanel } from "./performance-panel"
 import { PrebuildActionBar } from "./prebuild-action-bar"
+import { PrebuildPriceLadder } from "./prebuild-price-ladder"
 
 /**
  * Halaman satu paket.
@@ -40,8 +41,9 @@ import { PrebuildActionBar } from "./prebuild-action-bar"
  *
  * Yang terjadi di sini cuma PENJUMLAHAN harga satuan yang dikirim server dari
  * katalog, dikurangi potongan paket yang ditetapkan staff (`packagePrice`).
- * Tidak ada perkalian atau persentase; potongan produk (`salePrice`) sudah ikut
- * di harga satuannya (CLAUDE.md §2.7, docs/11-pc-prebuild.md §3).
+ * Tidak ada perkalian; potongan produk (`salePrice`) sudah ikut di harga
+ * satuannya (CLAUDE.md §2.7, docs/11-pc-prebuild.md §3). Tangga Diskon++ dan
+ * persentase hematnya hanya keterangan atas angka yang sama (§12).
  *
  * ## Yang TIDAK dirender
  *
@@ -232,6 +234,10 @@ export function PrebuildDetail({ view, games, quotationMode, salesOptions }: Pro
               ))}
             </div>
           </section>
+
+          {/* Tangga Diskon++ ikut pilihan tukar, sama seperti bilah aksi —
+              keduanya membaca `harga` yang sama. */}
+          <PrebuildPriceLadder price={harga} discountEndsAt={view.discountEndsAt} />
         </div>
       </div>
 
