@@ -15,7 +15,7 @@ import {
 } from "@/lib/pc-prebuild/performance"
 import { formatRupiah } from "@/lib/utils"
 
-import { packagePrice } from "../lib/selection"
+import { cheapestSelection, selectionPrice } from "../lib/selection"
 import { ProductImage } from "@/components/ui/product-image"
 
 import { COMPONENT_ROLE_ICONS } from "../lib/component-icons"
@@ -167,7 +167,10 @@ export function PrebuildCard({ view, games }: Props) {
 
   // Kartu paket bercabang berlabel "mulai dari", jadi potongannya dinilai
   // terhadap kombinasi termurah — angka yang memang sedang ditampilkan.
-  const harga = packagePrice(view, view.branchingCount > 0 ? view.minTotal : view.total)
+  // Lewat `selectionPrice()` (bukan `packagePrice(minTotal)`) supaya harga
+  // coretnya ikut tersedia: harga NORMAL kombinasi itu, sebelum diskon apa
+  // pun — tangga Diskon++ yang sama dengan halaman paket (docs/11 §12).
+  const harga = selectionPrice(view, view.branchingCount > 0 ? cheapestSelection(view) : {})
 
   return (
     // Hover-nya sengaja mencolok: kartu ini padat isi, dan tanpa perubahan yang
@@ -208,9 +211,9 @@ export function PrebuildCard({ view, games }: Props) {
                 </span>
               )}
             </p>
-            {harga.discount > 0 && (
+            {harga.totalSavings > 0 && (
               <p className="truncate text-xs text-muted-foreground line-through">
-                {formatRupiah(harga.normal)}
+                {formatRupiah(harga.regularTotal)}
               </p>
             )}
             <p className="truncate text-lg font-extrabold text-sale-red">

@@ -949,7 +949,7 @@ dikarang kode. Potongan ini data yang ditulis staff, sama kedudukannya dengan
 
 | Tempat | Lewat |
 |---|---|
-| Kartu `/pc-prebuild` (dinilai terhadap `minTotal` pada paket bercabang) | `packagePrice()` |
+| Kartu `/pc-prebuild` (dinilai terhadap kombinasi termurah pada paket bercabang) | `selectionPrice()` + `cheapestSelection()` |
 | Halaman paket & bilah aksi | `selectionPrice()` |
 | Lembar cetak PDF | `selectionPrice()` |
 | Keranjang, panel keranjang, `/checkout` | `groupDiscount()` → `applicablePrebuildDiscount()` |
@@ -984,7 +984,7 @@ Total hemat  Rp …   −N%
 | Rumus | `selectionPrice()` → `summarizeBuildSavings` + `savingsPercent` milik PC Builder; tidak ada rumus kedua |
 | Baris kosong | Tidak dirender. Tanpa obral komponen: tanpa baris diskon komponen & subtotal antara. Tanpa potongan paket: tanpa baris Diskon++, kepala kartu "Harga Hemat" (PDF: navy "Harga Paket"). Tanpa keduanya: kartu tidak ada |
 | Letak di halaman | Kartu `PrebuildPriceLadder` di bawah Isi Paket; bilah sticky cukup harga akhir + coret `regularTotal` + "Hemat Rp X (−N%)" |
-| Kartu `/pc-prebuild` | **Lencana DISKON++ saja.** Harga normal kombinasi `minTotal` tidak dihitung |
+| Kartu `/pc-prebuild` | Lencana DISKON++ + harga coret = **harga normal sebelum diskon apa pun** (`regularTotal`), muncul juga kalau hanya komponen yang obral. Paket bercabang: kombinasi termurah lewat `cheapestSelection()` — aturan yang sama dengan `minTotal` — lalu `selectionPrice()`. Tangga lengkapnya tetap hanya di halaman paket |
 | PDF | Kotak harga di kolom kiri jadi tangga yang sama; kepala merah hanya bila ada potongan paket |
 
 **Diskon++ tidak ikut ke PC Builder.** "Ubah Rakitan" membawa pilihan ke
