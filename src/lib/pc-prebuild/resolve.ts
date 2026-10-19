@@ -44,6 +44,13 @@ export type PrebuildProduct = {
   slug: string
   /** Harga katalog yang berlaku. Tidak pernah disimpan di preset — lihat lib/pc-prebuild/config.ts. */
   price: number
+  /**
+   * `regularPrice` katalog apa adanya, 0 kalau kosong. Hanya untuk baris
+   * "Harga normal komponen" di tangga Diskon++ (docs/11-pc-prebuild.md §12) —
+   * yang dijumlahkan ke total tetap `price`. Bisa sama dengan `price`, atau
+   * (data warisan) di bawahnya; `discountedRegularPrice()` yang menyaringnya.
+   */
+  regularPrice: number
   stock: number
   /** Foto pertama produk; varian tanpa foto memakai foto induknya. */
   image: string | null
@@ -229,6 +236,7 @@ export async function getPrebuildProducts(
           name: p.name,
           slug: p.slug,
           price: sale > 0 ? sale : regular,
+          regularPrice: regular,
           stock: p.stockStatus === "OUTOFSTOCK" ? 0 : (p.stockQty ?? 10),
           image: p.images[0]?.url ?? p.parent?.images[0]?.url ?? null,
           parentName: p.parent?.name ?? null,
@@ -239,7 +247,9 @@ export async function getPrebuildProducts(
         }
       })
     },
-    [`pc-prebuild-products-${kunci}`],
+    // `v2`: bentuknya bertambah `regularPrice` (19 Okt 2026). Entri lama tanpa
+    // bidang itu akan terbaca "tidak ada diskon komponen" sampai kedaluwarsa.
+    [`pc-prebuild-products-v2-${kunci}`],
     { revalidate: 300, tags: ["pc-prebuild-products"] }
   )
 

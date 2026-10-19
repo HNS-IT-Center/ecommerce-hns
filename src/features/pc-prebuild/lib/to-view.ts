@@ -56,6 +56,7 @@ function toOption(
     variationLabel: product.variationLabel,
     image: product.image,
     price: product.price,
+    regularPrice: product.regularPrice,
     inStock: product.stock > 0,
     available: true,
   }

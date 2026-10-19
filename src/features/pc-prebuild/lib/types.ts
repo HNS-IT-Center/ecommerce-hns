@@ -33,6 +33,12 @@ export type PrebuildOption = {
   image: string | null
   /** Harga katalog satuan. Nol kalau produknya sudah tidak ada. */
   price: number
+  /**
+   * Harga normal satuan dari katalog (`regularPrice`). Hanya untuk tangga
+   * Diskon++ — tidak pernah dijumlahkan ke total. Saring lewat
+   * `discountedRegularPrice()` sebelum dipakai.
+   */
+  regularPrice: number
   inStock: boolean
   /** `false` = produknya sudah tidak ada di katalog. */
   available: boolean
