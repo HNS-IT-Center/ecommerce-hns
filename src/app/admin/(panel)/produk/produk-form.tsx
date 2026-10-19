@@ -36,6 +36,8 @@ import { VariationEditor } from "./variation-editor"
 import { listHref } from "./list-url"
 import { AccurateCodeField } from "./accurate-code-field"
 import { tautkanKodeAccurateAction } from "./actions"
+import { umumkanTautanOtomatis } from "./umumkan-tautan-otomatis"
+import type { HasilTautDariSku } from "@/lib/api/accurate/price-table"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -436,13 +438,25 @@ export function ProdukForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(isEdit ? { id: productId, ...payload } : payload),
       })
-      const data = await readJsonResponse<{ id?: number }>(res, "Gagal menyimpan produk")
+      const data = await readJsonResponse<{ id?: number; tautanOtomatis?: HasilTautDariSku }>(
+        res,
+        "Gagal menyimpan produk",
+      )
 
       // Edit kembali ke daftar asal, dengan saringannya. Produk baru ke daftar
       // polos: urutan bawaan "terbaru di atas" menjamin ia ada di baris
       // pertama, sedangkan daftar asal bisa saja halaman 3 atau urut A–Z dan
       // produk barunya tidak kelihatan di sana.
       const savedId = isEdit ? productId : data.id
+
+      // Produk baru yang kolom Kode Accurate-nya diisi ditautkan di bawah ini
+      // dengan kode ITU — kalau berbeda dari SKU-nya, pengumuman "tertaut dari
+      // SKU" untuk produk itu sudah tidak benar lagi.
+      umumkanTautanOtomatis(
+        toastManager,
+        data.tautanOtomatis,
+        !isEdit && kodeAccurate ? savedId : undefined,
+      )
 
       /**
        * Penautan Accurate untuk produk BARU dikerjakan di sini, sesudah

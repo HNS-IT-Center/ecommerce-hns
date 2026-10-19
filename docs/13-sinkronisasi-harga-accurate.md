@@ -195,8 +195,9 @@ tautannya — dugaan "lepas saja semua tautan" sudah diperiksa dan salah.
 | Dialog penautan di `/admin/harga-accurate` | Mengerjakan antrean dari sisi barang Accurate |
 | Quick Edit di `/admin/produk` | Menautkan produk yang sudah ada |
 | Formulir produk (`/admin/produk/baru` & edit) | **Sejak 21 September 2026** — supaya barang baru ditautkan saat dibuat, bukan menunggu dikerjakan belakangan |
+| Otomatis dari SKU saat produk disimpan | **Sejak 19 Oktober 2026** — lihat "Tautan otomatis dari SKU" di bawah |
 
-Ketiganya bermuara ke `tautkanKode`, jadi penjaganya sama: kodenya harus ada di
+Semuanya bermuara ke `tautkanKode`, jadi penjaganya sama: kodenya harus ada di
 Accurate, dan tidak boleh sudah menambat produk lain.
 
 **Formulir produk BARU menempuh urutan terbalik**, dan itu bukan pilihan:
@@ -210,6 +211,57 @@ Mengulang simpan hanya akan membuat produk kedua.
 `periksaKode` adalah pemeriksaan, **bukan jaminan**: antara diperiksa dan
 ditautkan, orang lain bisa memakai kode yang sama. Penjaga sesungguhnya tetap di
 `tautkanKode`.
+
+### Tautan otomatis dari SKU (19 Oktober 2026)
+
+**Masalahnya berulang:** staff mengisi SKU dengan kode Accurate lalu mengira
+produknya sudah tertaut. Pada 16–17 Oktober 2026, 11 produk baru (monitor, SSD,
+varian keyboard) tayang "tersedia" dengan SKU = kode Accurate tanpa pernah
+tertaut, jadi stoknya tidak pernah disinkron. Penyebabnya bukan kelalaian
+semata: **varian tidak punya kolom Kode Accurate di formulir** — SKU satu-satunya
+isian kode yang mereka lihat.
+
+**Sejak 19 Oktober 2026, menyimpan produk menautkannya sendiri** lewat
+`tautkanDariSku` — di formulir produk (baru & edit), Quick Edit, dan isian SKU
+di tabel produk. Produk dan SEMUA variannya diperiksa. Kebiasaan ini memang
+sudah berjalan: dari 3.654 produk tertaut, 3.297 (90%) SKU-nya sama persis
+dengan kodenya.
+
+Ditautkan hanya kalau baris itu produk biasa atau varian, `accurate_code`-nya
+kosong, dan SKU-nya kode Accurate. Penjaga `tautkanKode` tetap berlaku (kode
+ada, belum menambat produk lain), dan jejaknya tercatat `LINK_ACCURATE` atas
+nama staff yang menyimpan.
+
+**Sengaja TIDAK ditautkan, dan dilaporkan alasannya ke staff:**
+
+| Keadaan | Kenapa |
+|---|---|
+| Induk produk bervarian | Stok induk dibaca dari varian; kode di induk = kasus "kode tersangkut di induk" (16 Okt) |
+| Pre-order (`ONBACKORDER`) | Sinkron menulis stok Accurate apa adanya — stok 0 mengubah pre-order jadi Habis |
+| Kode ditandai "tidak dijual di web" | Dua pernyataan yang bertentangan; manusia yang memutuskan di Update Harga |
+| Kode nonaktif di Accurate (`accurate_items.status`) | Biasanya kode lama yang sudah ada penggantinya |
+| Kode sudah menambat produk lain | Penjaga `tautkanKode`; pesannya menyebut pemegangnya |
+
+SKU yang bukan kode Accurate (nomor part pabrikan) dilewati tanpa laporan — itu
+SKU biasa. Produk yang **sudah tertaut tidak disentuh**, sekalipun SKU-nya
+kemudian diganti: mengganti tautan tetap keputusan manusia lewat kolom Kode
+Accurate.
+
+**Risiko yang diterima:** SKU yang salah ketik menghasilkan tautan yang salah
+(contoh nyata: varian ROSIE MK890V2 ber-SKU kode BLUE). Pengamannya: toast
+sesudah simpan menampilkan **nama barang Accurate**, bukan nama produk web, dan
+bertahan 12 detik — di situlah barang yang keliru ketahuan. Jejaknya ada di
+`product_logs`.
+
+Hanya bekerja saat produk DISIMPAN. Produk lama yang sudah terlanjur ber-SKU
+kode tanpa tautan (156 per 19 Okt) tidak ditautkan massal; kalau staff menyimpan
+salah satunya, barulah ia tertaut. Daftarnya: `backup/audit-stok/sku_belum_tertaut.py`.
+Impor CSV tidak melewati jalur ini.
+
+Stok produk yang baru tertaut ikut Accurate **mulai sinkron berikutnya** —
+sampai saat itu ia menampilkan stok yang diisi staff.
+
+Uji: `scripts/uji-tautan-dari-sku.mts` — 27 uji ke database lokal Docker.
 
 ### Penambatnya: `products.accurate_code`
 

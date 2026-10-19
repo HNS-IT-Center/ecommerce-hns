@@ -16,6 +16,7 @@ import {
 import { QuickEditModal } from "./quick-edit-modal"
 import { HIGHLIGHT_PARAM, formHref } from "./list-url"
 import { useToastManager } from "@/components/ui/toast"
+import { umumkanTautanOtomatis } from "./umumkan-tautan-otomatis"
 import type { Product, ProductCategory, ProductAttributeTaxonomy } from "@/types/woocommerce"
 import type { RootCategoryOption } from "@/lib/api/woocommerce/categories"
 import type { FlaggedVariationCounts } from "@/lib/api/woocommerce/product-health"
@@ -199,6 +200,7 @@ function SkuCell({
   const [menyimpan, setMenyimpan] = useState(false)
   const [galat, setGalat] = useState<string | null>(null)
   const router = useRouter()
+  const toastManager = useToastManager()
 
   const simpan = useCallback(async () => {
     const bersih = nilai.trim()
@@ -220,8 +222,9 @@ function SkuCell({
       setNilai(product.sku)
       return
     }
+    umumkanTautanOtomatis(toastManager, hasil.tautanOtomatis)
     router.refresh()
-  }, [nilai, product.sku, product.id, router])
+  }, [nilai, product.sku, product.id, router, toastManager])
 
   if (product.type === "variable") {
     return (

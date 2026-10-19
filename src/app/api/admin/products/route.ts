@@ -10,6 +10,7 @@ import { Prisma } from "@prisma/client"
 import { UnauthorizedError, requireAuth } from "@/lib/auth"
 import { getPrisma } from "@/lib/prisma/client"
 import { buildProductLogEntries, diffProductChanges } from "@/lib/logs/product-log"
+import { tautkanDariSku } from "@/lib/api/accurate/price-table"
 import type { ProductInput } from "@/types/woocommerce"
 
 /**
@@ -80,8 +81,12 @@ export async function POST(request: NextRequest) {
         newValue: "Created",
       }
     })
-    
-    return NextResponse.json(product)
+
+    // Sesudah produknya ada — penautan mencocokkan `woo_id`. Tidak pernah
+    // melempar galat; hasilnya diumumkan formulir lewat toast.
+    const tautanOtomatis = await tautkanDariSku(product.id, userName)
+
+    return NextResponse.json({ ...product, tautanOtomatis })
   } catch (error) {
     const ditolak =
       tolakKalauBelumMasuk(error) ??
@@ -143,8 +148,10 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    const tautanOtomatis = await tautkanDariSku(product.id, userName)
+
     revalidatePath("/admin/produk")
-    return NextResponse.json(product)
+    return NextResponse.json({ ...product, tautanOtomatis })
   } catch (error) {
     const ditolak =
       tolakKalauBelumMasuk(error) ??

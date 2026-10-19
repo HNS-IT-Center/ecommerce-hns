@@ -654,6 +654,130 @@ export async function periksaKode(kode: string): Promise<HasilPeriksaKode> {
   return { ok: true, namaBarang }
 }
 
+/** Satu baris yang baru saja ditautkan karena SKU-nya kode Accurate. */
+export type TautanDariSku = { wooId: number; namaProduk: string; kode: string; namaBarang: string }
+
+/** Satu baris yang SKU-nya kode Accurate, tapi sengaja TIDAK ditautkan. */
+export type TautanDariSkuDilewati = { wooId: number; namaProduk: string; kode: string; alasan: string }
+
+export type HasilTautDariSku = {
+  ditautkan: TautanDariSku[]
+  dilewati: TautanDariSkuDilewati[]
+  /** Pemeriksaannya sendiri gagal di tengah jalan; yang sempat ditautkan tetap terdaftar. */
+  galat?: string
+}
+
+/**
+ * Tautkan produk — dan semua variannya — yang SKU-nya kode Accurate tapi
+ * kolom `accurate_code`-nya masih kosong. Dipanggil sesudah produk disimpan
+ * (formulir, Quick Edit, isian SKU di tabel).
+ *
+ * Kenapa perlu: staff mengisi SKU dengan kode Accurate lalu mengira produknya
+ * sudah tertaut. Varian bahkan tidak punya kolom Kode Accurate di formulir —
+ * SKU satu-satunya isian kode yang mereka lihat. Pada 16–17 Oktober 2026 itu
+ * terjadi pada 11 produk baru yang tayang "tersedia" tanpa pernah disinkron.
+ * Dari 3.654 produk tertaut, 3.297 (90%) SKU-nya memang sama persis dengan
+ * kodenya, jadi ini meneruskan kebiasaan yang sudah berjalan.
+ *
+ * Bermuara ke `tautkanKode`, jadi penjaganya sama dengan penautan manual (kode
+ * ada di Accurate, belum menambat produk lain) dan jejaknya tercatat atas nama
+ * staff yang menyimpan. Di atas itu, empat hal sengaja TIDAK ditautkan dan
+ * dilaporkan alasannya — bukan dilewati diam-diam:
+ *
+ *  - **induk produk bervarian** — stoknya dibaca dari varian; kode di induk
+ *    adalah kasus "kode tersangkut di induk" yang dibereskan 16 Oktober.
+ *  - **pre-order** — sinkron menulis stok Accurate apa adanya, dan stok 0
+ *    akan mengubah pre-order jadi Habis.
+ *  - **ditandai "tidak dijual di web"** — dua pernyataan yang bertentangan;
+ *    yang memutuskan manusia, di Update Harga.
+ *  - **nonaktif di Accurate** — biasanya kode lama yang sudah ada penggantinya.
+ *
+ * SKU yang BUKAN kode Accurate (kode pabrikan, nomor part) dilewati tanpa
+ * laporan — itu SKU biasa, bukan kekeliruan.
+ *
+ * Produk yang sudah tertaut tidak disentuh, sekalipun SKU-nya kemudian diganti:
+ * mengganti tautan tetap keputusan manusia lewat kolom Kode Accurate.
+ *
+ * TIDAK PERNAH melempar galat — kegagalannya dikembalikan lewat `galat`.
+ * Produknya sudah tersimpan sebelum fungsi ini berjalan; galat yang terlempar
+ * akan membuat pemanggil membalas "gagal menyimpan", lalu staff menyimpan
+ * ulang — dan di formulir produk baru itu berarti produk kedua.
+ *
+ * @param wooId produk yang baru disimpan — `wooId`, bukan `Product.id`.
+ */
+export async function tautkanDariSku(wooId: number, oleh: string): Promise<HasilTautDariSku> {
+  const hasil: HasilTautDariSku = { ditautkan: [], dilewati: [] }
+  try {
+    await tautkanDariSkuKe(hasil, wooId, oleh)
+  } catch (error) {
+    console.error("[tautkanDariSku] gagal:", error)
+    hasil.galat = error instanceof Error ? error.message : String(error)
+  }
+  return hasil
+}
+
+async function tautkanDariSkuKe(hasil: HasilTautDariSku, wooId: number, oleh: string) {
+  const prisma = getPrisma()
+
+  const calon = await prisma.$queryRawUnsafe<
+    { wooId: number | bigint; nama: string; tipe: string; stokStatus: string | null; kode: string }[]
+  >(
+    `SELECT p.woo_id AS wooId, p.name AS nama, p.type AS tipe, p.stock_status AS stokStatus,
+            TRIM(p.sku) AS kode
+       FROM products p
+      WHERE (p.woo_id = ? OR p.parent_id = (SELECT q.id FROM products q WHERE q.woo_id = ?))
+        AND p.accurate_code IS NULL
+        AND p.sku IS NOT NULL AND TRIM(p.sku) <> ''
+      ORDER BY p.woo_id`,
+    wooId,
+    wooId,
+  )
+
+  for (const baris of calon) {
+    const namaBarang = await namaBarangAccurate(baris.kode)
+    if (namaBarang === null) continue
+
+    const dasar = { wooId: Number(baris.wooId), namaProduk: baris.nama, kode: baris.kode }
+    const lewati = (alasan: string) => hasil.dilewati.push({ ...dasar, alasan })
+
+    if (baris.tipe === "VARIABLE") {
+      lewati("Induk produk bervarian — kode Accurate ditautkan ke variannya, bukan ke induk.")
+      continue
+    }
+    if (baris.tipe !== "SIMPLE" && baris.tipe !== "VARIATION") continue
+    if (baris.stokStatus === "ONBACKORDER") {
+      lewati("Produk pre-order — tidak ditautkan otomatis karena sinkron akan menimpa status pre-order dengan stok Accurate.")
+      continue
+    }
+
+    const ditandai = await prisma.$queryRawUnsafe<{ x: number }[]>(
+      "SELECT 1 AS x FROM accurate_ignored WHERE kode_accurate = ? LIMIT 1",
+      baris.kode,
+    )
+    if (ditandai.length > 0) {
+      lewati("Kode ini ditandai \"tidak dijual di web\" di Update Harga.")
+      continue
+    }
+
+    const statusApi = await prisma.$queryRawUnsafe<{ status: string }[]>(
+      "SELECT status FROM accurate_items WHERE code = ? AND status <> 'deleted' ORDER BY status = 'active' DESC LIMIT 1",
+      baris.kode,
+    )
+    if (statusApi[0]?.status === "inactive") {
+      lewati("Kode ini nonaktif di Accurate.")
+      continue
+    }
+
+    try {
+      const taut = await tautkanKode(dasar.wooId, baris.kode, oleh)
+      if (taut.ok) hasil.ditautkan.push({ ...dasar, namaBarang })
+      else lewati(taut.alasan)
+    } catch (error) {
+      lewati(`Gagal menautkan: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+}
+
 /**
  * Tandai satu barang Accurate sebagai "tidak dijual lewat web".
  *

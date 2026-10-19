@@ -29,6 +29,9 @@ import { AttributeRow } from "./attribute-row"
 import { VariationEditor } from "./variation-editor"
 import { type BulkProductRow } from "./product-data-table"
 import { AccurateCodeField } from "./accurate-code-field"
+import { umumkanTautanOtomatis } from "./umumkan-tautan-otomatis"
+import { useToastManager } from "@/components/ui/toast"
+import type { HasilTautDariSku } from "@/lib/api/accurate/price-table"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
@@ -79,6 +82,7 @@ export function QuickEditModal({
   onClose,
 }: QuickEditModalProps) {
   const router = useRouter()
+  const toastManager = useToastManager()
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -344,7 +348,11 @@ export function QuickEditModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
-      await readJsonResponse<unknown>(res, "Gagal menyimpan produk")
+      const data = await readJsonResponse<{ tautanOtomatis?: HasilTautDariSku }>(
+        res,
+        "Gagal menyimpan produk",
+      )
+      umumkanTautanOtomatis(toastManager, data.tautanOtomatis)
 
       startTransition(() => {
         router.refresh()

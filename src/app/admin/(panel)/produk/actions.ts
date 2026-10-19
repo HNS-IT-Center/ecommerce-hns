@@ -13,7 +13,12 @@ import {
   updateProduct,
   type BulkCategoryMode,
 } from "@/lib/api/woocommerce/products"
-import { periksaKode, tautkanKode } from "@/lib/api/accurate/price-table"
+import {
+  periksaKode,
+  tautkanDariSku,
+  tautkanKode,
+  type HasilTautDariSku,
+} from "@/lib/api/accurate/price-table"
 import type { BulkApplyState, BulkPreviewState } from "./state"
 import { getPrisma } from "@/lib/prisma/client"
 import { ProductType } from "@prisma/client"
@@ -329,7 +334,7 @@ export async function updateProductPriceAction(
 export async function updateProductSkuAction(
   id: number,
   sku: string,
-): Promise<{ error: string | null }> {
+): Promise<{ error: string | null; tautanOtomatis?: HasilTautDariSku }> {
   try {
     const authUser = await requirePermission("produk", "edit")
     const userName =
@@ -359,8 +364,12 @@ export async function updateProductSkuAction(
       })
     }
 
+    // SKU yang diketik di sini sering kali kode Accurate — tautkan sekalian,
+    // sama seperti saat formulir produk disimpan (`tautkanDariSku`).
+    const tautanOtomatis = await tautkanDariSku(id, userName)
+
     refresh([id], [product.slug])
-    return { error: null }
+    return { error: null, tautanOtomatis }
   } catch (error) {
     if (error instanceof UnauthorizedError) {
       return { error: error.message }

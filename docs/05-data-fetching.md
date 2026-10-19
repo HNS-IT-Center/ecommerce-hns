@@ -2160,3 +2160,22 @@ Rincian keputusan dan alasannya: docs/17 §18.
   (migrasi `20261008170317_accurate_stock_sync`).
 
 Rincian & keputusan: docs/13 §10. Env: docs/07 §2.12.
+
+---
+
+## 33. Tautan Accurate otomatis dari SKU (19 Oktober 2026)
+
+- **Fungsi baru** `tautkanDariSku(wooId, oleh)` di `lib/api/accurate/price-table.ts`
+  — menautkan produk & semua variannya yang SKU-nya kode Accurate tapi
+  `accurate_code`-nya kosong. Bermuara ke `tautkanKode`. Tidak pernah melempar
+  galat; kegagalannya dikembalikan lewat `galat`.
+- **`POST` & `PUT /api/admin/products`** kini membalas produk + **`tautanOtomatis`**
+  (`{ ditautkan, dilewati, galat? }`). Pemanggil lama yang hanya membaca `id`
+  tidak terpengaruh.
+- **`updateProductSkuAction`** (isian SKU di tabel produk) membalas
+  `tautanOtomatis` yang sama.
+- Formulir produk, Quick Edit, dan isian SKU mengumumkannya lewat
+  `umumkanTautanOtomatis()` (`admin/(panel)/produk/umumkan-tautan-otomatis.ts`).
+
+Aturan apa yang ditautkan & yang sengaja tidak: docs/13 §5. Uji:
+`scripts/uji-tautan-dari-sku.mts` (menulis, hanya ke database lokal Docker).
