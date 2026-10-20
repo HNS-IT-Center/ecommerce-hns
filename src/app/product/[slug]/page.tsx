@@ -17,7 +17,6 @@ import { calculateProductPrice } from "@/features/product/lib/calculate-product-
 import { formatRupiah } from "@/lib/utils"
 import { env } from "@/config/env"
 import {
-  displayStockQuantity,
   displayStockStatus,
   displayVariationStock,
   getStockDisplayMode,
@@ -127,7 +126,13 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
     product.type === "variable" && product.variations.length > 0
       ? await getProductVariations(product.id)
       : []
-  ).map((variation) => displayVariationStock(variation, stockDisplayMode))
+  ).map((variation) => ({
+    // Jumlah stok dibuang dari data yang dikirim ke peramban: halaman ini
+    // dilihat tamu, dan angkanya hanya boleh sampai ke akun ber-izin
+    // `stok-lihat` lewat `/api/products/stock`.
+    ...displayVariationStock(variation, stockDisplayMode),
+    stock_quantity: null,
+  }))
 
   // Atribut yang benar-benar dipakai untuk memilih varian (`variation: true`) —
   // atribut lain (mis. "Motherboard Size") cuma informasi spek, bukan pilihan.
@@ -389,11 +394,6 @@ export default async function ProductPage({ params, searchParams }: ProductPageP
               onSale: product.on_sale,
               type: product.type,
               stockStatus: shownStockStatus,
-              stockQuantity: displayStockQuantity(
-                product.stock_status,
-                product.stock_quantity,
-                stockDisplayMode
-              ),
               averageRating: product.average_rating,
               ratingCount: product.rating_count,
               whatsappNumber: env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER,

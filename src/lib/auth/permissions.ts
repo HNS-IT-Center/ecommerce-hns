@@ -75,6 +75,15 @@ export const ADMIN_PAGES = {
    * `harga-modal` — satu bagian di dalam halaman yang punya izinnya sendiri.
    */
   "stok-accurate": "Stok Accurate",
+  /**
+   * BUKAN halaman — saklar izin untuk JUMLAH stok di halaman produk toko.
+   *
+   * Tamu tidak melihat info stok sama sekali, pelanggan biasa hanya melihat
+   * "Tersedia" tanpa angka, dan akun dengan izin ini melihat "Tersedia (Sisa N)".
+   * Angkanya tidak pernah ikut di HTML halaman: ia diambil terpisah lewat
+   * `/api/products/stock`, yang memeriksa izin ini di server pada setiap permintaan.
+   */
+  "stok-lihat": "Lihat Jumlah Stok (Toko)",
   "pc-builder": "PC Builder",
   "pc-prebuild": "PC Prebuild",
   banner: "Banner Promo",
@@ -176,6 +185,8 @@ export const ADMIN_PAGE_DESCRIPTIONS: Record<AdminPage, string> = {
     "Kolom harga modal (CP) di halaman Update Harga — angka yang kita bayar ke pemasok. Tanpa izin ini, halamannya tetap bisa dibuka tapi kolom modalnya tersembunyi, sehingga marginnya tidak ikut terlihat.",
   "stok-accurate":
     "Tab Stok Accurate di halaman Update Harga: status sinkron stok dan daftar barang berstok yang belum tertaut ke web. Lihat = membuka tab itu. Edit = menekan Sinkron Stok Sekarang, yang menimpa stok semua produk tertaut dengan angka Accurate. Tanpa izin ini, tabnya tidak muncul.",
+  "stok-lihat":
+    "Jumlah stok di halaman produk toko. Dengan izin ini, halaman produk menampilkan \"Tersedia (Sisa N)\" untuk akun ini; tanpanya, akun hanya melihat \"Tersedia\" (pelanggan biasa) dan tamu juga hanya melihat indikator tersedia. Tidak mengubah apa pun di panel admin.",
   "pc-builder":
     "Konfigurasi wizard Rakit PC: langkah apa saja, urutannya, dan mana yang wajib. Edit = mengubah susunan yang dipakai pelanggan.",
   "pc-prebuild":
@@ -232,6 +243,7 @@ export const ADMIN_PAGE_AUDIENCE: Record<AdminPage, string> = {
   "harga-accurate": "Admin Harga",
   "harga-modal": "Owner & Admin Harga",
   "stok-accurate": "Owner",
+  "stok-lihat": "Sales, Kasir & Owner",
   "pc-builder": "Admin Katalog",
   "pc-prebuild": "Owner & Admin Katalog",
   banner: "Marketing",
@@ -263,6 +275,7 @@ const PAGES_SELALU_BOLEH: ReadonlySet<string> = new Set<AdminPage>(["akun"])
  * - `verify` — halamannya di `/verify`, sengaja di luar panel untuk kasir.
  * - `harga-modal` — saklar satu KOLOM di halaman Update Harga, bukan halaman.
  * - `stok-accurate` — saklar satu TAB di halaman Update Harga, bukan halaman.
+ * - `stok-lihat` — saklar jumlah stok di halaman produk toko, di luar panel.
  * - `quotation-terbit` — kemampuan menerbitkan + riwayat di `/profile/quotation`.
  * - `quotation-sales` — penanda "akun ini Sales", bukan halaman.
  *
@@ -274,6 +287,7 @@ const PAGES_BUKAN_PANEL: ReadonlySet<string> = new Set<AdminPage>([
   "verify",
   "harga-modal",
   "stok-accurate",
+  "stok-lihat",
   "quotation-terbit",
   "quotation-sales",
   "quotation-oper",
@@ -458,7 +472,12 @@ const OPT_IN_SELALU: ReadonlySet<AdminPage> = new Set<AdminPage>([
  *
  * Staff tetap harus DIBERI eksplisit lewat peran.
  */
-const OPT_IN_STAFF: ReadonlySet<AdminPage> = new Set<AdminPage>(["harga-modal", "quotation", "stok-accurate"])
+const OPT_IN_STAFF: ReadonlySet<AdminPage> = new Set<AdminPage>([
+  "harga-modal",
+  "quotation",
+  "stok-accurate",
+  "stok-lihat",
+])
 
 function isAccessLevel(v: string): v is AccessLevel {
   return v === "none" || v === "view" || v === "edit"
@@ -616,6 +635,8 @@ export const ADMIN_PAGE_LEVEL_MODE: Record<AdminPage, LevelMode> = {
   "harga-modal": "view-edit",
   // `view` = tab Stok Accurate terlihat, `edit` = boleh menekan Sinkron Stok.
   "stok-accurate": "view-edit",
+  // Hanya ada satu kemampuan (melihat angka stok di toko), tidak ada yang disunting.
+  "stok-lihat": "view-only",
   "pc-builder": "view-edit",
   "pc-prebuild": "view-edit",
   banner: "view-edit",

@@ -24,9 +24,12 @@ export async function GET(request: NextRequest) {
     // di sini juga — kalau tidak, satu produk bisa tampak "Tersedia" di
     // halaman produk tapi "Habis" di modal katalog.
     const stockDisplayMode = await getStockDisplayMode()
-    const variations = (await getProductVariations(id)).map((variation) =>
-      displayVariationStock(variation, stockDisplayMode)
-    )
+    // Endpoint publik: jumlah stok dibuang. Angkanya hanya untuk akun ber-izin
+    // `stok-lihat`, lewat `/api/products/stock`.
+    const variations = (await getProductVariations(id)).map((variation) => ({
+      ...displayVariationStock(variation, stockDisplayMode),
+      stock_quantity: null,
+    }))
     return NextResponse.json(variations)
   } catch (error) {
     console.error("Failed to load variations:", error)

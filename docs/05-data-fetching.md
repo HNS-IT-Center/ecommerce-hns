@@ -2219,3 +2219,24 @@ Rincian & cara memasang cron: docs/13 §10 "Sinkron terjadwal". Env: docs/07 §2
 - `AccurateCodeField` mendapat prop `indukBervarian`.
 
 Rincian: docs/13 §5 "Induk produk bervarian tidak ditautkan".
+
+## 17. Jumlah stok di halaman produk: `GET /api/products/stock` (20 Oktober 2026)
+
+Tampilan stok di halaman produk dibedakan per izin (Kasir sama seperti pelanggan: izinnya tidak dicentang):
+
+| Pengunjung | Yang tampil |
+|---|---|
+| Tamu dan pelanggan login | "Tersedia" / "Stok Habis", tanpa angka |
+| Akun dengan izin `stok-lihat` | "Tersedia (Sisa N)" |
+
+- **Angka stok tidak pernah ada di HTML halaman.** `product/[slug]/page.tsx` dan
+  `GET /api/products/variations` (publik) selalu mengirim `stock_quantity: null`. Yang tetap
+  dikirim hanya status `instock`/`outofstock`, karena tombol keranjang dan structured data
+  membutuhkannya.
+- Angkanya datang dari `GET /api/products/stock?id=<id>` (`lib/api/product-stock.ts` di sisi
+  klien). Endpoint ini memeriksa izin `stok-lihat` di SERVER pada setiap permintaan dan
+  membalas **403** untuk selain itu. `canViewStock` di `/api/auth/me` hanya menentukan perlu
+  tidaknya klien bertanya — bukan boleh tidaknya.
+- `stok-lihat` adalah izin satu-tombol (`view-only`) di Manajemen User → Peran, dan opt-in
+  untuk staff (owner mendapatkannya lewat fallback).
+- Tamu dan pelanggan biasa tidak memicu permintaan tambahan apa pun.

@@ -70,6 +70,12 @@ export type CurrentCustomer = {
    */
   canVerify: boolean
   /**
+   * Sesi admin itu punya izin `stok-lihat`: halaman produk boleh menampilkan
+   * jumlah stok. HANYA untuk memutuskan apakah klien perlu meminta angkanya —
+   * `/api/products/stock` tetap memeriksa izinnya sendiri pada setiap permintaan.
+   */
+  canViewStock: boolean
+  /**
    * Sesi admin itu punya setidaknya SATU halaman yang terbuka di dalam panel.
    *
    * Beda dari `isAdmin`, dan bedanya itu yang penting: `isAdmin` cuma berarti
@@ -182,6 +188,7 @@ export async function getCurrentCustomer(): Promise<CurrentCustomer | null> {
   // dua kali berarti dua kali kerja yang sama untuk jawaban yang dijamin sama.
   const izinAdmin = adminAccount ? await muatIzinUser(adminAccount) : null
   const canVerify = izinAdmin ? bisaAkses(izinAdmin, "verify", "view") : false
+  const canViewStock = izinAdmin ? bisaAkses(izinAdmin, "stok-lihat", "view") : false
   const canOpenPanel = izinAdmin ? punyaAksesPanel(izinAdmin) : false
 
   // Dibentuk ulang secara eksplisit — `role` dan penanda pencabutan tidak ada
@@ -199,6 +206,7 @@ export async function getCurrentCustomer(): Promise<CurrentCustomer | null> {
     image: account.image,
     isAdmin: adminAccount !== null,
     canVerify,
+    canViewStock,
     canOpenPanel,
     // Dari akun ADMIN, sumber yang sama dengan `canVerify` — bukan dari akun
     // yang kebetulan tampil. Pelanggan biasa tidak punya izin yang bisa

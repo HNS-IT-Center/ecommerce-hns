@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Shield, Truck, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -10,6 +10,9 @@ import { calculateProductPrice } from "@/features/product/lib/calculate-product-
 import { calculateVariationPriceRange } from "@/features/product/lib/calculate-variation-price-range";
 import type { ProductVariation } from "@/types/woocommerce";
 import { useFlyToCart } from "@/components/providers/fly-to-cart-provider";
+import { useCustomer } from "@/components/providers/session-provider";
+import { fetchProductStock } from "@/lib/api/product-stock";
+import type { ProductStockResponse } from "@/app/api/products/stock/route";
 import { ProductPriceBox } from "./product-price-box";
 import { ProductActions } from "./product-actions";
 import {
@@ -31,7 +34,6 @@ interface ProductInfoProps {
   type: "simple" | "variable" | "grouped" | "external";
   image?: string;
   stockStatus: string;
-  stockQuantity: number | null;
   averageRating: string;
   ratingCount: number;
   whatsappNumber: string;
@@ -68,7 +70,6 @@ export function ProductInfo({
   type,
   image,
   stockStatus,
-  stockQuantity,
   averageRating,
   ratingCount,
   whatsappNumber,
@@ -93,6 +94,25 @@ export function ProductInfo({
 
   const [isAdding, setIsAdding] = useState(false);
 
+  // Jumlah stok TIDAK ikut di data halaman (`stockQuantity` selalu kosong dari
+  // server). Hanya akun ber-izin `stok-lihat` yang memintanya, dan server
+  // memeriksa izinnya lagi di `/api/products/stock`.
+  const { customer } = useCustomer();
+  const canViewStock = customer?.canViewStock === true;
+  const [stock, setStock] = useState<ProductStockResponse | null>(null);
+  useEffect(() => {
+    // Tanpa izin, angka lama (kalau ada) tidak pernah ditampilkan:
+    // `shownQuantity` di bawah sudah dijaga `canViewStock`.
+    if (!canViewStock) return;
+    let cancelled = false;
+    void fetchProductStock(id).then((result) => {
+      if (!cancelled) setStock(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewStock, id]);
+
   // Varian yang cocok dengan kombinasi pilihan saat ini — undefined selama
   // belum semua atribut dipilih, atau kombinasinya memang tidak ada.
   const resolvedVariation = hasVariants
@@ -110,6 +130,14 @@ export function ProductInfo({
         }),
       )
     : undefined;
+
+  const shownQuantity = canViewStock
+    ? isSimpleProduct
+      ? (stock?.quantity ?? null)
+      : resolvedVariation
+        ? (stock?.variations[resolvedVariation.id] ?? null)
+        : null
+    : null;
 
   /**
    * Rentang harga varian, hanya selama belum ada varian yang dipilih.
@@ -337,7 +365,9 @@ export function ProductInfo({
         </div>
       )}
 
-      {/* Stock Status */}
+      {/* Stock Status — semua pengunjung (tamu dan pelanggan) melihat "Tersedia"
+          atau "Stok Habis" tanpa angka; hanya akun ber-izin `stok-lihat` yang
+          melihat "Tersedia (Sisa N)". */}
       <div className="order-6 flex items-center gap-2">
         {isSimpleProduct ? (
           stockStatus === "instock" ? (
@@ -345,9 +375,7 @@ export function ProductInfo({
               <Check className="h-4 w-4 text-success" />
               <span className="text-sm font-semibold text-success">
                 Tersedia
-                {stockQuantity != null &&
-                  stockQuantity <= 5 &&
-                  ` (Sisa ${stockQuantity})`}
+                {shownQuantity != null && ` (Sisa ${shownQuantity})`}
               </span>
             </>
           ) : (
@@ -364,9 +392,7 @@ export function ProductInfo({
             <Check className="h-4 w-4 text-success" />
             <span className="text-sm font-semibold text-success">
               Tersedia
-              {resolvedVariation.stock_quantity != null &&
-                resolvedVariation.stock_quantity <= 5 &&
-                ` (Sisa ${resolvedVariation.stock_quantity})`}
+              {shownQuantity != null && ` (Sisa ${shownQuantity})`}
             </span>
           </>
         ) : (
