@@ -478,7 +478,13 @@ export function QuickEditModal({
                         `tautkanKode`, yang memeriksa kodenya ada di Accurate
                         dan belum menambat produk lain. Menyatukannya ke payload
                         produk akan melewati kedua pemeriksaan itu. */}
-                    <AccurateCodeField mode="simpan" wooId={product.id} kode={product.accurateCode} id="qe-accurate-code" />
+                    <AccurateCodeField
+                      mode="simpan"
+                      wooId={product.id}
+                      kode={product.accurateCode}
+                      indukBervarian={isVariable}
+                      id="qe-accurate-code"
+                    />
 
                     <div>
                       <Label className="mb-2">Status</Label>

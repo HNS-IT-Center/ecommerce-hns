@@ -16,6 +16,7 @@
  *   4. SKU yang bukan kode Accurate dilewati tanpa laporan
  *   5. produk yang sudah tertaut tidak disentuh, sekalipun SKU-nya kode lain
  *   6. dijalankan ulang tidak menautkan apa pun lagi dan tidak menambah log
+ *   7. `tautkanKode` menolak induk bervarian, tapi melepas kode darinya tetap boleh
  */
 import { readFileSync } from "node:fs"
 
@@ -36,7 +37,7 @@ if (host !== "127.0.0.1" && host !== "localhost") {
 }
 
 const { getPrisma } = await import("../src/lib/prisma/client.ts")
-const { tautkanDariSku } = await import("../src/lib/api/accurate/price-table.ts")
+const { tautkanDariSku, tautkanKode } = await import("../src/lib/api/accurate/price-table.ts")
 
 const prisma = getPrisma()
 const namaDb = new URL(url.replace(/^mysql:/, "http:")).pathname.slice(1)
@@ -196,6 +197,21 @@ try {
   const h3 = await tautkanDariSku(W + 2, OLEH)
   cek("ulang: tidak ada yang ditautkan lagi", h3.ditautkan.length === 0, JSON.stringify(h3.ditautkan))
   cek("ulang: log tidak bertambah", (await jumlahLog()) === 2, String(await jumlahLog()))
+
+  // --- 7: tautkanKode menolak induk bervarian (20 Okt) ----------------------------
+  const keInduk = await tautkanKode(W + 2, K(2), OLEH)
+  cek(
+    "tautkanKode ke induk bervarian ditolak",
+    !keInduk.ok && keInduk.alasan.includes("induk bervarian"),
+    JSON.stringify(keInduk),
+  )
+  cek("induk tetap tanpa kode", (await kodeDi(W + 2)) === null)
+  cek("penolakan tidak menambah log", (await jumlahLog()) === 2, String(await jumlahLog()))
+
+  // Induk yang TERLANJUR berkode tetap bisa dilepas — itu jalan keluarnya.
+  await prisma.$executeRawUnsafe("UPDATE products SET accurate_code = ? WHERE woo_id = ?", K(2), W + 2)
+  const lepasInduk = await tautkanKode(W + 2, null, OLEH)
+  cek("melepas kode dari induk tetap boleh", lepasInduk.ok && (await kodeDi(W + 2)) === null, JSON.stringify(lepasInduk))
 
   // --- produk tak ada ------------------------------------------------------------
   const h4 = await tautkanDariSku(W + 99, OLEH)

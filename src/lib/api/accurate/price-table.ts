@@ -521,6 +521,24 @@ export async function tautkanKode(
         alasan: `Kode ini sudah menambat produk lain: ${dipakai[0]!.nama}. Lepaskan dari sana dulu.`,
       }
     }
+
+    // Induk produk bervarian tidak ditautkan (20 Oktober 2026). Stoknya dibaca
+    // dari varian, jadi kode di induk membuat stok kasir mendarat di baris yang
+    // tidak dijual — kasus "kode tersangkut di induk" yang berulang kali harus
+    // dibereskan dengan skrip. Penjaganya di sini, bukan cuma di formulir:
+    // dialog penautan di Update Harga juga menawarkan induk. MELEPAS kode dari
+    // induk (`kode: null`) tetap boleh — itu justru jalan keluarnya.
+    const jenis = await prisma.$queryRawUnsafe<{ tipe: string }[]>(
+      "SELECT type AS tipe FROM products WHERE woo_id = ?",
+      wooId,
+    )
+    if (jenis[0]?.tipe === "VARIABLE") {
+      return {
+        ok: false,
+        alasan:
+          "Produk ini induk bervarian — kode Accurate ditautkan ke variannya, bukan ke induk. Isi kodenya di SKU varian yang sesuai.",
+      }
+    }
   }
 
   /**

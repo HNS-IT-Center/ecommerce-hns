@@ -2195,3 +2195,19 @@ Aturan apa yang ditautkan & yang sengaja tidak: docs/13 §5. Uji:
   "Terjadwal". Kolom `trigger` memang teks — nol migrasi.
 
 Rincian & cara memasang cron: docs/13 §10 "Sinkron terjadwal". Env: docs/07 §2.12.
+
+---
+
+## 35. Penautan induk ditolak & izin `/api/admin/products` (20 Oktober 2026)
+
+- **`tautkanKode(wooId, kode)`** menolak `kode` bukan-null untuk produk
+  `VARIABLE` (`ok: false`, alasan mengarah ke SKU varian). `kode: null`
+  (melepas) tetap diterima. Berlaku untuk semua pemanggil: dialog Update Harga,
+  Quick Edit, formulir produk, `tautkanDariSku`, skrip operasi.
+- **`POST` & `PUT /api/admin/products`** kini menuntut izin **`produk: edit`**
+  (`requirePermission`), bukan sekadar sudah masuk. Akun tanpa izin itu dibalas
+  **403** dengan pesan "Akun Anda tidak punya izin…"; yang belum masuk tetap 401.
+  `GET /api/admin/products/variations` (baca saja) tidak berubah.
+- `AccurateCodeField` mendapat prop `indukBervarian`.
+
+Rincian: docs/13 §5 "Induk produk bervarian tidak ditautkan".

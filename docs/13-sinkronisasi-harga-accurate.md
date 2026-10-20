@@ -261,7 +261,32 @@ Impor CSV tidak melewati jalur ini.
 Stok produk yang baru tertaut ikut Accurate **mulai sinkron berikutnya** —
 sampai saat itu ia menampilkan stok yang diisi staff.
 
-Uji: `scripts/uji-tautan-dari-sku.mts` — 27 uji ke database lokal Docker.
+Uji: `scripts/uji-tautan-dari-sku.mts` — 31 uji ke database lokal Docker.
+
+### Induk produk bervarian tidak ditautkan (20 Oktober 2026)
+
+Kode di induk adalah kesalahan yang berulang: 31 induk pada 15 Oktober,
+Lenovo 28696 pada 19 Oktober — yang terakhir karena staff mengisinya di kolom
+Kode Accurate induk, satu-satunya kolom kode yang ada di sana. Stok induk
+dibaca dari variannya, jadi stok kasir mendarat di baris yang tidak dijual dan
+variannya tetap menampilkan status isian staff.
+
+- **`tautkanKode` menolak kode untuk produk `VARIABLE`**, dengan pesan yang
+  mengarahkan ke SKU varian. Penjaganya di lapisan data karena dialog
+  penautan di Update Harga juga menawarkan induk. **Melepas** kode dari induk
+  (`kode: null`) tetap boleh — itu jalan keluarnya, dan skrip
+  `terapkan-usulan-tautan` (pindah induk → varian) bergantung padanya.
+- **Formulir produk & Quick Edit** tidak lagi memberi induk isian Kode Accurate,
+  hanya keterangan "ditautkan per varian lewat SKU". Induk yang TERLANJUR
+  berkode tetap mendapat isiannya, dengan peringatan merah dan petunjuk:
+  kosongkan, lalu Simpan — varian yang SKU-nya sama tertaut sendiri lewat
+  tautan otomatis di atas.
+- Kode yang sempat diketik di produk BARU sebelum tipenya diganti jadi
+  bervarian diabaikan, termasuk galatnya di dialog konfirmasi.
+
+Induk yang masih berkode tidak disentuh perubahan ini; mereka hanya tidak bisa
+ditautkan ULANG ke kode lain. Daftarnya: `products` ber-`type = 'VARIABLE'` dengan
+`accurate_code` terisi.
 
 ### Penambatnya: `products.accurate_code`
 

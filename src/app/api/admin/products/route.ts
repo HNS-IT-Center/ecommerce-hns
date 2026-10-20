@@ -7,7 +7,7 @@ import {
   ProductVariationError,
 } from "@/lib/api/woocommerce/products"
 import { Prisma } from "@prisma/client"
-import { UnauthorizedError, requireAuth } from "@/lib/auth"
+import { ForbiddenError, UnauthorizedError, requirePermission } from "@/lib/auth"
 import { getPrisma } from "@/lib/prisma/client"
 import { buildProductLogEntries, diffProductChanges } from "@/lib/logs/product-log"
 import { tautkanDariSku } from "@/lib/api/accurate/price-table"
@@ -18,11 +18,21 @@ import type { ProductInput } from "@/types/woocommerce"
  * endpoint ini berada di /api dan tidak tersentuh proxy yang menjaga /admin.
  * Tanpa pemeriksaan di bawah, membuat dan menyunting produk tetap terbuka bagi
  * siapa pun yang tahu alamatnya — termasuk mengubah harga seluruh katalog.
+ *
+ * Sejak 20 Oktober 2026 yang diperiksa IZIN `produk: edit`, bukan sekadar
+ * sudah masuk. Sebelumnya akun berizin produk "lihat" — atau tanpa izin produk
+ * sama sekali — tetap bisa membuat dan mengubah produk, termasuk harganya,
+ * lewat permintaan langsung: tombolnya disembunyikan, endpoint-nya tidak.
+ * Server action produk lain (`actions.ts`) sudah menuntut izin yang sama.
  */
 function tolakKalauBelumMasuk(error: unknown) {
-  return error instanceof UnauthorizedError
-    ? NextResponse.json({ error: error.message }, { status: 401 })
-    : null
+  if (error instanceof UnauthorizedError) {
+    return NextResponse.json({ error: error.message }, { status: 401 })
+  }
+  if (error instanceof ForbiddenError) {
+    return NextResponse.json({ error: error.message }, { status: 403 })
+  }
+  return null
 }
 
 /**
@@ -63,7 +73,7 @@ function tolakKalauSkuBentrok(error: unknown) {
 
 export async function POST(request: NextRequest) {
   try {
-    const authUser = await requireAuth()
+    const authUser = await requirePermission("produk", "edit")
     const userName = (authUser && typeof authUser === 'object' && 'name' in authUser) ? String(authUser.name) : "Admin"
     
     const input = (await request.json()) as ProductInput
@@ -100,7 +110,7 @@ export async function POST(request: NextRequest) {
 
 export async function PUT(request: NextRequest) {
   try {
-    const authUser = await requireAuth()
+    const authUser = await requirePermission("produk", "edit")
     const userName = (authUser && typeof authUser === 'object' && 'name' in authUser) ? String(authUser.name) : "Admin"
     
     const body = (await request.json()) as ProductInput & { id: number }

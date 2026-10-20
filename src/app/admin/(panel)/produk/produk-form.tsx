@@ -197,6 +197,9 @@ export function ProdukForm({
   const variationAttributes = watch("variationAttributes") ?? []
   const variations = watch("variations") ?? []
   const isVariableProduct = productType === "variable"
+  // Galat kode Accurate produk baru hanya relevan selama kolomnya tampil —
+  // induk bervarian tidak punya kolom itu (kodenya lewat SKU varian).
+  const galatKodeTampil = !isEdit && !isVariableProduct ? galatKodeAccurate : null
   const existingVariationCount = defaultValues?.variations?.length ?? 0
   const hasExistingVariations = existingVariationCount > 0
   /**
@@ -449,13 +452,18 @@ export function ProdukForm({
       // produk barunya tidak kelihatan di sana.
       const savedId = isEdit ? productId : data.id
 
+      // Kode yang sempat diketik sebelum tipe produk diganti jadi bervarian
+      // tidak dipakai: induk bervarian tidak ditautkan (`tautkanKode` menolak),
+      // kodenya masuk lewat SKU varian.
+      const kodeProdukBaru = !isEdit && values.type !== "variable" ? kodeAccurate : null
+
       // Produk baru yang kolom Kode Accurate-nya diisi ditautkan di bawah ini
       // dengan kode ITU — kalau berbeda dari SKU-nya, pengumuman "tertaut dari
       // SKU" untuk produk itu sudah tidak benar lagi.
       umumkanTautanOtomatis(
         toastManager,
         data.tautanOtomatis,
-        !isEdit && kodeAccurate ? savedId : undefined,
+        kodeProdukBaru ? savedId : undefined,
       )
 
       /**
@@ -475,8 +483,8 @@ export function ProdukForm({
        * padahal tidak — dan itu baru ketahuan jauh kemudian, saat harganya tidak
        * pernah cocok dengan kasir.
        */
-      if (!isEdit && kodeAccurate && savedId) {
-        const hasilTaut = await tautkanKodeAccurateAction({ wooId: savedId, kode: kodeAccurate })
+      if (kodeProdukBaru && savedId) {
+        const hasilTaut = await tautkanKodeAccurateAction({ wooId: savedId, kode: kodeProdukBaru })
         if (hasilTaut.error) {
           toastManager.add({
             title: "Produk dibuat, tapi kode Accurate belum tertaut",
@@ -718,12 +726,14 @@ export function ProdukForm({
                   </div>
                 )}
 
-                {/* Kode Accurate berlaku untuk produknya, bukan per varian —
-                    yang ditambatkan ke kasir adalah satu barang katalog. Sama
-                    seperti di Quick Edit, isian ini di luar react-hook-form:
-                    yang tersimpan bukan bagian dari produk melainkan tautannya,
-                    dan ia menempuh pemeriksaan sendiri. */}
+                {/* Kode Accurate untuk produk biasa. Induk bervarian hanya
+                    mendapat keterangan — kodenya masuk lewat SKU varian (lihat
+                    `indukBervarian`). Sama seperti di Quick Edit, isian ini di
+                    luar react-hook-form: yang tersimpan bukan bagian dari
+                    produk melainkan tautannya, dan ia menempuh pemeriksaan
+                    sendiri. */}
                 <AccurateCodeField
+                  indukBervarian={isVariableProduct}
                   {...(isEdit && productId
                     ? { mode: "simpan" as const, wooId: productId, kode: accurateCode }
                     : {
@@ -1268,7 +1278,7 @@ export function ProdukForm({
               isiannya. Orang yang sudah sampai ke dialog ini sedang menatap
               ringkasan, bukan formulir di belakangnya — dan produk yang jadi
               tanpa tautan tidak mengeluh apa pun sesudahnya. */}
-          {!isEdit && galatKodeAccurate && (
+          {galatKodeTampil && (
             <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs">
               <p className="font-medium text-destructive">Kode Accurate tidak jadi ditautkan</p>
               <p className="mt-1 text-muted-foreground">{galatKodeAccurate}</p>
@@ -1307,7 +1317,7 @@ export function ProdukForm({
 
           <AlertDialogFooter>
             <AlertDialogCancel>
-              {!isEdit && galatKodeAccurate ? "Kembali Betulkan" : "Periksa Lagi"}
+              {galatKodeTampil ? "Kembali Betulkan" : "Periksa Lagi"}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={saveProduct}
@@ -1317,7 +1327,7 @@ export function ProdukForm({
                 ? "Hapus Varian & Simpan"
                 : isEdit
                   ? "Ya, Simpan"
-                  : galatKodeAccurate
+                  : galatKodeTampil
                     ? "Buat Tanpa Tautan"
                     : "Ya, Buat Produk"}
             </AlertDialogAction>

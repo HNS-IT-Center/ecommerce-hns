@@ -31,8 +31,17 @@ import { periksaKodeAccurateAction, tautkanKodeAccurateAction } from "./actions"
  * Satu komponen untuk dua-duanya supaya pesan, tata letak, dan perilaku
  * pemangkasan spasi tidak lama-lama berbeda di dua layar yang staff pakai
  * bergantian.
+ *
+ * **Induk produk bervarian (`indukBervarian`) tidak diberi isian** sejak 20
+ * Oktober 2026 — hanya keterangan bahwa kodenya masuk lewat SKU varian.
+ * Stok induk dibaca dari variannya; kode yang ditautkan ke induk adalah kasus
+ * "kode tersangkut di induk" yang berulang kali harus dibereskan dengan skrip
+ * (31 induk pada 15 Oktober, Lenovo 28696 pada 19 Oktober). `tautkanKode`
+ * menolaknya juga, jadi menyembunyikan isian ini bukan satu-satunya penjaga.
+ * Induk yang TERLANJUR punya kode tetap mendapat isiannya — tanpa itu
+ * kodenya tidak bisa dilepas dari layar ini.
  */
-type AccurateCodeFieldProps =
+type AccurateCodeFieldProps = (
   | {
       mode: "simpan"
       /**
@@ -57,6 +66,7 @@ type AccurateCodeFieldProps =
       onGalat: (pesan: string | null) => void
       id?: string
     }
+) & { indukBervarian?: boolean }
 
 export function AccurateCodeField(props: AccurateCodeFieldProps) {
   const idIsian = props.id ?? "accurate-code"
@@ -64,6 +74,16 @@ export function AccurateCodeField(props: AccurateCodeFieldProps) {
   const [sibuk, setSibuk] = useState(false)
   const [galat, setGalat] = useState<string | null>(null)
   const [pesanBaik, setPesanBaik] = useState<string | null>(null)
+
+  if (props.indukBervarian && !props.kode) {
+    return (
+      <div className="rounded-xl border border-dashed border-input px-3 py-2.5 text-[11px] text-muted-foreground">
+        <span className="font-medium text-foreground">Kode Accurate</span> ditautkan per varian —
+        isi kolom SKU varian dengan kode Accurate-nya, dan varian itu tertaut sendiri saat
+        produk disimpan.
+      </div>
+    )
+  }
 
   async function tangani() {
     const bersih = nilai.trim()
@@ -161,6 +181,11 @@ export function AccurateCodeField(props: AccurateCodeFieldProps) {
       </div>
       {galat ? (
         <p className="mt-1 text-[11px] text-destructive">{galat}</p>
+      ) : props.indukBervarian && !pesanBaik ? (
+        <p className="mt-1 text-[11px] text-destructive">
+          Kode ini menempel di INDUK, padahal stok induk dibaca dari variannya. Kosongkan kolom
+          ini lalu klik Simpan — varian yang SKU-nya sama dengan kode itu tertaut sendiri.
+        </p>
       ) : pesanBaik ? (
         <p className="mt-1 text-[11px] text-success">{pesanBaik}</p>
       ) : (
