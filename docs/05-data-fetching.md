@@ -782,6 +782,14 @@ Aturan yang wajib dijaga:
   menampilkan `−N%` dari `savingsPercent()` di berkas yang sama: hemat ÷ total
   sebelum diskon, dibulatkan KE BAWAH supaya tidak pernah melebihi selisih
   sebenarnya. Keterangan atas dua angka katalog, bukan sumber potongan.
+- **PC Prebuild ikut memakai rumus ini (19 Oktober 2026).** `selectionPrice()`
+  (`features/pc-prebuild/lib/selection.ts`) memanggil `summarizeBuildSavings`
+  dan `savingsPercent` untuk tangga Diskon++ di halaman paket dan PDF-nya.
+  `PrebuildProduct` (`lib/pc-prebuild/resolve.ts`) dan `PrebuildOption`
+  karena itu membawa `regularPrice` — kunci `unstable_cache`-nya naik ke
+  `pc-prebuild-products-v2-…`. Harga yang dijumlahkan tetap `price`; keranjang
+  dan checkout tidak membaca medan baru ini. Rinciannya di
+  `docs/11-pc-prebuild.md` §12.
 
 ---
 

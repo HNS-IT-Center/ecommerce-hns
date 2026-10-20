@@ -1,3 +1,4 @@
+import { savingsPercent, summarizeBuildSavings } from "@/lib/pc-builder/savings"
 import { applicablePrebuildDiscount } from "@/lib/pc-prebuild/discount"
 import type { CartItem } from "@/store/cart"
 
@@ -88,9 +89,79 @@ export function packagePrice(view: Pick<PrebuildView, "discount">, normal: numbe
   return { normal, discount, final: normal - discount }
 }
 
-/** Harga paket menurut pilihan yang sedang aktif. */
-export function selectionPrice(view: PrebuildView, selection: PrebuildSelection): PackagePrice {
-  return packagePrice(view, selectionTotal(view, selection))
+/**
+ * Harga paket menurut pilihan aktif, LENGKAP dengan tangga Diskon++
+ * (docs/11-pc-prebuild.md §12):
+ *
+ *   regularTotal  harga normal komponen (`regularPrice` katalog)
+ *   − itemSavings diskon komponen (`salePrice` katalog)
+ *   = normal      harga setelah diskon komponen
+ *   − discount    potongan paket yang ditetapkan staff
+ *   = final       yang dibayar
+ */
+export type SelectionPrice = PackagePrice & {
+  /** Penjumlahan harga normal komponen, sebelum diskon apa pun. ≥ `normal`. */
+  regularTotal: number
+  /** `regularTotal − normal`. 0 = tidak ada komponen yang sedang obral. */
+  itemSavings: number
+  /** `itemSavings + discount` = `regularTotal − final`. */
+  totalSavings: number
+  /** `totalSavings` terhadap `regularTotal`, dibulatkan ke bawah. Keterangan, bukan potongan. */
+  savingsPercent: number
+}
+
+/**
+ * Harga paket menurut pilihan yang sedang aktif.
+ *
+ * `final` dan `discount` tetap lahir dari `packagePrice()` — tangga di bawahnya
+ * hanya KETERANGAN atas angka katalog yang sama, lewat `summarizeBuildSavings`
+ * milik PC Builder dan quotation, supaya "harga normal" dan "hemat" dihitung
+ * dengan penjaga yang sama di semua tempat (CLAUDE.md §2.7). Halaman paket dan
+ * PDF sama-sama membaca dari sini.
+ */
+export function selectionPrice(view: PrebuildView, selection: PrebuildSelection): SelectionPrice {
+  const harga = packagePrice(view, selectionTotal(view, selection))
+  const hemat = summarizeBuildSavings(
+    chosenComponents(view, selection).map(({ option }) => ({
+      price: option.price,
+      regularPrice: option.regularPrice,
+      quantity: option.quantity,
+    })),
+    harga.final,
+    harga.discount
+  )
+
+  return {
+    ...harga,
+    regularTotal: hemat.totalBeforeDiscount,
+    itemSavings: hemat.savings - hemat.packageDiscount,
+    totalSavings: hemat.savings,
+    savingsPercent: savingsPercent(hemat),
+  }
+}
+
+/**
+ * Kombinasi TERMURAH — yang harganya tampil sebagai "mulai dari" di kartu
+ * paket bercabang.
+ *
+ * Aturannya sama dengan `minTotal` di `resolve.ts`: per barang, pilihan yang
+ * `harga × jumlah`-nya paling kecil. Jadi `selectionTotal(view,
+ * cheapestSelection(view))` selalu sama dengan `view.minTotal`, dan kartu bisa
+ * membaca tangga Diskon++ kombinasi itu lewat `selectionPrice()` yang sama
+ * dengan halaman paket. Seri harga → pilihan yang lebih dulu (bawaan menang).
+ */
+export function cheapestSelection(view: PrebuildView): PrebuildSelection {
+  const selection: PrebuildSelection = {}
+  for (const component of view.components) {
+    let termurah: PrebuildOption | null = null
+    for (const option of component.options) {
+      if (!termurah || option.price * option.quantity < termurah.price * termurah.quantity) {
+        termurah = option
+      }
+    }
+    if (termurah) selection[component.key] = optionId(termurah)
+  }
+  return selection
 }
 
 /**
