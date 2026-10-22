@@ -95,3 +95,21 @@ export const BANK_ACCOUNT_HOLDER = "PT. Sentral Berkat Teknologi"
  * berubah sendiri kalau rekening dipindah, sedangkan ini nama perusahaan.
  */
 export const COMPANY_LEGAL_NAME = "PT. Sentral Berkat Teknologi"
+
+/**
+ * Alamat usaha untuk blok "Alamat" di footer, baris per baris (22 Oktober 2026).
+ *
+ * Teksnya PERSIS seperti yang diberikan pemilik project, termasuk "Kota Batam,,"
+ * dengan koma dua — jangan dirapikan sendiri. Pembagian barisnya juga bagian
+ * dari permintaan, jadi disimpan sebagai daftar baris, bukan satu string yang
+ * dipotong peramban di tempat sembarang.
+ *
+ * Bukan dari tabel `stores`: yang itu alamat tiap cabang (dikelola di
+ * /admin/toko, dipakai /stores dan /contact); yang ini alamat resmi usaha.
+ */
+export const COMPANY_ADDRESS_LINES = [
+  "JL RADEN PATAH KOMP NAGOYA GATEWAY BLOK B NO 1-2",
+  "Desa/Kelurahan Kampung Pelita, Kec. Lubuk Baja",
+  "Kota Batam,, Provinsi Kepulauan Riau 29443",
+  "Indonesia",
+] as const

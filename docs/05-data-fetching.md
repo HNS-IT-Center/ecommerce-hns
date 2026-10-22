@@ -1550,6 +1550,13 @@ ini.
 
 ## 22. `getFooterStores()` — alamat toko di footer (17 September 2026)
 
+> **22 Oktober 2026: footer tidak lagi memakai fungsi ini.** Atas permintaan
+> pemilik project, bagian bawah footer kini menampilkan blok identitas usaha —
+> "Alamat :" (empat baris, `COMPANY_ADDRESS_LINES`), "No Telepon :" dan
+> "Email :" — dari konstanta di `lib/constants/contact.ts`, bukan daftar cabang
+> dari tabel `stores`. `getFooterStores()` dan `FooterStores` dibiarkan ada untuk
+> dikembalikan kalau perlu. Uraian di bawah berlaku untuk masa sebelum tanggal itu.
+
 Footer menampilkan nama, alamat, dan tautan Google Maps tiap cabang. Datanya dari
 tabel `stores` lewat `getFooterStores()` di `lib/api/stores.ts`, bukan konstanta —
 supaya footer, `/stores`, dan `/contact` membaca sumber yang sama dan staff cukup

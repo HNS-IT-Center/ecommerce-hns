@@ -66,9 +66,10 @@ function revalidateStorePages() {
   revalidatePath("/admin/toko");
   revalidatePath("/stores");
   revalidatePath("/contact");
-  // Alamat toko juga tampil di footer SETIAP halaman (`getFooterStores`).
-  // Membuang tag-nya ikut menyegarkan semua halaman ISR yang memakainya —
-  // `revalidatePath` per halaman tidak mungkin didaftar satu per satu.
+  // Tag ini menyegarkan semua pembaca `stores` yang di-cache. Sejak 22 Oktober
+  // 2026 footer TIDAK lagi menampilkan alamat cabang (diganti alamat usaha
+  // tetap, `COMPANY_ADDRESS_LINES`), tapi `getFooterStores` masih memakai tag
+  // ini kalau daftar cabang dikembalikan ke footer.
   revalidateTag(STORES_CACHE_TAG, "max");
 }
 
