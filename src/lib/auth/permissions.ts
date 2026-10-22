@@ -716,6 +716,8 @@ export const ADMIN_PERMISSION_TREE: readonly PermissionNode[] = [
           { key: "stok-accurate", label: "Stok Accurate" },
         ],
       },
+      // Bukan halaman admin — jumlah stok yang tampil di halaman produk TOKO.
+      { key: "stok-lihat", label: "Lihat Jumlah Stok (Toko)" },
     ],
   },
   { key: "pc-builder", label: "PC Builder" },
