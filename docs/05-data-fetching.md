@@ -1550,12 +1550,9 @@ ini.
 
 ## 22. `getFooterStores()` — alamat toko di footer (17 September 2026)
 
-> **22 Oktober 2026: footer tidak lagi memakai fungsi ini.** Atas permintaan
-> pemilik project, bagian bawah footer kini menampilkan blok identitas usaha —
-> "Alamat :" (empat baris, `COMPANY_ADDRESS_LINES`), "No Telepon :" dan
-> "Email :" — dari konstanta di `lib/constants/contact.ts`, bukan daftar cabang
-> dari tabel `stores`. `getFooterStores()` dan `FooterStores` dibiarkan ada untuk
-> dikembalikan kalau perlu. Uraian di bawah berlaku untuk masa sebelum tanggal itu.
+> **22 Oktober 2026: dipakai hanya di footer mode "cabang".** Footer punya dua
+> versi bagian bawah yang dipilih staff di `/admin/toko` — lihat §36. Di mode
+> "identitas" (bawaan) fungsi ini tidak dipanggil sama sekali.
 
 Footer menampilkan nama, alamat, dan tautan Google Maps tiap cabang. Datanya dari
 tabel `stores` lewat `getFooterStores()` di `lib/api/stores.ts`, bukan konstanta —
@@ -2247,3 +2244,26 @@ Tampilan stok di halaman produk dibedakan per izin (Kasir sama seperti pelanggan
 - `stok-lihat` adalah izin satu-tombol (`view-only`) di Manajemen User → Peran, dan opt-in
   untuk staff (owner mendapatkannya lewat fallback).
 - Tamu dan pelanggan biasa tidak memicu permintaan tambahan apa pun.
+
+---
+
+## 36. Mode footer: identitas (verifikasi) ⇄ cabang (22 Oktober 2026)
+
+Bagian bawah footer punya dua versi, dipilih lewat sakelar "Tampilan footer situs"
+di `/admin/toko`:
+
+| Mode | Isi | Sumber |
+|---|---|---|
+| `identitas` (bawaan) | Nama PT, "Alamat :" empat baris, "No Telepon : +62…", "Email :" | `COMPANY_ADDRESS_LINES`, `FOOTER_WHATSAPP_NUMBER`, `CS_EMAIL` di `lib/constants/contact.ts` |
+| `cabang` | Footer sebelum 22 Okt: blok "Kontak" (WA & email) di kolom kanan + daftar cabang | tabel `stores` lewat `getFooterStores()` (§22) |
+
+Format `identitas` diminta pihak luar untuk verifikasi usaha; sesudahnya staff
+mengembalikannya ke `cabang` tanpa deploy.
+
+- **Lapisan data** `lib/api/footer-mode.ts` — `getFooterMode()` (`unstable_cache`,
+  tag `footer-mode`, revalidate 300), `saveFooterMode()`, `isFooterMode()`. Baris
+  `settings.key = 'FOOTER_MODE'`, nilai `{ mode }`. Nol migrasi. Nilai asing atau
+  baris tidak ada → `identitas`.
+- **Server action** `updateFooterModeAction(mode)` di `admin/(panel)/toko/actions.ts`
+  — izin `toko: edit`, lalu `updateTag("footer-mode")` + `revalidatePath("/", "layout")`.
+- Pola sama dengan sakelar tampilan stok (`lib/api/stock-display.ts`).

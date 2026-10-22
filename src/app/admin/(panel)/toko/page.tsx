@@ -2,8 +2,10 @@ import Link from "next/link";
 import { Plus, TriangleAlert } from "lucide-react";
 import { isDatabaseConfigured } from "@/lib/prisma/client";
 import { getActiveStores } from "@/lib/api/stores";
+import { getFooterMode } from "@/lib/api/footer-mode";
 import { requirePageView } from "@/lib/auth";
 import { StoreList } from "./store-list";
+import { FooterModeToggle } from "./footer-mode-toggle";
 
 export default async function AdminTokoPage() {
   await requirePageView("toko");
@@ -20,7 +22,7 @@ export default async function AdminTokoPage() {
   // Lewat `lib/api/stores`, bukan `getPrisma()` langsung. Di situlah saringan
   // `deletedAt` tinggal — satu tempat, sehingga halaman berikutnya yang dibuat
   // orang lain tidak bisa melewatkannya tanpa sengaja.
-  const stores = await getActiveStores();
+  const [stores, footerMode] = await Promise.all([getActiveStores(), getFooterMode()]);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -51,6 +53,12 @@ export default async function AdminTokoPage() {
           </span>
         </p>
       )}
+
+      {/* Di halaman ini karena isinya memilih antara alamat usaha dan daftar
+          cabang yang dikelola di sini juga — lihat `lib/api/footer-mode.ts`. */}
+      <div className="mt-6">
+        <FooterModeToggle mode={footerMode} />
+      </div>
 
       <div className="mt-6">
         <StoreList stores={stores} />

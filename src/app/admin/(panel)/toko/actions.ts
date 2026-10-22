@@ -1,8 +1,14 @@
 "use server";
 
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidatePath, revalidateTag, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
-import { requirePermission } from "@/lib/auth";
+import { ForbiddenError, requirePermission } from "@/lib/auth";
+import {
+  FOOTER_MODE_CACHE_TAG,
+  isFooterMode,
+  saveFooterMode,
+  type FooterMode,
+} from "@/lib/api/footer-mode";
 import {
   StoreOperationError,
   createStore as createStoreRow,
@@ -66,10 +72,10 @@ function revalidateStorePages() {
   revalidatePath("/admin/toko");
   revalidatePath("/stores");
   revalidatePath("/contact");
-  // Tag ini menyegarkan semua pembaca `stores` yang di-cache. Sejak 22 Oktober
-  // 2026 footer TIDAK lagi menampilkan alamat cabang (diganti alamat usaha
-  // tetap, `COMPANY_ADDRESS_LINES`), tapi `getFooterStores` masih memakai tag
-  // ini kalau daftar cabang dikembalikan ke footer.
+  // Alamat toko tampil di footer SETIAP halaman (`getFooterStores`) selama
+  // footer di mode "cabang" (`lib/api/footer-mode.ts`). Membuang tag-nya ikut
+  // menyegarkan semua halaman ISR yang memakainya — `revalidatePath` per
+  // halaman tidak mungkin didaftar satu per satu.
   revalidateTag(STORES_CACHE_TAG, "max");
 }
 
@@ -129,4 +135,40 @@ export async function deleteStore(formData: FormData) {
 
   await softDeleteStore(id, user.id);
   revalidateStorePages();
+}
+
+/**
+ * Sakelar isi bawah footer: blok identitas untuk verifikasi, atau daftar cabang
+ * seperti sebelumnya (`lib/api/footer-mode.ts`).
+ *
+ * Izinnya `toko: edit`, mengikuti halaman tempat tombolnya berada — sama seperti
+ * menambah atau menghapus cabang, yang juga mengubah apa yang tampil di footer.
+ *
+ * `revalidatePath("/", "layout")` wajib, dengan alasan yang sama seperti sakelar
+ * tampilan stok: `updateTag` hanya membuang hasil baca pengaturannya, sedangkan
+ * footer ikut ter-render di setiap halaman.
+ */
+export async function updateFooterModeAction(
+  mode: FooterMode,
+): Promise<{ error: string | null }> {
+  try {
+    await requirePermission("toko", "edit");
+
+    if (!isFooterMode(mode)) {
+      return { error: "Pilihan footer tidak dikenali." };
+    }
+
+    await saveFooterMode(mode);
+
+    updateTag(FOOTER_MODE_CACHE_TAG);
+    revalidatePath("/", "layout");
+    revalidatePath("/admin/toko");
+
+    return { error: null };
+  } catch (error) {
+    if (error instanceof UnauthorizedError || error instanceof ForbiddenError) {
+      return { error: error.message };
+    }
+    return { error: "Gagal menyimpan pengaturan footer." };
+  }
 }

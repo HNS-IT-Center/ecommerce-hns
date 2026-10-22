@@ -8,8 +8,12 @@ import {
   FOOTER_WHATSAPP_NUMBER,
   SOCIAL_LINKS,
 } from "@/lib/constants/contact"
+import { formatWhatsAppNumber } from "@/lib/utils/whatsapp-number"
 import { InstagramIcon, TiktokIcon } from "@/components/icons/social-icons"
 import { FooterPaymentMethods } from "./footer-payment-methods"
+import { FooterStores } from "./footer-stores"
+import { getFooterStores } from "@/lib/api/stores"
+import { getFooterMode } from "@/lib/api/footer-mode"
 import WhatsappIcon from "@/components/icons/whatsapp-icon"
 import { getThemeSettings } from "@/lib/theme/settings"
 import { ChristmasFooterDecor, ChristmasFooterPattern } from "@/components/theme/christmas-decor"
@@ -22,7 +26,10 @@ export async function Footer() {
     "Halo HNS IT Center, saya ingin bertanya."
   )
 
-  const theme = await getThemeSettings()
+  // Dua versi bagian bawah footer, dipilih staff di /admin/toko — lihat
+  // `lib/api/footer-mode.ts`. Daftar cabang hanya dibaca kalau memang tampil.
+  const [theme, footerMode] = await Promise.all([getThemeSettings(), getFooterMode()])
+  const stores = footerMode === "cabang" ? await getFooterStores() : []
   const isChristmas = theme.activeChromeThemeId === "christmas"
 
   // Ditulis "+62…" apa adanya, sesuai format yang diminta untuk blok kontak.
@@ -185,24 +192,42 @@ export async function Footer() {
                 Komponen klien tersendiri supaya `Footer` tetap server
                 component — lihat catatan di berkasnya. */}
             <FooterPaymentMethods />
-            {/* Blok "Kontak" (WA & email) yang dulu di sini pindah ke blok
-                Alamat / No Telepon / Email di bawah — dua-duanya tampil
-                berarti nomor dan email yang sama muncul dua kali. */}
+
+            {/* Mode `identitas` tidak menampilkan blok ini: nomor dan email
+                yang sama sudah ada di blok Alamat / No Telepon / Email di
+                bawah, dan dua-duanya tampil berarti muncul dua kali. */}
+            {footerMode === "cabang" && (
+              <>
+                <h4 className="text-sm font-bold uppercase tracking-wider pt-4">Kontak</h4>
+                <ul className="space-y-1 text-sm text-white/70">
+                  <li>
+                    <a href={waUrl} target="_blank" rel="noopener noreferrer" className="hover:text-white hover:underline">
+                      WA: {formatWhatsAppNumber(FOOTER_WHATSAPP_NUMBER)}
+                    </a>
+                  </li>
+                  <li>
+                    <a href={`mailto:${CS_EMAIL}`} className="hover:text-white hover:underline">
+                      {CS_EMAIL}
+                    </a>
+                  </li>
+                </ul>
+              </>
+            )}
           </div>
 
         </div>
 
-        {/* Blok identitas usaha, PERSIS dalam format yang diminta pemilik
-            project (22 Oktober 2026): label "Alamat :", "No Telepon :",
-            "Email :" dan alamat empat baris — lihat `COMPANY_ADDRESS_LINES`.
-            Baris selebar footer supaya tiap baris alamat tidak terpotong di
-            layar lebar.
-
-            Menggantikan daftar cabang dari tabel `stores` (`FooterStores` +
-            `getFooterStores`). Keduanya sengaja dibiarkan ada: kalau daftar
-            cabang ingin kembali ke footer, cukup render ulang
-            `<FooterStores stores={await getFooterStores()} />` di sini.
-            Cabang tetap tampil lengkap di /stores lewat tautan "Toko Fisik". */}
+        {footerMode === "cabang" ? (
+          // Alamat dari tabel `stores` (dikelola di /admin/toko), bukan ditulis
+          // di sini — supaya footer, /stores, dan /contact tidak bisa berbeda.
+          // Baris selebar footer karena alamatnya terlalu panjang untuk kolom grid.
+          <FooterStores stores={stores} />
+        ) : (
+        /* Blok identitas usaha, PERSIS dalam format yang diminta untuk
+           verifikasi (22 Oktober 2026): label "Alamat :", "No Telepon :",
+           "Email :" dan alamat empat baris — lihat `COMPANY_ADDRESS_LINES`.
+           Baris selebar footer supaya tiap baris alamat tidak terpotong di
+           layar lebar. */
         <div className="mt-4 border-t border-white/15 pt-8 text-sm">
           <p className="font-semibold text-white">{COMPANY_LEGAL_NAME}</p>
           <dl className="mt-4 space-y-4">
@@ -234,6 +259,7 @@ export async function Footer() {
             </div>
           </dl>
         </div>
+        )}
 
         <div className="mt-4 border-t border-white/15 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-white/60">
           <p>© 2026 HNS IT Center — {COMPANY_LEGAL_NAME}. All rights reserved.</p>
