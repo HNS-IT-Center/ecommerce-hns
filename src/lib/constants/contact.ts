@@ -77,3 +77,10 @@ export const BANK_ACCOUNTS = [
  * seseorang yang menyamar sebagai HNS dan menyodorkan rekening pribadi.
  */
 export const BANK_ACCOUNT_HOLDER = "PT. Sentral Berkat Teknologi"
+
+/**
+ * Badan hukum yang menaungi HNS IT Center, untuk footer. Sengaja konstanta
+ * terpisah dari `BANK_ACCOUNT_HOLDER`: yang itu "nama di buku tabungan" dan bisa
+ * berubah sendiri kalau rekening dipindah, sedangkan ini nama perusahaan.
+ */
+export const COMPANY_LEGAL_NAME = "PT. Sentral Berkat Teknologi"

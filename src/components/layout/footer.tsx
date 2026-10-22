@@ -1,7 +1,7 @@
 import Link from "next/link"
 import Image from "next/image"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
-import { CS_EMAIL, SOCIAL_LINKS } from "@/lib/constants/contact"
+import { COMPANY_LEGAL_NAME, CS_EMAIL, SOCIAL_LINKS } from "@/lib/constants/contact"
 import { InstagramIcon, TiktokIcon } from "@/components/icons/social-icons"
 import { FooterPaymentMethods } from "./footer-payment-methods"
 import { FooterStores } from "./footer-stores"
@@ -202,7 +202,7 @@ export async function Footer() {
         <FooterStores stores={stores} />
         
         <div className="mt-4 border-t border-white/15 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-white/60">
-          <p>© 2026 HNS IT Center. All rights reserved.</p>
+          <p>© 2026 HNS IT Center — {COMPANY_LEGAL_NAME}. All rights reserved.</p>
           <p>Batam - Kepulauan Riau - Indonesia</p>
         </div>
       </div>
