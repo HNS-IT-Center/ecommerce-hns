@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Check, Copy, MapPin } from "lucide-react"
 
 import type { FooterStore } from "@/lib/api/stores"
+import { COMPANY_LEGAL_NAME } from "@/lib/constants/contact"
 import { useToastManager } from "@/components/ui/toast"
 import {
   Tooltip,
@@ -61,6 +62,9 @@ export function FooterStores({ stores }: { stores: FooterStore[] }) {
     <TooltipProvider delay={200}>
       <div className="mt-4 border-t border-white/15 pt-8">
         <h4 className="text-sm font-bold uppercase tracking-wider">Toko Kami</h4>
+        {/* Badan hukum di atas alamat cabang: pelanggan yang membaca alamat
+            sekaligus tahu PT mana yang menaunginya. */}
+        <p className="mt-2 text-sm font-semibold text-white">{COMPANY_LEGAL_NAME}</p>
         <ul className="mt-4 grid gap-6 md:grid-cols-2 lg:gap-12">
           {stores.map((store) => {
             const copied = copiedId === store.id
