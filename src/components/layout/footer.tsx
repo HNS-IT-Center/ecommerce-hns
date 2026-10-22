@@ -1,20 +1,26 @@
 import Link from "next/link"
 import Image from "next/image"
 import { buildWhatsAppUrl } from "@/lib/api/whatsapp"
-import { COMPANY_LEGAL_NAME, CS_EMAIL, SOCIAL_LINKS } from "@/lib/constants/contact"
+import {
+  COMPANY_LEGAL_NAME,
+  CS_EMAIL,
+  FOOTER_WHATSAPP_NUMBER,
+  SOCIAL_LINKS,
+} from "@/lib/constants/contact"
+import { formatWhatsAppNumber } from "@/lib/utils/whatsapp-number"
 import { InstagramIcon, TiktokIcon } from "@/components/icons/social-icons"
 import { FooterPaymentMethods } from "./footer-payment-methods"
 import { FooterStores } from "./footer-stores"
 import { getFooterStores } from "@/lib/api/stores"
 import WhatsappIcon from "@/components/icons/whatsapp-icon"
-import { env } from "@/config/env"
 import { getThemeSettings } from "@/lib/theme/settings"
 import { ChristmasFooterDecor, ChristmasFooterPattern } from "@/components/theme/christmas-decor"
 import { InstallAppButton } from "@/features/pwa/components/install-app-button"
 
 export async function Footer() {
+  // Nomor footer sengaja BUKAN nomor CS dari env — lihat `FOOTER_WHATSAPP_NUMBER`.
   const waUrl = buildWhatsAppUrl(
-    env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER,
+    FOOTER_WHATSAPP_NUMBER,
     "Halo HNS IT Center, saya ingin bertanya."
   )
 
@@ -183,7 +189,7 @@ export async function Footer() {
             <ul className="space-y-1 text-sm text-white/70">
               <li>
                 <a href={waUrl} target="_blank" rel="noopener noreferrer" className="hover:text-white hover:underline">
-                  WA: {env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER}
+                  WA: {formatWhatsAppNumber(FOOTER_WHATSAPP_NUMBER)}
                 </a>
               </li>
               <li>

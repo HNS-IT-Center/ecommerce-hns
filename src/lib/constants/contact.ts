@@ -41,6 +41,17 @@ export const CS_EMAIL = "support@hnsitcenter.id"
  * Menyalinnya ke sini akan membuat nomor yang sama punya dua sumber, dan yang
  * satu pasti tertinggal saat nomornya berganti.
  */
+/**
+ * Nomor WhatsApp yang dipajang di FOOTER saja, format internasional tanpa `+`.
+ *
+ * SENGAJA terpisah dari `NEXT_PUBLIC_WHATSAPP_CS_NUMBER` — dan itu pengecualian
+ * dari catatan di atas, bukan kelalaian. Nomor CS di env dipakai di semua tombol
+ * WhatsApp, checkout, dan dokumen cetak; nomor ini hanya untuk footer yang
+ * tampil di setiap halaman, supaya orang yang sekadar bertanya tidak
+ * membanjiri nomor CS. Jangan dipakai di tempat lain.
+ */
+export const FOOTER_WHATSAPP_NUMBER = "6282376066788"
+
 export const SOCIAL_LINKS = {
   instagram: "https://www.instagram.com/hns.itcenter/",
   tiktok: "https://www.tiktok.com/@hns.itcenter",
