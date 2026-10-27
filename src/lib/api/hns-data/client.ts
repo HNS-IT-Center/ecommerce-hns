@@ -40,6 +40,41 @@ export type HnsItem = {
   changedAt: string | null
 }
 
+/**
+ * Gudang GRIYA. Dokumentasi API Data Accurate: stok Griya JANGAN PERNAH ditarik,
+ * disimpan, atau ditampilkan — Griya toko khusus yang datanya hanya untuk orang
+ * yang diberi akses Griya. Tidak dihitung sebagai stok web saja tidak cukup.
+ */
+export const GUDANG_GRIYA = 350
+
+/**
+ * Buang stok Griya dari satu barang. Dipanggil di SETIAP pintu masuk data —
+ * `fetchAllHnsItems` dan webhook — sebelum barang menyentuh apa pun.
+ *
+ * Penjaga utamanya pengaturan client di Data Accurate (gudang tertentu tanpa
+ * Griya, 26 Oktober 2026; sebelumnya "semua gudang"). Ini cadangan kalau
+ * pengaturan itu suatu hari kembali ke semua gudang: dalam keadaan itu
+ * `stock.total` dan `availableToSell` ikut menghitung Griya. `total` dikurangi
+ * baris yang dibuang; `availableToSell` dihitung Accurate dan tidak bisa
+ * dikoreksi di sini, jadi dikosongkan.
+ */
+export function buangStokGriya(item: HnsItem): HnsItem {
+  const stock = item.stock
+  const gudang = stock?.warehouses ?? []
+  if (!stock || !gudang.some((w) => w.id === GUDANG_GRIYA)) return item
+  const dibuang = gudang
+    .filter((w) => w.id === GUDANG_GRIYA && w.countsInTotal)
+    .reduce((total, w) => total + (Number.isFinite(w.quantity) ? w.quantity : 0), 0)
+  return {
+    ...item,
+    stock: {
+      total: stock.total - dibuang,
+      availableToSell: null,
+      warehouses: gudang.filter((w) => w.id !== GUDANG_GRIYA),
+    },
+  }
+}
+
 export class HnsApiError extends Error {}
 
 function konfigurasi(): { base: string; token: string } {
@@ -113,7 +148,7 @@ export async function fetchAllHnsItems(): Promise<{ items: HnsItem[]; lastSyncAt
       data: HnsItem[]
       meta: { hasMore: boolean; lastSyncAt: string | null }
     }>(`/items?status=all&limit=500&page=${page}`)
-    items.push(...data)
+    items.push(...data.map(buangStokGriya))
     lastSyncAt ??= meta.lastSyncAt
     if (!meta.hasMore) break
   }

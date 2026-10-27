@@ -10,6 +10,7 @@
  *     scripts/uji-sinkron-stok-accurate.mts
  */
 import { config } from "dotenv"
+import type { HnsItem } from "../src/lib/api/hns-data/client"
 config({ path: ".env.local", quiet: true })
 
 if (!/127\.0\.0\.1|localhost/.test(process.env.DATABASE_URL ?? "")) {
@@ -19,7 +20,7 @@ if (!/127\.0\.0\.1|localhost/.test(process.env.DATABASE_URL ?? "")) {
 
 const { getPrisma } = await import("../src/lib/prisma/client")
 const S = await import("../src/lib/api/accurate/stock-sync")
-const { fetchAllHnsItems } = await import("../src/lib/api/hns-data/client")
+const { fetchAllHnsItems, buangStokGriya, GUDANG_GRIYA } = await import("../src/lib/api/hns-data/client")
 
 let gagal = 0
 function cek(nama: string, dapat: unknown, harap: unknown) {
@@ -30,6 +31,31 @@ function cek(nama: string, dapat: unknown, harap: unknown) {
 }
 const prisma = getPrisma()
 
+// buangStokGriya dengan barang buatan — aturannya sendiri, lepas dari isi API hari ini.
+const buatan: HnsItem = {
+  id: 1, sku: "ZZ-TEST", name: "ZZ TEST", barcode: null, type: "INVENTORY", typeName: null, unit: null,
+  category: null, brand: null, status: "active", manageSerialNumber: false, accurateUpdatedAt: null, changedAt: null,
+  stock: {
+    total: 10,
+    availableToSell: 9,
+    warehouses: [
+      { id: 50, name: "GUDANG UTAMA", quantity: 4, countsInTotal: true },
+      { id: GUDANG_GRIYA, name: "GRIYA", quantity: 6, countsInTotal: true },
+    ],
+  },
+}
+const dibersihkan = buangStokGriya(buatan)
+cek("buangStokGriya: baris GRIYA dibuang", dibersihkan.stock!.warehouses.map((w) => w.id), [50])
+cek("buangStokGriya: total dikurangi stok GRIYA", dibersihkan.stock!.total, 4)
+cek("buangStokGriya: availableToSell dikosongkan", dibersihkan.stock!.availableToSell, null)
+const griyaDiLuarTotal = buangStokGriya({
+  ...buatan,
+  stock: { ...buatan.stock!, warehouses: [{ ...buatan.stock!.warehouses[1], countsInTotal: false }] },
+})
+cek("buangStokGriya: GRIYA di luar total tidak mengurangi total", griyaDiLuarTotal.stock!.total, 10)
+const tanpaGriya: HnsItem = { ...buatan, stock: { ...buatan.stock!, warehouses: [buatan.stock!.warehouses[0]] } }
+cek("buangStokGriya: barang tanpa GRIYA dikembalikan apa adanya", buangStokGriya(tanpaGriya) === tanpaGriya, true)
+
 // Kolom HPP TIDAK boleh ada di tabel products.
 const kolom = await prisma.$queryRaw<{ Field: string }[]>`SHOW COLUMNS FROM products`
 cek("products tidak punya kolom HPP/cost", kolom.some((k) => /cost|hpp|modal/i.test(k.Field)), false)
@@ -37,6 +63,37 @@ cek("products tidak punya kolom HPP/cost", kolom.some((k) => /cost|hpp|modal/i.t
 const t0 = Date.now()
 const { items, lastSyncAt } = await fetchAllHnsItems()
 console.log(`INFO   ${items.length} barang ditarik dari API dalam ${((Date.now() - t0) / 1000).toFixed(1)} dtk`)
+
+// GRIYA (id 350) tidak boleh sampai ke aplikasi sama sekali (docs/13 §10, 26 Okt 2026).
+cek("tarikan API tanpa baris GRIYA", items.some((i) => (i.stock?.warehouses ?? []).some((w) => w.id === GUDANG_GRIYA)), false)
+const hitungSalinanGriya = async () => {
+  const [row] = await prisma.$queryRaw<{ n: bigint | number }[]>`
+    SELECT COUNT(*) AS n FROM accurate_items
+    WHERE JSON_CONTAINS(stock_by_warehouse, JSON_OBJECT('id', ${GUDANG_GRIYA}))`
+  return Number(row?.n ?? 0)
+}
+const salinanGriyaSebelum = await hitungSalinanGriya()
+console.log(`INFO   salinan accurate_items bergudang GRIYA sebelum sinkron: ${salinanGriyaSebelum}`)
+
+// Salinan LAMA yang masih memuat GRIYA (disalin sebelum penyaring ada): kartu
+// admin tetap tidak boleh menampilkannya.
+const [lama] = await prisma.$queryRaw<{ woo_id: number | bigint }[]>`
+  SELECT COALESCE(induk.woo_id, p.woo_id) AS woo_id
+  FROM accurate_items ai
+  JOIN products p ON p.accurate_code = ai.code
+  LEFT JOIN products induk ON induk.id = p.parent_id
+  WHERE JSON_CONTAINS(ai.stock_by_warehouse, JSON_OBJECT('id', ${GUDANG_GRIYA}))
+  LIMIT 1`
+if (lama) {
+  const info = await S.getAccurateInfoForProduct(Number(lama.woo_id), true)
+  cek(
+    "salinan lama bergudang GRIYA: kartu admin tidak menampilkannya",
+    [info.some((r) => r.info !== null), info.some((r) => (r.info?.warehouses ?? []).some((g) => /griya/i.test(g.name)))],
+    [true, false],
+  )
+} else {
+  console.log("INFO   tidak ada salinan lama bergudang GRIYA yang tertaut — cek kartu admin dilewati")
+}
 
 // Keadaan SEBELUM: produk tertaut yang belum pernah disinkron dan stok web-nya 0.
 const kodeNol = items
@@ -55,6 +112,9 @@ cek("sinkron pertama ok", r1.ok && !("duplicate" in r1), true)
 if (!r1.ok || "duplicate" in r1) process.exit(1)
 cek("ada produk yang diperbarui", r1.productsUpdated > 0, true)
 cek("salinan accurate_items = jumlah barang API", await prisma.accurateItem.count(), items.length)
+// Sinkron penuh menimpa `stock_by_warehouse` semua barang — inilah yang
+// membersihkan salinan lama di produksi tanpa skrip terpisah.
+cek("sesudah sinkron penuh: tidak ada salinan bergudang GRIYA", await hitungSalinanGriya(), 0)
 
 // Satu produk berstok: stok web = jumlah gudang web (GUDANG_STOK_WEB), status Tersedia, bertanda sinkron.
 const contoh = items.find((i) => i.type === "INVENTORY" && S.hitungStokWeb(i) >= 1 && i.stock!.warehouses.some((w) => !S.GUDANG_STOK_WEB.has(w.id)))

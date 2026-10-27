@@ -4,7 +4,7 @@ import { Prisma, StockStatus } from "@prisma/client"
 
 import { getPrisma } from "@/lib/prisma/client"
 import { invalidateProductCaches } from "@/lib/api/woocommerce/products"
-import { fetchAllHnsItems, type HnsItem } from "@/lib/api/hns-data/client"
+import { fetchAllHnsItems, GUDANG_GRIYA, type HnsItem } from "@/lib/api/hns-data/client"
 
 /**
  * Sinkron STOK & HPP dari API Data Accurate ke katalog web (docs/13 §10).
@@ -28,6 +28,8 @@ import { fetchAllHnsItems, type HnsItem } from "@/lib/api/hns-data/client"
  * 2026 — bukan gudang toko; GRIYA memegang ±775 unit yang tidak dijual lewat
  * web, BATAM bersaldo minus yang ikut mengurangi stok), HADIAH, INVENTARIS
  * NAGOYA GATEWAY, GUDANG PAMERAN, OTW, KLAIM GARANSI, Transit.
+ * Sejak 26 Oktober 2026 GRIYA bahkan tidak sampai ke berkas ini — barisnya
+ * dibuang di pintu masuk (`buangStokGriya`). JANGAN tambahkan id 350 ke sini.
  * Mengubah daftar ini mengubah stok yang dilihat pelanggan; catat di docs/13 §10.
  */
 export const GUDANG_STOK_WEB: ReadonlyMap<number, string> = new Map([
@@ -530,8 +532,13 @@ export async function getAccurateInfoForProduct(
   return baris.map((b) => {
     const item = perKode.get(b.code.trim().toUpperCase())
     if (!item) return { ...b, info: null }
+    // GRIYA disaring juga di sini, bukan hanya di pintu masuk: baris yang
+    // disalin sebelum 26 Oktober 2026 masih memuatnya sampai sinkron penuh
+    // berikutnya menimpanya, dan kartu ini dilihat semua pemegang izin `produk`.
     const gudang = Array.isArray(item.stockByWarehouse)
-      ? (item.stockByWarehouse as { id: number; name: string; quantity: number }[])
+      ? (item.stockByWarehouse as { id: number; name: string; quantity: number }[]).filter(
+          (g) => g.id !== GUDANG_GRIYA,
+        )
       : []
     return {
       ...b,

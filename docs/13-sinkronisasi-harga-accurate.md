@@ -596,7 +596,7 @@ salinan impor `accurate_products`. Harga jual **tidak disentuh** (§1).
 |---|---|
 | Yang disinkron | **Semua produk tertaut**, termasuk yang stoknya 0 (jadi Habis) — 15 Okt 2026, persiapan beralih dari mode tampilan "Selalu tersedia" ke "Stok asli". Sebelumnya (9 Okt, "prioritas yang ada stok") tertaut + stok 0 + belum pernah disinkron dilewati, sehingga ±1.400 produk kosong tetap berstatus Tersedia warisan WooCommerce — tidak terlihat selama mode "Selalu tersedia", tapi akan bisa dipesan begitu mode "Stok asli" dipakai. Kolom `products_skipped_zero` di riwayat sinkron selalu 0 sejak itu |
 | Barang berstok tanpa produk web (±1.400 di produksi) | **Didaftar** untuk ditautkan staff (tab Stok Accurate), tidak dibuatkan produk otomatis |
-| Gudang stok web | **GUDANG UTAMA, GATEWAY, NAGOYAHILL + GUDANG DISPLAY GATEWAY & NAGOYAHILL** (15 Okt 2026, permintaan pemilik — gudang toko yang melayani pembeli). Tidak: GUDANG BATAM, GRIYA, HADIAH, INVENTARIS, PAMERAN, OTW, KLAIM GARANSI, Transit. Sampai 15 Okt GUDANG BATAM & GRIYA ikut terhitung (keputusan 9 Okt): GRIYA memegang ±775 unit yang tidak dijual lewat web — 25 produk tertaut stoknya turun, 9 di antaranya jadi habis (monitor Skyworth, beberapa laptop ASUS/Lenovo); BATAM bersaldo minus (−5) yang ikut mengurangi stok web. Berlaku pada sinkron pertama sesudah deploy |
+| Gudang stok web | **GUDANG UTAMA, GATEWAY, NAGOYAHILL + GUDANG DISPLAY GATEWAY & NAGOYAHILL** (15 Okt 2026, permintaan pemilik — gudang toko yang melayani pembeli). Tidak: GUDANG BATAM, GRIYA, HADIAH, INVENTARIS, PAMERAN, OTW, KLAIM GARANSI, Transit. Sampai 15 Okt GUDANG BATAM & GRIYA ikut terhitung (keputusan 9 Okt): GRIYA memegang ±775 unit yang tidak dijual lewat web — 25 produk tertaut stoknya turun, 9 di antaranya jadi habis (monitor Skyworth, beberapa laptop ASUS/Lenovo); BATAM bersaldo minus (−5) yang ikut mengurangi stok web. Berlaku pada sinkron pertama sesudah deploy. Sejak 26 Okt 2026 GRIYA tidak ditarik, disimpan, atau ditampilkan sama sekali — lihat bagian GRIYA di bawah |
 | HPP | Dibawa, **hanya untuk pemegang `harga-modal`**. PIC & CS dicabut izinnya (dilakukan pemilik project di Manajemen User) |
 | Kode yang boleh ditautkan | **Sheet ATAU API** (15 Okt 2026). `namaBarangAccurate()` di `price-table.ts` mengakui kode dari `accurate_products` (Sheet) lalu `accurate_items` (salinan API, kecuali status `deleted`). Dipakai `tautkanKode`, `periksaKode`, `abaikanKode(Massal)`. Sebelumnya hanya Sheet, dan Sheet diisi tangan sehingga tertinggal: 14 Okt sepuluh barang berkode 2610… berstok tertahan "Kode Accurate tidak ditemukan". Kode yang hanya ada di API ikut sinkron stok, tapi baris harganya baru muncul di tabel Update Harga setelah Sheet menyusul |
 | Tab Stok Accurate | **Izin sendiri `stok-accurate`** (14 Okt 2026, permintaan pemilik): Lihat = tab muncul, Edit = boleh menekan Sinkron. Bawaan hanya owner & master; peran lain harus diberi di Manajemen User → Peran (di bawah Update Harga). Tanpa izin, tab hilang dan `?tab=stok` jatuh ke Daftar Harga |
@@ -643,6 +643,45 @@ disembunyikan di tampilan). Tab Stok Accurate sengaja tidak menampilkan HPP.
 `accurate_products.CP` (modal yang disunting staff di Daftar Harga). Keduanya
 tidak saling menimpa.
 
+### GRIYA (id 350) tidak pernah ditarik, disimpan, atau ditampilkan (26 Oktober 2026)
+
+Dokumentasi API Data Accurate (`Dokumentasi-API-Barang.pdf`, dibuat sentral 26
+Okt 2026): **jangan pernah menarik atau menampilkan stok Griya** — Griya toko
+khusus yang datanya hanya boleh dilihat orang yang diberi akses Griya. Tidak
+menghitungnya sebagai stok web (15 Okt) ternyata belum cukup. Audit 26 Okt
+menemukan:
+
+- client "HNS IT Center (Ecommerce)" diatur **semua gudang** (`GET /status` →
+  `warehouseIds: null`), jadi setiap sinkron ikut menarik Griya. Langkah 2
+  "Yang harus disiapkan di produksi" di bawah sampai tanggal ini memang
+  menyuruh "semua gudang";
+- `accurate_items.stock_by_warehouse` menyimpan baris Griya (43 dari 7.458
+  barang di salinan lokal), dan `stock_total` — dari `stock.total` — ikut
+  menghitungnya;
+- kartu "Data Accurate" di halaman edit produk menampilkan "GRIYA: n" (dicoret,
+  tapi angkanya terlihat) ke semua pemegang izin `produk`.
+
+Dua lapis penjaga (keputusan pemilik project: opsi A):
+
+| Lapis | Di mana | Isi |
+|---|---|---|
+| 1 — sumber | data.hnsitcenter.id → API & Integrasi → client ecommerce | Stok: **gudang tertentu = semua kecuali GRIYA**. Menutup tarikan API dan webhook sekaligus, karena isi webhook mengikuti izin client. Gudang non-web lain (BATAM, PAMERAN, …) sengaja tetap ikut supaya kartu admin bisa menampilkannya dicoret sebagai keterangan |
+| 2 — cadangan | `buangStokGriya()` di `lib/api/hns-data/client.ts` | Dipanggil di `fetchAllHnsItems` dan webhook. Membuang baris id 350, mengurangi `stock.total` dengan stok Griya, mengosongkan `availableToSell` (dihitung Accurate, tidak bisa dikoreksi). Bekerja kalau pengaturan client suatu hari kembali ke "semua gudang" |
+
+`getAccurateInfoForProduct` juga menyaring id 350 dari salinan yang sudah
+tersimpan: baris yang disalin sebelum tanggal ini masih memuatnya sampai sinkron
+penuh berikutnya. Sinkron penuh (`status=all`, `ON DUPLICATE KEY UPDATE`)
+menimpa `stock_by_warehouse` semua barang, jadi pembersihan produksi cukup satu
+kali "Sinkron Stok Sekarang" sesudah deploy. Periksa:
+
+```sql
+SELECT COUNT(*) FROM accurate_items
+WHERE JSON_CONTAINS(stock_by_warehouse, JSON_OBJECT('id', 350));  -- harus 0
+```
+
+Jangan menambahkan 350 ke `GUDANG_STOK_WEB`. Skrip laptop yang menarik
+`/items` sendiri (di luar `fetchAllHnsItems`) wajib membuang 350 juga.
+
 ### Webhook gagal tidak boleh hilang
 
 Kiriman yang gagal diproses melepas `delivery_id`-nya, supaya kiriman ULANG
@@ -652,7 +691,9 @@ Kiriman yang berhasil lalu datang lagi (balasan kami terlambat) diabaikan.
 ### Yang harus disiapkan di produksi
 
 1. hPanel → Environment variables: `HNS_API_URL`, `HNS_API_TOKEN` (docs/07 §2.12).
-2. Client API di Data Accurate: izin **Stok + HPP**, semua gudang; harga jual OFF.
+2. Client API di Data Accurate: izin **Stok + HPP**, gudang tertentu = **semua
+   kecuali GRIYA (id 350)**; harga jual OFF. JANGAN pilih "semua gudang" — lihat
+   bagian GRIYA di atas.
 3. Webhook (opsional tapi disarankan): URL `https://hnsitcenter.id/api/hns-webhook`,
    lalu `HNS_WEBHOOK_SECRET` di hPanel. Tanpa secret semua kiriman ditolak 401.
 4. Tekan "Sinkron Stok Sekarang" sekali untuk tarikan pertama — client baru
@@ -710,5 +751,6 @@ lokal).
 
 ### Uji
 
-`scripts/uji-sinkron-stok-accurate.mts` (22 pemeriksaan, API sungguhan, tulis
+`scripts/uji-sinkron-stok-accurate.mts` (34 pemeriksaan termasuk GRIYA, API sungguhan, tulis
 HANYA ke database lokal). Pakai `scripts/tsconfig.uji-next.json`.
+

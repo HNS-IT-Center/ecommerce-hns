@@ -1,7 +1,7 @@
 import crypto from "node:crypto"
 
 import { env } from "@/config/env"
-import type { HnsItem } from "@/lib/api/hns-data/client"
+import { buangStokGriya, type HnsItem } from "@/lib/api/hns-data/client"
 import { syncAccurateItems } from "@/lib/api/accurate/stock-sync"
 
 /**
@@ -58,7 +58,9 @@ export async function POST(req: Request) {
   }
 
   try {
-    const hasil = await syncAccurateItems(payload.items, {
+    // Stok Griya dibuang di sini juga — kiriman webhook tidak lewat
+    // `fetchAllHnsItems`, dan isinya mengikuti izin gudang client yang sama.
+    const hasil = await syncAccurateItems(payload.items.map(buangStokGriya), {
       trigger: "webhook",
       deliveryId: (payload.deliveryId ?? req.headers.get("x-hns-delivery") ?? "").slice(0, 64) || null,
       sourceSyncedAt: payload.lastSyncAt ?? null,

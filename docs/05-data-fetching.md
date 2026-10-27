@@ -2267,3 +2267,21 @@ mengembalikannya ke `cabang` tanpa deploy.
 - **Server action** `updateFooterModeAction(mode)` di `admin/(panel)/toko/actions.ts`
   — izin `toko: edit`, lalu `updateTag("footer-mode")` + `revalidatePath("/", "layout")`.
 - Pola sama dengan sakelar tampilan stok (`lib/api/stock-display.ts`).
+
+---
+
+## 37. Stok GRIYA dibuang di pintu masuk Data Accurate (26 Oktober 2026)
+
+- **Fungsi baru** `buangStokGriya(item)` dan konstanta `GUDANG_GRIYA` (350) di
+  `lib/api/hns-data/client.ts`. `fetchAllHnsItems()` kini mengembalikan barang
+  tanpa baris GRIYA; bila baris itu ada, `stock.total` dikurangi stok Griya dan
+  `stock.availableToSell` jadi `null`.
+- **`POST /api/hns-webhook`** menerapkan `buangStokGriya` ke `items` sebelum
+  `syncAccurateItems`.
+- **`getAccurateInfoForProduct`** tidak pernah mengembalikan gudang GRIYA,
+  termasuk dari salinan yang disimpan sebelum tanggal ini.
+- Bentuk balasan semua fungsi tidak berubah.
+
+Rincian & alasannya: docs/13 §10 bagian GRIYA. Uji:
+`scripts/uji-sinkron-stok-accurate.mts`.
+

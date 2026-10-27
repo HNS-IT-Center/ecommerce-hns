@@ -463,8 +463,9 @@ ganti nilainya (di Variabel environment hPanel DAN di perintah cron), lalu
 deploy ulang supaya nilai barunya terbaca. Tanpa nilai ini endpoint menolak
 semua panggilan (401) dan sinkron hanya bisa lewat tombol.
 
-Izin client yang dibutuhkan: **Stok** dan **HPP**, semua gudang. Harga jual
-TIDAK — web adalah sumber harga (docs/13 §1). Rincian alur: docs/13 §10.
+Izin client yang dibutuhkan: **Stok** dan **HPP**, gudang tertentu = **semua
+kecuali GRIYA (id 350)** — jangan "semua gudang" (docs/13 §10, bagian GRIYA).
+Harga jual TIDAK — web adalah sumber harga (docs/13 §1). Rincian alur: docs/13 §10.
 
 **Opsional, gagalnya sopan.** Tanpa token, tombol "Sinkron Stok Sekarang" di
 `/admin/harga-accurate?tab=stok` menolak dengan pesan, dan webhook membalas 503.
