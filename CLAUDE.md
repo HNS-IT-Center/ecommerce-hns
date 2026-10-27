@@ -150,6 +150,7 @@ Sebelum bekerja di area tertentu, baca dokumen terkait di folder `docs/`:
 | [`docs/15-seo.md`](./docs/15-seo.md) | Menyentuh `metadata` di layout/halaman, `sitemap.ts`, `robots.ts`, ikon situs, atau structured data. **`alternates.canonical` dilarang di layout** — ia diwarisi semua halaman.
 | [`docs/16-database-lokal-docker.md`](./docs/16-database-lokal-docker.md) | Menguji perubahan yang menyentuh database, menjalankan skrip tulis, atau mencoba migrasi. **Uji di database lokal Docker dulu, jangan di produksi** — `DATABASE_URL` menunjuk lokal, produksi disimpan sebagai `PROD_DATABASE_URL`. |
 | [`docs/17-quotation-sales.md`](./docs/17-quotation-sales.md) | Menyentuh quotation rakitan PC: `/build-pc/print`, `/q/[token]`, `/verify`, `/profile/quotation`, `/admin/quotation`, atau tabel `pc_build_quotes` dan turunannya. **Halaman cetak DILARANG menulis** — nomor hanya terbit lewat server action, dan kasir tidak pernah melihat nomor HP atau catatan internal pelanggan. **Tautan publik `/q` memakai token acak, bukan kode** — kode quotation berurutan dan bisa ditebak tetangganya. |
+| [`docs/18-kabar-tautan-web-data.md`](./docs/18-kabar-tautan-web-data.md) | Menyentuh kabar tautan & harga web ke Data Accurate: `lib/api/hns-data/kabar-tautan.ts`, pemicunya di `tautkanKode`/`updateProduct`/`deleteProduct`, atau `HNS_WEB_LINKS_ENABLED`. **Kode Accurate untuk produk yang dihapus harus diambil SEBELUM penghapusan** — sesudahnya kode itu tidak ada di mana pun dan web Data tidak pernah tahu ia lepas. |
 
 ---
 

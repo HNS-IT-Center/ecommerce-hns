@@ -2285,3 +2285,32 @@ mengembalikannya ke `cabang` tanpa deploy.
 Rincian & alasannya: docs/13 §10 bagian GRIYA. Uji:
 `scripts/uji-sinkron-stok-accurate.mts`.
 
+---
+
+## 38. Kabar tautan & harga web ke Data Accurate (26 Oktober 2026)
+
+Arah keluar pertama web → data.hnsitcenter.id: `POST {HNS_API_URL}/web-links`
+dengan token client yang sama (`Authorization: Bearer`). Alur & kontrak
+lengkap: docs/18-kabar-tautan-web-data.md; keputusan: docs/13 §11.
+
+- **Modul baru** `lib/api/hns-data/kabar-tautan.ts` (server-only):
+  `kabariWebData(kode[])` (sesudah balasan lewat `after`, digabung per proses,
+  tidak pernah melempar), `kirimKeadaan(kode[])`, `kirimSalinanTautan()`,
+  `kirimPing()`, `kodeAccurateProdukDanVarian(produkIdInternal)`,
+  `periksaTujuan()`, `tujuanKirim()`; jalur baca tanpa kirim
+  `keadaanTautan(kode[])` dan `semuaKeadaanTautan()` (dipakai skrip
+  `kirim-kabar-web-data.mts --lihat`).
+- **Pemicu** dipasang di lapisan data, bukan di pemanggil: `tautkanKode`,
+  `abaikanKode(Massal)`, `batalkanAbaikan(Massal)` (`price-table.ts`),
+  `updateProduct` & `deleteProduct` (`products.ts` — kode diambil SEBELUM
+  transaksi, karena varian yang terhapus membawa kodenya pergi).
+- **`POST /api/cron/sinkron-stok`** kini juga mengirim salinan utuh; body
+  balasannya bertambah `kabarWebData` (`{ ok, kode, bagian }`,
+  `{ ok: false, dilewati }`, atau `{ ok: false, galat, bagianTerkirim }`).
+  Gagalnya tidak mengubah status HTTP.
+- **Env baru** `HNS_WEB_LINKS_ENABLED` (bawaan false, docs/07 §2.12); URL &
+  token memakai `HNS_API_URL`/`HNS_API_TOKEN` yang sudah ada. Nol migrasi.
+- Setiap kiriman membawa `readAt` (kapan data dibaca dari database) supaya
+  penerima bisa menolak data yang lebih tua dari yang sudah ia simpan.
+
+Uji: `scripts/uji-kabar-tautan.mts`.

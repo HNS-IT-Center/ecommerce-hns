@@ -1,6 +1,7 @@
 import "server-only"
 
 import { getPrisma } from "@/lib/prisma/client"
+import { kabariWebData } from "@/lib/api/hns-data/kabar-tautan"
 import { parseHargaAccurate, type HargaAccurate } from "./stock-db"
 
 /**
@@ -595,6 +596,10 @@ export async function tautkanKode(
     } catch {
       // Sengaja ditelan — lihat alasan di atas.
     }
+    // Kabar ke web Data (docs/13 §11): kode lama kini lepas, kode baru kini
+    // tertaut. Di sini, bukan di pemanggil, dengan alasan yang sama dengan jejak
+    // audit di atas — tidak ada jalur penautan yang bisa melewatinya.
+    kabariWebData([kodeLama, kode])
   }
 
   // Penautannya sudah selesai di atas. Pengisian SKU di bawah ini tambahan —
@@ -848,6 +853,7 @@ export async function abaikanKode(
     alasan,
     oleh,
   )
+  kabariWebData([kode])
   return { ok: true }
 }
 
@@ -962,6 +968,7 @@ export async function abaikanKodeMassal(kodes: string[], oleh: string): Promise<
          ditandai_oleh = VALUES(ditandai_oleh)`,
       ...params,
     )
+    kabariWebData(berhasil)
   }
 
   return { berhasil, dilewati }
@@ -1011,6 +1018,7 @@ export async function batalkanAbaikanMassal(kodes: string[]): Promise<HasilMassa
       `DELETE FROM accurate_ignored WHERE kode_accurate IN (${tanyaHapus})`,
       ...berhasil,
     )
+    kabariWebData(berhasil)
   }
 
   return { berhasil, dilewati }
@@ -1023,8 +1031,8 @@ export async function batalkanAbaikan(kode: string): Promise<HasilTaut> {
     kode,
   )
   // Nol baris terhapus berarti memang tidak sedang ditandai. Itu keadaan akhir
-  // yang diminta, jadi bukan kegagalan.
-  void terpengaruh
+  // yang diminta, jadi bukan kegagalan — dan tidak ada yang perlu dikabarkan.
+  if (terpengaruh > 0) kabariWebData([kode])
   return { ok: true }
 }
 

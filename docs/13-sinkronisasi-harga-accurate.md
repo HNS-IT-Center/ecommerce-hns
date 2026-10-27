@@ -749,8 +749,37 @@ satu sinkron hanya beberapa detik.
 Diuji `scripts/uji-sinkron-terjadwal.mts` (API sungguhan, tulis HANYA ke database
 lokal).
 
+Sejak 26 Oktober 2026 setiap putaran cron juga mengirim salinan utuh tautan &
+harga web ke Data Accurate — lihat §11. Hasilnya ikut di body balasan sebagai
+`kabarWebData`; gagalnya tidak membuat balasan 500.
+
 ### Uji
 
 `scripts/uji-sinkron-stok-accurate.mts` (34 pemeriksaan termasuk GRIYA, API sungguhan, tulis
 HANYA ke database lokal). Pakai `scripts/tsconfig.uji-next.json`.
 
+---
+
+## 11. Kabar tautan & harga web ke Data Accurate (26 Oktober 2026)
+
+Arah **kebalikan** dari §10: web **memberi tahu** Data Accurate
+(data.hnsitcenter.id) barang Accurate mana yang tertaut ke produk web, berikut
+harga jualnya, supaya halaman barang di sana bisa menampilkan indikator "sudah
+match" dan menandai harga web yang berbeda dari harga Accurate (kasus Asus TUF
+F16 di §7).
+
+**Alur, kontrak HTTP, aturan penerima, dan panduan membangun sisi web Data:
+docs/18-kabar-tautan-web-data.md.** Bagian ini hanya mencatat keputusannya.
+
+### Keputusan pemilik project
+
+| Pertanyaan | Keputusan |
+|---|---|
+| Arsitektur | **Web Data jadi pusat.** Setiap aplikasi cukup satu client di halaman API & Integrasi; aplikasi lain (mis. Ticketing) kelak menarik dari web Data, bukan dari ecommerce. Web Data TIDAK membaca database ecommerce |
+| Cara kirim | **Push** dari web: seketika setiap ada perubahan, ditambah **salinan utuh** di tiap putaran cron (±2 jam) sebagai jaring pengaman |
+| Autentikasi | **Token client yang sudah ada** (`HNS_API_TOKEN`) ke `POST /api/v1/web-links`, plus izin client baru "Kirim tautan & harga web". Rancangan awal hari yang sama memakai webhook ber-HMAC dengan secret terpisah — dibatalkan: tidak cocok dengan halaman API & Integrasi, dan secretnya sempat diisi dengan token API itu sendiri |
+| Sakelar | `HNS_WEB_LINKS_ENABLED`, bawaan **false** — dinyalakan setelah penerimanya tayang |
+| Harga | **Wajib ikut** — harga jual ditetapkan di web (§1). Angka katalog apa adanya: harga normal, dan kalau promo sedang berlaku, harga promo + tanggal berakhirnya |
+| Identitas produk | id produk ecommerce (id di panel admin; untuk varian, id induknya) + jenis simple/variable + id, label, dan SKU varian |
+| Siapa yang melihat | Indikator & harga web di web Data **hanya Super Admin atau owner** |
+| Sisi web Data | Dikerjakan pemilik project di repo `sync-accurate` |

@@ -80,6 +80,14 @@ const EnvSchema = z.object({
   // tanpanya endpoint itu menolak semua panggilan, dan sinkron tetap bisa
   // ditekan manual.
   CRON_SECRET: z.string().min(1).optional(),
+  // Arah sebaliknya: web MENGABARI Data Accurate barang mana yang tertaut ke
+  // produk web, berikut harganya (docs/13 §11) — lewat HNS_API_URL/TOKEN yang
+  // sama. Default "false": dinyalakan setelah penerimanya di web Data tayang
+  // dan client ecommerce diberi izin "Kirim tautan web".
+  HNS_WEB_LINKS_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
 
   // Cloudflare R2 — penyimpanan gambar produk. Opsional dengan alasan yang
   // sama seperti AUTH_SECRET di atas: skema ini di-parse saat modul dimuat,
@@ -181,6 +189,7 @@ export const env = EnvSchema.parse({
   HNS_API_TOKEN: process.env.HNS_API_TOKEN,
   HNS_WEBHOOK_SECRET: process.env.HNS_WEBHOOK_SECRET,
   CRON_SECRET: process.env.CRON_SECRET,
+  HNS_WEB_LINKS_ENABLED: process.env.HNS_WEB_LINKS_ENABLED,
   R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
   R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
   R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,

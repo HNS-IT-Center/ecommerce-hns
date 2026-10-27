@@ -1,7 +1,8 @@
 import crypto from "node:crypto"
 
 import { env } from "@/config/env"
-import { syncAccurateStockFull, waktuSinkronTerakhir } from "@/lib/api/accurate/stock-sync"
+import { syncAccurateStockFull, waktuSinkronTerakhir, type SyncResult } from "@/lib/api/accurate/stock-sync"
+import { kirimSalinanTautan } from "@/lib/api/hns-data/kabar-tautan"
 
 /**
  * Sinkron stok terjadwal — dipanggil cron hPanel (docs/13 §10).
@@ -28,6 +29,13 @@ import { syncAccurateStockFull, waktuSinkronTerakhir } from "@/lib/api/accurate/
  *
  * Kalau tokennya bocor, akibat terburuknya satu sinkron tambahan per lima
  * menit — tidak ada masukan dari pemanggil yang dipakai.
+ *
+ * Sejak 26 Oktober 2026 setiap putaran juga mengirim SALINAN UTUH tautan &
+ * harga web ke Data Accurate (`kirimSalinanTautan`, docs/13 §11) — jaring
+ * pengaman bagi kabar seketika yang gagal, perubahan lewat skrip, dan promo
+ * yang berakhir sendiri. Dikirim apa pun hasil sinkron stoknya: keduanya
+ * urusan terpisah. Gagalnya TIDAK membuat balasan 500 — yang dipantau cron
+ * adalah stok yang dilihat pelanggan; galatnya ikut di body dan log.
  */
 const JEDA_MINIMUM_MS = 5 * 60 * 1000
 
@@ -52,16 +60,25 @@ export async function POST(req: Request) {
     })
   }
 
+  let hasil: SyncResult | null = null
+  let galat: unknown = null
   try {
-    const hasil = await syncAccurateStockFull(null, "jadwal")
-    return Response.json(hasil)
+    hasil = await syncAccurateStockFull(null, "jadwal")
   } catch (error) {
     // Sudah tercatat sebagai baris riwayat bergalat oleh `syncAccurateStockFull`
     // atau `syncAccurateItems`; status 500 supaya cron ikut melaporkannya.
     console.error("[cron/sinkron-stok] gagal:", error)
+    galat = error
+  }
+
+  const kabarWebData = await kirimSalinanTautan()
+  if ("galat" in kabarWebData) console.error("[cron/sinkron-stok] salinan tautan ke web Data gagal:", kabarWebData.galat)
+
+  if (galat !== null || hasil === null) {
     return Response.json(
-      { ok: false, error: error instanceof Error ? error.message : "Sinkron stok gagal." },
+      { ok: false, error: galat instanceof Error ? galat.message : "Sinkron stok gagal.", kabarWebData },
       { status: 500 },
     )
   }
+  return Response.json({ ...hasil, kabarWebData })
 }

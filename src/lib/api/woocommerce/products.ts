@@ -1,6 +1,7 @@
 import { revalidateTag, unstable_cache } from "next/cache";
 import { ProductSource, ProductStatus, ProductType, StockStatus, type Prisma } from "@prisma/client";
 import { getPrisma } from "@/lib/prisma/client";
+import { kabariWebData, kodeAccurateProdukDanVarian } from "@/lib/api/hns-data/kabar-tautan";
 import { enqueueProductSync } from "@/lib/sync/enqueue";
 import { prismaProductToWoo, productInclude, STOCK_STATUS_TO_WOO } from "./db-mapper";
 import type {
@@ -1723,6 +1724,13 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
     await assertSkuBelumDipakai(prisma, nextSku, existing.id);
   }
 
+  // Kode Accurate produk ini & variannya, untuk kabar ke web Data (docs/13 §11).
+  // Diambil SEBELUM transaksi: varian yang terhapus di bawah membawa kodenya
+  // pergi, dan web Data tetap perlu tahu kode itu kini lepas. Fungsi ini tidak
+  // pernah MENAMBAH kode (itu urusan `tautkanKode`), jadi daftar sebelum
+  // sudah mencakup semua yang mungkin berubah.
+  const kodeAccurate = await kodeAccurateProdukDanVarian(existing.id);
+
   const nextStatus = input.status !== undefined ? STATUS_FROM_PARAM[input.status] ?? ProductStatus.DRAFT : existing.status;
   const nextType =
     input.type === undefined
@@ -1846,6 +1854,10 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
   // 3 detik, jadi baris ini tidak bisa menggagalkan atau menahan simpanan admin.
   await enqueueProductSync(existing.id, "update_product");
 
+  // Harga, nama, atau status tayang mungkin berubah — web Data menampilkannya.
+  // Sesudah balasan, tidak pernah melempar.
+  kabariWebData(kodeAccurate);
+
   return result;
 }
 
@@ -1860,6 +1872,9 @@ export async function deleteProduct(id: number): Promise<void> {
   if (!product) {
     throw new Error(`Produk dengan woo_id=${id} tidak ditemukan`);
   }
+
+  // Diambil sebelum dihapus — sesudahnya kode-kode ini tidak ada di mana pun.
+  const kodeAccurate = await kodeAccurateProdukDanVarian(product.id);
 
   // Use transaction to ensure everything is deleted cleanly
   await prisma.$transaction(async (tx) => {
@@ -1877,5 +1892,7 @@ export async function deleteProduct(id: number): Promise<void> {
   });
 
   invalidateProductCaches({ wooId: id, slugs: [product.slug] });
+  // Kode-kode itu kini lepas; web Data diberi tahu (docs/13 §11).
+  kabariWebData(kodeAccurate);
 }
 
