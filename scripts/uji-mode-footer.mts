@@ -30,7 +30,7 @@ function cek(nama: string, dapat: unknown, harap: unknown) {
 const semula = await prisma.setting.findUnique({ where: { key: F.FOOTER_MODE_SETTING_KEY } })
 try {
   await prisma.setting.deleteMany({ where: { key: F.FOOTER_MODE_SETTING_KEY } })
-  cek("baris belum ada → bawaan 'identitas'", await F.getFooterMode(), "identitas")
+  cek("baris belum ada → bawaan 'cabang'", await F.getFooterMode(), "cabang")
 
   await F.saveFooterMode("cabang")
   cek("simpan 'cabang' → terbaca 'cabang'", await F.getFooterMode(), "cabang")
@@ -40,7 +40,7 @@ try {
   cek("tetap satu baris (upsert, bukan tambah)", await prisma.setting.count({ where: { key: F.FOOTER_MODE_SETTING_KEY } }), 1)
 
   await prisma.setting.update({ where: { key: F.FOOTER_MODE_SETTING_KEY }, data: { value: { mode: "aneh" } } })
-  cek("nilai asing → jatuh ke 'identitas'", await F.getFooterMode(), "identitas")
+  cek("nilai asing → jatuh ke 'cabang'", await F.getFooterMode(), "cabang")
 
   cek("isFooterMode menolak nilai asing", [F.isFooterMode("cabang"), F.isFooterMode("identitas"), F.isFooterMode("x"), F.isFooterMode(null)], [true, true, false, false])
 } finally {

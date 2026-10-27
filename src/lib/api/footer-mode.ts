@@ -22,17 +22,18 @@ export const FOOTER_MODE_CACHE_TAG = "footer-mode"
 /**
  * - `identitas` — nama PT + "Alamat :" (empat baris), "No Telepon :", "Email :"
  *   persis dalam format yang diminta untuk verifikasi (`COMPANY_ADDRESS_LINES`).
- * - `cabang` — footer sebelum 22 Oktober: blok "Kontak" (WA & email) di kolom
- *   kanan dan daftar cabang dari tabel `stores` beserta tautan Maps-nya.
+ * - `cabang` — footer sebelum 22 Oktober (persis ae80d55): blok "Kontak" (WA
+ *   nomor CS dari env & email) di kolom kanan dan daftar cabang dari tabel
+ *   `stores` beserta tautan Maps-nya, tanpa nama PT.
  */
 export type FooterMode = "identitas" | "cabang"
 
 /**
- * Default `identitas`: itulah yang sedang tayang saat sakelar ini dibuat, dan
- * pemeriksa verifikasi mungkin sedang melihatnya. Deploy sakelar ini tidak
- * boleh diam-diam mengubah footer yang sedang diperiksa.
+ * Default `cabang` sejak 27 Oktober 2026: verifikasi sudah selesai, jadi footer
+ * kembali ke versi sebelum 22 Oktober (ae80d55). Footer verifikasi tetap bisa
+ * dipilih lewat sakelar kalau diminta lagi.
  */
-export const DEFAULT_FOOTER_MODE: FooterMode = "identitas"
+export const DEFAULT_FOOTER_MODE: FooterMode = "cabang"
 
 export function isFooterMode(value: unknown): value is FooterMode {
   return value === "identitas" || value === "cabang"

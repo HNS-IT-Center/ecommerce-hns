@@ -8,29 +8,29 @@ import {
   FOOTER_WHATSAPP_NUMBER,
   SOCIAL_LINKS,
 } from "@/lib/constants/contact"
-import { formatWhatsAppNumber } from "@/lib/utils/whatsapp-number"
 import { InstagramIcon, TiktokIcon } from "@/components/icons/social-icons"
 import { FooterPaymentMethods } from "./footer-payment-methods"
 import { FooterStores } from "./footer-stores"
 import { getFooterStores } from "@/lib/api/stores"
 import { getFooterMode } from "@/lib/api/footer-mode"
 import WhatsappIcon from "@/components/icons/whatsapp-icon"
+import { env } from "@/config/env"
 import { getThemeSettings } from "@/lib/theme/settings"
 import { ChristmasFooterDecor, ChristmasFooterPattern } from "@/components/theme/christmas-decor"
 import { InstallAppButton } from "@/features/pwa/components/install-app-button"
 
 export async function Footer() {
-  // Nomor footer sengaja BUKAN nomor CS dari env — lihat `FOOTER_WHATSAPP_NUMBER`.
-  const waUrl = buildWhatsAppUrl(
-    FOOTER_WHATSAPP_NUMBER,
-    "Halo HNS IT Center, saya ingin bertanya."
-  )
-
   // Dua versi bagian bawah footer, dipilih staff di /admin/toko — lihat
   // `lib/api/footer-mode.ts`. Daftar cabang hanya dibaca kalau memang tampil.
   const [theme, footerMode] = await Promise.all([getThemeSettings(), getFooterMode()])
   const stores = footerMode === "cabang" ? await getFooterStores() : []
   const isChristmas = theme.activeChromeThemeId === "christmas"
+
+  // Mode `cabang` = footer persis seperti sebelum verifikasi (ae80d55): nomor CS
+  // dari env. Nomor khusus `FOOTER_WHATSAPP_NUMBER` hanya untuk mode `identitas`.
+  const waNumber =
+    footerMode === "cabang" ? env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER : FOOTER_WHATSAPP_NUMBER
+  const waUrl = buildWhatsAppUrl(waNumber, "Halo HNS IT Center, saya ingin bertanya.")
 
   // Ditulis "+62…" apa adanya, sesuai format yang diminta untuk blok kontak.
   const nomorTelepon = `+${FOOTER_WHATSAPP_NUMBER}`
@@ -202,7 +202,7 @@ export async function Footer() {
                 <ul className="space-y-1 text-sm text-white/70">
                   <li>
                     <a href={waUrl} target="_blank" rel="noopener noreferrer" className="hover:text-white hover:underline">
-                      WA: {formatWhatsAppNumber(FOOTER_WHATSAPP_NUMBER)}
+                      WA: {env.NEXT_PUBLIC_WHATSAPP_CS_NUMBER}
                     </a>
                   </li>
                   <li>
@@ -262,7 +262,10 @@ export async function Footer() {
         )}
 
         <div className="mt-4 border-t border-white/15 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-white/60">
-          <p>© 2026 HNS IT Center — {COMPANY_LEGAL_NAME}. All rights reserved.</p>
+          <p>
+            © 2026 HNS IT Center
+            {footerMode === "identitas" && <> — {COMPANY_LEGAL_NAME}</>}. All rights reserved.
+          </p>
           <p>Batam - Kepulauan Riau - Indonesia</p>
         </div>
       </div>

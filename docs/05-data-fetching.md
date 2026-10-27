@@ -2254,16 +2254,17 @@ di `/admin/toko`:
 
 | Mode | Isi | Sumber |
 |---|---|---|
-| `identitas` (bawaan) | Nama PT, "Alamat :" empat baris, "No Telepon : +62…", "Email :" | `COMPANY_ADDRESS_LINES`, `FOOTER_WHATSAPP_NUMBER`, `CS_EMAIL` di `lib/constants/contact.ts` |
-| `cabang` | Footer sebelum 22 Okt: blok "Kontak" (WA & email) di kolom kanan + daftar cabang | tabel `stores` lewat `getFooterStores()` (§22) |
+| `identitas` | Nama PT, "Alamat :" empat baris, "No Telepon : +62…", "Email :" | `COMPANY_ADDRESS_LINES`, `FOOTER_WHATSAPP_NUMBER`, `CS_EMAIL` di `lib/constants/contact.ts` |
+| `cabang` (bawaan sejak 27 Okt) | Footer sebelum 22 Okt, persis commit ae80d55: blok "Kontak" (WA nomor CS dari env & email) di kolom kanan + daftar cabang, tanpa nama PT di footer & copyright | `NEXT_PUBLIC_WHATSAPP_CS_NUMBER`, `CS_EMAIL`, tabel `stores` lewat `getFooterStores()` (§22) |
 
-Format `identitas` diminta pihak luar untuk verifikasi usaha; sesudahnya staff
-mengembalikannya ke `cabang` tanpa deploy.
+Format `identitas` diminta pihak luar untuk verifikasi usaha (Meta). Verifikasi
+selesai 27 Oktober 2026, jadi bawaan dikembalikan ke `cabang`; `identitas` tetap
+bisa dipilih lewat sakelar tanpa deploy.
 
 - **Lapisan data** `lib/api/footer-mode.ts` — `getFooterMode()` (`unstable_cache`,
   tag `footer-mode`, revalidate 300), `saveFooterMode()`, `isFooterMode()`. Baris
   `settings.key = 'FOOTER_MODE'`, nilai `{ mode }`. Nol migrasi. Nilai asing atau
-  baris tidak ada → `identitas`.
+  baris tidak ada → `cabang`.
 - **Server action** `updateFooterModeAction(mode)` di `admin/(panel)/toko/actions.ts`
   — izin `toko: edit`, lalu `updateTag("footer-mode")` + `revalidatePath("/", "layout")`.
 - Pola sama dengan sakelar tampilan stok (`lib/api/stock-display.ts`).
