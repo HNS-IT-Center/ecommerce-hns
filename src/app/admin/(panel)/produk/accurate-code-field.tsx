@@ -66,7 +66,16 @@ type AccurateCodeFieldProps = (
       onGalat: (pesan: string | null) => void
       id?: string
     }
-) & { indukBervarian?: boolean }
+) & {
+  indukBervarian?: boolean
+  /**
+   * Dipanggil setiap kali kode yang SAH berubah — sesudah tersimpan (mode
+   * "simpan") atau sesudah lolos pemeriksaan (mode "tunda"); `null` kalau
+   * dikosongkan atau ditolak. Ketikan yang belum diperiksa tidak dilaporkan.
+   * Dipakai formulir produk supaya SKU bisa mengikuti kode ini.
+   */
+  onKodeSah?: (kode: string | null) => void
+}
 
 export function AccurateCodeField(props: AccurateCodeFieldProps) {
   const idIsian = props.id ?? "accurate-code"
@@ -111,6 +120,7 @@ export function AccurateCodeField(props: AccurateCodeFieldProps) {
         return
       }
       setPesanBaik("Tautan tersimpan.")
+      props.onKodeSah?.(bersih === "" ? null : bersih)
       return
     }
 
@@ -120,6 +130,7 @@ export function AccurateCodeField(props: AccurateCodeFieldProps) {
       setGalat(null)
       props.onGalat(null)
       setPesanBaik(null)
+      props.onKodeSah?.(null)
       return
     }
 
@@ -139,11 +150,13 @@ export function AccurateCodeField(props: AccurateCodeFieldProps) {
       setGalat(hasil.alasan)
       props.onGalat(hasil.alasan)
       props.onUbah(null)
+      props.onKodeSah?.(null)
       return
     }
     // Namanya ditampilkan supaya kode yang sah tapi salah barang ketahuan
     // sebelum produknya dibuat.
     setPesanBaik(`Cocok: ${hasil.namaBarang}`)
+    props.onKodeSah?.(bersih)
   }
 
   return (
@@ -190,7 +203,7 @@ export function AccurateCodeField(props: AccurateCodeFieldProps) {
         <p className="mt-1 text-[11px] text-success">{pesanBaik}</p>
       ) : (
         <p className="mt-1 text-[11px] text-muted-foreground">
-          Kode barang di kasir Accurate — penyambung harga, bukan SKU.{" "}
+          Kode barang di kasir Accurate — penyambung stok &amp; harga.{" "}
           {props.mode === "simpan"
             ? "Tersimpan sendiri, di luar tombol Simpan."
             : "Ditautkan setelah produknya dibuat."}

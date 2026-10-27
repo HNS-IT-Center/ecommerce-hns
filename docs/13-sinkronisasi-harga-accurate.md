@@ -263,6 +263,31 @@ sampai saat itu ia menampilkan stok yang diisi staff.
 
 Uji: `scripts/uji-tautan-dari-sku.mts` — 31 uji ke database lokal Docker.
 
+### Arah sebaliknya di formulir: SKU mengikuti Kode Accurate (27 Oktober 2026)
+
+Formulir produk simple kini menaruh **Kode Accurate di atas SKU**, dengan centang
+**"SKU sama dengan Kode Accurate"**. Selama tercentang, SKU tidak diketik lagi —
+ia mengikuti kode yang SAH (lolos pemeriksaan untuk produk baru, atau sudah
+tersimpan untuk produk lama) dan ikut tersimpan saat tombol Simpan ditekan.
+
+Keputusan pemilik project (pilihan "dua kolom tetap ada, saling mengikuti",
+tampilan A). Diukur di salinan lokal: dari 1.019 produk tertaut, 962 (94%) SKU-nya
+persis kodenya, 42 kosong, 15 berbeda — kode pabrikan (`KPBB0`) atau kode gabungan
+(`2506000324 / 2506000325`). Menghapus salah satu kolom dibatalkan: SKU dipakai
+pemindai barcode dan tautan varian `?sku=`, dan ±825 produk punya SKU tanpa kode
+Accurate (jasa, rakitan).
+
+- Centang **bawaannya menyala** kalau SKU kosong atau sudah sama dengan kodenya;
+  **mati** kalau SKU sudah berisi nilai lain — nilai itu bisa sudah tercetak di
+  stiker barcode, jadi tidak pernah ditimpa diam-diam.
+- Tanpa Kode Accurate, centang tidak tampil dan SKU diisi seperti biasa.
+- Induk bervarian dan Quick Edit tidak berubah.
+- Kalau kode itu sudah dipakai produk lain sebagai SKU, simpan ditolak "SKU sudah
+  dipakai" — hilangkan centang dan isi SKU lain.
+
+Kode: `produk-form.tsx` (`skuIkutKode`, `kodeSah`) dan `onKodeSah` di
+`accurate-code-field.tsx`.
+
 ### Induk produk bervarian tidak ditautkan (20 Oktober 2026)
 
 Kode di induk adalah kesalahan yang berulang: 31 induk pada 15 Oktober,

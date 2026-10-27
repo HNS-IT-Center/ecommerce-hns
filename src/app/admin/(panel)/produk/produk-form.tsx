@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useForm, useFieldArray } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -41,6 +41,7 @@ import type { HasilTautDariSku } from "@/lib/api/accurate/price-table"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { RupiahInput } from "@/components/ui/rupiah-input"
@@ -152,6 +153,22 @@ export function ProdukForm({
    * mengisi kode, tanpa satu pun hal yang membantahnya.
    */
   const [galatKodeAccurate, setGalatKodeAccurate] = useState<string | null>(null)
+  /**
+   * Kode Accurate yang SAH saat ini (tersimpan, atau lolos pemeriksaan untuk
+   * produk baru) — dilaporkan `AccurateCodeField` lewat `onKodeSah`.
+   */
+  const [kodeSah, setKodeSah] = useState<string | null>(accurateCode)
+  /**
+   * "SKU sama dengan Kode Accurate" (27 Oktober 2026). Diukur pada data: 94%
+   * produk tertaut ber-SKU persis kodenya, jadi bawaannya mengikuti — kecuali
+   * produk yang SKU-nya sudah berisi nilai lain (kode pabrikan, kode gabungan
+   * "a / b"). Nilai itu bisa sudah tercetak di stiker barcode, jadi tidak
+   * pernah ditimpa diam-diam: centangnya mulai kosong, staff yang memutuskan.
+   */
+  const [skuIkutKode, setSkuIkutKode] = useState(() => {
+    const skuAwal = (defaultValues?.sku ?? "").trim()
+    return skuAwal === "" || skuAwal.toUpperCase() === (accurateCode ?? "").trim().toUpperCase()
+  })
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [pendingValues, setPendingValues] = useState<ProductFormValues | null>(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -200,6 +217,13 @@ export function ProdukForm({
   // Galat kode Accurate produk baru hanya relevan selama kolomnya tampil —
   // induk bervarian tidak punya kolom itu (kodenya lewat SKU varian).
   const galatKodeTampil = !isEdit && !isVariableProduct ? galatKodeAccurate : null
+  // SKU mengikuti kode sah selama dicentang. Induk bervarian dikecualikan:
+  // SKU-nya per varian, dan kode yang terlanjur menempel di induk harus
+  // dilepas, bukan disalin ke mana-mana.
+  const skuDiikutkan = !isVariableProduct && skuIkutKode && kodeSah !== null
+  useEffect(() => {
+    if (skuDiikutkan && kodeSah) setValue("sku", kodeSah, { shouldDirty: true, shouldValidate: true })
+  }, [skuDiikutkan, kodeSah, setValue])
   const existingVariationCount = defaultValues?.variations?.length ?? 0
   const hasExistingVariations = existingVariationCount > 0
   /**
@@ -692,6 +716,27 @@ export function ProdukForm({
                   )}
                 </div>
 
+                {/* Kode Accurate untuk produk biasa. Induk bervarian hanya
+                    mendapat keterangan — kodenya masuk lewat SKU varian (lihat
+                    `indukBervarian`). Sama seperti di Quick Edit, isian ini di
+                    luar react-hook-form: yang tersimpan bukan bagian dari
+                    produk melainkan tautannya, dan ia menempuh pemeriksaan
+                    sendiri. Ditaruh DI ATAS SKU sejak 27 Oktober 2026 karena
+                    SKU kini mengikutinya. */}
+                <AccurateCodeField
+                  indukBervarian={isVariableProduct}
+                  onKodeSah={setKodeSah}
+                  {...(isEdit && productId
+                    ? { mode: "simpan" as const, wooId: productId, kode: accurateCode }
+                    : {
+                        mode: "tunda" as const,
+                        kode: accurateCode,
+                        onUbah: setKodeAccurate,
+                        onGalat: setGalatKodeAccurate,
+                      })}
+                  id="accurate-code"
+                />
+
                 {/* SKU induk hanya ditawarkan untuk produk simple. Pada produk
                     bervariasi, yang benar-benar dijual adalah variannya dan
                     SKU-nya diisi per baris di tabel varian di bawah — kolom di
@@ -705,45 +750,50 @@ export function ProdukForm({
                     lihat kolom SKU di tabel varian di bawah.
                   </div>
                 ) : (
-                  <div>
-                    <Label htmlFor="sku" className="mb-1.5">
-                      SKU <span className="font-normal text-muted-foreground">(opsional)</span>
-                    </Label>
-                    <Input
-                      id="sku"
-                      className={FIELD_TEXT}
-                      placeholder="Kosongkan kalau produk ini belum punya SKU"
-                      {...register("sku")}
-                    />
-                    {errors.sku && (
-                      <p className="mt-1 text-[11px] text-destructive">{errors.sku.message}</p>
+                  <div className="space-y-2">
+                    {kodeSah !== null && (
+                      <label className="flex cursor-pointer items-start gap-2.5 text-xs">
+                        <Checkbox
+                          className="mt-0.5"
+                          checked={skuIkutKode}
+                          onCheckedChange={(dicentang) => setSkuIkutKode(dicentang === true)}
+                        />
+                        <span>
+                          <span className="font-medium text-foreground">SKU sama dengan Kode Accurate</span>
+                          <span className="block text-[11px] text-muted-foreground">
+                            Hilangkan centang kalau SKU-nya berbeda, mis. kode pabrikan.
+                          </span>
+                        </span>
+                      </label>
                     )}
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      Kode internal katalog web. Harus unik — tidak boleh sama dengan SKU produk
-                      atau varian lain. Bukan Kode Accurate; kode itu kolom terpisah untuk
-                      penautan harga.
-                    </p>
+                    {skuDiikutkan ? (
+                      <div className="pl-6.5 text-[11px] text-muted-foreground">
+                        SKU: <span className="font-mono text-foreground">{kodeSah}</span> (ikut
+                        otomatis{isEdit ? ", tersimpan saat klik Simpan" : ""})
+                        {errors.sku && <p className="mt-1 text-destructive">{errors.sku.message}</p>}
+                      </div>
+                    ) : (
+                      <div>
+                        <Label htmlFor="sku" className="mb-1.5">
+                          SKU <span className="font-normal text-muted-foreground">(opsional)</span>
+                        </Label>
+                        <Input
+                          id="sku"
+                          className={FIELD_TEXT}
+                          placeholder="Kosongkan kalau produk ini belum punya SKU"
+                          {...register("sku")}
+                        />
+                        {errors.sku && (
+                          <p className="mt-1 text-[11px] text-destructive">{errors.sku.message}</p>
+                        )}
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Dipakai pemindai barcode dan tautan varian <code>?sku=</code>. Harus unik —
+                          tidak boleh sama dengan SKU produk atau varian lain.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
-
-                {/* Kode Accurate untuk produk biasa. Induk bervarian hanya
-                    mendapat keterangan — kodenya masuk lewat SKU varian (lihat
-                    `indukBervarian`). Sama seperti di Quick Edit, isian ini di
-                    luar react-hook-form: yang tersimpan bukan bagian dari
-                    produk melainkan tautannya, dan ia menempuh pemeriksaan
-                    sendiri. */}
-                <AccurateCodeField
-                  indukBervarian={isVariableProduct}
-                  {...(isEdit && productId
-                    ? { mode: "simpan" as const, wooId: productId, kode: accurateCode }
-                    : {
-                        mode: "tunda" as const,
-                        kode: accurateCode,
-                        onUbah: setKodeAccurate,
-                        onGalat: setGalatKodeAccurate,
-                      })}
-                  id="accurate-code"
-                />
 
                 <div>
                   <Label className="mb-2">Status</Label>
