@@ -1239,11 +1239,86 @@ async function assertSkuBelumDipakai(
   });
   if (!pemilik) return;
 
-  throw new ProductSkuError(
-    pemilik.type === ProductType.VARIATION
-      ? `SKU "${sku}" sudah dipakai varian "${pemilik.name}". Pakai SKU lain.`
-      : `SKU "${sku}" sudah dipakai produk "${pemilik.name}". Pakai SKU lain.`,
-  );
+  throw new ProductSkuError(`${keteranganSkuDipakai(sku, pemilik)}. Pakai SKU lain.`);
+}
+
+function keteranganSkuDipakai(
+  sku: string,
+  pemilik: { name: string; type: ProductType },
+): string {
+  return pemilik.type === ProductType.VARIATION
+    ? `SKU "${sku}" sudah dipakai varian "${pemilik.name}"`
+    : `SKU "${sku}" sudah dipakai produk "${pemilik.name}"`;
+}
+
+/**
+ * Pasangan `assertSkuBelumDipakai` untuk SKU VARIAN — dulu tidak ada.
+ *
+ * Sebelum fungsi ini, hanya SKU induk yang diperiksa, padahal induk bervarian
+ * memang tidak ber-SKU ("SKU diisi per varian"). SKU varian ditulis langsung
+ * di `syncProductVariations`, jadi SKU yang sudah dipegang produk lain baru
+ * ketahuan di constraint unik database — dan karena P2002 di Prisma 7 tidak
+ * terbaca lewat `meta.target`, staff hanya melihat "Gagal membuat produk".
+ * Kejadiannya 30 Oktober 2026: FAN CASING LIAN LI UNI FAN SL-INF FLEX hanya
+ * bisa disimpan setelah seluruh SKU variannya dikosongkan.
+ *
+ * Dua hal diperiksa:
+ *
+ *   1. Kembar di dalam formulir itu sendiri — dua varian (atau induk dan
+ *      varian) dengan SKU sama. Dibandingkan tanpa membedakan besar-kecil
+ *      huruf, karena kolasi kolom `sku` juga begitu: "abc" dan "ABC" ditolak
+ *      database sebagai nilai yang sama.
+ *   2. Sudah dipegang produk lain. Saat menyunting (`selfId` terisi), induk
+ *      dan varian milik produk ini sendiri tidak dihitung — menyimpan ulang
+ *      tanpa mengubah SKU bukan bentrok.
+ *
+ * Semua bentrok dilaporkan sekaligus, bukan hanya yang pertama: produk dengan
+ * banyak varian tidak perlu disimpan berulang-ulang untuk menemukannya satu
+ * per satu.
+ *
+ * Yang sengaja TIDAK ditangani: dua varian milik produk ini yang saling
+ * bertukar SKU dalam satu penyimpanan. Pembaruannya berurutan, jadi database
+ * tetap menolak; jaring P2002 di route menjawabnya dengan 409.
+ */
+async function assertSkuVarianBelumDipakai(
+  prisma: ReturnType<typeof getPrisma>,
+  variations: NonNullable<ProductInput["variations"]>,
+  parentSku: string | null,
+  selfId: number | null,
+): Promise<void> {
+  const skus = variations
+    .map((variation) => normalizeSku(variation.sku))
+    .filter((sku): sku is string => sku !== null);
+  if (skus.length === 0) return;
+
+  const masalah: string[] = [];
+
+  const jumlah = new Map<string, { sku: string; n: number }>();
+  for (const sku of parentSku === null ? skus : [parentSku, ...skus]) {
+    const key = sku.toLowerCase();
+    const entry = jumlah.get(key);
+    if (entry) entry.n += 1;
+    else jumlah.set(key, { sku, n: 1 });
+  }
+  for (const { sku, n } of jumlah.values()) {
+    if (n > 1) masalah.push(`SKU "${sku}" dipakai ${n} kali di produk ini`);
+  }
+
+  // Disaring di JavaScript, bukan lewat `NOT { parentId }` di kueri: `parentId`
+  // nullable, dan NOT atas NULL di SQL ikut membuang baris tanpa induk —
+  // persis produk biasa yang paling mungkin memegang SKU-nya.
+  const pemilik = await prisma.product.findMany({
+    where: { sku: { in: [...new Set(skus)] } },
+    select: { id: true, parentId: true, sku: true, name: true, type: true },
+  });
+  for (const row of pemilik) {
+    if (selfId !== null && (row.id === selfId || row.parentId === selfId)) continue;
+    masalah.push(keteranganSkuDipakai(row.sku ?? "", row));
+  }
+
+  if (masalah.length > 0) {
+    throw new ProductSkuError(`${masalah.join("; ")}. Pakai SKU lain.`);
+  }
 }
 
 const STOCK_STATUS_FROM_INPUT = {
@@ -1628,6 +1703,7 @@ export async function createProduct(
   // membuka transaksi dan menulis relasi hanya untuk digulung balik.
   const sku = normalizeSku(input.sku);
   if (sku !== null) await assertSkuBelumDipakai(prisma, sku, null);
+  if (isVariable) await assertSkuVarianBelumDipakai(prisma, input.variations ?? [], sku, null);
 
   const created = await prisma.$transaction(async (tx) => {
     const brandId = await resolveBrandId(tx, input.brand);
@@ -1722,6 +1798,19 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
   const nextSku = input.sku === undefined ? undefined : normalizeSku(input.sku);
   if (nextSku !== undefined && nextSku !== null && nextSku !== existing.sku) {
     await assertSkuBelumDipakai(prisma, nextSku, existing.id);
+  }
+  // Syaratnya sama dengan `syncProductVariations` di transaksi bawah (tipe
+  // akhirnya VARIABLE dan `variations` dikirim) — varian yang tidak akan
+  // ditulis tidak perlu diperiksa.
+  const akanBervarian =
+    input.type === undefined ? existing.type === ProductType.VARIABLE : input.type === "variable";
+  if (akanBervarian && input.variations !== undefined) {
+    await assertSkuVarianBelumDipakai(
+      prisma,
+      input.variations,
+      nextSku === undefined ? existing.sku : nextSku,
+      existing.id,
+    );
   }
 
   // Kode Accurate produk ini & variannya, untuk kabar ke web Data (docs/13 §11).

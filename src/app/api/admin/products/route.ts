@@ -6,7 +6,7 @@ import {
   ProductSkuError,
   ProductVariationError,
 } from "@/lib/api/woocommerce/products"
-import { Prisma } from "@prisma/client"
+import { isUniqueViolationOn } from "@/lib/prisma/errors"
 import { ForbiddenError, UnauthorizedError, requirePermission } from "@/lib/auth"
 import { getPrisma } from "@/lib/prisma/client"
 import { buildProductLogEntries, diffProductChanges } from "@/lib/logs/product-log"
@@ -52,18 +52,17 @@ function tolakKalauVarianBermasalah(error: unknown) {
  *   2. constraint unik database — untuk dua staff yang menyimpan SKU sama pada
  *      saat yang hampir sama, saat pemeriksaan (1) masih melihat kolom kosong.
  *
- * `meta.target` diperiksa karena tabel produk punya beberapa kolom unik (slug,
+ * Kolom yang kena diperiksa karena tabel produk punya beberapa kolom unik (slug,
  * `accurate_code`): membalas "SKU sudah dipakai" untuk pelanggaran slug akan
- * mengirim staff memperbaiki kolom yang sama sekali tidak bermasalah.
+ * mengirim staff memperbaiki kolom yang sama sekali tidak bermasalah. Cara
+ * membacanya ada di `isUniqueViolationOn` — `meta.target` saja tidak terisi
+ * di Prisma 7 dengan driver adapter.
  */
 function tolakKalauSkuBentrok(error: unknown) {
   if (error instanceof ProductSkuError) {
     return NextResponse.json({ error: error.message }, { status: 400 })
   }
-  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
-    return null
-  }
-  return JSON.stringify(error.meta?.target ?? "").toLowerCase().includes("sku")
+  return isUniqueViolationOn(error, "sku")
     ? NextResponse.json(
         { error: "SKU itu baru saja dipakai produk lain. Pakai SKU lain." },
         { status: 409 },

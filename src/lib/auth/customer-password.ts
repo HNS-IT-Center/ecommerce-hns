@@ -2,6 +2,7 @@ import "server-only"
 
 import { Prisma } from "@prisma/client"
 import { getPrisma } from "@/lib/prisma/client"
+import { isUniqueViolationOn } from "@/lib/prisma/errors"
 import { hashPassword } from "@/lib/auth/password"
 import { normalizeIdentifier } from "@/lib/auth/identity"
 
@@ -156,12 +157,15 @@ export async function registerCustomer(
     // Race condition: dua pendaftaran dengan email/username sama nyaris
     // bersamaan lolos cek `findUnique` di atas sebelum salah satunya sempat
     // `create`. Constraint unik di database yang jadi penjaga terakhir.
-    // `meta.target` membedakan constraint mana yang kena — email vs username
-    // butuh pesan berbeda ke pengguna.
+    // Constraint mana yang kena dibedakan karena email vs username butuh pesan
+    // berbeda ke pengguna. Dulu dibaca dari `meta.target`, yang tidak terisi di
+    // Prisma 7 dengan driver adapter — semua bentrok jatuh ke "email sudah
+    // dipakai", termasuk yang sebenarnya username.
+    if (isUniqueViolationOn(error, "username")) {
+      return { ok: false, reason: "username_taken" }
+    }
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      const target = error.meta?.target
-      const hitUsername = Array.isArray(target) && target.some((t) => String(t).includes("username"))
-      return { ok: false, reason: hitUsername ? "username_taken" : "email_taken_password" }
+      return { ok: false, reason: "email_taken_password" }
     }
     throw error
   }

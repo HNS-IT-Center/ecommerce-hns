@@ -2315,3 +2315,26 @@ lengkap: docs/18-kabar-tautan-web-data.md; keputusan: docs/13 §11.
   penerima bisa menolak data yang lebih tua dari yang sudah ia simpan.
 
 Uji: `scripts/uji-kabar-tautan.mts`.
+
+## 39. SKU varian diperiksa sebelum disimpan & P2002 di Prisma 7 (30 Oktober 2026)
+
+`POST`/`PUT /api/admin/products` untuk produk bervarian dulu hanya memeriksa
+SKU **induk**, padahal induk bervarian memang tanpa SKU. SKU varian yang sudah
+dipegang produk lain (atau kembar antar varian di formulir yang sama) baru
+ditolak constraint unik database, lalu sampai ke staff sebagai 500 "Gagal
+membuat produk". Kasusnya: FAN CASING LIAN LI UNI FAN SL-INF FLEX hanya bisa
+disimpan setelah seluruh SKU variannya dikosongkan.
+
+- `assertSkuVarianBelumDipakai()` (`lib/api/woocommerce/products.ts`)
+  berjalan sebelum transaksi di `createProduct` dan `updateProduct`. Galatnya
+  `ProductSkuError` → **400**, dengan pesan yang menyebut setiap SKU yang
+  bentrok beserta pemiliknya, sekaligus. Saat menyunting, induk dan varian
+  milik produk itu sendiri tidak dihitung.
+- Jaring pengaman P2002 di route (balasan **409**) dulu membaca
+  `error.meta.target`, yang **tidak terisi** di Prisma 7 dengan
+  `@prisma/adapter-mariadb`. Nama constraint ada di
+  `meta.driverAdapterError.cause.constraint.index` (mis. `products_sku_key`).
+  Pakai `isUniqueViolationOn(error, kolom)` dari `lib/prisma/errors.ts`, jangan
+  membaca `meta.target` langsung. Pendaftaran pelanggan
+  (`lib/auth/customer-password.ts`) ikut dipindah: bentrok username dulu
+  selalu dilaporkan sebagai bentrok email.
