@@ -1264,13 +1264,22 @@ function keteranganSkuDipakai(
  *
  * Dua hal diperiksa:
  *
- *   1. Kembar di dalam formulir itu sendiri — dua varian (atau induk dan
- *      varian) dengan SKU sama. Dibandingkan tanpa membedakan besar-kecil
- *      huruf, karena kolasi kolom `sku` juga begitu: "abc" dan "ABC" ditolak
- *      database sebagai nilai yang sama.
+ *   1. Kembar antar varian di formulir itu sendiri. Dibandingkan tanpa
+ *      membedakan besar-kecil huruf, karena kolasi kolom `sku` juga begitu:
+ *      "abc" dan "ABC" ditolak database sebagai nilai yang sama.
  *   2. Sudah dipegang produk lain. Saat menyunting (`selfId` terisi), induk
  *      dan varian milik produk ini sendiri tidak dihitung — menyimpan ulang
  *      tanpa mengubah SKU bukan bentrok.
+ *
+ * SKU induk yang sama dengan SKU salah satu varian BUKAN bentrok: SKU itu
+ * dianggap PINDAH ke varian, dan pemanggil wajib mengosongkan SKU induk
+ * (nilai kembalian `true`) sebelum varian ditulis. Ini keadaan wajar saat
+ * produk simple diubah jadi bervarian — SKU lamanya tertinggal di induk,
+ * sementara kolom SKU induk disembunyikan formulir ("SKU diisi per varian"),
+ * jadi staff tidak punya cara mengosongkannya sendiri. Sebelum ini produk
+ * seperti itu macet: tidak bisa disimpan sama sekali (2 November 2026,
+ * MOTHERBOARD COLORFUL BATTLE-AX H610M-E). SKU induk yang TIDAK dipakai varian
+ * mana pun dibiarkan — bisa jadi ia tercetak di barcode.
  *
  * Semua bentrok dilaporkan sekaligus, bukan hanya yang pertama: produk dengan
  * banyak varian tidak perlu disimpan berulang-ulang untuk menemukannya satu
@@ -1285,23 +1294,23 @@ async function assertSkuVarianBelumDipakai(
   variations: NonNullable<ProductInput["variations"]>,
   parentSku: string | null,
   selfId: number | null,
-): Promise<void> {
+): Promise<{ skuIndukPindahKeVarian: boolean }> {
   const skus = variations
     .map((variation) => normalizeSku(variation.sku))
     .filter((sku): sku is string => sku !== null);
-  if (skus.length === 0) return;
+  if (skus.length === 0) return { skuIndukPindahKeVarian: false };
 
   const masalah: string[] = [];
 
   const jumlah = new Map<string, { sku: string; n: number }>();
-  for (const sku of parentSku === null ? skus : [parentSku, ...skus]) {
+  for (const sku of skus) {
     const key = sku.toLowerCase();
     const entry = jumlah.get(key);
     if (entry) entry.n += 1;
     else jumlah.set(key, { sku, n: 1 });
   }
   for (const { sku, n } of jumlah.values()) {
-    if (n > 1) masalah.push(`SKU "${sku}" dipakai ${n} kali di produk ini`);
+    if (n > 1) masalah.push(`SKU "${sku}" dipakai ${n} varian di produk ini`);
   }
 
   // Disaring di JavaScript, bukan lewat `NOT { parentId }` di kueri: `parentId`
@@ -1319,6 +1328,11 @@ async function assertSkuVarianBelumDipakai(
   if (masalah.length > 0) {
     throw new ProductSkuError(`${masalah.join("; ")}. Pakai SKU lain.`);
   }
+
+  return {
+    skuIndukPindahKeVarian:
+      parentSku !== null && jumlah.has(parentSku.toLowerCase()),
+  };
 }
 
 const STOCK_STATUS_FROM_INPUT = {
@@ -1701,9 +1715,15 @@ export async function createProduct(
 
   // Diperiksa di LUAR transaksi: kalau SKU-nya bentrok, tidak ada gunanya
   // membuka transaksi dan menulis relasi hanya untuk digulung balik.
-  const sku = normalizeSku(input.sku);
+  //
+  // SKU induk yang sama dengan SKU sebuah varian pindah ke varian itu — lihat
+  // `assertSkuVarianBelumDipakai`.
+  const skuDiminta = normalizeSku(input.sku);
+  const { skuIndukPindahKeVarian } = isVariable
+    ? await assertSkuVarianBelumDipakai(prisma, input.variations ?? [], skuDiminta, null)
+    : { skuIndukPindahKeVarian: false };
+  const sku = skuIndukPindahKeVarian ? null : skuDiminta;
   if (sku !== null) await assertSkuBelumDipakai(prisma, sku, null);
-  if (isVariable) await assertSkuVarianBelumDipakai(prisma, input.variations ?? [], sku, null);
 
   const created = await prisma.$transaction(async (tx) => {
     const brandId = await resolveBrandId(tx, input.brand);
@@ -1795,22 +1815,31 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
   //
   // Menyamakan yang pertama dengan yang kedua akan membuat setiap penyimpanan
   // harga cepat ikut mengosongkan SKU produknya.
-  const nextSku = input.sku === undefined ? undefined : normalizeSku(input.sku);
-  if (nextSku !== undefined && nextSku !== null && nextSku !== existing.sku) {
-    await assertSkuBelumDipakai(prisma, nextSku, existing.id);
-  }
+  const skuDiminta = input.sku === undefined ? undefined : normalizeSku(input.sku);
+
   // Syaratnya sama dengan `syncProductVariations` di transaksi bawah (tipe
   // akhirnya VARIABLE dan `variations` dikirim) — varian yang tidak akan
   // ditulis tidak perlu diperiksa.
   const akanBervarian =
     input.type === undefined ? existing.type === ProductType.VARIABLE : input.type === "variable";
-  if (akanBervarian && input.variations !== undefined) {
-    await assertSkuVarianBelumDipakai(
-      prisma,
-      input.variations,
-      nextSku === undefined ? existing.sku : nextSku,
-      existing.id,
-    );
+  const { skuIndukPindahKeVarian } =
+    akanBervarian && input.variations !== undefined
+      ? await assertSkuVarianBelumDipakai(
+          prisma,
+          input.variations,
+          skuDiminta === undefined ? existing.sku : skuDiminta,
+          existing.id,
+        )
+      : { skuIndukPindahKeVarian: false };
+
+  // SKU induk yang dipakai varian pindah ke varian itu, jadi induknya
+  // dikosongkan — termasuk saat `sku` tidak dikirim sama sekali, karena yang
+  // memegangnya adalah nilai tersimpan. Harus terjadi di update induk, yang
+  // berjalan sebelum `syncProductVariations` di transaksi yang sama; kalau
+  // tidak, varian ditolak constraint unik.
+  const nextSku = skuIndukPindahKeVarian ? null : skuDiminta;
+  if (nextSku !== undefined && nextSku !== null && nextSku !== existing.sku) {
+    await assertSkuBelumDipakai(prisma, nextSku, existing.id);
   }
 
   // Kode Accurate produk ini & variannya, untuk kabar ke web Data (docs/13 §11).

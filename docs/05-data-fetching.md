@@ -2338,3 +2338,15 @@ disimpan setelah seluruh SKU variannya dikosongkan.
   membaca `meta.target` langsung. Pendaftaran pelanggan
   (`lib/auth/customer-password.ts`) ikut dipindah: bentrok username dulu
   selalu dilaporkan sebagai bentrok email.
+
+**Susulan 2 November 2026 — SKU induk pindah ke varian.** Produk simple yang
+diubah jadi bervarian membawa SKU lamanya di baris induk, padahal kolom SKU
+induk disembunyikan formulir dan nilainya tetap terkirim. Kalau sebuah varian
+diisi SKU yang sama, produknya macet ("dipakai 2 kali di produk ini") dan staff
+tidak bisa mengosongkannya. Sekarang SKU induk yang sama dengan SKU sebuah
+varian dianggap **pindah**: `assertSkuVarianBelumDipakai` mengembalikan
+`skuIndukPindahKeVarian`, dan `createProduct`/`updateProduct` mengosongkan SKU
+induk di transaksi yang sama, sebelum varian ditulis. SKU induk yang tidak
+dipakai varian mana pun dibiarkan. Kembar antar varian tetap ditolak, dengan
+pesan "dipakai N varian". Catatan: log produk tidak mencatat pengosongan SKU
+induk ini, karena `diffProductChanges` membandingkan dengan `input.sku`.
