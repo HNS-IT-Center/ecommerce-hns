@@ -23,7 +23,7 @@ import {
   TriangleAlert,
 } from "lucide-react"
 import { productFormSchema, type ProductFormValues } from "@/lib/validators/product"
-import type { ProductCategory, ProductAttributeTaxonomy } from "@/types/woocommerce"
+import type { ProductCategory, ProductAttributeTaxonomy, SkuConflict } from "@/types/woocommerce"
 import type { Brand } from "@/lib/api/woocommerce/brands"
 import { UnsavedChangesGuard } from "@/components/admin/unsaved-changes-guard"
 import { QRCodeCanvas } from "qrcode.react"
@@ -37,6 +37,7 @@ import { listHref } from "./list-url"
 import { AccurateCodeField } from "./accurate-code-field"
 import { tautkanKodeAccurateAction } from "./actions"
 import { umumkanTautanOtomatis } from "./umumkan-tautan-otomatis"
+import { PindahSkuButton, bacaBentrokSku } from "./pindah-sku"
 import type { HasilTautDariSku } from "@/lib/api/accurate/price-table"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -137,6 +138,11 @@ export function ProdukForm({
   const [isFormatting, setIsFormatting] = useState(false)
   const [isGeneratingShort, setIsGeneratingShort] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  /** Terisi saat simpan ditolak karena SKU-nya dipegang produk lain. */
+  const [tawaranPindahSku, setTawaranPindahSku] = useState<{
+    bentrok: SkuConflict[]
+    kirimUlang: () => Promise<void>
+  } | null>(null)
   /**
    * Kode Accurate untuk produk BARU, ditahan sampai produknya tersimpan.
    *
@@ -385,12 +391,17 @@ export function ProdukForm({
     setConfirmOpen(false)
     setIsSaving(true)
     setSubmitError(null)
+    setTawaranPindahSku(null)
+
+    // Disimpan di luar `try` supaya tawaran "Pindahkan SKU" bisa mengirim ulang
+    // muatan yang SAMA — tanpa mengunggah gambar sekali lagi.
+    let payload: Record<string, unknown> | null = null
 
     try {
       const imageUrls = await uploadPendingImages()
       const variationImageUrls = await uploadPendingVariationImages(values.variations)
 
-      const payload = {
+      payload = {
         name: values.name,
         // Dulu dipatok "simple". Saat admin menyimpan produk bervariasi, tipenya
         // ikut turun jadi simple dan seluruh varian kehilangan induk — data
@@ -460,74 +471,107 @@ export function ProdukForm({
         brand: values.brand || null,
       }
 
-      const res = await fetch("/api/admin/products", {
-        method: isEdit ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(isEdit ? { id: productId, ...payload } : payload),
-      })
-      const data = await readJsonResponse<{ id?: number; tautanOtomatis?: HasilTautDariSku }>(
-        res,
-        "Gagal menyimpan produk",
-      )
-
-      // Edit kembali ke daftar asal, dengan saringannya. Produk baru ke daftar
-      // polos: urutan bawaan "terbaru di atas" menjamin ia ada di baris
-      // pertama, sedangkan daftar asal bisa saja halaman 3 atau urut A–Z dan
-      // produk barunya tidak kelihatan di sana.
-      const savedId = isEdit ? productId : data.id
-
-      // Kode yang sempat diketik sebelum tipe produk diganti jadi bervarian
-      // tidak dipakai: induk bervarian tidak ditautkan (`tautkanKode` menolak),
-      // kodenya masuk lewat SKU varian.
-      const kodeProdukBaru = !isEdit && values.type !== "variable" ? kodeAccurate : null
-
-      // Produk baru yang kolom Kode Accurate-nya diisi ditautkan di bawah ini
-      // dengan kode ITU — kalau berbeda dari SKU-nya, pengumuman "tertaut dari
-      // SKU" untuk produk itu sudah tidak benar lagi.
-      umumkanTautanOtomatis(
-        toastManager,
-        data.tautanOtomatis,
-        kodeProdukBaru ? savedId : undefined,
-      )
-
-      /**
-       * Penautan Accurate untuk produk BARU dikerjakan di sini, sesudah
-       * produknya ada — `tautkanKode` mencocokkan `WHERE woo_id`, jadi tidak
-       * mungkin lebih awal. Produk yang disunting tidak lewat sini: kolomnya
-       * menyimpan sendiri saat ditinggalkan.
-       *
-       * Kalau penautannya gagal, produknya TETAP jadi — mengulang simpan hanya
-       * akan membuat produk kedua. Yang berubah cuma tujuannya: staff dibawa ke
-       * halaman edit produk itu, bukan ke daftar, karena di sanalah kolom Kode
-       * Accurate bisa langsung diisi ulang. Toast di project ini hilang sendiri
-       * setelah beberapa detik, jadi ia dipakai untuk MENJELASKAN, bukan sebagai
-       * satu-satunya jejak pekerjaan yang belum selesai.
-       *
-       * Menelannya diam-diam akan meninggalkan produk yang dikira tertaut
-       * padahal tidak — dan itu baru ketahuan jauh kemudian, saat harganya tidak
-       * pernah cocok dengan kasir.
-       */
-      if (kodeProdukBaru && savedId) {
-        const hasilTaut = await tautkanKodeAccurateAction({ wooId: savedId, kode: kodeProdukBaru })
-        if (hasilTaut.error) {
-          toastManager.add({
-            title: "Produk dibuat, tapi kode Accurate belum tertaut",
-            description: `${hasilTaut.error} Isi ulang kolom Kode Accurate di halaman ini.`,
-            data: { variant: "danger" },
-          })
-          router.push(`/admin/produk/${savedId}`)
-          router.refresh()
-          return
-        }
-      }
-
-      router.push(listHref(isEdit ? returnQuery : "", savedId))
-      router.refresh()
+      await kirimProduk(payload, values)
     } catch (error) {
-      setUploadProgress(null)
-      setIsSaving(false)
-      setSubmitError(error instanceof Error ? error.message : "Gagal menyimpan produk")
+      gagalSimpan(error, payload, values)
     }
+  }
+
+  /**
+   * Galat simpan. Kalau penyebabnya SKU yang dipegang produk lain, tawarkan
+   * memindahkannya: muatan yang sama dikirim ulang dengan `ambil_alih_sku`.
+   */
+  function gagalSimpan(
+    error: unknown,
+    payload: Record<string, unknown> | null,
+    values: ProductFormValues,
+  ) {
+    setUploadProgress(null)
+    setIsSaving(false)
+    setSubmitError(error instanceof Error ? error.message : "Gagal menyimpan produk")
+
+    const bentrok = bacaBentrokSku(error)
+    if (!payload || bentrok.length === 0) return
+    const muatan = payload
+    setTawaranPindahSku({
+      bentrok,
+      kirimUlang: async () => {
+        setIsSaving(true)
+        setSubmitError(null)
+        setTawaranPindahSku(null)
+        try {
+          await kirimProduk({ ...muatan, ambil_alih_sku: true }, values)
+        } catch (errorUlang) {
+          gagalSimpan(errorUlang, muatan, values)
+        }
+      },
+    })
+  }
+
+  async function kirimProduk(payload: Record<string, unknown>, values: ProductFormValues) {
+    const res = await fetch("/api/admin/products", {
+      method: isEdit ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(isEdit ? { id: productId, ...payload } : payload),
+    })
+    const data = await readJsonResponse<{ id?: number; tautanOtomatis?: HasilTautDariSku }>(
+      res,
+      "Gagal menyimpan produk",
+    )
+
+    // Edit kembali ke daftar asal, dengan saringannya. Produk baru ke daftar
+    // polos: urutan bawaan "terbaru di atas" menjamin ia ada di baris
+    // pertama, sedangkan daftar asal bisa saja halaman 3 atau urut A–Z dan
+    // produk barunya tidak kelihatan di sana.
+    const savedId = isEdit ? productId : data.id
+
+    // Kode yang sempat diketik sebelum tipe produk diganti jadi bervarian
+    // tidak dipakai: induk bervarian tidak ditautkan (`tautkanKode` menolak),
+    // kodenya masuk lewat SKU varian.
+    const kodeProdukBaru = !isEdit && values.type !== "variable" ? kodeAccurate : null
+
+    // Produk baru yang kolom Kode Accurate-nya diisi ditautkan di bawah ini
+    // dengan kode ITU — kalau berbeda dari SKU-nya, pengumuman "tertaut dari
+    // SKU" untuk produk itu sudah tidak benar lagi.
+    umumkanTautanOtomatis(
+      toastManager,
+      data.tautanOtomatis,
+      kodeProdukBaru ? savedId : undefined,
+    )
+
+    /**
+     * Penautan Accurate untuk produk BARU dikerjakan di sini, sesudah
+     * produknya ada — `tautkanKode` mencocokkan `WHERE woo_id`, jadi tidak
+     * mungkin lebih awal. Produk yang disunting tidak lewat sini: kolomnya
+     * menyimpan sendiri saat ditinggalkan.
+     *
+     * Kalau penautannya gagal, produknya TETAP jadi — mengulang simpan hanya
+     * akan membuat produk kedua. Yang berubah cuma tujuannya: staff dibawa ke
+     * halaman edit produk itu, bukan ke daftar, karena di sanalah kolom Kode
+     * Accurate bisa langsung diisi ulang. Toast di project ini hilang sendiri
+     * setelah beberapa detik, jadi ia dipakai untuk MENJELASKAN, bukan sebagai
+     * satu-satunya jejak pekerjaan yang belum selesai.
+     *
+     * Menelannya diam-diam akan meninggalkan produk yang dikira tertaut
+     * padahal tidak — dan itu baru ketahuan jauh kemudian, saat harganya tidak
+     * pernah cocok dengan kasir.
+     */
+    if (kodeProdukBaru && savedId) {
+      const hasilTaut = await tautkanKodeAccurateAction({ wooId: savedId, kode: kodeProdukBaru })
+      if (hasilTaut.error) {
+        toastManager.add({
+          title: "Produk dibuat, tapi kode Accurate belum tertaut",
+          description: `${hasilTaut.error} Isi ulang kolom Kode Accurate di halaman ini.`,
+          data: { variant: "danger" },
+        })
+        router.push(`/admin/produk/${savedId}`)
+        router.refresh()
+        return
+      }
+    }
+
+    router.push(listHref(isEdit ? returnQuery : "", savedId))
+    router.refresh()
   }
 
   async function handleFormatSpecs() {
@@ -638,7 +682,16 @@ export function ProdukForm({
         {submitError && (
           <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-xs text-destructive">
             <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-            {submitError}
+            <div className="min-w-0 flex-1">
+              {submitError}
+              {tawaranPindahSku && (
+                <PindahSkuButton
+                  bentrok={tawaranPindahSku.bentrok}
+                  onPindahkan={tawaranPindahSku.kirimUlang}
+                  disabled={isSaving}
+                />
+              )}
+            </div>
           </div>
         )}
 

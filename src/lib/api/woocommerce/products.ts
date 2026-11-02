@@ -11,7 +11,9 @@ import type {
   ProductAttributeTaxonomy,
   ProductAttributeTerm,
   ProductInput,
+  SkuConflict,
 } from "@/types/woocommerce";
+import { tautkanKode } from "@/lib/api/accurate/price-table";
 import { decodeHtmlEntities } from "@/lib/utils/html";
 import { normalizeAttributeName } from "@/lib/utils/attribute-name";
 import { CategoryOperationError } from "./categories";
@@ -1185,9 +1187,17 @@ export class ProductVariationError extends Error {
  * Dibedakan dari Error biasa dengan alasan yang sama seperti
  * ProductVariationError: staff bisa memperbaikinya sendiri (ganti SKU), jadi
  * pesannya harus sampai apa adanya dengan 400 — bukan 500 yang buntu.
+ *
+ * `bentrok` terisi kalau pemegangnya produk LAIN; formulir memakainya untuk
+ * menawarkan "Pindahkan SKU ke produk ini" (lihat `ProductInput.ambil_alih_sku`).
+ * Kosong untuk SKU yang kembar di dalam formulir itu sendiri — itu salah ketik
+ * yang harus dibetulkan staff, bukan sesuatu yang bisa dipindahkan.
  */
 export class ProductSkuError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly bentrok: SkuConflict[] = [],
+  ) {
     super(message);
     this.name = "ProductSkuError";
   }
@@ -1212,34 +1222,41 @@ function normalizeSku(sku: string | undefined): string | null {
 }
 
 /**
- * Menolak SKU yang sudah dipakai, dengan menyebut pemiliknya.
- *
- * Constraint unik di database-lah yang benar-benar menjaga kebenarannya —
- * pemeriksaan ini semata-mata supaya pesannya berguna. P2002 apa adanya cuma
- * bisa diterjemahkan jadi "SKU sudah dipakai" tanpa bisa menyebut produk mana,
- * padahal justru itu yang dibutuhkan staff yang sedang menyusuri ribuan produk.
- * Route API tetap menangkap P2002 sebagai jaring pengaman untuk dua staff yang
- * menyimpan SKU sama pada saat yang hampir sama.
- *
- * `selfId` dilewatkan saat menyunting supaya menyimpan produk TANPA mengubah
- * SKU-nya tidak dianggap bentrok dengan dirinya sendiri.
- *
- * Varian ikut diperiksa dan disebut terpisah: varian adalah baris `products`
- * juga, jadi SKU-nya berbagi satu ruang unik dengan SKU induk, dan staff perlu
- * tahu kalau yang memegangnya ternyata varian milik produk lain.
+ * Baris LAIN yang sedang memegang SKU yang diminta — calon yang diambil alih.
+ * `accurateCode` ikut dibawa karena Kode Accurate ikut pindah kalau sama
+ * dengan SKU-nya (`selesaikanAmbilAlihSku`); `parent` untuk membuang cache
+ * halaman induk kalau pemegangnya varian.
  */
-async function assertSkuBelumDipakai(
-  prisma: ReturnType<typeof getPrisma>,
-  sku: string,
-  selfId: number | null,
-): Promise<void> {
-  const pemilik = await prisma.product.findFirst({
-    where: { sku, ...(selfId !== null && { id: { not: selfId } }) },
-    select: { name: true, type: true },
-  });
-  if (!pemilik) return;
+type PemegangSku = {
+  id: number;
+  wooId: number;
+  parentId: number | null;
+  slug: string;
+  name: string;
+  type: ProductType;
+  sku: string;
+  accurateCode: string | null;
+  parent: { wooId: number; slug: string } | null;
+};
 
-  throw new ProductSkuError(`${keteranganSkuDipakai(sku, pemilik)}. Pakai SKU lain.`);
+/**
+ * Baris produk INI yang menerima SKU hasil ambil alih, dengan keadaan sebelum
+ * disimpan — untuk melepas Kode Accurate lamanya kalau kode itu dulu ikut SKU
+ * lamanya.
+ */
+type PenerimaSku = {
+  wooId: number;
+  skuLama: string | null;
+  skuBaru: string;
+  accurateCode: string | null;
+};
+
+/**
+ * Kode Accurate dianggap ikut SKU-nya kalau sama persis — abaikan spasi tepi
+ * dan besar-kecil huruf. 94% produk tertaut memang begitu (docs/13 §5).
+ */
+function kodeSamaDenganSku(kode: string | null, sku: string | null): boolean {
+  return kode !== null && sku !== null && kode.trim().toUpperCase() === sku.trim().toUpperCase();
 }
 
 function keteranganSkuDipakai(
@@ -1252,87 +1269,193 @@ function keteranganSkuDipakai(
 }
 
 /**
- * Pasangan `assertSkuBelumDipakai` untuk SKU VARIAN — dulu tidak ada.
+ * Pemeriksaan SKU sebelum produk ditulis — SKU induk dan SKU varian sekaligus.
  *
- * Sebelum fungsi ini, hanya SKU induk yang diperiksa, padahal induk bervarian
- * memang tidak ber-SKU ("SKU diisi per varian"). SKU varian ditulis langsung
- * di `syncProductVariations`, jadi SKU yang sudah dipegang produk lain baru
- * ketahuan di constraint unik database — dan karena P2002 di Prisma 7 tidak
- * terbaca lewat `meta.target`, staff hanya melihat "Gagal membuat produk".
- * Kejadiannya 30 Oktober 2026: FAN CASING LIAN LI UNI FAN SL-INF FLEX hanya
- * bisa disimpan setelah seluruh SKU variannya dikosongkan.
+ * Constraint unik di database-lah yang benar-benar menjaga kebenarannya —
+ * pemeriksaan ini supaya pesannya berguna (menyebut pemiliknya) dan supaya
+ * staff bisa memindahkan SKU dengan sadar. Route API tetap menangkap P2002
+ * sebagai jaring pengaman untuk dua staff yang menyimpan pada saat yang hampir
+ * sama.
  *
- * Dua hal diperiksa:
+ * Yang diperiksa:
  *
  *   1. Kembar antar varian di formulir itu sendiri. Dibandingkan tanpa
- *      membedakan besar-kecil huruf, karena kolasi kolom `sku` juga begitu:
- *      "abc" dan "ABC" ditolak database sebagai nilai yang sama.
- *   2. Sudah dipegang produk lain. Saat menyunting (`selfId` terisi), induk
- *      dan varian milik produk ini sendiri tidak dihitung — menyimpan ulang
- *      tanpa mengubah SKU bukan bentrok.
+ *      membedakan besar-kecil huruf, karena kolasi kolom `sku` juga begitu.
+ *      Ini salah ketik — selalu ditolak, tidak bisa dipindahkan.
+ *   2. Sudah dipegang produk LAIN. Induk dan varian milik produk ini sendiri
+ *      (`selfId`) tidak dihitung: menyimpan ulang tanpa mengubah SKU bukan
+ *      bentrok, dan menukar SKU antar varian sendiri ditangani
+ *      `syncProductVariations`. Dulu SKU varian tidak diperiksa sama sekali
+ *      dan bentroknya sampai ke staff sebagai 500 "Gagal membuat produk"
+ *      (30 Oktober 2026, FAN CASING LIAN LI UNI FAN SL-INF FLEX).
  *
- * SKU induk yang sama dengan SKU salah satu varian BUKAN bentrok: SKU itu
- * dianggap PINDAH ke varian, dan pemanggil wajib mengosongkan SKU induk
- * (nilai kembalian `true`) sebelum varian ditulis. Ini keadaan wajar saat
- * produk simple diubah jadi bervarian — SKU lamanya tertinggal di induk,
- * sementara kolom SKU induk disembunyikan formulir ("SKU diisi per varian"),
- * jadi staff tidak punya cara mengosongkannya sendiri. Sebelum ini produk
- * seperti itu macet: tidak bisa disimpan sama sekali (2 November 2026,
- * MOTHERBOARD COLORFUL BATTLE-AX H610M-E). SKU induk yang TIDAK dipakai varian
- * mana pun dibiarkan — bisa jadi ia tercetak di barcode.
+ * Bentrok (2) ditolak dengan `ProductSkuError.bentrok` terisi, kecuali
+ * `ambilAlih` — persetujuan staff lewat tombol "Pindahkan SKU ke produk ini".
+ * Dengan persetujuan itu pemegangnya dikembalikan sebagai `diambilAlih`, dan
+ * pemanggil wajib mengosongkan SKU mereka di awal transaksinya (2 November
+ * 2026). Menukar SKU dua produk dulu butuh tiga kali simpan dengan satu SKU
+ * dikosongkan di tengahnya; kini dua kali, tanpa langkah mengosongkan.
  *
- * Semua bentrok dilaporkan sekaligus, bukan hanya yang pertama: produk dengan
- * banyak varian tidak perlu disimpan berulang-ulang untuk menemukannya satu
- * per satu.
+ * SKU induk yang sama dengan SKU salah satu varian BUKAN bentrok: ia dianggap
+ * PINDAH ke varian (`skuIndukPindahKeVarian`), dan pemanggil mengosongkan SKU
+ * induk sebelum varian ditulis. Ini keadaan wajar saat produk simple diubah
+ * jadi bervarian — SKU lamanya tertinggal di induk, sementara kolomnya
+ * disembunyikan formulir ("SKU diisi per varian"), jadi staff tidak punya cara
+ * mengosongkannya sendiri (2 November 2026, MOTHERBOARD COLORFUL BATTLE-AX
+ * H610M-E). SKU induk yang TIDAK dipakai varian mana pun dibiarkan — bisa jadi
+ * ia tercetak di barcode.
  *
- * Yang sengaja TIDAK ditangani: dua varian milik produk ini yang saling
- * bertukar SKU dalam satu penyimpanan. Pembaruannya berurutan, jadi database
- * tetap menolak; jaring P2002 di route menjawabnya dengan 409.
+ * Semua bentrok dilaporkan sekaligus, bukan hanya yang pertama.
  */
-async function assertSkuVarianBelumDipakai(
+async function periksaSku(
   prisma: ReturnType<typeof getPrisma>,
-  variations: NonNullable<ProductInput["variations"]>,
-  parentSku: string | null,
-  selfId: number | null,
-): Promise<{ skuIndukPindahKeVarian: boolean }> {
-  const skus = variations
+  opsi: {
+    /** SKU induk sesudah disimpan (sudah dinormalkan). */
+    skuInduk: string | null;
+    /** `false` kalau SKU induk tidak berubah — tidak perlu dicari pemegangnya. */
+    cekSkuInduk: boolean;
+    /** `undefined` = varian tidak ikut ditulis penyimpanan ini. */
+    variations: ProductInput["variations"];
+    selfId: number | null;
+    ambilAlih: boolean;
+  },
+): Promise<{ skuIndukPindahKeVarian: boolean; diambilAlih: PemegangSku[] }> {
+  const skuVarian = (opsi.variations ?? [])
     .map((variation) => normalizeSku(variation.sku))
     .filter((sku): sku is string => sku !== null);
-  if (skus.length === 0) return { skuIndukPindahKeVarian: false };
 
-  const masalah: string[] = [];
-
+  const salahKetik: string[] = [];
   const jumlah = new Map<string, { sku: string; n: number }>();
-  for (const sku of skus) {
+  for (const sku of skuVarian) {
     const key = sku.toLowerCase();
     const entry = jumlah.get(key);
     if (entry) entry.n += 1;
     else jumlah.set(key, { sku, n: 1 });
   }
   for (const { sku, n } of jumlah.values()) {
-    if (n > 1) masalah.push(`SKU "${sku}" dipakai ${n} varian di produk ini`);
+    if (n > 1) salahKetik.push(`SKU "${sku}" dipakai ${n} varian di produk ini`);
   }
+
+  const skuIndukPindahKeVarian =
+    opsi.skuInduk !== null && jumlah.has(opsi.skuInduk.toLowerCase());
+
+  const dicek = new Set(skuVarian);
+  if (opsi.cekSkuInduk && opsi.skuInduk !== null && !skuIndukPindahKeVarian) {
+    dicek.add(opsi.skuInduk);
+  }
+  if (dicek.size === 0) return { skuIndukPindahKeVarian, diambilAlih: [] };
 
   // Disaring di JavaScript, bukan lewat `NOT { parentId }` di kueri: `parentId`
   // nullable, dan NOT atas NULL di SQL ikut membuang baris tanpa induk —
   // persis produk biasa yang paling mungkin memegang SKU-nya.
-  const pemilik = await prisma.product.findMany({
-    where: { sku: { in: [...new Set(skus)] } },
-    select: { id: true, parentId: true, sku: true, name: true, type: true },
+  const ditemukan = await prisma.product.findMany({
+    where: { sku: { in: [...dicek] } },
+    select: {
+      id: true,
+      wooId: true,
+      parentId: true,
+      slug: true,
+      name: true,
+      type: true,
+      sku: true,
+      accurateCode: true,
+      parent: { select: { wooId: true, slug: true } },
+    },
   });
-  for (const row of pemilik) {
-    if (selfId !== null && (row.id === selfId || row.parentId === selfId)) continue;
-    masalah.push(keteranganSkuDipakai(row.sku ?? "", row));
+  const pemegang: PemegangSku[] = ditemukan
+    .filter((row) => opsi.selfId === null || (row.id !== opsi.selfId && row.parentId !== opsi.selfId))
+    .map((row) => ({ ...row, sku: row.sku ?? "" }));
+
+  if (salahKetik.length > 0 || (pemegang.length > 0 && !opsi.ambilAlih)) {
+    const masalah = [...salahKetik, ...pemegang.map((p) => keteranganSkuDipakai(p.sku, p))];
+    // Tawaran memindahkan hanya kalau formulirnya sendiri sudah benar —
+    // memindahkan SKU ke formulir yang tetap akan ditolak tidak ada gunanya.
+    const bentrok =
+      salahKetik.length === 0
+        ? pemegang.map((p) => ({
+            sku: p.sku,
+            pemilik: p.name,
+            varian: p.type === ProductType.VARIATION,
+            kodeAccurateIkut: kodeSamaDenganSku(p.accurateCode, p.sku),
+          }))
+        : [];
+    throw new ProductSkuError(`${masalah.join("; ")}. Pakai SKU lain.`, bentrok);
   }
 
-  if (masalah.length > 0) {
-    throw new ProductSkuError(`${masalah.join("; ")}. Pakai SKU lain.`);
+  return { skuIndukPindahKeVarian, diambilAlih: pemegang };
+}
+
+/** Langkah pertama di dalam transaksi: SKU pemegang lama dilepas. */
+async function lepasSkuPemegang(tx: Prisma.TransactionClient, diambilAlih: PemegangSku[]) {
+  if (diambilAlih.length === 0) return;
+  await tx.product.updateMany({
+    where: { id: { in: diambilAlih.map((p) => p.id) } },
+    data: { sku: null },
+  });
+}
+
+/**
+ * Sesudah transaksi ambil alih SKU berhasil:
+ *
+ *   1. Log produk pemegang lama — SKU-nya hilang karena produk lain, dan tanpa
+ *      baris ini riwayat produk itu tidak menjelaskan ke mana SKU-nya pergi.
+ *   2. Kode Accurate ikut SKU-nya (keputusan 2 November 2026): pemegang lama
+ *      yang kodenya sama dengan SKU yang diambil dilepas tautannya, begitu pula
+ *      baris penerima yang kodenya sama dengan SKU LAMA-nya. Penautan kode
+ *      barunya dikerjakan `tautkanDariSku` di route sesudah ini — ia hanya
+ *      menautkan baris yang `accurate_code`-nya kosong, karena itu pelepasan
+ *      harus terjadi lebih dulu. Tanpa langkah ini SKU dan tautan tidak pindah
+ *      serempak: harga & stok Accurate tetap mendarat di produk lama padahal
+ *      SKU-nya sudah pindah, tanpa galat apa pun.
+ *
+ * Lewat `tautkanKode`, bukan UPDATE langsung, supaya jejak audit
+ * UNLINK_ACCURATE dan kabar ke web Data (docs/18) tidak terlewat.
+ *
+ * Tidak pernah melempar: SKU-nya sudah pindah dan benar. Kegagalan di sini
+ * dicatat ke console; tautan yang tertinggal tetap bisa dibetulkan di Update
+ * Harga.
+ */
+async function selesaikanAmbilAlihSku(
+  diambilAlih: PemegangSku[],
+  penerima: PenerimaSku[],
+  produkPenerima: string,
+  oleh: string,
+): Promise<void> {
+  if (diambilAlih.length === 0) return;
+  const prisma = getPrisma();
+
+  for (const p of diambilAlih) {
+    try {
+      await prisma.productLog.create({
+        data: {
+          userName: oleh,
+          productId: p.wooId,
+          productName: p.name,
+          action: "EDIT_PRODUCT",
+          fieldAffected: "sku",
+          oldValue: p.sku,
+          newValue: `— (dipindah ke "${produkPenerima}")`,
+        },
+      });
+      if (kodeSamaDenganSku(p.accurateCode, p.sku)) {
+        const hasil = await tautkanKode(p.wooId, null, oleh);
+        if (!hasil.ok) console.error(`[ambil-alih-sku] gagal melepas kode ${p.accurateCode}: ${hasil.alasan}`);
+      }
+    } catch (error) {
+      console.error(`[ambil-alih-sku] gagal merapikan pemegang lama woo_id=${p.wooId}:`, error);
+    }
+    invalidateProductCaches({ wooId: p.parent?.wooId ?? p.wooId, slugs: [p.slug, p.parent?.slug] });
   }
 
-  return {
-    skuIndukPindahKeVarian:
-      parentSku !== null && jumlah.has(parentSku.toLowerCase()),
-  };
+  for (const r of penerima) {
+    if (!kodeSamaDenganSku(r.accurateCode, r.skuLama) || kodeSamaDenganSku(r.accurateCode, r.skuBaru)) continue;
+    try {
+      const hasil = await tautkanKode(r.wooId, null, oleh);
+      if (!hasil.ok) console.error(`[ambil-alih-sku] gagal melepas kode ${r.accurateCode}: ${hasil.alasan}`);
+    } catch (error) {
+      console.error(`[ambil-alih-sku] gagal melepas kode lama woo_id=${r.wooId}:`, error);
+    }
+  }
 }
 
 const STOCK_STATUS_FROM_INPUT = {
@@ -1460,10 +1583,35 @@ async function syncProductVariations(
   // menghapus yang lama.
   const existing = await tx.product.findMany({
     where: { parentId: parent.id },
-    select: { id: true, wooId: true },
+    select: { id: true, wooId: true, sku: true },
   });
   const idByWooId = new Map(existing.map((v) => [v.wooId, v.id]));
   const existingIds = new Set(existing.map((v) => v.id));
+
+  // Cocokkan lewat wooId lebih dulu; id database tetap diterima supaya
+  // pemanggil lama (mis. skrip) tidak ikut rusak.
+  const matchId = (variation: (typeof variations)[number]) =>
+    variation.id === undefined
+      ? undefined
+      : idByWooId.get(variation.id) ?? (existingIds.has(variation.id) ? variation.id : undefined);
+
+  // SKU varian lama yang berubah (atau variannya dibuang) dilepas DULU,
+  // sebelum satu pun varian ditulis. Varian ditulis berurutan, jadi tanpa ini
+  // menukar SKU dua varian — A mengambil SKU B, B mengambil SKU A — ditolak
+  // constraint unik di langkah pertama: B masih memegang SKU-nya saat A
+  // menulis. Hal yang sama untuk SKU yang dioper dari varian yang dihapus ke
+  // varian baru.
+  const skuBaruById = new Map<number, string | null>();
+  for (const variation of variations) {
+    const id = matchId(variation);
+    if (id !== undefined) skuBaruById.set(id, normalizeSku(variation.sku));
+  }
+  const dilepas = existing
+    .filter((v) => v.sku !== null && (!skuBaruById.has(v.id) || skuBaruById.get(v.id) !== v.sku))
+    .map((v) => v.id);
+  if (dilepas.length > 0) {
+    await tx.product.updateMany({ where: { id: { in: dilepas } }, data: { sku: null } });
+  }
 
   const keptIds = new Set<number>();
 
@@ -1490,12 +1638,7 @@ async function syncProductVariations(
 
     let variationId: number;
 
-    // Cocokkan lewat wooId lebih dulu; id database tetap diterima supaya
-    // pemanggil lama (mis. skrip) tidak ikut rusak.
-    const matchedId =
-      variation.id === undefined
-        ? undefined
-        : idByWooId.get(variation.id) ?? (existingIds.has(variation.id) ? variation.id : undefined);
+    const matchedId = matchId(variation);
 
     if (matchedId !== undefined) {
       await tx.product.update({ where: { id: matchedId }, data });
@@ -1689,6 +1832,8 @@ async function refetchAsWoo(productId: number): Promise<Product> {
 export type CreateProductOptions = {
   wooId?: number;
   source?: ProductSource;
+  /** Nama staff untuk log & jejak audit tautan saat SKU diambil alih. */
+  oleh?: string;
 };
 
 export async function createProduct(
@@ -1716,16 +1861,20 @@ export async function createProduct(
   // Diperiksa di LUAR transaksi: kalau SKU-nya bentrok, tidak ada gunanya
   // membuka transaksi dan menulis relasi hanya untuk digulung balik.
   //
-  // SKU induk yang sama dengan SKU sebuah varian pindah ke varian itu — lihat
-  // `assertSkuVarianBelumDipakai`.
+  // SKU induk yang sama dengan SKU sebuah varian pindah ke varian itu, dan SKU
+  // milik produk lain hanya diambil dengan persetujuan — lihat `periksaSku`.
   const skuDiminta = normalizeSku(input.sku);
-  const { skuIndukPindahKeVarian } = isVariable
-    ? await assertSkuVarianBelumDipakai(prisma, input.variations ?? [], skuDiminta, null)
-    : { skuIndukPindahKeVarian: false };
+  const { skuIndukPindahKeVarian, diambilAlih } = await periksaSku(prisma, {
+    skuInduk: skuDiminta,
+    cekSkuInduk: true,
+    variations: isVariable ? input.variations ?? [] : undefined,
+    selfId: null,
+    ambilAlih: input.ambil_alih_sku === true,
+  });
   const sku = skuIndukPindahKeVarian ? null : skuDiminta;
-  if (sku !== null) await assertSkuBelumDipakai(prisma, sku, null);
 
   const created = await prisma.$transaction(async (tx) => {
+    await lepasSkuPemegang(tx, diambilAlih);
     const brandId = await resolveBrandId(tx, input.brand);
     const product = await tx.product.create({
       data: {
@@ -1773,13 +1922,22 @@ export async function createProduct(
   // yang sebenarnya sanggup dikerjakan.
   { timeout: 30000, maxWait: 15000 });
 
+  // Produk baru belum punya Kode Accurate, jadi tidak ada penerima yang
+  // kodenya perlu dilepas — hanya pemegang lamanya.
+  await selesaikanAmbilAlihSku(diambilAlih, [], input.name, options.oleh ?? "Admin");
+
   const result = await refetchAsWoo(created.id);
   invalidateProductCaches({ wooId, slugs: [slug] });
   return result;
 }
 
 /** Update produk (dipakai admin panel). `id` di sini adalah woo_id (konvensi lama, tetap dipakai sebagai identifier publik) - lihat getProductById. */
-export async function updateProduct(id: number, input: Partial<ProductInput>): Promise<Product> {
+export async function updateProduct(
+  id: number,
+  input: Partial<ProductInput>,
+  /** `oleh`: nama staff untuk log & jejak audit tautan saat SKU diambil alih. */
+  opsi: { oleh?: string } = {},
+): Promise<Product> {
   const prisma = getPrisma();
   const existing = await prisma.product.findUnique({ where: { wooId: id } });
   if (!existing) throw new Error(`Produk dengan woo_id=${id} tidak ditemukan`);
@@ -1822,15 +1980,14 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
   // ditulis tidak perlu diperiksa.
   const akanBervarian =
     input.type === undefined ? existing.type === ProductType.VARIABLE : input.type === "variable";
-  const { skuIndukPindahKeVarian } =
-    akanBervarian && input.variations !== undefined
-      ? await assertSkuVarianBelumDipakai(
-          prisma,
-          input.variations,
-          skuDiminta === undefined ? existing.sku : skuDiminta,
-          existing.id,
-        )
-      : { skuIndukPindahKeVarian: false };
+  const tulisVarian = akanBervarian && input.variations !== undefined;
+  const { skuIndukPindahKeVarian, diambilAlih } = await periksaSku(prisma, {
+    skuInduk: skuDiminta === undefined ? existing.sku : skuDiminta,
+    cekSkuInduk: skuDiminta !== undefined && skuDiminta !== existing.sku,
+    variations: tulisVarian ? input.variations : undefined,
+    selfId: existing.id,
+    ambilAlih: input.ambil_alih_sku === true,
+  });
 
   // SKU induk yang dipakai varian pindah ke varian itu, jadi induknya
   // dikosongkan — termasuk saat `sku` tidak dikirim sama sekali, karena yang
@@ -1838,8 +1995,35 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
   // berjalan sebelum `syncProductVariations` di transaksi yang sama; kalau
   // tidak, varian ditolak constraint unik.
   const nextSku = skuIndukPindahKeVarian ? null : skuDiminta;
-  if (nextSku !== undefined && nextSku !== null && nextSku !== existing.sku) {
-    await assertSkuBelumDipakai(prisma, nextSku, existing.id);
+
+  // Baris produk ini yang menerima SKU hasil ambil alih, dengan Kode Accurate
+  // dan SKU-nya SEBELUM disimpan — sesudahnya SKU lamanya sudah tidak ada.
+  const penerima: PenerimaSku[] = [];
+  if (diambilAlih.length > 0) {
+    const diambil = new Set(diambilAlih.map((p) => p.sku.toLowerCase()));
+    if (nextSku && diambil.has(nextSku.toLowerCase())) {
+      penerima.push({
+        wooId: existing.wooId,
+        skuLama: existing.sku,
+        skuBaru: nextSku,
+        accurateCode: existing.accurateCode,
+      });
+    }
+    if (tulisVarian) {
+      const varianLama = await prisma.product.findMany({
+        where: { parentId: existing.id },
+        select: { id: true, wooId: true, sku: true, accurateCode: true },
+      });
+      for (const variation of input.variations ?? []) {
+        const skuBaru = normalizeSku(variation.sku);
+        if (!skuBaru || !diambil.has(skuBaru.toLowerCase()) || variation.id === undefined) continue;
+        const lama =
+          varianLama.find((v) => v.wooId === variation.id) ?? varianLama.find((v) => v.id === variation.id);
+        if (lama) {
+          penerima.push({ wooId: lama.wooId, skuLama: lama.sku, skuBaru, accurateCode: lama.accurateCode });
+        }
+      }
+    }
   }
 
   // Kode Accurate produk ini & variannya, untuk kabar ke web Data (docs/13 §11).
@@ -1858,6 +2042,7 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
         : ProductType.SIMPLE;
 
   const updated = await prisma.$transaction(async (tx) => {
+    await lepasSkuPemegang(tx, diambilAlih);
     const brandId =
       input.brand !== undefined ? await resolveBrandId(tx, input.brand) : undefined;
     const product = await tx.product.update({
@@ -1944,6 +2129,10 @@ export async function updateProduct(id: number, input: Partial<ProductInput>): P
     }
     return product;
   }, { timeout: 30000 });
+
+  // Sebelum refetch, supaya hasil yang dikembalikan sudah memuat tautan
+  // Accurate yang dilepas.
+  await selesaikanAmbilAlihSku(diambilAlih, penerima, updated.name, opsi.oleh ?? "Admin");
 
   const result = await refetchAsWoo(updated.id);
   invalidateProductCaches({ wooId: id, slugs: [updated.slug] });

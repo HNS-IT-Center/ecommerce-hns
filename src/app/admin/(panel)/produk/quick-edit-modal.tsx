@@ -30,6 +30,8 @@ import { VariationEditor } from "./variation-editor"
 import { type BulkProductRow } from "./product-data-table"
 import { AccurateCodeField } from "./accurate-code-field"
 import { umumkanTautanOtomatis } from "./umumkan-tautan-otomatis"
+import { PindahSkuButton, bacaBentrokSku } from "./pindah-sku"
+import type { SkuConflict } from "@/types/woocommerce"
 import { useToastManager } from "@/components/ui/toast"
 import type { HasilTautDariSku } from "@/lib/api/accurate/price-table"
 import { Input } from "@/components/ui/input"
@@ -84,6 +86,12 @@ export function QuickEditModal({
   const router = useRouter()
   const toastManager = useToastManager()
   const [submitError, setSubmitError] = useState<string | null>(null)
+  /** Terisi saat simpan ditolak karena SKU-nya dipegang produk lain. */
+  const [tawaranPindahSku, setTawaranPindahSku] = useState<{
+    bentrok: SkuConflict[]
+    kirimUlang: () => Promise<void>
+  } | null>(null)
+  const [sedangPindah, setSedangPindah] = useState(false)
   const [isPending, startTransition] = useTransition()
 
   const raw = product.rawProduct
@@ -342,6 +350,15 @@ export function QuickEditModal({
       }),
     }
 
+    await kirimProduk(payload)
+  }
+
+  /**
+   * Gagal karena SKU dipegang produk lain → tawarkan memindahkannya dengan
+   * muatan yang sama (gambar varian sudah terunggah, tidak diulang).
+   */
+  async function kirimProduk(payload: Record<string, unknown>) {
+    setTawaranPindahSku(null)
     try {
       const res = await fetch("/api/admin/products", {
         method: "PUT",
@@ -360,10 +377,25 @@ export function QuickEditModal({
       })
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Gagal menyimpan produk")
+      const bentrok = bacaBentrokSku(error)
+      if (bentrok.length > 0) {
+        setTawaranPindahSku({
+          bentrok,
+          kirimUlang: async () => {
+            setSubmitError(null)
+            setSedangPindah(true)
+            try {
+              await kirimProduk({ ...payload, ambil_alih_sku: true })
+            } finally {
+              setSedangPindah(false)
+            }
+          },
+        })
+      }
     }
   }
 
-  const isBusy = isSubmitting || isPending
+  const isBusy = isSubmitting || isPending || sedangPindah
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
@@ -410,7 +442,16 @@ export function QuickEditModal({
             {submitError && (
               <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-xs text-destructive">
                 <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-                {submitError}
+                <div className="min-w-0 flex-1">
+                  {submitError}
+                  {tawaranPindahSku && (
+                    <PindahSkuButton
+                      bentrok={tawaranPindahSku.bentrok}
+                      onPindahkan={tawaranPindahSku.kirimUlang}
+                      disabled={isBusy}
+                    />
+                  )}
+                </div>
               </div>
             )}
 

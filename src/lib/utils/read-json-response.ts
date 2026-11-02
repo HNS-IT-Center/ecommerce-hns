@@ -28,10 +28,26 @@ export async function readJsonResponse<T>(res: Response, fallbackError: string):
       typeof data === "object" && data !== null && "error" in data && typeof data.error === "string"
         ? data.error
         : ""
-    throw new Error(message || `${fallbackError} (${res.status})`)
+    throw new JsonResponseError(message || `${fallbackError} (${res.status})`, res.status, data)
   }
 
   return data as T
+}
+
+/**
+ * Galat dari balasan JSON yang gagal. Tetap `Error` biasa bagi pemanggil yang
+ * cuma menampilkan `message`; `data` untuk yang butuh isi lain dari balasannya
+ * (mis. `bentrokSku` dari `/api/admin/products`).
+ */
+export class JsonResponseError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly data: unknown,
+  ) {
+    super(message)
+    this.name = "JsonResponseError"
+  }
 }
 
 function describeNonJsonResponse(status: number): string {

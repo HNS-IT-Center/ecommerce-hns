@@ -2350,3 +2350,28 @@ induk di transaksi yang sama, sebelum varian ditulis. SKU induk yang tidak
 dipakai varian mana pun dibiarkan. Kembar antar varian tetap ditolak, dengan
 pesan "dipakai N varian". Catatan: log produk tidak mencatat pengosongan SKU
 induk ini, karena `diffProductChanges` membandingkan dengan `input.sku`.
+
+**Susulan 2 November 2026 — menukar & memindahkan SKU.**
+
+- **Tukar di dalam satu produk** (varian A ↔ varian B) cukup sekali simpan.
+  `syncProductVariations` melepas dulu SKU varian lama yang berubah atau
+  dibuang, baru menulis varian satu per satu. Tanpa itu langkah pertama
+  ditolak constraint unik, karena B masih memegang SKU-nya saat A menulis.
+- **Pindah antar produk**: galat 400 SKU bentrok kini membawa
+  `bentrokSku: SkuConflict[]` (`{ sku, pemilik, varian, kodeAccurateIkut }`).
+  Formulir penuh dan Quick Edit menampilkan tombol **Pindahkan SKU ke produk
+  ini** (`produk/pindah-sku.tsx`). Setelah dikonfirmasi, muatan yang sama
+  dikirim ulang dengan `ambil_alih_sku: true`, tanpa mengunggah gambar lagi.
+  Server (`periksaSku` → `lepasSkuPemegang` → `selesaikanAmbilAlihSku`)
+  mengosongkan SKU pemegang lama di awal transaksi, lalu mencatat
+  `EDIT_PRODUCT`/`sku` di log produk pemegang lama.
+- **Kode Accurate ikut SKU** (keputusan user): pemegang lama yang Kode
+  Accurate-nya sama dengan SKU yang diambil dilepas tautannya. Baris penerima
+  yang Kode Accurate-nya sama dengan SKU LAMA-nya juga dilepas. Keduanya lewat
+  `tautkanKode(…, null)`, jadi jejak audit dan kabar ke web Data (docs/18)
+  ikut. Kode barunya ditautkan `tautkanDariSku` di route sesudahnya.
+- Tukar penuh dua produk = dua kali simpan: di X ambil SKU milik Y (Pindahkan),
+  lalu di Y isi SKU lama X yang kini bebas.
+- SKU yang kembar di formulir sendiri tidak pernah ditawari pindah.
+- Belum: edit SKU langsung dari daftar produk (`updateProductSkuAction`) dan
+  kolom Kode Accurate. Keduanya masih hanya menampilkan pesan bentrok.

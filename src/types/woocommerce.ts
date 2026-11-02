@@ -182,6 +182,20 @@ export type ProductVariationInput = {
   image_url?: string | null;
 };
 
+/**
+ * Satu SKU yang ditolak karena dipegang produk lain — dikirim balik bersama
+ * galat 400 `/api/admin/products` supaya formulir bisa menawarkan
+ * pemindahannya (`ProductInput.ambil_alih_sku`).
+ */
+export type SkuConflict = {
+  sku: string;
+  /** Nama produk atau varian yang sekarang memegangnya. */
+  pemilik: string;
+  varian: boolean;
+  /** Kode Accurate pemegangnya sama dengan SKU ini, jadi tautannya ikut pindah. */
+  kodeAccurateIkut: boolean;
+};
+
 export type ProductInput = {
   name: string;
   type?: "simple" | "variable";
@@ -200,6 +214,15 @@ export type ProductInput = {
    * karena mengirim `type: "simple"`.
    */
   remove_variations?: boolean;
+  /**
+   * Persetujuan staff untuk MEMINDAHKAN SKU yang sedang dipegang produk lain ke
+   * produk ini (tombol "Pindahkan SKU ke produk ini"). Tanpa penanda ini SKU
+   * yang bentrok ditolak dengan `SkuConflict[]`; dengan penanda ini SKU
+   * pemegang lama dikosongkan dalam transaksi yang sama, dan Kode Accurate
+   * yang sama dengan SKU itu ikut pindah. Dikirim formulir HANYA sesudah staff
+   * melihat daftar bentroknya di dialog konfirmasi.
+   */
+  ambil_alih_sku?: boolean;
   /**
    * SKU produk ini (`products.sku`). Opsional — mayoritas katalog belum punya.
    *

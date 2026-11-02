@@ -57,10 +57,16 @@ function tolakKalauVarianBermasalah(error: unknown) {
  * mengirim staff memperbaiki kolom yang sama sekali tidak bermasalah. Cara
  * membacanya ada di `isUniqueViolationOn` — `meta.target` saja tidak terisi
  * di Prisma 7 dengan driver adapter.
+ *
+ * `bentrokSku` ikut dikirim kalau SKU-nya dipegang produk lain — formulir
+ * memakainya untuk menawarkan "Pindahkan SKU ke produk ini".
  */
 function tolakKalauSkuBentrok(error: unknown) {
   if (error instanceof ProductSkuError) {
-    return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json(
+      { error: error.message, bentrokSku: error.bentrok },
+      { status: 400 },
+    )
   }
   return isUniqueViolationOn(error, "sku")
     ? NextResponse.json(
@@ -76,7 +82,7 @@ export async function POST(request: NextRequest) {
     const userName = (authUser && typeof authUser === 'object' && 'name' in authUser) ? String(authUser.name) : "Admin"
     
     const input = (await request.json()) as ProductInput
-    const product = await createProduct(input)
+    const product = await createProduct(input, { oleh: userName })
     
     const prisma = getPrisma()
     await prisma.productLog.create({
@@ -134,7 +140,7 @@ export async function PUT(request: NextRequest) {
         ? await prisma.product.count({ where: { parentId: existingRaw.id } })
         : undefined
 
-    const product = await updateProduct(id, input)
+    const product = await updateProduct(id, input, { oleh: userName })
 
     if (existingRaw) {
       // Perubahan harga selalu dipisah jadi barisnya sendiri — menyunting nama
