@@ -2357,6 +2357,11 @@ induk ini, karena `diffProductChanges` membandingkan dengan `input.sku`.
   `syncProductVariations` melepas dulu SKU varian lama yang berubah atau
   dibuang, baru menulis varian satu per satu. Tanpa itu langkah pertama
   ditolak constraint unik, karena B masih memegang SKU-nya saat A menulis.
+  Kode Accurate ikut tertukar (putih ↔ hitam yang tertukar): varian yang
+  menerima SKU lama saudaranya dan kodenya sama dengan SKU lamanya dilepas
+  tautannya, lalu `tautkanDariSku` menautkan ulang sesuai SKU barunya.
+  Mengganti SKU ke nilai yang bukan milik produk ini (mis. kode pabrikan)
+  sengaja TIDAK memutus tautan.
 - **Pindah antar produk**: galat 400 SKU bentrok kini membawa
   `bentrokSku: SkuConflict[]` (`{ sku, pemilik, varian, kodeAccurateIkut }`).
   Formulir penuh dan Quick Edit menampilkan tombol **Pindahkan SKU ke produk

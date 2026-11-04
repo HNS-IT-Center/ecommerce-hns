@@ -1224,7 +1224,7 @@ function normalizeSku(sku: string | undefined): string | null {
 /**
  * Baris LAIN yang sedang memegang SKU yang diminta — calon yang diambil alih.
  * `accurateCode` ikut dibawa karena Kode Accurate ikut pindah kalau sama
- * dengan SKU-nya (`selesaikanAmbilAlihSku`); `parent` untuk membuang cache
+ * dengan SKU-nya (`selesaikanPindahSku`); `parent` untuk membuang cache
  * halaman induk kalau pemegangnya varian.
  */
 type PemegangSku = {
@@ -1395,13 +1395,16 @@ async function lepasSkuPemegang(tx: Prisma.TransactionClient, diambilAlih: Pemeg
 }
 
 /**
- * Sesudah transaksi ambil alih SKU berhasil:
+ * Sesudah transaksi yang memindahkan SKU berhasil — diambil alih dari produk
+ * lain, atau ditukar antar varian produk ini sendiri:
  *
  *   1. Log produk pemegang lama — SKU-nya hilang karena produk lain, dan tanpa
  *      baris ini riwayat produk itu tidak menjelaskan ke mana SKU-nya pergi.
  *   2. Kode Accurate ikut SKU-nya (keputusan 2 November 2026): pemegang lama
  *      yang kodenya sama dengan SKU yang diambil dilepas tautannya, begitu pula
- *      baris penerima yang kodenya sama dengan SKU LAMA-nya. Penautan kode
+ *      baris penerima yang kodenya sama dengan SKU LAMA-nya. Untuk varian putih
+ *      ↔ hitam yang SKU-nya tertukar, ini yang membuat tautannya ikut tertukar —
+ *      tanpanya stok & harga Accurate tetap masuk ke warna yang salah. Penautan kode
  *      barunya dikerjakan `tautkanDariSku` di route sesudah ini — ia hanya
  *      menautkan baris yang `accurate_code`-nya kosong, karena itu pelepasan
  *      harus terjadi lebih dulu. Tanpa langkah ini SKU dan tautan tidak pindah
@@ -1415,13 +1418,13 @@ async function lepasSkuPemegang(tx: Prisma.TransactionClient, diambilAlih: Pemeg
  * dicatat ke console; tautan yang tertinggal tetap bisa dibetulkan di Update
  * Harga.
  */
-async function selesaikanAmbilAlihSku(
+async function selesaikanPindahSku(
   diambilAlih: PemegangSku[],
   penerima: PenerimaSku[],
   produkPenerima: string,
   oleh: string,
 ): Promise<void> {
-  if (diambilAlih.length === 0) return;
+  if (diambilAlih.length === 0 && penerima.length === 0) return;
   const prisma = getPrisma();
 
   for (const p of diambilAlih) {
@@ -1924,7 +1927,7 @@ export async function createProduct(
 
   // Produk baru belum punya Kode Accurate, jadi tidak ada penerima yang
   // kodenya perlu dilepas — hanya pemegang lamanya.
-  await selesaikanAmbilAlihSku(diambilAlih, [], input.name, options.oleh ?? "Admin");
+  await selesaikanPindahSku(diambilAlih, [], input.name, options.oleh ?? "Admin");
 
   const result = await refetchAsWoo(created.id);
   invalidateProductCaches({ wooId, slugs: [slug] });
@@ -1996,32 +1999,43 @@ export async function updateProduct(
   // tidak, varian ditolak constraint unik.
   const nextSku = skuIndukPindahKeVarian ? null : skuDiminta;
 
-  // Baris produk ini yang menerima SKU hasil ambil alih, dengan Kode Accurate
-  // dan SKU-nya SEBELUM disimpan — sesudahnya SKU lamanya sudah tidak ada.
+  // Baris produk ini yang menerima SKU yang PINDAH — diambil alih dari produk
+  // lain, atau ditukar dengan varian sendiri (putih ↔ hitam yang tertukar) —
+  // dengan Kode Accurate dan SKU-nya SEBELUM disimpan; sesudahnya SKU lamanya
+  // sudah tidak ada. Kode Accurate yang ikut SKU lamanya dilepas di
+  // `selesaikanPindahSku`, lalu kode barunya ditautkan `tautkanDariSku`.
+  //
+  // SENGAJA hanya untuk SKU yang pindah, bukan setiap SKU yang berubah: staff
+  // yang mengganti SKU produk tertaut dengan kode pabrikan tidak bermaksud
+  // memutus tautan Accurate-nya, dan memutusnya diam-diam menghentikan sinkron
+  // harga & stok produk itu.
   const penerima: PenerimaSku[] = [];
-  if (diambilAlih.length > 0) {
-    const diambil = new Set(diambilAlih.map((p) => p.sku.toLowerCase()));
-    if (nextSku && diambil.has(nextSku.toLowerCase())) {
-      penerima.push({
-        wooId: existing.wooId,
-        skuLama: existing.sku,
-        skuBaru: nextSku,
-        accurateCode: existing.accurateCode,
-      });
-    }
-    if (tulisVarian) {
-      const varianLama = await prisma.product.findMany({
-        where: { parentId: existing.id },
-        select: { id: true, wooId: true, sku: true, accurateCode: true },
-      });
-      for (const variation of input.variations ?? []) {
-        const skuBaru = normalizeSku(variation.sku);
-        if (!skuBaru || !diambil.has(skuBaru.toLowerCase()) || variation.id === undefined) continue;
-        const lama =
-          varianLama.find((v) => v.wooId === variation.id) ?? varianLama.find((v) => v.id === variation.id);
-        if (lama) {
-          penerima.push({ wooId: lama.wooId, skuLama: lama.sku, skuBaru, accurateCode: lama.accurateCode });
-        }
+  const diambil = new Set(diambilAlih.map((p) => p.sku.toLowerCase()));
+  if (nextSku && diambil.has(nextSku.toLowerCase())) {
+    penerima.push({
+      wooId: existing.wooId,
+      skuLama: existing.sku,
+      skuBaru: nextSku,
+      accurateCode: existing.accurateCode,
+    });
+  }
+  if (tulisVarian) {
+    const varianLama = await prisma.product.findMany({
+      where: { parentId: existing.id },
+      select: { id: true, wooId: true, sku: true, accurateCode: true },
+    });
+    const skuLamaSendiri = new Set(
+      varianLama.map((v) => v.sku?.toLowerCase()).filter((sku): sku is string => !!sku),
+    );
+    for (const variation of input.variations ?? []) {
+      const skuBaru = normalizeSku(variation.sku);
+      if (!skuBaru || variation.id === undefined) continue;
+      const lama =
+        varianLama.find((v) => v.wooId === variation.id) ?? varianLama.find((v) => v.id === variation.id);
+      if (!lama || skuBaru.toLowerCase() === lama.sku?.toLowerCase()) continue;
+      const pindah = diambil.has(skuBaru.toLowerCase()) || skuLamaSendiri.has(skuBaru.toLowerCase());
+      if (pindah) {
+        penerima.push({ wooId: lama.wooId, skuLama: lama.sku, skuBaru, accurateCode: lama.accurateCode });
       }
     }
   }
@@ -2132,7 +2146,7 @@ export async function updateProduct(
 
   // Sebelum refetch, supaya hasil yang dikembalikan sudah memuat tautan
   // Accurate yang dilepas.
-  await selesaikanAmbilAlihSku(diambilAlih, penerima, updated.name, opsi.oleh ?? "Admin");
+  await selesaikanPindahSku(diambilAlih, penerima, updated.name, opsi.oleh ?? "Admin");
 
   const result = await refetchAsWoo(updated.id);
   invalidateProductCaches({ wooId: id, slugs: [updated.slug] });
