@@ -246,7 +246,10 @@ export default async function VerifyQuotePage({
                 {info.salesName && (
                   <div>
                     <dt className="text-xs text-muted-foreground">Sales</dt>
-                    <dd className="font-semibold">{info.salesName}</dd>
+                    <dd className="flex flex-wrap items-center gap-1.5 font-semibold">
+                      {info.salesName}
+                      {info.salesResigned && <QuoteBadge tone="netral">Sudah resign</QuoteBadge>}
+                    </dd>
                   </div>
                 )}
               </dl>

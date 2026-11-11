@@ -5,6 +5,7 @@ import { createHash, randomInt } from "crypto"
 import type { Prisma } from "@prisma/client"
 
 import { getPrisma } from "@/lib/prisma/client"
+import { isMaster } from "@/lib/auth/permissions"
 import { generatePublicToken } from "@/lib/utils/public-token"
 import { discountedRegularPrice } from "@/lib/pc-builder/savings"
 import { jakartaMonthRange, jakartaPeriod, jakartaYyyymmdd } from "@/lib/utils/timezone"
@@ -1885,13 +1886,16 @@ class StatusBentrokError extends Error {}
  * Jangan menambahkannya ke `select` di bawah "supaya lengkap".
  */
 export async function getQuoteStatusForCashier(code: string) {
-  return getPrisma().pcBuildQuote.findUnique({
+  const row = await getPrisma().pcBuildQuote.findUnique({
     where: { code: code.toUpperCase() },
     select: {
       status: true,
       revision: true,
       customerName: true,
       salesName: true,
+      // Hanya untuk menurunkan `salesResigned` di bawah — dibuang sebelum
+      // dikembalikan, jadi email pemilik tidak pernah sampai ke halaman kasir.
+      owner: { select: { role: true, email: true } },
       closedAt: true,
       // Kasir perlu tahu pelanggan ini sudah membayar di muka sebelum menerima
       // pembayarannya. Ini penanda, bukan nominal — tidak ada angka DP yang
@@ -1903,12 +1907,40 @@ export async function getQuoteStatusForCashier(code: string) {
       },
     },
   })
+  if (!row) return null
+
+  const { owner, ...rest } = row
+  return { ...rest, salesResigned: pemilikResign(owner) }
+}
+
+/**
+ * Pemilik quotation yang sudah keluar dari tim — akunnya diturunkan menjadi
+ * pelanggan lewat "Turunkan jadi pelanggan" di Manajemen User.
+ *
+ * Diturunkan dari `role` SAAT INI, bukan disimpan di quotation. Yang ditanyakan
+ * memang keadaan orangnya sekarang ("masih bisa dihubungi atau tidak"), dan
+ * kalau ia kembali bekerja lalu dinaikkan lagi, penandanya hilang sendiri tanpa
+ * ada baris yang perlu dibetulkan.
+ *
+ * Hanya untuk tampilan INTERNAL (`/admin/quotation`, `/verify`). PDF dan
+ * tautan publik `/q` tetap memakai `salesName` hasil snapshot apa adanya —
+ * dokumen yang sudah di tangan pelanggan tidak berubah karena sales-nya resign.
+ *
+ * Master dikecualikan: kolom `role`-nya sering "pelanggan" karena akun developer
+ * juga dipakai belanja, padahal ia tidak pernah keluar dari mana pun.
+ * Akun yang sudah DIHAPUS (`owner` null) juga bukan "resign" — pemanggilnya
+ * punya keterangan sendiri untuk itu.
+ */
+function pemilikResign(owner: { role: string; email: string } | null): boolean {
+  return owner !== null && owner.role === "pelanggan" && !isMaster(owner)
 }
 
 /** Satu baris di tabel pengawasan `/admin/quotation`. */
 export type AdminQuotationRow = QuotationHistoryRow & {
   /** Nama akun pemilik, untuk quotation yang pemiliknya bukan Sales (CS). */
   ownerName: string | null
+  /** Pemilik sudah diturunkan jadi pelanggan — lihat `pemilikResign`. */
+  ownerResigned: boolean
   internalNote: string | null
 }
 
@@ -1988,7 +2020,7 @@ export async function listQuotationsForAdmin(
       select: {
         ...HISTORY_SELECT,
         internalNote: true,
-        owner: { select: { name: true, salesDisplayName: true } },
+        owner: { select: { name: true, salesDisplayName: true, role: true, email: true } },
       },
       /**
        * `code` sebagai kunci kedua, bukan `createdAt` saja.
@@ -2009,6 +2041,7 @@ export async function listQuotationsForAdmin(
     rows: rows.map((row) => ({
       ...toHistoryRow(row),
       ownerName: row.owner ? (row.owner.salesDisplayName ?? row.owner.name) : null,
+      ownerResigned: pemilikResign(row.owner),
       internalNote: row.internalNote,
     })),
     total,
@@ -2029,7 +2062,9 @@ export async function listQuotationsForAdmin(
  */
 export async function summarizeSalesByMonth(
   periode: string
-): Promise<{ ownerUserId: string; nama: string; unit: number; total: number }[]> {
+): Promise<
+  { ownerUserId: string; nama: string; resigned: boolean; unit: number; total: number }[]
+> {
   const { mulai, sesudah } = jakartaMonthRange(periode)
 
   const grup = await getPrisma().pcBuildQuote.groupBy({
@@ -2048,25 +2083,32 @@ export async function summarizeSalesByMonth(
   const ids = grup.map((g) => g.ownerUserId!).filter(Boolean)
   const users = await getPrisma().user.findMany({
     where: { id: { in: ids } },
-    select: { id: true, name: true, salesDisplayName: true },
+    select: { id: true, name: true, salesDisplayName: true, role: true, email: true },
   })
-  const namaById = new Map(users.map((u) => [u.id, u.salesDisplayName ?? u.name]))
+  const userById = new Map(users.map((u) => [u.id, u]))
 
   return grup
-    .map((g) => ({
-      ownerUserId: g.ownerUserId!,
-      // Pemilik yang akunnya sudah dihapus tetap dihitung — penjualannya
-      // terjadi, dan menghilangkannya dari rekap membuat total bulan itu tidak
-      // cocok dengan jumlah dokumennya.
-      nama: namaById.get(g.ownerUserId!) ?? "(akun dihapus)",
-      unit: g._count._all,
-      total: Number(g._sum.total ?? 0),
-    }))
+    .map((g) => {
+      const u = userById.get(g.ownerUserId!)
+      return {
+        ownerUserId: g.ownerUserId!,
+        // Pemilik yang akunnya sudah dihapus tetap dihitung — penjualannya
+        // terjadi, dan menghilangkannya dari rekap membuat total bulan itu tidak
+        // cocok dengan jumlah dokumennya. Alasan yang sama berlaku untuk sales
+        // yang sudah resign: penjualannya tetap atas namanya.
+        nama: u ? (u.salesDisplayName ?? u.name) : "(akun dihapus)",
+        resigned: pemilikResign(u ?? null),
+        unit: g._count._all,
+        total: Number(g._sum.total ?? 0),
+      }
+    })
     .sort((a, b) => b.total - a.total)
 }
 
 /** Daftar pemilik quotation, untuk saringan di `/admin/quotation`. */
-export async function listQuotationOwners(): Promise<{ id: string; nama: string }[]> {
+export async function listQuotationOwners(): Promise<
+  { id: string; nama: string; resigned: boolean }[]
+> {
   const grup = await getPrisma().pcBuildQuote.groupBy({
     by: ["ownerUserId"],
     where: { ownerUserId: { not: null } },
@@ -2076,10 +2118,14 @@ export async function listQuotationOwners(): Promise<{ id: string; nama: string 
 
   const users = await getPrisma().user.findMany({
     where: { id: { in: ids } },
-    select: { id: true, name: true, salesDisplayName: true },
+    select: { id: true, name: true, salesDisplayName: true, role: true, email: true },
     orderBy: { name: "asc" },
   })
-  return users.map((u) => ({ id: u.id, nama: u.salesDisplayName ?? u.name }))
+  // Yang masih aktif di atas, yang sudah resign di bawah — saringan ini paling
+  // sering dipakai untuk sales yang sedang bekerja.
+  return users
+    .map((u) => ({ id: u.id, nama: u.salesDisplayName ?? u.name, resigned: pemilikResign(u) }))
+    .sort((a, b) => Number(a.resigned) - Number(b.resigned))
 }
 
 /** Satu operan yang belum dibaca sales penerima. */
