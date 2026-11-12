@@ -18,6 +18,7 @@ import { AdminPagination } from "@/components/admin/admin-pagination"
 import { formatRupiah } from "@/lib/utils"
 import { formatJakartaPeriod, jakartaPeriod } from "@/lib/utils/timezone"
 import { formatQuoteDateTime } from "@/app/verify/format"
+import { QuoteBadge } from "@/app/verify/quote-badge"
 
 import { ReopenButton } from "./reopen-button"
 
@@ -112,7 +113,10 @@ export default async function AdminQuotationPage({ searchParams }: Props) {
           <ul className="mt-4 divide-y divide-border rounded-xl border border-border">
             {rekap.map((r) => (
               <li key={r.ownerUserId} className="flex items-center justify-between gap-4 p-3">
-                <span className="truncate text-sm font-semibold">{r.nama}</span>
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <span className="truncate text-sm font-semibold">{r.nama}</span>
+                  {r.resigned && <ResignBadge />}
+                </span>
                 <span className="shrink-0 text-right text-sm">
                   <span className="font-bold">{formatRupiah(r.total)}</span>
                   <span className="ml-2 text-xs text-muted-foreground">{r.unit} unit</span>
@@ -149,7 +153,7 @@ export default async function AdminQuotationPage({ searchParams }: Props) {
           <option value="">Semua sales</option>
           {owners.map((o) => (
             <option key={o.id} value={o.id}>
-              {o.nama}
+              {o.resigned ? `${o.nama} (sudah resign)` : o.nama}
             </option>
           ))}
         </select>
@@ -221,6 +225,7 @@ export default async function AdminQuotationPage({ searchParams }: Props) {
             ) : (
               rows.map((row) => {
                 const terjual = row.status === "closing"
+                const namaSales = row.salesName ?? row.ownerName
                 return (
                   <tr key={row.code} className="border-t border-border align-top">
                     <td className="p-3">
@@ -259,7 +264,14 @@ export default async function AdminQuotationPage({ searchParams }: Props) {
                         </span>
                       )}
                     </td>
-                    <td className="p-3">{row.salesName ?? row.ownerName ?? "—"}</td>
+                    <td className="p-3">
+                      <span className="block">{namaSales ?? "—"}</span>
+                      {row.ownerResigned && (
+                        <span className="mt-1 block">
+                          <ResignBadge />
+                        </span>
+                      )}
+                    </td>
                     <td className="p-3 text-right font-semibold tabular-nums">
                       {formatRupiah(row.total)}
                     </td>
@@ -295,7 +307,11 @@ export default async function AdminQuotationPage({ searchParams }: Props) {
                         {terjual && (
                           <ReopenButton
                             code={row.code}
-                            ownerName={row.salesName ?? row.ownerName}
+                            ownerName={
+                              namaSales && row.ownerResigned
+                                ? `${namaSales} (sudah resign)`
+                                : namaSales
+                            }
                             total={row.total}
                           />
                         )}
@@ -321,6 +337,14 @@ export default async function AdminQuotationPage({ searchParams }: Props) {
 }
 
 /** Tiga bulan terakhir — alasannya sama dengan pemilih di /profile/quotation. */
+/**
+ * Penanda sales yang sudah keluar dari tim (akunnya diturunkan jadi pelanggan).
+ * Hanya di tampilan internal — PDF dan tautan `/q` tetap mencetak namanya saja.
+ */
+function ResignBadge() {
+  return <QuoteBadge tone="netral">Sudah resign</QuoteBadge>
+}
+
 function PemilihPeriode({
   aktif,
   q,

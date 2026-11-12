@@ -269,21 +269,21 @@ export function AdminRoleList({
   }
 
   /**
-   * Akun yang sedang diklik-kanan, beserta alasan kalau ia tidak boleh
-   * diturunkan. Penjaga sebenarnya ada di server (owner terakhir di
-   * `setCustomerRole`, penurunan diri sendiri di `demoteAdminToCustomer`) —
-   * yang di sini supaya menunya tidak menawarkan sesuatu yang pasti ditolak,
-   * dan bisa menyebut alasannya di tempat.
+   * Alasan sebuah akun tidak boleh diturunkan jadi pelanggan (null = boleh).
+   * Penjaga sebenarnya ada di server (owner terakhir di `setCustomerRole`,
+   * penurunan diri sendiri di `demoteAdminToCustomer`) — yang di sini supaya
+   * tombol dan menu tidak menawarkan sesuatu yang pasti ditolak, dan bisa
+   * menyebut alasannya di tempat. Dipakai bersama tombol di kartu dan menu
+   * klik-kanan supaya keduanya tidak pernah berbeda pendapat.
    */
+  function alasanTakBisaTurunkan(admin: AdminItem): string | null {
+    if (admin.id === currentUserId) return "Tidak bisa menurunkan akun sendiri"
+    if (admin.role === "owner" && ownerCount <= 1) return "Ini satu-satunya owner"
+    return null
+  }
+
   const sasaranCtx = ctx ? (admins.find((a) => a.id === ctx.adminId) ?? null) : null
-  const alasanTakBisaTurun =
-    ctx && sasaranCtx
-      ? ctx.adminId === currentUserId
-        ? "Tidak bisa menurunkan akun sendiri"
-        : sasaranCtx.role === "owner" && ownerCount <= 1
-          ? "Ini satu-satunya owner"
-          : null
-      : null
+  const alasanTakBisaTurun = sasaranCtx ? alasanTakBisaTurunkan(sasaranCtx) : null
 
   function mintaTurunkan(adminId: string) {
     const admin = admins.find((a) => a.id === adminId)
@@ -419,6 +419,7 @@ export function AdminRoleList({
             : isSelf && admin.role === "owner"
               ? "Anda tidak bisa menurunkan role akun sendiri."
               : null
+          const alasanTurun = alasanTakBisaTurunkan(admin)
           const roleIdTampil = peranTerpilih(admin) || null
           const namaPeranTampil = roleIdTampil ? (namaPeran.get(roleIdTampil) ?? "Peran terhapus") : null
 
@@ -532,6 +533,23 @@ export function AdminRoleList({
                         {admin.role === "owner" ? "Turunkan ke Staff" : "Angkat jadi Owner"}
                       </Button>
                     </form>
+
+                    {/* Untuk staff yang keluar (resign). Dulu hanya ada di menu
+                        klik-kanan — tidak terlihat, dan tidak bisa dipakai sama
+                        sekali dari ponsel atau tablet. Konfirmasinya tetap lewat
+                        dialog yang sama dengan menu itu. */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={sedangProses || alasanTurun !== null}
+                      title={alasanTurun ?? undefined}
+                      onClick={() => setAkanDiturunkan(admin)}
+                      className="w-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <UserMinus className="h-4 w-4" />
+                      Turunkan jadi pelanggan
+                    </Button>
                   </div>
                 )}
               </div>
@@ -562,7 +580,8 @@ export function AdminRoleList({
       {canManage && (
         <p className="mt-4 flex items-start gap-2 text-xs text-muted-foreground">
           <Info className="mt-0.5 h-4 w-4 shrink-0" />
-          Tip: <strong>klik kanan</strong> pada kartu admin untuk mengubah perannya langsung.
+          Tip: <strong>klik kanan</strong> pada kartu admin untuk mengubah perannya langsung. Untuk
+          staff yang resign, pakai <strong>Turunkan jadi pelanggan</strong>.
         </p>
       )}
 
@@ -650,9 +669,11 @@ export function AdminRoleList({
         title={`Turunkan ${akanDiturunkan?.name ?? "akun ini"} jadi pelanggan?`}
         description={
           <>
-            Akses ke panel admin dicabut — akun ini kembali menjadi pelanggan biasa dan hanya bisa
-            membuka halaman toko. Akunnya sendiri tidak dihapus, dan bisa dinaikkan lagi kapan saja
-            lewat klik-kanan di tab Pelanggan.
+            Akses ke panel admin dan ke riwayat quotation-nya di profil dicabut saat itu juga —
+            akun ini kembali menjadi pelanggan biasa. Quotation yang pernah ia terbitkan tetap
+            tercatat atas namanya, dengan keterangan <strong>Sudah resign</strong> di Quotation
+            &amp; Penjualan dan di halaman kasir. Akunnya tidak dihapus, dan bisa dinaikkan lagi
+            kapan saja lewat tab Pelanggan.
           </>
         }
         onConfirm={jalankanPenurunan}

@@ -769,3 +769,43 @@ Sebelumnya logikanya hanya ada di `/build-pc/page.tsx`.
 (`scripts/stubs/next-cache.ts`) — konfigurasi paket dibaca lewat `unstable_cache`,
 yang tidak hidup di luar Next. Konfigurasi paket, quotation uji, dan penghitung
 nomor urut dikembalikan di akhir.
+
+## 19. Sales yang resign (11 November 2026)
+
+Staff yang keluar diturunkan lewat **Manajemen User → tab Admin → "Turunkan jadi
+pelanggan"**. Tombolnya ada di setiap kartu admin. Sebelumnya tombol ini hanya ada di
+menu klik-kanan, jadi tidak terlihat dan tidak bisa dipakai dari ponsel. Jalurnya tetap
+`demoteAdminToCustomer` → `setCustomerRole(userId, null)`: `role = "pelanggan"`,
+`roleId = null`.
+
+Akibatnya, tanpa kode tambahan:
+
+- Panel admin tertutup saat itu juga, karena `role` dibaca dari database di setiap
+  permintaan dan cookie admin milik akun "pelanggan" ditolak.
+- `/profile/quotation` dan detailnya tertutup, karena keduanya mensyaratkan
+  `quotation-terbit` dan izin itu ikut hilang bersama `roleId`.
+- Namanya keluar dari daftar tujuan operan CS (`listQuotationSalesUsers`).
+- Quotation-nya **tidak disentuh**: `ownerUserId` tetap menunjuk akunnya, `salesName`
+  di PDF dan `/q` tetap snapshot, dan rekap bulanan tetap menghitungnya atas namanya.
+
+**Penanda "Sudah resign"** diturunkan dari `role` pemilik saat ini (`pemilikResign()` di
+`lib/api/pc-build-quotes.ts`), BUKAN disimpan di quotation. Kalau orangnya kembali dan
+dinaikkan lagi, penandanya hilang sendiri. Penanda ini tampil di:
+
+- `/admin/quotation`: kolom Sales, rekap bulanan, saringan Sales (yang resign diurutkan
+  ke bawah), dan dialog batal-terjual.
+- `/verify/<kode>`: di samping nama Sales, untuk kasir.
+
+Penanda ini **tidak** tampil di PDF, di `/q/<token>`, atau di grid `/verify`. Dokumen yang
+sudah dipegang pelanggan tidak berubah karena sales-nya resign.
+
+Master dikecualikan (`isMaster`), karena kolom `role`-nya sering "pelanggan" padahal ia
+tidak keluar dari mana pun. Akun yang dihapus tetap tampil sebagai "(akun dihapus)",
+bukan "resign".
+
+Yang **belum** ada:
+
+- Mengalihkan quotation yang belum terjual ke sales lain. Rencananya dibahas terpisah,
+  karena perlu diputuskan apakah `salesName` di PDF ikut berganti.
+- Rakitan tersimpan (`/profile/rakitan`). Rakitan ini milik akun pelanggan, bukan
+  milik peran, jadi tetap bisa dibuka setelah diturunkan.
