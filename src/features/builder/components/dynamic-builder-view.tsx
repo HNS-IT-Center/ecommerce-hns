@@ -144,6 +144,15 @@ type DynamicBuilderViewProps = {
    * Bukan Mode Edit — hanya pemberitahuan. Lihat efeknya di dalam komponen.
    */
   savedBuildKosong?: boolean
+  /**
+   * Kuantitas komponen boleh melebihi stok — untuk akun ber-izin `stok-lihat`
+   * (Sales, Kasir, dst.), dihitung di server. Sales yang menyusun 4 unit PC
+   * dari komponen bersisa 1 tetap bisa menyusunnya; kelebihannya ditandai
+   * "perlu indent" di kartu. Pelanggan tetap dibatasi stok.
+   *
+   * Hanya mengubah APA YANG BISA DIKLIK, bukan harga (CLAUDE.md §2.7).
+   */
+  allowOverStock?: boolean
 }
 
 /**
@@ -159,6 +168,7 @@ export function DynamicBuilderView({
   revisionLoad = null,
   savedBuildLoad = null,
   savedBuildKosong = false,
+  allowOverStock = false,
 }: DynamicBuilderViewProps) {
   const { 
     steps, setSteps, selections, activeStepId, setActiveStep, 
@@ -2427,6 +2437,7 @@ export function DynamicBuilderView({
                       selectedVariations={selectedVariations}
                       allowMultiple={activeStep?.allowMultiple ?? false}
                       displayAttributeIds={configuredAttributeIds}
+                      allowOverStock={allowOverStock}
                     />
                   )
                 })}

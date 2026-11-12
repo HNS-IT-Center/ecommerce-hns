@@ -316,6 +316,11 @@ export default async function BuildPcPage({
             revisionLoad={revisionLoad}
             savedBuildLoad={savedBuildLoad}
             savedBuildKosong={savedBuildKosong}
+            // Dari `getCurrentCustomer()` di server, izin yang sama dengan
+            // jumlah stok di halaman produk. Tidak ada pemeriksaan stok di
+            // keranjang maupun server action builder, jadi ini hanya membuka
+            // tombol + — bukan celah baru.
+            allowOverStock={customer?.canViewStock === true}
           />
 
           {/*

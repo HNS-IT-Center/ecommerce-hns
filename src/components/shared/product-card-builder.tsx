@@ -91,6 +91,24 @@ interface ProductCardBuilderProps {
   /** Langkah ini boleh menampung lebih dari satu komponen (`step.allowMultiple`). */
   allowMultiple?: boolean
   onUpdateVariationQuantity?: (variationId: number, quantity: number) => void
+  /**
+   * Tombol + tidak berhenti di angka stok, dan kelebihannya ditandai "perlu
+   * indent". Untuk staff ber-izin `stok-lihat` di wizard — sales yang menyusun
+   * beberapa unit PC sekaligus. Bawaannya `false`: pelanggan tetap dibatasi
+   * stok, dan panel PC Prebuild tidak berubah.
+   *
+   * Stok 0 tetap tidak bisa dipilih; ini hanya soal MENAMBAH yang sudah ada.
+   */
+  allowOverStock?: boolean
+}
+
+/**
+ * Keterangan kelebihan kuantitas atas stok, atau `null` kalau tidak melebihi.
+ * Satu tempat supaya kartu biasa dan baris varian berbunyi sama.
+ */
+function overStockNote(quantity: number, stock: number): string | null {
+  if (quantity <= stock) return null
+  return `Stok ${stock} · ${quantity - stock} perlu indent`
 }
 
 export function ProductCardBuilder({
@@ -103,6 +121,7 @@ export function ProductCardBuilder({
   selectedVariations = [],
   allowMultiple = false,
   onUpdateVariationQuantity,
+  allowOverStock = false,
 }: ProductCardBuilderProps) {
   // Show only attributes that are required by the builder configuration across all steps
   const displayAttributes = product.attributes.filter(attr => displayAttributeIds.includes(attr.attributeId))
@@ -115,6 +134,8 @@ export function ProductCardBuilder({
     : 0
 
   const isSelected = quantity > 0
+  // Hanya untuk produk biasa; produk bervarian menandai tiap barisnya sendiri.
+  const cardNote = allowOverStock && !hasVariations ? overStockNote(quantity, product.stock) : null
 
   return (
     <div className={`group relative flex flex-col rounded-xl bg-card shadow-md transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${isSelected ? 'ring-2 ring-brand-green' : ''}`}>
@@ -275,13 +296,22 @@ export function ProductCardBuilder({
               {/* Setiap varian terpilih punya barisnya sendiri: label opsinya
                   ditulis apa adanya, karena inilah yang membedakannya dari
                   saudara-saudaranya di rakitan, di PDF, dan di build log. */}
-              {selectedVariations.map((line) => (
+              {selectedVariations.map((line) => {
+                const lineNote = allowOverStock ? overStockNote(line.quantity, line.stock) : null
+                return (
                 <div
                   key={line.variationId}
                   className="flex items-center justify-between gap-1.5 rounded-lg border border-brand-green/30 bg-brand-green/5 px-1.5 py-1"
                 >
-                  <span className="min-w-0 flex-1 truncate text-[10px] font-bold text-brand-green">
-                    {line.label}
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-[10px] font-bold text-brand-green">
+                      {line.label}
+                    </span>
+                    {lineNote && (
+                      <span className="truncate text-[9px] font-semibold text-amber-600 dark:text-amber-400">
+                        {lineNote}
+                      </span>
+                    )}
                   </span>
                   <div className="flex shrink-0 items-center gap-1">
                     <Button
@@ -300,13 +330,14 @@ export function ProductCardBuilder({
                       aria-label={`Tambah ${line.label}`}
                       className="h-5 w-5 rounded-full bg-background hover:bg-brand-green/20 hover:text-brand-green shadow-sm cursor-pointer active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-50"
                       onClick={() => onUpdateVariationQuantity?.(line.variationId, line.quantity + 1)}
-                      disabled={line.quantity >= line.stock}
+                      disabled={!allowOverStock && line.quantity >= line.stock}
                     >
                       <Plus className="h-2.5 w-2.5" />
                     </Button>
                   </div>
                 </div>
-              ))}
+                )
+              })}
 
               <Button
                 size="sm"
@@ -332,8 +363,9 @@ export function ProductCardBuilder({
               </Button>
             </div>
           ) : (
-            <div className="mt-3 flex items-center justify-end">
+            <div className="mt-3 flex flex-col items-end gap-1">
               {isSelected ? (
+                <>
                 <div className="flex items-center gap-2 bg-muted/30 p-1 rounded-full border border-border/50 shadow-sm">
                   <Button
                     variant="ghost"
@@ -349,11 +381,17 @@ export function ProductCardBuilder({
                     size="icon"
                     className="h-6 w-6 rounded-full bg-background hover:bg-brand-green/20 hover:text-brand-green shadow-sm cursor-pointer active:scale-95 transition-all disabled:cursor-not-allowed disabled:opacity-50"
                     onClick={() => onUpdateQuantity(quantity + 1)}
-                    disabled={quantity >= product.stock}
+                    disabled={!allowOverStock && quantity >= product.stock}
                   >
                     <Plus className="h-3 w-3" />
                   </Button>
                 </div>
+                {cardNote && (
+                  <span className="text-right text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                    {cardNote}
+                  </span>
+                )}
+                </>
               ) : (
                 <Button
                   size="sm"
