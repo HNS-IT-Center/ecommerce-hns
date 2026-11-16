@@ -2380,3 +2380,21 @@ induk ini, karena `diffProductChanges` membandingkan dengan `input.sku`.
 - SKU yang kembar di formulir sendiri tidak pernah ditawari pindah.
 - Belum: edit SKU langsung dari daftar produk (`updateProductSkuAction`) dan
   kolom Kode Accurate. Keduanya masih hanya menampilkan pesan bentrok.
+
+## 40. Login staff lewat HNS SSO: `/api/auth/sso/*` (15 November 2026)
+
+Dua route handler baru, keduanya publik (di luar matcher `proxy.ts`) dan **tidak
+pernah mengembalikan JSON**. Keduanya selalu redirect, baik ke SSO, ke halaman sesuai
+izin, maupun ke `/login/error?reason=sso_*`.
+
+| Route | Isi |
+|---|---|
+| `GET /api/auth/sso/login` | Membuat `state`/`nonce`/PKCE, memasang cookie `hns_sso_flow` (Path `/api/auth/sso`, 10 menit), lalu redirect ke authorize SSO |
+| `GET /api/auth/sso/callback` | Cek `state` dan `iss`, tukar code, verifikasi id_token, cocokkan akun lewat `users.sso_sub`, lalu buat sesi admin **12 jam** |
+
+- Panggilan keluar ke `auth.hnsitcenter.id` (discovery, token, JWKS) ada di
+  `lib/auth/sso.ts`, dengan `cache: "no-store"` dan batas waktu 10 detik. Dokumen
+  discovery di-cache 5 menit di memori proses.
+- `createSession(user, maxAgeSeconds?)` kini menerima umur sesi. Pemanggil lama tidak
+  berubah (7 hari).
+- Rincian, keputusan, dan uji: docs/19-sso-staff.md.

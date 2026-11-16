@@ -65,6 +65,20 @@ model User {
   /// dari `customers` saat Satu Login. NULL untuk akun email+password.
   googleSub String? @unique @map("google_sub") @db.VarChar(191)
 
+  /// Identitas HNS SSO (klaim `sub`, UUID stabil dari auth.hnsitcenter.id) —
+  /// HANYA untuk akun staff. Lihat docs/19-sso-staff.md.
+  ///
+  /// Kunci penautan sesudah login SSO pertama. Email hanya dipakai SEKALI untuk
+  /// menautkan; sesudahnya akun dicari lewat kolom ini. Alasannya: alamat email
+  /// bisa berpindah tangan di SSO (sales keluar, alamatnya diberikan ke sales
+  /// baru), dan mencocokkan lewat email akan membuat orang baru itu masuk
+  /// sebagai akun lama — lengkap dengan peran dan quotation-nya.
+  ///
+  /// TIDAK PERNAH diisi untuk akun berperan "pelanggan": pelanggan tidak ada di
+  /// SSO (SSO HNS khusus staff), dan email SSO yang kebetulan sama dengan akun
+  /// pelanggan ditolak, bukan ditautkan.
+  ssoSub String? @unique @map("sso_sub") @db.VarChar(64)
+
   /// Nomor telepon (pelanggan). NULL untuk admin.
   phoneNumber String? @map("phone_number") @db.VarChar(20)
 

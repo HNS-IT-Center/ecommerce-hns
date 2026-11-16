@@ -478,6 +478,34 @@ bisa diverifikasi tidak boleh menulis stok.
 seluruh barang — angka yang tidak boleh terlihat pelanggan maupun peran tanpa
 izin `harga-modal`.
 
+### 2.13 OPSIONAL — Login Staff lewat HNS SSO (15 November 2026)
+
+```env
+SSO_ISSUER=https://auth.hnsitcenter.id
+SSO_CLIENT_ID=<Client ID dari SSO>
+SSO_CLIENT_SECRET=<Client Secret dari SSO>
+SSO_REDIRECT_URI=https://hnsitcenter.id/api/auth/sso/callback
+SSO_POST_LOGOUT_REDIRECT_URI=https://hnsitcenter.id/login
+```
+
+| Variabel | Dari mana |
+|---|---|
+| `SSO_ISSUER` | Tetap `https://auth.hnsitcenter.id`, tanpa garis miring di akhir |
+| `SSO_CLIENT_ID` / `SSO_CLIENT_SECRET` | SSO → API Management → client **milik ecommerce**: "HNS Ecommerce (Dev)" untuk lokal, "HNS Ecommerce" untuk produksi. Secret tampil **sekali** |
+| `SSO_REDIRECT_URI` | Sama persis dengan yang didaftarkan di client itu. Lokal `http://localhost:3000/api/auth/sso/callback` |
+| `SSO_POST_LOGOUT_REDIRECT_URI` | Lokal `http://localhost:3000/login` |
+
+**Isi kelimanya atau tidak sama sekali.** Kalau sebagian saja yang terisi, tombol
+"Masuk dengan SSO HNS" tidak tampil dan login password tetap berjalan. String kosong
+dibaca sebagai tidak diisi.
+
+**Jangan menyalin nilai client Ticketing atau Data.** Redirect URI dicocokkan persis per
+client, sehingga staff akan dilempar ke aplikasi lain setelah login. Secret aplikasi
+lain juga jadi tersimpan di dua tempat.
+
+**Bukan `NEXT_PUBLIC_*`.** Secret hanya dipakai server saat menukar code. Rinciannya di
+docs/19.
+
 ---
 
 ## 3. Setup Lokal (Developer Baru)

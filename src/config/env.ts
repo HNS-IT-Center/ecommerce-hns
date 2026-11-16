@@ -1,5 +1,16 @@
 import { z } from "zod";
 
+/**
+ * String kosong dibaca sebagai "tidak diisi".
+ *
+ * Dipakai untuk variabel opsional yang barisnya mungkin ADA tapi kosong — kolom
+ * env di hPanel yang dibiarkan kosong, atau `secrets.X` di GitHub Actions yang
+ * tidak ada (yang menjadi string kosong, bukan undefined). Tanpa ini,
+ * `z.string().url().optional()` menolak "" dan seluruh aplikasi gagal start
+ * hanya karena satu fitur opsional belum disiapkan.
+ */
+const blankAsUndefined = (value: unknown) => (value === "" ? undefined : value);
+
 const EnvSchema = z.object({
   // WordPress lama (WAJIB) — dipakai blog (/wp-json/wp/v2) dan sebagai host
   // gambar produk. Kredensial REST WooCommerce (`WOOCOMMERCE_CONSUMER_KEY` /
@@ -88,6 +99,23 @@ const EnvSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+
+  // HNS SSO (auth.hnsitcenter.id) — login STAFF lewat OpenID Connect,
+  // docs/19-sso-staff.md. Opsional: tanpa kelimanya tombol "Masuk dengan SSO
+  // HNS" tidak tampil dan rutenya menolak dengan halaman galat — login
+  // password lama tetap berjalan. Lima-limanya harus terisi bersamaan
+  // (`ssoConfig()` di lib/auth/sso.ts yang memeriksanya), dan nilainya milik
+  // client ecommerce sendiri di SSO — JANGAN menyalin client Ticketing/Data:
+  // redirect URI dicocokkan persis per client.
+  //
+  // Redirect URI dibaca dari env, BUKAN dibentuk dari alamat request: di balik
+  // proxy Hostinger alamat request bisa terbaca sebagai alamat bind
+  // (`0.0.0.0:3000`), lihat catatan di /api/auth/google.
+  SSO_ISSUER: z.preprocess(blankAsUndefined, z.string().url().optional()),
+  SSO_CLIENT_ID: z.preprocess(blankAsUndefined, z.string().min(1).optional()),
+  SSO_CLIENT_SECRET: z.preprocess(blankAsUndefined, z.string().min(1).optional()),
+  SSO_REDIRECT_URI: z.preprocess(blankAsUndefined, z.string().url().optional()),
+  SSO_POST_LOGOUT_REDIRECT_URI: z.preprocess(blankAsUndefined, z.string().url().optional()),
 
   // Cloudflare R2 — penyimpanan gambar produk. Opsional dengan alasan yang
   // sama seperti AUTH_SECRET di atas: skema ini di-parse saat modul dimuat,
@@ -190,6 +218,11 @@ export const env = EnvSchema.parse({
   HNS_WEBHOOK_SECRET: process.env.HNS_WEBHOOK_SECRET,
   CRON_SECRET: process.env.CRON_SECRET,
   HNS_WEB_LINKS_ENABLED: process.env.HNS_WEB_LINKS_ENABLED,
+  SSO_ISSUER: process.env.SSO_ISSUER,
+  SSO_CLIENT_ID: process.env.SSO_CLIENT_ID,
+  SSO_CLIENT_SECRET: process.env.SSO_CLIENT_SECRET,
+  SSO_REDIRECT_URI: process.env.SSO_REDIRECT_URI,
+  SSO_POST_LOGOUT_REDIRECT_URI: process.env.SSO_POST_LOGOUT_REDIRECT_URI,
   R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
   R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
   R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,

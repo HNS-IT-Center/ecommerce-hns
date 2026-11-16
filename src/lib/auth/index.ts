@@ -258,11 +258,21 @@ export async function requirePageView(
   return { user, izin }
 }
 
-/** Pasang cookie sesi. Dipanggil setelah kredensial terbukti benar. */
-export async function createSession(user: { id: string; email: string }): Promise<void> {
-  const token = await signSession({ sub: user.id, email: user.email })
+/**
+ * Pasang cookie sesi. Dipanggil setelah kredensial terbukti benar.
+ *
+ * `maxAgeSeconds` hanya diisi jalur SSO (12 jam, `SSO_SESSION_MAX_AGE_SECONDS`):
+ * staff yang dinonaktifkan di SSO tidak boleh tetap masuk sampai seminggu.
+ * Masa berlaku token dan cookie selalu disamakan — cookie yang hidup lebih lama
+ * dari tokennya hanya membawa token mati.
+ */
+export async function createSession(
+  user: { id: string; email: string },
+  maxAgeSeconds: number = SESSION_MAX_AGE_SECONDS,
+): Promise<void> {
+  const token = await signSession({ sub: user.id, email: user.email }, maxAgeSeconds)
   const store = await cookies()
-  store.set(SESSION_COOKIE, token, sessionCookieOptions())
+  store.set(SESSION_COOKIE, token, sessionCookieOptions(maxAgeSeconds))
 }
 
 /** Cabut cookie sesi. */

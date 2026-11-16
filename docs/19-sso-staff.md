@@ -1,0 +1,220 @@
+# 19. Login Staff lewat HNS SSO
+
+> Tahap 1 dikerjakan 15 November 2026. Staff bisa masuk ke ecommerce memakai akun
+> **HNS SSO** (`https://auth.hnsitcenter.id`), yaitu akun yang sama dengan web
+> Ticketing dan web Data. Login email + password lama **tetap berjalan** di samping
+> SSO. Instruksi resmi server SSO **tidak disimpan di repo ini**. Unduh dari menu
+> **Panduan Integrasi** di `https://auth.hnsitcenter.id`. Dokumen ini mencatat cara
+> ecommerce memakainya dan keputusan yang berbeda dari saran bawaannya.
+
+---
+
+## 1. Siapa memegang apa
+
+| Data | Tempatnya |
+|---|---|
+| Siapa orangnya, password, 2FA | **SSO** |
+| Boleh masuk ecommerce atau tidak | **SSO** (whitelist per aplikasi) |
+| Peran (owner/staff, peran dinamis), izin per halaman | **ecommerce**, tabel `users` + `roles` |
+| Nama tampilan sales, quotation, log | **ecommerce** |
+
+SSO tidak mengirim klaim peran sama sekali. Jadi tabel `users` tetap ada, dan setiap
+orang yang datang dari SSO harus dipasangkan ke satu barisnya. Jembatannya
+**`users.sso_sub`**.
+
+**Pelanggan tidak pernah ada di SSO.** SSO HNS khusus staff. Pelanggan tetap masuk
+dengan Google atau email + password seperti sebelumnya.
+
+**SSO tidak dipakai untuk panggilan server-ke-server.** SSO hanya punya grant
+`authorization_code` dan `refresh_token`, tanpa `client_credentials`, dan access
+token-nya hanya sah untuk client yang memintanya. Integrasi antar-server (misalnya
+Ticketing menarik quotation) butuh token tersendiri, bukan SSO.
+
+---
+
+## 2. Alur
+
+```
+/login → "Masuk dengan SSO HNS"
+  → GET /api/auth/sso/login
+      buat state + nonce + PKCE verifier → cookie hns_sso_flow (10 menit)
+      → redirect ke auth.hnsitcenter.id/oauth/authorize
+  → staff login di SSO (SSO cek whitelist)
+  → GET /api/auth/sso/callback?code&state&iss
+      error? → halaman galat
+      state cocok dengan cookie? (konstan-waktu)
+      iss === SSO_ISSUER? (RFC 9207)
+      tukar code (client_secret_basic + code_verifier)
+      verifikasi id_token: RS256 via JWKS, iss, aud, azp, exp, nonce
+      cocokkan akun (§3)
+      createSession(…, 12 jam) → landingPathFor(izin)
+```
+
+| Berkas | Isi |
+|---|---|
+| `src/lib/auth/sso.ts` | Konfigurasi, discovery (cache 5 menit), PKCE, penukaran code, verifikasi id_token |
+| `src/lib/auth/sso-state.ts` | Cookie alur sementara + perbandingan `state` konstan-waktu |
+| `src/lib/auth/sso-link.ts` | Pencocokan orang SSO → baris `users` |
+| `src/app/api/auth/sso/login/route.ts` | Mulai login. URL ini juga "Initiate Login URL" di SSO |
+| `src/app/api/auth/sso/callback/route.ts` | Callback |
+| `src/app/login/page.tsx` | Tombol, hanya tampil kalau kelima env terisi |
+| `src/app/login/error/page.tsx` | Pesan galat `sso_*` versi staff |
+
+Memakai `jose` + `fetch`, polanya sama dengan login Google pelanggan
+(`lib/auth/google.ts`). Tidak ada library klien OIDC tambahan.
+
+**Token dari SSO tidak disimpan.** Token dipakai sekali untuk membuktikan siapa
+orangnya, lalu ecommerce menerbitkan sesi admin miliknya sendiri. Seluruh
+`requireAuth()`, RBAC, dan proxy tidak tahu, dan tidak perlu tahu, sesi itu lahir
+lewat SSO.
+
+**Semua alamat diambil dari env**, bukan dari `request.url`. Di balik proxy Hostinger,
+alamat request terbaca sebagai alamat bind server (`0.0.0.0:3000`). Lihat catatan di
+`/api/auth/google/route.ts`.
+
+---
+
+## 3. Pencocokan akun: penautan lewat email sekali, sesudahnya lewat `sub`
+
+1. Cari `users.sso_sub = sub`. Ini jalur normal sesudah login pertama.
+2. Kalau belum ada, cari `users.email = email`, **hanya akun non-pelanggan** yang
+   `sso_sub`-nya masih kosong, lalu isi `sso_sub`.
+3. Selain itu **ditolak**.
+
+**Kenapa `sub`, bukan email.** Email bisa berpindah tangan di SSO. Contohnya sales A
+keluar, lalu alamatnya diberikan ke sales B. Kalau pencocokan lewat email, B masuk
+sebagai akun A, lengkap dengan peran, quotation, dan angka penjualannya. Dengan
+`sub`, B punya UUID lain, menemukan akun A sudah tertaut ke `sub` lain, dan ditolak
+(`sso_sub_conflict`).
+
+**Tidak ada akun yang dibuat otomatis.** Ini berbeda dari saran bawaan panduan SSO, dan
+alasannya ada di `users.role`, yang ber-default **`"owner"`**. Akun yang lahir sendiri
+dari login SSO adalah akun yang perannya tidak pernah diputuskan siapa pun. Owner
+menyiapkan akun staff dulu di **Manajemen User** (email yang sama persis dengan email
+SSO, beserta perannya). Login SSO pertama yang menautkannya.
+
+**Akun pelanggan tidak pernah ditautkan** (`sso_customer_account`), dan perannya tidak
+diubah. Pengecualiannya master (`MASTER_ADMIN_EMAIL`), dengan alasan yang sama seperti
+di `getCurrentUser`.
+
+**Nama dan email lokal tidak disegarkan dari klaim SSO.** Nama bisa sudah dirapikan di
+panel, dan email baru dari SSO bisa bertabrakan dengan unique index `users.email`
+milik baris lain. Kalau dibutuhkan, ini keputusan tahap berikutnya.
+
+---
+
+## 4. Sesi 12 jam
+
+Sesi admin dari SSO berumur **12 jam** (`SSO_SESSION_MAX_AGE_SECONDS`), sama dengan
+batas absolut sesi SSO. Sesi dari login password tetap 7 hari.
+
+Alasannya, back-channel logout belum dipasang (§8). Staff yang dinonaktifkan atau
+dicabut aksesnya di SSO **tetap masuk ecommerce sampai sesinya habis**. Dengan 12 jam,
+jendela itu paling lama satu hari kerja. Login ulang cukup satu klik selama sesi SSO-nya
+masih hidup.
+
+---
+
+## 5. Pesan galat (`/login/error?reason=…`)
+
+| `reason` | Arti | Siapa yang membereskan |
+|---|---|---|
+| `sso_not_configured` | Env SSO belum lengkap | Developer / hPanel |
+| `sso_access_denied` | Belum di-whitelist, atau staff membatalkan | Admin SSO |
+| `sso_not_provisioned` | Login SSO sukses, tapi tidak ada akun staff dengan email itu | Owner, di Manajemen User |
+| `sso_customer_account` | Email SSO milik akun pelanggan | Owner (dipisahkan manual) |
+| `sso_sub_conflict` | Email sudah tertaut ke orang SSO lain | Owner |
+| `sso_state_invalid` | Cookie alur hilang/kedaluwarsa, `state`/`iss` salah | Coba lagi |
+| `sso_network` | SSO tak terjangkau dari server | Tunggu / cek jaringan |
+| `sso_token` | SSO menolak penukaran, atau id_token tidak sah | Lihat log server |
+
+Detail teknisnya hanya ada di log server (awalan `[sso/callback]` dan `[sso/login]`),
+tidak ditampilkan di layar.
+
+---
+
+## 6. Konfigurasi
+
+Lima env, semuanya opsional, dan **harus terisi bersamaan** (docs/07 §2.13). Kalau
+kosong atau hanya sebagian, tombolnya tidak tampil dan login password tetap jalan.
+String kosong dibaca sebagai tidak diisi, jadi kolom kosong di hPanel tidak mematikan
+situs.
+
+**Setiap lingkungan punya client sendiri di SSO.** Jangan menyalin nilai client
+Ticketing atau Data, karena SSO mencocokkan redirect URI persis per client. Pada 15 Nov
+2026 `.env.local` sempat berisi nilai client Ticketing.
+
+| Field di SSO | Dev (`HNS Ecommerce (Dev)`) | Produksi (`HNS Ecommerce`) |
+|---|---|---|
+| Jenis client | Confidential | Confidential |
+| Homepage | `http://localhost:3000` | `https://hnsitcenter.id` |
+| Initiate Login URL | `http://localhost:3000/api/auth/sso/login` | `https://hnsitcenter.id/api/auth/sso/login` |
+| Redirect URI | `http://localhost:3000/api/auth/sso/callback` | `https://hnsitcenter.id/api/auth/sso/callback` |
+| Post-logout Redirect | `http://localhost:3000/login` | `https://hnsitcenter.id/login` |
+| Back-channel Logout | (kosong; SSO tak bisa menjangkau localhost) | (kosong sampai tahap 2) |
+| Scope | openid, profile, email | openid, profile, email |
+| Siapa yang boleh login | Hanya yang diberi akses | Hanya yang diberi akses |
+
+**Ecommerce di hPanel, SSO di VPS: tidak masalah.** Arah panggilannya hanya browser ke
+keduanya, dan server ecommerce ke `auth.hnsitcenter.id` (HTTPS keluar, pola yang sama
+dengan panggilan ke web Data). SSO tidak perlu menjangkau server ecommerce sampai
+back-channel dipasang.
+
+---
+
+## 7. Uji
+
+```bash
+npx tsx --tsconfig scripts/tsconfig.uji.json scripts/uji-sso.mts
+```
+
+Skrip ini menjalankan SSO **tiruan** di 127.0.0.1 dengan kunci RSA buatan sendiri, lalu
+menguji fungsi dan route asli. Hasilnya 62/62 lolos pada 15 Nov 2026. Yang diuji:
+
+- Parameter authorize, PKCE S256, dan atribut cookie alur.
+- Penolakan untuk `state` salah, `iss` hilang atau salah, `nonce`, `aud`, `azp`,
+  kedaluwarsa, kunci asing, verifier salah, secret salah, `invalid_grant`, dan SSO
+  tak terjangkau.
+- Pencocokan akun di DB lokal memakai akun `ZZ TEST`: tidak terdaftar, akun pelanggan,
+  penautan pertama, email berubah, alamat berpindah tangan, staff yang diturunkan.
+- Sesi 12 jam.
+- Env kosong yang tidak mematikan aplikasi.
+
+Skrip menolak jalan kalau `DATABASE_URL` bukan localhost.
+
+**Uji lokal dengan SSO sungguhan (16 Nov 2026), lolos.** Memakai client
+"HNS Ecommerce (Dev)" dan DB lokal Docker:
+
+| Skenario | Hasil |
+|---|---|
+| Login pertama | Akun ditautkan lewat email, lalu mendarat di `/admin` |
+| Login berikutnya | Akun ditemukan lewat `sso_sub`, tanpa penautan ulang |
+| Email belum terdaftar sebagai staff | `sso_not_provisioned` |
+| Email milik akun pelanggan | `sso_customer_account`, dan `sso_sub` tetap kosong |
+| Email sudah tertaut ke orang SSO lain | `sso_sub_conflict`, dan tautan lama tidak tertimpa |
+
+Tiga skenario penolakan dipancing dengan mengubah sementara baris akun penguji di DB
+lokal, lalu barisnya dipulihkan.
+
+**Jebakan di lokal:** route baru di `/api/auth/sso/*` bisa membalas **404** di `next dev`
+karena cache Turbopack (`.next/dev`) masih memegang daftar route lama. Hentikan server
+dev, hapus `.next/dev`, lalu jalankan ulang. Build produksi tidak terdampak, karena
+selalu dibangun dari nol.
+
+**Belum teruji:** login di produksi dan tampilan di layar HP (375px).
+
+---
+
+## 8. Belum dikerjakan (tahap berikutnya)
+
+- **Logout yang ikut mengakhiri sesi SSO** (`/oauth/logout`). Logout sekarang hanya
+  mengakhiri sesi ecommerce.
+- **Back-channel logout.** Sesi admin di sini stateless, jadi butuh tabel `sso_sessions`
+  (sid → user) atau pencabutan lewat `passwordChangedAt` (memutus semua perangkat).
+- **Form identifier-first** di `/login`: ketik email, lalu server menanyakan
+  `/api/clients/access-check` ke SSO untuk menentukan jalur staff atau pelanggan.
+  Langkah ini juga harus menerjemahkan username staff ke email.
+- **Mematikan login password untuk staff**, dengan satu akun darurat yang tetap memakai
+  password lokal.
+- **Password staff tidak bisa diimpor ke SSO.** Hash di sini scrypt, sedangkan SSO hanya
+  menerima bcrypt. Staff masuk SSO lewat Google atau password yang direset admin SSO.
