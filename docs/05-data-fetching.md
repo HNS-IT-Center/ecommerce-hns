@@ -2398,3 +2398,10 @@ izin, maupun ke `/login/error?reason=sso_*`.
 - `createSession(user, maxAgeSeconds?)` kini menerima umur sesi. Pemanggil lama tidak
   berubah (7 hari).
 - Rincian, keputusan, dan uji: docs/19-sso-staff.md.
+
+**Susulan 16 November 2026: satu tombol Google.** Tombol SSO dihapus dari `/login`.
+`GET /api/auth/google/callback` kini menanyakan `POST {SSO}/api/clients/access-check`
+(`checkSsoAccess`, batas 5 detik, tanpa cache), **hanya untuk akun staff**. Kalau jawabannya
+"diberi akses", staff dialihkan ke `GET /api/auth/sso/login?login_hint=<email>`. Kalau
+tidak, atau SSO tak terjangkau, ia mendapat sesi langsung seperti dulu (masa peralihan).
+`/api/auth/sso/login` menerima `login_hint` yang sudah disaring. Rinciannya di docs/19 §2.1.

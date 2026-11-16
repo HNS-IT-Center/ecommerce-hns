@@ -36,7 +36,8 @@ if (process.argv.includes("--mode=env-kosong")) {
   }
   const { isSsoEnabled } = await import("../src/lib/auth/sso.ts")
   const { GET } = await import("../src/app/api/auth/sso/login/route.ts")
-  const res = await GET()
+  const { NextRequest } = await import("next/server")
+  const res = await GET(new NextRequest("http://localhost:3000/api/auth/sso/login"))
   console.log(JSON.stringify({ enabled: isSsoEnabled(), location: res.headers.get("location") }))
   process.exit(0)
 }
@@ -72,6 +73,8 @@ let idTokenClaims: { sub: string; email: string; name: string } = { sub: "", ema
 /** code_challenge per code, dicatat saat "authorize" disimulasikan. */
 const challengeByCode = new Map<string, { challenge: string; nonce: string }>()
 let lastBasicAuth = ""
+/** Email yang dijawab `access-check` SSO tiruan sebagai staff ber-akses. */
+const STAFF_SSO = new Set(["staff-berakses@contoh.test"])
 
 function json(res: ServerResponse, status: number, body: unknown) {
   res.writeHead(status, { "Content-Type": "application/json" })
@@ -117,6 +120,15 @@ const server = createServer(async (req, res) => {
     })
   }
   if (url.pathname === "/.well-known/jwks.json") return json(res, 200, { keys: [jwk] })
+  if (url.pathname === "/api/clients/access-check" && req.method === "POST") {
+    const expectedAuth = `Basic ${Buffer.from(`${encodeURIComponent(CLIENT_ID)}:${encodeURIComponent(CLIENT_SECRET)}`).toString("base64")}`
+    if (req.headers.authorization !== expectedAuth) return json(res, 401, { error: "invalid_client" })
+    const email = new URLSearchParams(await readBody(req)).get("email") ?? ""
+    if (email === "lambat@contoh.test") { await new Promise((r) => setTimeout(r, 6500)); return json(res, 200, { sso: true }) }
+    if (email === "rusak@contoh.test") return json(res, 500, { error: "server_error" })
+    if (email === "aneh@contoh.test") return json(res, 200, { hasil: "ya" })
+    return json(res, 200, { sso: STAFF_SSO.has(email) })
+  }
   if (url.pathname === "/oauth/token" && req.method === "POST") {
     lastBasicAuth = req.headers.authorization ?? ""
     const expectedAuth = `Basic ${Buffer.from(`${encodeURIComponent(CLIENT_ID)}:${encodeURIComponent(CLIENT_SECRET)}`).toString("base64")}`
@@ -185,6 +197,12 @@ async function harusGagal(fn: () => Promise<unknown>): Promise<string | null> {
   }
 }
 
+function loginRequest(query: Record<string, string> = {}) {
+  const url = new URL("http://localhost:3000/api/auth/sso/login")
+  for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v)
+  return new NextRequest(url)
+}
+
 let ipCounter = 0
 function callbackRequest(query: Record<string, string>, flowCookie?: string) {
   const url = new URL("http://localhost:3000/api/auth/sso/callback")
@@ -235,7 +253,7 @@ try {
 
   // -------------------------------------------------------------------------
   console.log("\n2. GET /api/auth/sso/login")
-  const loginRes = await loginRoute.GET()
+  const loginRes = await loginRoute.GET(loginRequest())
   const authorizeUrl = new URL(loginRes.headers.get("location") ?? "http://kosong")
   const p = authorizeUrl.searchParams
   cek("redirect ke authorization_endpoint dari discovery", `${authorizeUrl.origin}${authorizeUrl.pathname}` === `${issuer}/oauth/authorize`)
@@ -263,14 +281,44 @@ try {
     createHash("sha256").update(flow?.codeVerifier ?? "").digest("base64url") === p.get("code_challenge"),
   )
   cek("code_verifier sesuai pola SSO", /^[A-Za-z0-9\-._~]{43,128}$/.test(flow?.codeVerifier ?? ""))
-  const loginRes2 = await loginRoute.GET()
+  const loginRes2 = await loginRoute.GET(loginRequest())
   cek("tiap login membuat state baru", new URL(loginRes2.headers.get("location")!).searchParams.get("state") !== p.get("state"))
+  cek("tanpa login_hint → parameter itu tidak dikirim ke SSO", !p.has("login_hint"))
+
+  const denganHint = new URL(
+    (await loginRoute.GET(loginRequest({ login_hint: "  Staff-Berakses@Contoh.TEST " }))).headers.get("location")!,
+  )
+  cek("login_hint email diteruskan ke SSO (dinormalisasi)", denganHint.searchParams.get("login_hint") === "staff-berakses@contoh.test")
+  const hintRusak = new URL(
+    (await loginRoute.GET(loginRequest({ login_hint: "bukan email <script>" }))).headers.get("location")!,
+  )
+  cek("login_hint yang bukan email dibuang", !hintRusak.searchParams.has("login_hint"))
+  cek(
+    "normalizeLoginHint menolak kosong, tanpa domain, dan >254 karakter",
+    sso.normalizeLoginHint("") === null &&
+      sso.normalizeLoginHint("a@b") === null &&
+      sso.normalizeLoginHint(`${"a".repeat(250)}@contoh.test`) === null,
+  )
+
+  // -------------------------------------------------------------------------
+  console.log("\n2b. access-check (dipakai callback Google untuk mengalihkan staff)")
+  const cfg = sso.ssoConfig()!
+  cek("staff ber-akses → true", (await sso.checkSsoAccess(cfg, "staff-berakses@contoh.test")) === true)
+  cek("bukan staff / belum di-whitelist → false", (await sso.checkSsoAccess(cfg, "pelanggan@contoh.test")) === false)
+  cek("SSO galat 500 → null", (await sso.checkSsoAccess(cfg, "rusak@contoh.test")) === null)
+  cek("jawaban berbentuk aneh → null", (await sso.checkSsoAccess(cfg, "aneh@contoh.test")) === null)
+  cek("secret salah (401) → null", (await sso.checkSsoAccess({ ...cfg, clientSecret: "salah" }, "staff-berakses@contoh.test")) === null)
+  cek("SSO tak terjangkau → null", (await sso.checkSsoAccess({ ...cfg, issuer: "http://127.0.0.1:1" }, "staff-berakses@contoh.test")) === null)
+  const mulai = Date.now()
+  const lambat = await sso.checkSsoAccess(cfg, "lambat@contoh.test")
+  const durasi = Date.now() - mulai
+  cek("SSO lambat (>5 dtk) → null, tidak menahan login", lambat === null && durasi < 6000, `${durasi} ms`)
 
   // -------------------------------------------------------------------------
   console.log("\n3. Callback menolak sebelum menyentuh SSO")
   const s = flow!.state
   cek("tanpa cookie alur → sso_state_invalid", reasonOf(await callbackRoute.GET(callbackRequest({ code: "x", state: s, iss: issuer }))) === "sso_state_invalid")
-  cek("state salah → sso_state_invalid", reasonOf(await callbackRoute.GET(callbackRequest({ code: "x", state: s.slice(0, -1) + "A", iss: issuer }, flowRaw))) === "sso_state_invalid")
+  cek("state salah → sso_state_invalid", reasonOf(await callbackRoute.GET(callbackRequest({ code: "x", state: s.slice(0, -1) + (s.endsWith("A") ? "B" : "A"), iss: issuer }, flowRaw))) === "sso_state_invalid")
   cek("state beda panjang → sso_state_invalid", reasonOf(await callbackRoute.GET(callbackRequest({ code: "x", state: "pendek", iss: issuer }, flowRaw))) === "sso_state_invalid")
   cek("tanpa code → sso_state_invalid", reasonOf(await callbackRoute.GET(callbackRequest({ state: s, iss: issuer }, flowRaw))) === "sso_state_invalid")
   cek("iss tidak ada → ditolak", reasonOf(await callbackRoute.GET(callbackRequest({ code: "x", state: s }, flowRaw))) === "sso_state_invalid")
@@ -361,7 +409,7 @@ try {
   // galat itu BUKTI callback lolos seluruh pemeriksaan dan sampai ke langkah
   // membuat sesi. Tanpa uji ini, bagian 3 tetap lolos andai callback menolak
   // segalanya.
-  const loginPositif = await loginRoute.GET()
+  const loginPositif = await loginRoute.GET(loginRequest())
   const flowPositifRaw = (loginPositif.headers.get("set-cookie") ?? "").match(/hns_sso_flow=([^;]+)/)?.[1] ?? ""
   const flowPositif = parseSsoFlow(flowPositifRaw)!
   siapkanCode("code-callback-ok", flowPositif)

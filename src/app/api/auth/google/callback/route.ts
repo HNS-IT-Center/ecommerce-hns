@@ -8,6 +8,7 @@ import { isMaster } from "@/lib/auth/permissions"
 import { GOOGLE_STATE_COOKIE, parseState } from "@/lib/auth/google-state"
 import { sanitizeNextPath } from "@/lib/auth/safe-redirect"
 import { checkGoogleCallbackRateLimit, clientIpFrom } from "@/lib/auth/google-callback-rate-limit"
+import { checkSsoAccess, ssoConfig } from "@/lib/auth/sso"
 import { resolveSiteUrl } from "@/lib/utils/site-url"
 
 /**
@@ -155,6 +156,43 @@ export async function GET(request: NextRequest) {
    * biasanya akun Google tanpa password.
    */
   if (role !== "pelanggan" || isMaster({ email })) {
+    /**
+     * Staff diarahkan lewat HNS SSO — docs/19-sso-staff.md §2.1.
+     *
+     * Sejak 16 Nov 2026 halaman login hanya punya SATU tombol, Google, untuk
+     * semua orang; pintu staff sengaja tidak diumumkan. Akun staff yang emailnya
+     * dijawab SSO sebagai "diberi akses ke aplikasi ini" TIDAK diberi sesi di
+     * sini: ia dikirim ke `/api/auth/sso/login`, dan sesinya baru terbit setelah
+     * SSO membuktikan orangnya (password/2FA/passkey milik SSO, bukan Google
+     * semata).
+     *
+     * Hanya akun STAFF yang ditanyakan ke SSO. Pelanggan tidak pernah ada di
+     * SSO, jadi menanyakannya hanya menambah satu panggilan jaringan ke setiap
+     * login pelanggan tanpa mungkin mengubah hasilnya.
+     *
+     * MASA PERALIHAN (keputusan user 16 Nov 2026): jawaban `false` (belum
+     * di-whitelist) dan `null` (SSO tak terjangkau) jatuh ke perilaku lama —
+     * sesi admin langsung dari Google. Alasannya operasional: sebagian staff
+     * belum diimpor ke SSO, dan SSO yang mati tidak boleh mengunci staff dari
+     * toko. Panduan SSO menyatakan staff seharusnya HANYA masuk lewat SSO;
+     * menutup celah ini adalah bagian tahap 2 (docs/19 §8), setelah semua staff
+     * ada di SSO.
+     */
+    const sso = ssoConfig()
+    if (sso) {
+      const access = await checkSsoAccess(sso, email)
+      if (access === true) {
+        const ssoUrl = new URL("/api/auth/sso/login", origin)
+        ssoUrl.searchParams.set("login_hint", email)
+        const ssoResponse = NextResponse.redirect(ssoUrl)
+        ssoResponse.cookies.set(GOOGLE_STATE_COOKIE, "", { path: "/", maxAge: 0 })
+        return ssoResponse
+      }
+      if (access === null) {
+        console.warn(`[google/callback] SSO tak terjangkau — akun ${userId} masuk langsung tanpa SSO (masa peralihan)`)
+      }
+    }
+
     await createSession({ id: userId, email })
     const adminResponse = NextResponse.redirect(new URL("/admin", origin))
     adminResponse.cookies.set(GOOGLE_STATE_COOKIE, "", { path: "/", maxAge: 0 })

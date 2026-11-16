@@ -27,6 +27,12 @@ export const SSO_SESSION_MAX_AGE_SECONDS = 12 * 60 * 60
 
 const SCOPES = "openid profile email"
 const FETCH_TIMEOUT_MS = 10_000
+/**
+ * Lebih pendek dari panggilan lain: `checkSsoAccess` berjalan DI TENGAH callback
+ * Google, saat staff sedang menunggu halaman berikutnya. SSO yang lambat tidak
+ * boleh menahan login — lewat batas ini dianggap tak terjangkau (null).
+ */
+const ACCESS_CHECK_TIMEOUT_MS = 5_000
 const DISCOVERY_TTL_MS = 5 * 60 * 1000
 /** Toleransi selisih jam antar server, batas yang ditetapkan SSO HNS. */
 const CLOCK_TOLERANCE_SECONDS = 30
@@ -174,10 +180,30 @@ function codeChallengeFor(verifier: string): string {
   return base64Url(createHash("sha256").update(verifier).digest())
 }
 
+/**
+ * Email untuk `login_hint`, atau `null` kalau tidak wajar.
+ *
+ * Nilainya datang dari query string (`/api/auth/sso/login?login_hint=…`), jadi
+ * siapa pun bisa mengisinya. Ia hanya PRA-ISI kolom email di halaman SSO —
+ * bukan bukti identitas apa pun — tapi tetap disaring supaya yang diteruskan ke
+ * SSO hanya sesuatu yang berbentuk email.
+ */
+export function normalizeLoginHint(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  const value = raw.trim().toLowerCase()
+  if (value.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return null
+  return value
+}
+
 /** URL halaman login SSO untuk satu percobaan login. */
-export async function buildSsoAuthorizationUrl(config: SsoConfig, flow: SsoFlow): Promise<string> {
+export async function buildSsoAuthorizationUrl(
+  config: SsoConfig,
+  flow: SsoFlow,
+  options: { loginHint?: string | null } = {},
+): Promise<string> {
   const discovery = await discover(config)
   const url = new URL(discovery.authorization_endpoint)
+  if (options.loginHint) url.searchParams.set("login_hint", options.loginHint)
   url.searchParams.set("client_id", config.clientId)
   url.searchParams.set("redirect_uri", config.redirectUri)
   url.searchParams.set("response_type", "code")
@@ -206,6 +232,52 @@ function basicAuthHeader(config: SsoConfig): string {
   const id = encodeURIComponent(config.clientId)
   const secret = encodeURIComponent(config.clientSecret)
   return `Basic ${Buffer.from(`${id}:${secret}`).toString("base64")}`
+}
+
+/**
+ * Apakah email ini staff yang DIBERI AKSES ke aplikasi ini di SSO?
+ *
+ * Endpoint non-standar SSO HNS (`POST /api/clients/access-check`), khusus
+ * confidential client, menjawab hanya untuk whitelist client pemanggil. Dipakai
+ * callback Google untuk memutuskan: staff dialihkan lewat SSO, selain itu
+ * berjalan seperti biasa (docs/19 §2.1).
+ *
+ * - `true`  → staff ber-akses: arahkan ke SSO.
+ * - `false` → bukan (atau belum di-whitelist).
+ * - `null`  → SSO tak terjangkau / galat / jawaban aneh. Pemanggil yang
+ *   memutuskan; callback Google memperlakukannya seperti `false` selama masa
+ *   peralihan, supaya SSO yang mati tidak mengunci staff dari toko.
+ *
+ * Jawabannya TIDAK di-cache: pencabutan akses di SSO harus langsung berlaku,
+ * dan panggilannya hanya terjadi saat staff login lewat Google.
+ */
+export async function checkSsoAccess(config: SsoConfig, email: string): Promise<boolean | null> {
+  try {
+    const res = await fetch(`${config.issuer}/api/clients/access-check`, {
+      method: "POST",
+      cache: "no-store",
+      signal: AbortSignal.timeout(ACCESS_CHECK_TIMEOUT_MS),
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: basicAuthHeader(config),
+      },
+      body: new URLSearchParams({ email }),
+    })
+    if (!res.ok) {
+      console.warn(`[sso] access-check dibalas status ${res.status}`)
+      return null
+    }
+    const body: unknown = await res.json().catch(() => null)
+    if (typeof body === "object" && body !== null) {
+      const sso = (body as Record<string, unknown>).sso
+      if (typeof sso === "boolean") return sso
+    }
+    console.warn("[sso] access-check membalas bentuk yang tidak dikenal")
+    return null
+  } catch (error) {
+    console.warn("[sso] access-check tak terjangkau:", error instanceof Error ? error.message : String(error))
+    return null
+  }
 }
 
 /**

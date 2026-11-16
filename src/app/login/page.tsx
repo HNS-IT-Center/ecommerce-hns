@@ -1,13 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { KeyRound } from "lucide-react";
 
 import { Footer } from "@/components/layout/footer";
 import { Header } from "@/components/layout/header";
 import { env } from "@/config/env";
 import { getCurrentCustomer } from "@/lib/auth/customer";
 import { sanitizeNextPath } from "@/lib/auth/safe-redirect";
-import { isSsoEnabled } from "@/lib/auth/sso";
 import { LoginForm } from "./login-form";
 
 export const metadata = {
@@ -94,29 +92,13 @@ export default async function Page({
             <div className="h-px flex-1 bg-border" />
           </div>
 
+          {/* Sengaja TIDAK ada tombol SSO di sini (keputusan 16 Nov 2026).
+              Pintu staff tidak diumumkan ke publik: staff menekan tombol
+              Google yang sama dengan pelanggan, dan callback Google yang
+              mengalihkannya lewat SSO bila email itu staff ber-akses
+              (docs/19 §2.1). Staff yang akun SSO-nya tidak memakai Google
+              masuk dari Portal SSO (auth.hnsitcenter.id → HNS Ecommerce). */}
           <LoginForm nextPath={nextPath} />
-
-          {/* Jalur STAFF lewat HNS SSO (docs/19-sso-staff.md). Sengaja di
-              BAWAH formulir dan berlabel "Staff HNS", bukan sejajar dengan
-              tombol Google di atas: pembaca terbanyak halaman ini pelanggan,
-              dan tombol yang tampak seperti cara masuk ketiga membuat mereka
-              mencobanya lalu ditolak SSO. Hanya tampil kalau kelima env SSO
-              terisi. `<a>` biasa, bukan `<Link>` — tujuannya route handler
-              yang me-redirect ke domain lain. */}
-          {isSsoEnabled() ? (
-            <div className="space-y-2 border-t pt-5">
-              <p className="text-center text-xs font-semibold text-muted-foreground">
-                Staff HNS IT Center
-              </p>
-              <a
-                href="/api/auth/sso/login"
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-input px-4 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
-              >
-                <KeyRound className="h-4 w-4" aria-hidden="true" />
-                Masuk dengan SSO HNS
-              </a>
-            </div>
-          ) : null}
 
           {/* Tautan "Daftar" hanya muncul kalau pendaftaran manual memang
               dibuka. Saat tertutup, TIDAK ada teks pengganti seperti

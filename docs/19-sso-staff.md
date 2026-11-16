@@ -34,9 +34,47 @@ Ticketing menarik quotation) butuh token tersendiri, bukan SSO.
 
 ## 2. Alur
 
+### 2.1 Satu tombol Google untuk semua orang (16 November 2026)
+
+**Halaman `/login` tidak punya tombol SSO.** Keputusan pemilik project: pintu masuk
+staff tidak diumumkan ke publik. Label "khusus staff" memberi tahu orang luar di mana
+harus mencoba-coba, sedangkan tombol yang tampak seperti cara masuk ketiga membuat
+pelanggan mengkliknya lalu ditolak SSO.
+
+Staff menekan tombol **"Masuk dengan Google"** yang sama dengan pelanggan.
+Pembedanya ada di callback Google (`src/app/api/auth/google/callback/route.ts`):
+
 ```
-/login → "Masuk dengan SSO HNS"
-  → GET /api/auth/sso/login
+/login → "Masuk dengan Google" → pilih akun Google
+  → GET /api/auth/google/callback
+      akun pelanggan / pendaftar baru → alur pelanggan seperti biasa (tidak ada panggilan ke SSO)
+      akun STAFF → POST {SSO}/api/clients/access-check  (checkSsoAccess, batas 5 detik)
+          true  → redirect /api/auth/sso/login?login_hint=<email> → alur SSO di bawah
+          false → sesi admin langsung dari Google (MASA PERALIHAN)
+          null  → sama dengan false, ditambah log peringatan (SSO tak terjangkau)
+```
+
+- **Hanya akun staff yang ditanyakan ke SSO.** Pelanggan tidak pernah ada di SSO, jadi
+  menanyakannya hanya memperlambat login pelanggan tanpa mungkin mengubah hasilnya.
+- **`login_hint`** mengisi kolom email di halaman SSO. Nilainya disaring
+  `normalizeLoginHint()`, karena query string bisa diisi siapa pun. Fungsinya hanya
+  pra-isi, bukan bukti identitas.
+- **Staff yang akun SSO-nya tidak memakai Google** masuk dari **Portal SSO**
+  (`auth.hnsitcenter.id` → HNS Ecommerce). Aplikasi ini tampil di Portal, dan Initiate
+  Login URL-nya adalah `/api/auth/sso/login`.
+- **Masa peralihan, keputusan pemilik project 16 Nov 2026.** Staff yang belum
+  di-whitelist SSO (`false`) dan staff yang menekan Google saat SSO mati (`null`) tetap
+  mendapat sesi admin langsung dari Google, seperti sebelum SSO ada. Alasannya
+  operasional: sebagian staff belum diimpor ke SSO, dan SSO yang mati tidak boleh
+  mengunci staff dari toko. Panduan SSO menyatakan staff seharusnya **hanya** masuk
+  lewat SSO. Menutup jalur ini termasuk tahap 2 (§8), setelah semua staff ada di SSO.
+- Sesi dari jalur Google langsung tetap 7 hari. Hanya sesi yang lahir lewat SSO yang
+  12 jam (§4).
+
+### 2.2 Alur SSO
+
+```
+GET /api/auth/sso/login[?login_hint=…]   (dari callback Google, Portal SSO, atau "Coba lagi")
       buat state + nonce + PKCE verifier → cookie hns_sso_flow (10 menit)
       → redirect ke auth.hnsitcenter.id/oauth/authorize
   → staff login di SSO (SSO cek whitelist)
@@ -57,7 +95,8 @@ Ticketing menarik quotation) butuh token tersendiri, bukan SSO.
 | `src/lib/auth/sso-link.ts` | Pencocokan orang SSO → baris `users` |
 | `src/app/api/auth/sso/login/route.ts` | Mulai login. URL ini juga "Initiate Login URL" di SSO |
 | `src/app/api/auth/sso/callback/route.ts` | Callback |
-| `src/app/login/page.tsx` | Tombol, hanya tampil kalau kelima env terisi |
+| `src/app/api/auth/google/callback/route.ts` | Pengalihan staff ke SSO lewat `checkSsoAccess` (§2.1) |
+| `src/app/login/page.tsx` | Sengaja TANPA tombol SSO (§2.1) |
 | `src/app/login/error/page.tsx` | Pesan galat `sso_*` versi staff |
 
 Memakai `jose` + `fetch`, polanya sama dengan login Google pelanggan
@@ -169,9 +208,13 @@ npx tsx --tsconfig scripts/tsconfig.uji.json scripts/uji-sso.mts
 ```
 
 Skrip ini menjalankan SSO **tiruan** di 127.0.0.1 dengan kunci RSA buatan sendiri, lalu
-menguji fungsi dan route asli. Hasilnya 62/62 lolos pada 15 Nov 2026. Yang diuji:
+menguji fungsi dan route asli. Hasilnya 73/73 lolos pada 16 Nov 2026. Yang diuji:
 
-- Parameter authorize, PKCE S256, dan atribut cookie alur.
+- Parameter authorize, PKCE S256, `login_hint` (diteruskan, dinormalisasi, dan dibuang
+  kalau bukan email), serta atribut cookie alur.
+- `checkSsoAccess`: `true`, `false`, dan `null` untuk galat 500, jawaban berbentuk aneh,
+  secret salah, SSO tak terjangkau, serta SSO lambat lebih dari 5 detik (tidak menahan
+  login).
 - Penolakan untuk `state` salah, `iss` hilang atau salah, `nonce`, `aud`, `azp`,
   kedaluwarsa, kunci asing, verifier salah, secret salah, `invalid_grant`, dan SSO
   tak terjangkau.
@@ -201,7 +244,14 @@ karena cache Turbopack (`.next/dev`) masih memegang daftar route lama. Hentikan 
 dev, hapus `.next/dev`, lalu jalankan ulang. Build produksi tidak terdampak, karena
 selalu dibangun dari nol.
 
-**Belum teruji:** login di produksi dan tampilan di layar HP (375px).
+**Produksi, 16 Nov 2026:** login lewat tombol SSO (versi `40aa02a`) berhasil sampai
+`/admin`.
+
+**Satu tombol Google (§2.1), uji lokal 16 Nov 2026:** staff `developer.hns2` menekan
+Google, lalu `/api/auth/sso/login?login_hint=…`, lalu callback SSO, lalu `/admin`.
+Akun Google pelanggan tetap masuk lewat alur pelanggan (lengkapi profil).
+
+**Belum teruji:** satu tombol Google di produksi, dan tampilan di layar HP (375px).
 
 ---
 
@@ -211,10 +261,11 @@ selalu dibangun dari nol.
   mengakhiri sesi ecommerce.
 - **Back-channel logout.** Sesi admin di sini stateless, jadi butuh tabel `sso_sessions`
   (sid → user) atau pencabutan lewat `passwordChangedAt` (memutus semua perangkat).
-- **Form identifier-first** di `/login`: ketik email, lalu server menanyakan
-  `/api/clients/access-check` ke SSO untuk menentukan jalur staff atau pelanggan.
-  Langkah ini juga harus menerjemahkan username staff ke email.
+- **Mengakhiri masa peralihan (§2.1).** Setelah semua staff ada di SSO: jawaban
+  `false`/`null` untuk akun staff di callback Google tidak lagi memberi sesi langsung.
 - **Mematikan login password untuk staff**, dengan satu akun darurat yang tetap memakai
-  password lokal.
+  password lokal. Form password di `/login` sampai sekarang masih menerima akun staff.
+- Form identifier-first (ketik email dulu) **tidak dipakai**. Ia digantikan satu tombol
+  Google (§2.1), atas pilihan pemilik project.
 - **Password staff tidak bisa diimpor ke SSO.** Hash di sini scrypt, sedangkan SSO hanya
   menerima bcrypt. Staff masuk SSO lewat Google atau password yang direset admin SSO.
