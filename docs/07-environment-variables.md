@@ -506,6 +506,24 @@ lain juga jadi tersimpan di dua tempat.
 **Bukan `NEXT_PUBLIC_*`.** Secret hanya dipakai server saat menukar code. Rinciannya di
 docs/19.
 
+### 2.14 OPSIONAL — Integrasi Ticketing HNS (16 November 2026)
+
+```env
+TICKETING_INTEGRATION_TOKEN=<64 karakter hex acak>
+```
+
+| Variabel | Dari mana |
+|---|---|
+| `TICKETING_INTEGRATION_TOKEN` | **Dibuat sendiri:** `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Minimal 32 karakter. Nilai yang **sama** dipasang di env aplikasi Ticketing |
+
+Membuka `GET /api/integrations/ticketing/pc-build-quotes/{code}` (docs/17 §20), yang
+mengembalikan isi quotation **termasuk nama dan nomor HP pelanggan**. Karena kode
+quotation berurutan, token yang bocor berarti seluruh quotation bisa ditarik satu per
+satu. Jangan tempel nilainya di chat. Kalau bocor, ganti di hPanel **dan** di Ticketing
+bersamaan.
+
+Kosong = endpoint membalas **503 `not_configured`**, tidak pernah terbuka tanpa token.
+
 ---
 
 ## 3. Setup Lokal (Developer Baru)

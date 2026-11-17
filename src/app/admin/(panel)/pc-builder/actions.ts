@@ -7,6 +7,7 @@ import {
   PC_BUILDER_CACHE_TAG,
   PC_BUILDER_DISPLAY_KEY,
   PC_BUILDER_SETTING_KEY,
+  parsePcBuilderSteps,
   type PcBuilderDisplayConfig,
   type PcBuilderStepConfig,
 } from "@/lib/pc-builder/config"
@@ -48,8 +49,10 @@ export async function savePcBuilderConfig(steps: PcBuilderStepConfig[]) {
   await requirePermission("pc-builder", "edit")
   const prisma = getPrisma()
 
-  // Ensure we are saving a pure JSON object, removing any unexpected types
-  const safeSteps = JSON.parse(JSON.stringify(steps))
+  // Ensure we are saving a pure JSON object, removing any unexpected types.
+  // Lalu saringan yang sama dengan pembacanya: `kind` di luar nilai sah dibuang
+  // di sini juga, supaya yang tersimpan sama dengan yang dibaca.
+  const safeSteps = parsePcBuilderSteps(JSON.parse(JSON.stringify(steps)))
 
   await prisma.setting.upsert({
     where: { key: PC_BUILDER_SETTING_KEY },

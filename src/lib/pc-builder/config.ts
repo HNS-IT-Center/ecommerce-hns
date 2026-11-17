@@ -20,6 +20,9 @@
 import { unstable_cache } from "next/cache"
 
 import { getPrisma } from "@/lib/prisma/client"
+import { isPcBuilderStepKind, type PcBuilderStepKind } from "@/lib/pc-builder/step-kind"
+
+export { PC_BUILDER_STEP_KINDS, isPcBuilderStepKind, type PcBuilderStepKind } from "@/lib/pc-builder/step-kind"
 
 export const PC_BUILDER_CACHE_TAG = "pc-builder-config"
 
@@ -35,6 +38,7 @@ export type PcBuilderStepConfig = {
   dependAttributes: number[]
   isRequired?: boolean
   allowMultiple?: boolean
+  kind?: PcBuilderStepKind
 }
 
 export type PcBuilderDisplayConfig = {
@@ -59,6 +63,24 @@ function isStepConfig(value: unknown): value is PcBuilderStepConfig {
 }
 
 /**
+ * Isi mentah setting `PC_BUILDER_CONFIG` → daftar step yang sah. Dipisah dari
+ * pembaca ber-cache supaya jalur yang memang tidak boleh di-cache (API
+ * Ticketing) memakai aturan saringan yang sama.
+ *
+ * `kind` yang bukan salah satu nilai sah DIBUANG dari step (bukan step-nya):
+ * kolomnya JSON bebas, dan nilai asing tidak boleh sampai ke server lain.
+ */
+export function parsePcBuilderSteps(value: unknown): PcBuilderStepConfig[] {
+  if (!Array.isArray(value)) return []
+  return value.filter(isStepConfig).map((step) => {
+    if (step.kind === undefined || isPcBuilderStepKind(step.kind)) return step
+    const tanpaKind: PcBuilderStepConfig = { ...step }
+    delete tanpaKind.kind
+    return tanpaKind
+  })
+}
+
+/**
  * Konfigurasi step PC Builder.
  *
  * Pembacaannya lewat `unstable_cache` dengan tag, jadi halaman `/build-pc`
@@ -77,10 +99,7 @@ export async function getPcBuilderConfig(): Promise<PcBuilderStepConfig[]> {
     { revalidate: 300, tags: [PC_BUILDER_CACHE_TAG] }
   )
 
-  const value = await fetcher()
-  if (!Array.isArray(value)) return []
-
-  return value.filter(isStepConfig)
+  return parsePcBuilderSteps(await fetcher())
 }
 
 /**

@@ -117,6 +117,13 @@ const EnvSchema = z.object({
   SSO_REDIRECT_URI: z.preprocess(blankAsUndefined, z.string().url().optional()),
   SSO_POST_LOGOUT_REDIRECT_URI: z.preprocess(blankAsUndefined, z.string().url().optional()),
 
+  // Token server-ke-server untuk aplikasi Ticketing HNS, yang menarik isi
+  // quotation rakitan lewat GET /api/integrations/ticketing/pc-build-quotes/
+  // {code} (docs/17 §20). Opsional: tanpa token endpoint itu membalas 503,
+  // tidak pernah terbuka. Minimal 32 karakter karena token ini membuka nama &
+  // nomor HP pelanggan seluruh quotation — kodenya berurutan dan bisa ditebak.
+  TICKETING_INTEGRATION_TOKEN: z.preprocess(blankAsUndefined, z.string().min(32).optional()),
+
   // Cloudflare R2 — penyimpanan gambar produk. Opsional dengan alasan yang
   // sama seperti AUTH_SECRET di atas: skema ini di-parse saat modul dimuat,
   // jadi menandainya wajib akan mematikan SELURUH aplikasi (storefront ikut
@@ -223,6 +230,7 @@ export const env = EnvSchema.parse({
   SSO_CLIENT_SECRET: process.env.SSO_CLIENT_SECRET,
   SSO_REDIRECT_URI: process.env.SSO_REDIRECT_URI,
   SSO_POST_LOGOUT_REDIRECT_URI: process.env.SSO_POST_LOGOUT_REDIRECT_URI,
+  TICKETING_INTEGRATION_TOKEN: process.env.TICKETING_INTEGRATION_TOKEN,
   R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
   R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
   R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,

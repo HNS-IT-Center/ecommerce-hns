@@ -6,8 +6,15 @@ import { GripVertical, Trash2, AlertCircle, ChevronDown, ChevronUp, ArrowUp, Arr
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { PcBuilderStepConfig } from "@/lib/pc-builder/config"
+import type { PcBuilderStepConfig } from "@/lib/pc-builder/config"
+import { PC_BUILDER_STEP_KINDS, isPcBuilderStepKind, type PcBuilderStepKind } from "@/lib/pc-builder/step-kind"
 import { Checkbox } from "@/components/ui/checkbox"
+
+const STEP_KIND_LABELS: Record<PcBuilderStepKind, string> = {
+  component: "Komponen — dirakit",
+  peripheral: "Perlengkapan — diserahkan, tidak dirakit",
+  service: "Jasa — tidak dicentang",
+}
 
 interface StepCardProps {
   step: PcBuilderStepConfig
@@ -111,6 +118,29 @@ export function StepCard({ step, index, updateStep, removeStep, moveStep, catego
                   placeholder="e.g. Processor, Motherboard, RAM..." 
                   className="font-bold text-lg h-12 bg-background/40 shadow-inner rounded-xl border-border/20 focus-visible:ring-1"
                 />
+                {/* Dibaca aplikasi Ticketing (docs/17 §20): memisahkan yang dirakit,
+                    yang hanya diserahkan, dan jasa. Tidak memengaruhi storefront. */}
+                <div className="flex flex-col gap-1 pt-2 sm:flex-row sm:items-center sm:gap-3">
+                  <label htmlFor={`kind-${step.id}`} className="text-xs font-semibold text-muted-foreground">
+                    Jenis baris (untuk Ticketing)
+                  </label>
+                  <select
+                    id={`kind-${step.id}`}
+                    value={step.kind ?? ""}
+                    onChange={(e) => {
+                      const value = e.target.value
+                      updateStep(index, { kind: isPcBuilderStepKind(value) ? value : undefined })
+                    }}
+                    className="h-9 w-full rounded-lg border border-border/30 bg-background/40 px-2 text-sm sm:w-auto"
+                  >
+                    <option value="">Belum diatur</option>
+                    {PC_BUILDER_STEP_KINDS.map((kind) => (
+                      <option key={kind} value={kind}>
+                        {STEP_KIND_LABELS[kind]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               
               <div className="flex items-center gap-3 w-full md:w-auto shrink-0 bg-background/40 p-2 rounded-xl border border-border/20">

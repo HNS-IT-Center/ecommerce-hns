@@ -217,12 +217,12 @@ diduplikasi hanya penempatannya.
 
 ## 6. Privasi: siapa melihat apa
 
-| Data | Kasir (`/verify`) | Pemilik (`/profile/quotation`) | Admin (`/admin/quotation`) | PDF | Tautan publik (`/q`) |
-|---|---|---|---|---|---|
-| Nama pelanggan | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Nomor HP | ❌ | disamarkan di daftar, utuh di detail | ✅ | ❌ | ❌ |
-| Catatan internal | ❌ | ✅ | ✅ | ❌ | ❌ |
-| Nomor WhatsApp sales | ❌ | ❌ | ❌ | ❌ | ✅ (di tautan wa.me, §15) |
+| Data | Kasir (`/verify`) | Pemilik (`/profile/quotation`) | Admin (`/admin/quotation`) | PDF | Tautan publik (`/q`) | Ticketing (API, §20) |
+|---|---|---|---|---|---|---|
+| Nama pelanggan | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Nomor HP | ❌ | disamarkan di daftar, utuh di detail | ✅ | ❌ | ❌ | ✅ |
+| Catatan internal | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Nomor WhatsApp sales | ❌ | ❌ | ❌ | ❌ | ✅ (di tautan wa.me, §15) | ❌ |
 
 **Kasir tidak melihat nomor HP dan catatan internal**, dan itu bukan kelalaian. Kasir cukup
 mencocokkan orang yang berdiri di depan meja dengan dokumennya; nomor HP tidak menambah apa pun
@@ -809,3 +809,160 @@ Yang **belum** ada:
   karena perlu diputuskan apakah `salesName` di PDF ikut berganti.
 - Rakitan tersimpan (`/profile/rakitan`). Rakitan ini milik akun pelanggan, bukan
   milik peran, jadi tetap bisa dibuka setelah diturunkan.
+
+---
+
+## 20. API untuk Ticketing HNS (16 November 2026)
+
+```
+GET /api/integrations/ticketing/pc-build-quotes/{code}
+GET /api/integrations/ticketing/pc-build-quotes/by-token/{token}   (token tautan /q/<token>)
+Authorization: Bearer <TICKETING_INTEGRATION_TOKEN>
+   (cadangan: X-Ticketing-Token: <token>)
+```
+
+Saat tiket "PC Build" dibuat di Ticketing, daftar komponen ditarik dari quotation, tidak
+lagi dibaca dari teks PDF yang diunggah. Kode: `src/app/api/integrations/ticketing/
+pc-build-quotes/[code]/route.ts`, `…/by-token/[token]/route.ts`, `src/lib/api/ticketing-quotes.ts`,
+dan penjaga token bersama `src/lib/api/ticketing-auth.ts`.
+
+### Aturan
+
+- **Hanya membaca.** Tidak menandai, tidak mencatat status, tidak mengubah `updatedAt`.
+- **Quotation apa pun statusnya ikut** (terbit/closing, sudah DP atau belum). Yang
+  memutuskan boleh-tidaknya dirakit adalah Ticketing.
+- **Kode dirapikan** (trim, huruf besar). Karakter di luar `A-Z0-9-`, atau panjang di
+  luar 4–32, menghasilkan `400 invalid_code`. Kode tidak "dibersihkan", karena kode yang
+  dibersihkan bisa berubah menjadi kode quotation orang lain.
+- **Lewat token publik** (`by-token`, 17 Nov 2026): staff cukup menempel tautan `/q/…`
+  dari WhatsApp, dan Ticketing memotong tokennya. Token dirapikan (trim, huruf kecil)
+  lalu dicocokkan dengan `PUBLIC_TOKEN_PATTERN`. Yang tidak cocok menghasilkan
+  `400 invalid_token` tanpa menyentuh DB. Responsnya identik dengan lewat kode. Rute ini
+  tidak membuka apa pun yang baru: pemegang token integrasi sudah bisa membaca semua
+  quotation lewat kodenya.
+- **Balasan galat:** `503 not_configured` (env kosong, endpoint tidak pernah terbuka),
+  `401 unauthorized`, `400 invalid_code` / `invalid_token`, `404 not_found`. Semua balasan memakai
+  `Cache-Control: no-store`.
+- **Uang selalu integer Rupiah.** Decimal dikonversi. Kalau ada pecahan, nilainya
+  dibulatkan dan dicatat di log, bukan lolos senyap.
+- **`items`** diambil dari snapshot revisi terakhir. `accurateCode` dibaca **saat ini**
+  dari `products.accurate_code` lewat **satu** kueri untuk semua `productId`. Nilainya
+  `null` kalau produknya sudah dihapus atau belum tertaut. `productId` adalah id
+  **internal** (number), bukan wooId.
+- **`publicUrl`** dibentuk dari `NEXT_PUBLIC_SITE_URL`, bukan `resolveSiteUrl()`.
+  Nilainya `null` kalau `public_token` kosong.
+- **`items[].stepKind`** (17 Nov 2026) bernilai `"component" | "peripheral" | "service" | null`.
+  Nilainya diatur staff per step di `/admin/pc-builder` ("Jenis baris (untuk Ticketing)"),
+  dan disimpan sebagai `kind` di `PC_BUILDER_CONFIG`. Snapshot hanya menyimpan **nama**
+  step, jadi pencocokannya lewat `stepName` (abaikan spasi tepi dan besar-kecil huruf),
+  terhadap pengaturan **saat ini**, dibaca langsung dari DB, bukan lewat cache 300 detik.
+  Nilainya `null` kalau:
+  - step belum diatur;
+  - nama step di snapshot sudah tidak ada di pengaturan (diganti nama atau dihapus);
+  - dua step senama berbeda jenis.
+
+  Mengubah jenis step ikut mengubah jenis di quotation lama. Itu disengaja, karena ini
+  klasifikasi, bukan harga. Nilai `kind` yang tidak sah dibuang oleh `parsePcBuilderSteps`,
+  baik saat simpan maupun saat baca.
+- **`sales`** (17 Nov 2026, keputusan pemilik project) berisi `{ email, ssoSub }` akun
+  **pemilik** quotation, termasuk kalau pemiliknya CS yang tidak mengoper. Gunanya untuk
+  menautkan tiket ke akun yang sama di Ticketing lewat SSO HNS. `ssoSub` adalah kunci
+  yang dianjurkan, dan baru terisi setelah staff itu pernah login ecommerce lewat SSO
+  (docs/19). Nilainya `null` kalau quotation tanpa pemilik (akun dihapus), atau kalau
+  pemiliknya sudah bukan staff (role `pelanggan` kecuali master, aturan yang sama dengan
+  `sso-link.ts`). Id akun dan nama akun tetap tidak dikirim.
+- **`pricedAt`** adalah `createdAt` revisi terakhir (alasannya sama dengan §12), dan
+  `createdAt` adalah tanggal terbit.
+
+### Yang TIDAK PERNAH ikut
+
+`internalNote`, `contentHash`, id user mana pun (owner, createdBy, closedBy, dpBy) —
+`sales` hanya email dan `ssoSub`, bukan id —
+`handoverSeenAt`, relasi `submissions` / `pc_build_submissions`, dan riwayat revisi.
+Kolom dipilih satu per satu di `getQuoteForTicketing`. **Jangan menggantinya dengan
+spread baris.** Uji `scripts/uji-ticketing-quote.mts` memeriksa nama-nama itu, dan juga
+isi catatan internal, di `JSON.stringify` respons.
+
+### Nomor HP pelanggan ikut
+
+Ini keputusan pemilik project, 16 Nov 2026. Ticketing adalah aplikasi internal staff,
+dan teknisi/CS perlu menghubungi pelanggan soal rakitannya. Lihat kolom "Ticketing" di
+tabel §6. Akibatnya, **token ini setara akses ke seluruh daftar pelanggan quotation**,
+karena kodenya berurutan. Simpan hanya di env server (hPanel dan Ticketing), dan ganti
+di kedua tempat kalau bocor.
+
+### Bentuk respons
+
+```json
+{
+  "code": "HNSPC-260928-Z5ND", "kind": "build", "prebuildName": null,
+  "revision": 1, "status": "terbit", "dpAt": null, "closedAt": null,
+  "customer": { "name": null, "phone": null }, "salesName": null,
+  "sales": { "email": "sales@contoh.test", "ssoSub": null },
+  "items": [{
+    "productId": 609, "name": "MOTHERBOARD MSI B550M A PRO AM4 DDR4 - mAtx",
+    "variationLabel": null, "sku": "2508000254", "accurateCode": "2508000254",
+    "quantity": 1, "unitPrice": 1130000, "stepName": "Motherboard", "stepKind": "component"
+  }],
+  "subtotal": 7830000, "assemblyFee": 0, "discount": 0, "total": 7830000,
+  "publicUrl": null,
+  "createdAt": "2026-09-28T07:49:51.599Z", "pricedAt": "2026-09-28T07:49:51.599Z",
+  "updatedAt": "2026-09-28T07:49:51.716Z"
+}
+```
+
+Contoh di atas dipotong (satu baris komponen) dari data lokal. Data lokal tidak berisi
+nama dan nomor HP pelanggan (docs/16).
+
+### Uji
+
+`npx tsx --tsconfig scripts/tsconfig.uji.json scripts/uji-ticketing-quote.mts`
+lolos 82/82 pada 17 Nov 2026 (60 pada 16 Nov, ditambah `sales`, `by-token`, dan
+`stepKind`). Skrip meminjam `PC_BUILDER_CONFIG` lokal sebentar dan memulihkannya persis. Belum teruji: header `Authorization` melewati proxy
+Hostinger. Kalau di produksi selalu 401 padahal token benar, pakai header cadangan.
+
+### Kenapa ecommerce membuka API sendiri
+
+docs/18 §2 menetapkan web Data sebagai pusat, dan "ecommerce tidak membuka API
+sendiri". Endpoint ini **pengecualian yang disengaja**. Quotation hanya hidup di
+ecommerce, dan meneruskannya lewat web Data berarti nama dan nomor HP pelanggan ikut
+tersimpan di sistem ketiga yang tidak membutuhkannya. Data barang (stok, gudang) tetap
+diambil Ticketing dari web Data lewat `accurateCode`.
+
+### Jawaban atas pertanyaan Ticketing (17 Nov 2026)
+
+Dicatat supaya kontraknya tidak hanya hidup di percakapan:
+
+- **Status** hanya `terbit` dan `closing`. Tidak ada draft, batal, atau kedaluwarsa.
+  Quotation tidak pernah dihapus, jadi `404` hanya berarti kodenya tidak ada. Closing
+  bisa dibatalkan admin (closing → terbit).
+- **`revision` naik setiap kali isi, qty, harga, atau potongan berubah**, karena hanya
+  ada satu jalur tulis isi (`reviseQuotation`). `updatedAt` juga berubah karena hal yang
+  bukan isi: edit data pelanggan atau catatan, tanda DP, `handoverSeenAt`, dan
+  closing/batal. Ticketing membandingkan `revision` + `status`, bukan `updatedAt`.
+- **Jasa rakit adalah baris `items`** (step "Jasa Rakit", produk "JASA RAKIT PC").
+  `assemblyFee` selalu 0 untuk quotation baru; hanya baris lama yang bisa > 0.
+- **`customer.phone`** berupa teks bebas seperti yang diketik sales. Normalisasinya di
+  Ticketing.
+- **Tidak tersedia, dan sengaja tidak dijadikan field yang selalu null:** toko/cabang,
+  email pelanggan, alamat pengiriman, nominal DP/lunas/sisa tagihan.
+- **PDF quotation tidak punya QR.** Satu-satunya tautan di PDF adalah kode di kanan
+  atas, yang mengarah ke `{NEXT_PUBLIC_SITE_URL}/verify/<kode>`. QR yang ada di situs
+  milik brosur PC Prebuild (`/pc-prebuild/[id]/print`), dan isinya alamat halaman
+  paket, bukan quotation.
+- **Jalur `/verify/<kode>` stabil**, boleh diandalkan Ticketing. Kalau suatu hari
+  berubah, alamat lama wajib tetap dialihkan. Ticketing disarankan mencari kode di teks
+  PDF dengan `QUOTE_CODE_PATTERN` (`src/app/verify/format.ts`) tanpa bergantung host,
+  karena di lokal host-nya `localhost:3000`.
+- **Tata letak PDF bukan kontrak.** Halaman cetak (`build-pc/print/page.tsx`) terakhir
+  berubah 9 Okt 2026, tapi bisa berubah lagi tanpa pemberitahuan. Ticketing memakainya
+  hanya sebagai cadangan kalau API tidak terjangkau.
+
+### Quotation format baru untuk uji lokal
+
+`npx tsx --tsconfig scripts/tsconfig.uji-next.json scripts/buat-quotation-uji-lokal.mts`
+(opsional `--sales=<email-staff>`) menerbitkan satu quotation `HNSPC-YYYYMMDD-NNNN`
+lewat `issueQuotation()` asli. Isinya pelanggan "ZZ TEST Pelanggan Ticketing", nomor HP,
+sales, beberapa komponen, dan baris Jasa Rakit. Skrip ini menolak jalan di luar
+localhost dan sengaja tidak menghapus hasilnya. DB lokal yang dibuat sebelum November
+wajib `npx prisma migrate deploy` dulu (docs/08).

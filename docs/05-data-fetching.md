@@ -2405,3 +2405,22 @@ izin, maupun ke `/login/error?reason=sso_*`.
 "diberi akses", staff dialihkan ke `GET /api/auth/sso/login?login_hint=<email>`. Kalau
 tidak, atau SSO tak terjangkau, ia mendapat sesi langsung seperti dulu (masa peralihan).
 `/api/auth/sso/login` menerima `login_hint` yang sudah disaring. Rinciannya di docs/19 §2.1.
+
+## 41. API untuk Ticketing: `GET /api/integrations/ticketing/pc-build-quotes/{code}` (16 November 2026)
+
+Endpoint server-ke-server pertama yang dibuka ecommerce untuk aplikasi lain. Penjaganya
+token `TICKETING_INTEGRATION_TOKEN` (Bearer, atau header cadangan `X-Ticketing-Token`).
+Endpoint ini hanya membaca dan selalu `Cache-Control: no-store`. Lapisan datanya
+`lib/api/ticketing-quotes.ts`, dengan kolom yang dipilih satu per satu. Kontrak respons,
+daftar kolom yang dilarang, dan alasannya ada di docs/17 §20.
+
+**Susulan 17 Nov 2026:**
+- Ada rute kedua, `GET …/pc-build-quotes/by-token/{token}`, yang mencari lewat token
+  tautan `/q/<token>`. Responsnya sama.
+- Respons kini juga membawa `sales: { email, ssoSub } | null` dari akun pemilik quotation,
+  dan `items[].stepKind`. `stepKind` dibaca langsung dari setting `PC_BUILDER_CONFIG`
+  lewat `parsePcBuilderSteps` (`lib/pc-builder/config.ts`), bukan lewat
+  `getPcBuilderConfig()` yang ber-cache. Konstanta jenisnya ada di
+  `lib/pc-builder/step-kind.ts`, modul murni yang bisa diimpor komponen klien admin.
+- Pemeriksaan token dipindah ke `lib/api/ticketing-auth.ts`, supaya dua rute itu tidak
+  bisa berbeda penjagaannya.

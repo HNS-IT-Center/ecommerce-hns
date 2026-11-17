@@ -38,6 +38,8 @@ Accurate ──────►│ barang, stok, HPP  +  tautan & harga web │
   mencabut client itu memutus keduanya sekaligus.
 - Ecommerce tidak membuka API sendiri, dan web Data tidak membaca database
   ecommerce.
+  **Satu pengecualian (16 Nov 2026):** isi quotation rakitan untuk Ticketing,
+  `GET /api/integrations/ticketing/pc-build-quotes/{code}`. Alasannya di docs/17 §20.
 
 ---
 
