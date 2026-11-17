@@ -111,6 +111,16 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(`${requestOrigin(request)}/`, 307)
   }
 
+  // /dokumentasi-rakitan — foto rakitan dari Ticketing (docs/17 §21). Berbeda
+  // dari /verify, tanpa sesi diarahkan ke /login, bukan ke beranda: link ini
+  // ditempel di faktur Accurate, jadi yang membukanya selalu staff (kasir,
+  // keuangan), bukan pelanggan. Izinnya diputuskan di halaman.
+  if (pathname.startsWith("/dokumentasi-rakitan/")) {
+    const session = await verifySession(request.cookies.get(SESSION_COOKIE)?.value)
+    if (session) return NextResponse.next()
+    return redirectToLogin(request, "/login", "next", `${pathname}${search}`)
+  }
+
   if (pathname.startsWith("/admin")) {
     // `/admin/login` dibiarkan lewat: sejak Satu Login (Fase A) ia hanya
     // mengalihkan ke `/login`, dan harus bisa dijangkau untuk melakukannya.
@@ -138,5 +148,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/profile/:path*", "/verify", "/verify/:path*"],
+  matcher: ["/admin/:path*", "/profile/:path*", "/verify", "/verify/:path*", "/dokumentasi-rakitan/:path*"],
 }

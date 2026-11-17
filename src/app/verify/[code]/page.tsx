@@ -15,6 +15,7 @@ import { ProductImage } from "@/components/ui/product-image"
 import { QUOTE_CODE_PATTERN, formatQuoteDateTime } from "../format"
 import { QuoteBadge } from "../quote-badge"
 import { CloseQuotationButton } from "../close-quotation-button"
+import { DocumentationLinkButtons } from "../documentation-link-buttons"
 
 export const dynamic = "force-dynamic"
 
@@ -103,6 +104,7 @@ export default async function VerifyQuotePage({
   const { izin } = await requirePageView("verify", { deniedRedirect: "/" })
   const { bisaAkses } = await import("@/lib/auth/permissions")
   const bolehClosing = bisaAkses(izin, "verify", "edit")
+  const bolehDokumentasi = bisaAkses(izin, "dokumentasi-rakitan", "view")
 
   const { code } = await params
   const requestedCode = decodeURIComponent(code).trim().toUpperCase()
@@ -389,6 +391,11 @@ export default async function VerifyQuotePage({
                 Sudah ditandai terjual pada {formatQuoteDateTime(info.closedAt)}.
               </p>
             )}
+
+            {/* Foto rakitan dari Ticketing; link-nya ditempel di faktur Accurate
+                (docs/17 §21). Tampil sebelum maupun sesudah closing, supaya
+                kasir bisa mengecek fotonya dulu. */}
+            {bolehDokumentasi && <DocumentationLinkButtons code={quote.code} />}
           </div>
 
           <p className="mt-4 text-center text-xs text-muted-foreground">

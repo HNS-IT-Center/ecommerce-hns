@@ -966,3 +966,77 @@ lewat `issueQuotation()` asli. Isinya pelanggan "ZZ TEST Pelanggan Ticketing", n
 sales, beberapa komponen, dan baris Jasa Rakit. Skrip ini menolak jalan di luar
 localhost dan sengaja tidak menghapus hasilnya. DB lokal yang dibuat sebelum November
 wajib `npx prisma migrate deploy` dulu (docs/08).
+
+---
+
+## 21. Dokumentasi Rakitan dari Ticketing (17 November 2026)
+
+Kasir wajib melampirkan foto rakitan saat menginput penjualan rakitan ke Accurate.
+Supaya tidak perlu unduh lalu unggah foto satu per satu, kasir cukup menempel **satu
+link** di catatan faktur Accurate: `https://hnsitcenter.id/dokumentasi-rakitan/<kode>`.
+
+### Alur
+
+- **Tombol di `/verify/<kode>`.** Ada tombol "Lihat dokumentasi rakitan" dan "Salin link
+  dokumentasi". Keduanya tampil sebelum maupun sesudah closing, dan hanya untuk akun
+  berizin `dokumentasi-rakitan`. Link dibentuk dari `window.location.origin`, bukan dari
+  env (lihat catatan `resolveSiteUrl` di memori proyek).
+- **Halaman `/dokumentasi-rakitan/[code]`.** Server memanggil
+  `GET {HNS_TICKETING_URL}/api/integrations/ecommerce/pc-builds/{kode}` dengan
+  `TICKETING_INTEGRATION_TOKEN` yang sama dengan §20. Panggilan memakai `no-store`
+  dengan timeout 8 detik, lewat `lib/api/ticketing-builds.ts`.
+- **Isi halaman:**
+  - kode tiket, tahap, toko, teknisi, dan tanggal selesai;
+  - foto dikelompokkan per `group`, dengan urutan dari Ticketing;
+  - foto bisa diklik untuk diperbesar;
+  - tahap `building` menampilkan "Sedang dirakit — foto rakitan jadi belum ada", dan
+    foto yang sudah ada tetap tampil.
+
+### Akses (keputusan 17 Nov 2026: login, bukan token di URL)
+
+- **Halaman ini wajib login staff + izin RBAC `dokumentasi-rakitan`** (view-only, grup
+  "Quotation & Penjualan").
+  - Kode quotation berurutan, jadi halaman ini tidak pernah terbuka hanya karena orang
+    tahu kodenya.
+  - Izinnya dipisah dari `verify` supaya keuangan bisa melihat foto tanpa ikut bisa
+    menandai terjual.
+- **Tanpa sesi, `src/proxy.ts` mengarahkan ke `/login?next=…`, bukan ke beranda.** Yang
+  membuka link dari faktur selalu staff.
+  - Path ini masuk `isPanelPath` di `/login` untuk mencegah putaran pada pemegang sesi
+    pelanggan.
+  - Keterbatasan yang diketahui: login staff (password, Google, SSO) mendarat di
+    `landingPathFor`, bukan di `next`. Staff yang belum login perlu membuka link-nya
+    sekali lagi setelah masuk.
+- **Login melindungi halamannya, bukan file fotonya.** URL foto dari storage Ticketing
+  (lokal: `http://127.0.0.1:9000/hns-attachments/...`) terlihat tidak bertanda tangan.
+  Siapa pun yang memegang URL foto bisa membukanya tanpa login. Itu wewenang Ticketing.
+
+### Status jawaban Ticketing
+
+| Ticketing | Halaman |
+|---|---|
+| 200 | Dokumentasi. Foto yang URL-nya bukan http(s) dibuang dan jumlahnya disebutkan |
+| 404 | "Belum ada tiket rakitan" |
+| 400 | "Kode quotation tidak dikenali" |
+| 401 / 503 / 5xx / timeout / bukan JSON / `quoteCode` lain | "Dokumentasi tidak bisa dimuat dari Ticketing". Penyebabnya dicatat di log server |
+
+### Foto
+
+- Foto memakai `<img>` biasa, bukan `next/image`, karena host storage Ticketing berbeda
+  per lingkungan, sedangkan `remotePatterns` dikunci saat build. Foto tidak disalin ke
+  storage ecommerce.
+- Di produksi, URL foto **wajib https**. Browser memblokir foto http di halaman https.
+- Tombol unduh ZIP **ditunda**. Fitur itu menambah beban server dan butuh dependensi
+  baru, sementara Accurate belum mewajibkan lampiran file.
+
+### Uji
+
+- `npx tsx --tsconfig scripts/tsconfig.uji.json scripts/uji-dokumentasi-rakitan.mts`
+  lolos **25/25** (17 Nov 2026), tanpa jaringan.
+- Tambahkan `--langsung=<kode>` untuk memanggil Ticketing lokal sungguhan. Dengan
+  HNSPC-260921-UYYU hasilnya tiket DEMO-000009, tahap `building`, 1 foto.
+- Dicek di browser lokal pada lebar desktop:
+  - halaman 200 dan pembesar foto;
+  - pesan 404 dan pesan kode salah;
+  - tombol salin di `/verify`.
+- Lebar HP belum dilihat langsung.

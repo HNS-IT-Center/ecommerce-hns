@@ -107,6 +107,15 @@ export const ADMIN_PAGES = {
    */
   verify: "Verifikasi Rakitan (/verify)",
   /**
+   * BUKAN halaman di bawah `/admin` — izin untuk `/dokumentasi-rakitan/[code]`:
+   * foto rakitan dari aplikasi Ticketing, satu halaman per quotation. Link-nya
+   * ditempel kasir di catatan faktur Accurate (docs/17 §21).
+   *
+   * Dipisah dari `verify` supaya yang hanya mengecek faktur (mis. keuangan)
+   * bisa diberi akses foto tanpa ikut bisa menandai quotation terjual.
+   */
+  "dokumentasi-rakitan": "Dokumentasi Rakitan",
+  /**
    * Halaman sungguhan: `/admin/quotation` — pengawasan quotation lintas sales,
    * rekap penjualan, dan PEMBATALAN status Closing (`edit`).
    *
@@ -204,6 +213,8 @@ export const ADMIN_PAGE_DESCRIPTIONS: Record<AdminPage, string> = {
   logs: "Catatan aktivitas katalog: perubahan produk dan perubahan harga. Hanya untuk dibaca. Quotation rakitan TIDAK ada di sini — tempatnya di halaman Quotation & Penjualan, dengan izinnya sendiri.",
   verify:
     "Halaman /verify di luar panel — alat kasir untuk mencocokkan quotation yang dibawa pelanggan. Lihat = membuka dan mencari quotation. Edit = menandai quotation sebagai TERJUAL (Closing).",
+  "dokumentasi-rakitan":
+    "Halaman Dokumentasi Rakitan: info tiket dan foto rakitan dari aplikasi Ticketing untuk satu quotation, beserta tombol Lihat/Salin link di /verify. Link-nya yang ditempel di faktur Accurate. Hanya untuk dibaca; tidak berisi harga maupun nomor HP pelanggan.",
   quotation:
     "Halaman /admin/quotation: seluruh quotation lintas sales dan rekap penjualan per orang. Edit = MEMBATALKAN status terjual, yang mengurangi angka penjualan seorang sales. Setiap pembatalan tercatat beserta alasannya.",
   "quotation-terbit":
@@ -255,6 +266,7 @@ export const ADMIN_PAGE_AUDIENCE: Record<AdminPage, string> = {
   kebijakan: "Owner & Marketing",
   logs: "Owner",
   verify: "Kasir",
+  "dokumentasi-rakitan": "Kasir & Keuangan",
   quotation: "Owner",
   "quotation-terbit": "Sales & Customer Service",
   "quotation-sales": "Sales",
@@ -273,6 +285,7 @@ const PAGES_SELALU_BOLEH: ReadonlySet<string> = new Set<AdminPage>(["akun"])
  * sudah dikenal (Manajemen User → Peran). Yang ikut ke sini:
  *
  * - `verify` — halamannya di `/verify`, sengaja di luar panel untuk kasir.
+ * - `dokumentasi-rakitan` — `/dokumentasi-rakitan/[code]`, juga di luar panel.
  * - `harga-modal` — saklar satu KOLOM di halaman Update Harga, bukan halaman.
  * - `stok-accurate` — saklar satu TAB di halaman Update Harga, bukan halaman.
  * - `stok-lihat` — saklar jumlah stok di halaman produk toko, di luar panel.
@@ -285,6 +298,7 @@ const PAGES_SELALU_BOLEH: ReadonlySet<string> = new Set<AdminPage>(["akun"])
  */
 const PAGES_BUKAN_PANEL: ReadonlySet<string> = new Set<AdminPage>([
   "verify",
+  "dokumentasi-rakitan",
   "harga-modal",
   "stok-accurate",
   "stok-lihat",
@@ -648,6 +662,8 @@ export const ADMIN_PAGE_LEVEL_MODE: Record<AdminPage, LevelMode> = {
   kebijakan: "view-edit",
   logs: "view-only",
   verify: "view-edit",
+  // Hanya melihat foto; tidak ada yang bisa disunting di halaman itu.
+  "dokumentasi-rakitan": "view-only",
   quotation: "view-edit",
   "quotation-terbit": "edit-only",
   "quotation-sales": "edit-only",
@@ -729,6 +745,7 @@ export const ADMIN_PERMISSION_TREE: readonly PermissionNode[] = [
     children: [
       { key: "quotation", label: "Rekap & Pengawasan Penjualan" },
       { key: "verify", label: "Verify" },
+      { key: "dokumentasi-rakitan", label: "Dokumentasi Rakitan" },
       { key: "quotation-terbit", label: "Membuat Quotation" },
       { key: "quotation-sales", label: "Tercantum sebagai Sales" },
       { key: "quotation-oper", label: "Mengoper ke Sales" },

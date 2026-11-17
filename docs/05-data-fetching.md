@@ -2424,3 +2424,12 @@ daftar kolom yang dilarang, dan alasannya ada di docs/17 §20.
   `lib/pc-builder/step-kind.ts`, modul murni yang bisa diimpor komponen klien admin.
 - Pemeriksaan token dipindah ke `lib/api/ticketing-auth.ts`, supaya dua rute itu tidak
   bisa berbeda penjagaannya.
+
+**Susulan 17 Nov 2026 (arah sebaliknya):** `lib/api/ticketing-builds.ts` menarik
+dokumentasi rakitan dari Ticketing (`GET {HNS_TICKETING_URL}/api/integrations/ecommerce/pc-builds/{kode}`)
+untuk halaman `/dokumentasi-rakitan/[code]`.
+- Panggilan berjalan di server saja, dengan `no-store` dan timeout 8 detik, memakai
+  `TICKETING_INTEGRATION_TOKEN` yang sama.
+- Jawaban divalidasi zod. Foto yang URL-nya bukan http(s) dibuang, dan jawaban untuk
+  `quoteCode` lain ditolak.
+- Rinciannya ada di docs/17 §21.

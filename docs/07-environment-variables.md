@@ -524,6 +524,22 @@ bersamaan.
 
 Kosong = endpoint membalas **503 `not_configured`**, tidak pernah terbuka tanpa token.
 
+**Arah sebaliknya (17 Nov 2026): foto rakitan dari Ticketing.**
+
+```env
+HNS_TICKETING_URL=https://ticketing.hnsitcenter.id   # lokal: http://localhost:3105
+```
+
+| Variabel | Dari mana |
+|---|---|
+| `HNS_TICKETING_URL` | Alamat aplikasi Ticketing, tanpa garis miring di akhir. Produksi `https://ticketing.hnsitcenter.id`; lokal alamat Ticketing lokal |
+
+Dipakai server ecommerce untuk `GET {HNS_TICKETING_URL}/api/integrations/ecommerce/pc-builds/{kode}`
+dengan `TICKETING_INTEGRATION_TOKEN` yang **sama** di atas (docs/17 §21). Kosong = halaman
+`/dokumentasi-rakitan/<kode>` menampilkan "Dokumentasi tidak bisa dimuat dari Ticketing";
+bagian situs lain tidak terpengaruh. Nilai yang bukan URL sah membuat aplikasi gagal start,
+sama seperti env URL lain di skema ini.
+
 ---
 
 ## 3. Setup Lokal (Developer Baru)

@@ -124,6 +124,12 @@ const EnvSchema = z.object({
   // nomor HP pelanggan seluruh quotation — kodenya berurutan dan bisa ditebak.
   TICKETING_INTEGRATION_TOKEN: z.preprocess(blankAsUndefined, z.string().min(32).optional()),
 
+  // Alamat aplikasi Ticketing HNS, untuk arah sebaliknya: ecommerce menarik
+  // foto rakitan per quotation (halaman /dokumentasi-rakitan, docs/17 §21).
+  // Memakai TICKETING_INTEGRATION_TOKEN yang sama. Opsional: tanpa ini halaman
+  // dokumentasi menampilkan "tidak bisa dimuat", situs lain tidak terpengaruh.
+  HNS_TICKETING_URL: z.preprocess(blankAsUndefined, z.string().url().optional()),
+
   // Cloudflare R2 — penyimpanan gambar produk. Opsional dengan alasan yang
   // sama seperti AUTH_SECRET di atas: skema ini di-parse saat modul dimuat,
   // jadi menandainya wajib akan mematikan SELURUH aplikasi (storefront ikut
@@ -231,6 +237,7 @@ export const env = EnvSchema.parse({
   SSO_REDIRECT_URI: process.env.SSO_REDIRECT_URI,
   SSO_POST_LOGOUT_REDIRECT_URI: process.env.SSO_POST_LOGOUT_REDIRECT_URI,
   TICKETING_INTEGRATION_TOKEN: process.env.TICKETING_INTEGRATION_TOKEN,
+  HNS_TICKETING_URL: process.env.HNS_TICKETING_URL,
   R2_ACCOUNT_ID: process.env.R2_ACCOUNT_ID,
   R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID,
   R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY,

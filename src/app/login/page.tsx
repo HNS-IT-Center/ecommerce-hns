@@ -30,7 +30,9 @@ function isPanelPath(path: string): boolean {
     path.startsWith("/admin?") ||
     path === "/verify" ||
     path.startsWith("/verify/") ||
-    path.startsWith("/verify?")
+    path.startsWith("/verify?") ||
+    // Dijaga proxy dengan cookie ADMIN, sama seperti /verify (docs/17 §21).
+    path.startsWith("/dokumentasi-rakitan/")
   );
 }
 
