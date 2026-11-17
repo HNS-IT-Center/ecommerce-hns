@@ -1007,9 +1007,15 @@ link** di catatan faktur Accurate: `https://hnsitcenter.id/dokumentasi-rakitan/<
   - Keterbatasan yang diketahui: login staff (password, Google, SSO) mendarat di
     `landingPathFor`, bukan di `next`. Staff yang belum login perlu membuka link-nya
     sekali lagi setelah masuk.
-- **Login melindungi halamannya, bukan file fotonya.** URL foto dari storage Ticketing
-  (lokal: `http://127.0.0.1:9000/hns-attachments/...`) terlihat tidak bertanda tangan.
-  Siapa pun yang memegang URL foto bisa membukanya tanpa login. Itu wewenang Ticketing.
+- **Login melindungi halamannya, bukan file fotonya.** Ticketing mengonfirmasi (17 Nov
+  2026) bahwa ini disengaja. Semua lampiran Ticketing ada di bucket R2 publik dengan
+  kunci yang sulit ditebak (`tickets/<cuid>/<file>` atau `temp/<cuid>/<acak>`), dan
+  daftar isi bucket tidak bisa dibuka. URL yang sama juga dipakai halaman status
+  pelanggan di Ticketing. Akibatnya, siapa pun yang memegang URL lengkap sebuah foto
+  bisa membukanya. Karena itu **URL foto tidak boleh ditulis ke log atau ke tempat
+  publik**; `ticketing-builds.ts` hanya mencatat kode dan penyebab kegagalan. Kalau
+  Ticketing kelak memakai bucket privat, ia akan mengirim presigned URL di field `url`
+  yang sama, jadi ecommerce tidak perlu berubah.
 
 ### Status jawaban Ticketing
 
@@ -1025,7 +1031,10 @@ link** di catatan faktur Accurate: `https://hnsitcenter.id/dokumentasi-rakitan/<
 - Foto memakai `<img>` biasa, bukan `next/image`, karena host storage Ticketing berbeda
   per lingkungan, sedangkan `remotePatterns` dikunci saat build. Foto tidak disalin ke
   storage ecommerce.
-- Di produksi, URL foto **wajib https**. Browser memblokir foto http di halaman https.
+- Di produksi, URL foto **wajib https**, karena browser memblokir foto http di halaman
+  https. Ticketing mengonfirmasi foto produksinya sudah https (domain publik R2), dan
+  ia menolak storage http saat berjalan di produksi. `http://127.0.0.1:9000` hanya MinIO
+  lokal. Filter kita sengaja tetap menerima http supaya uji lokal jalan.
 - Tombol unduh ZIP **ditunda**. Fitur itu menambah beban server dan butuh dependensi
   baru, sementara Accurate belum mewajibkan lampiran file.
 
