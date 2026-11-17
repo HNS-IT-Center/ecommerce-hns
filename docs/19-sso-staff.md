@@ -255,17 +255,41 @@ Akun Google pelanggan tetap masuk lewat alur pelanggan (lengkapi profil).
 
 ---
 
-## 8. Belum dikerjakan (tahap berikutnya)
+## 8. Tahap 2 (dirancang 16 Nov 2026, belum dikerjakan)
 
-- **Logout yang ikut mengakhiri sesi SSO** (`/oauth/logout`). Logout sekarang hanya
-  mengakhiri sesi ecommerce.
-- **Back-channel logout.** Sesi admin di sini stateless, jadi butuh tabel `sso_sessions`
-  (sid → user) atau pencabutan lewat `passwordChangedAt` (memutus semua perangkat).
-- **Mengakhiri masa peralihan (§2.1).** Setelah semua staff ada di SSO: jawaban
-  `false`/`null` untuk akun staff di callback Google tidak lagi memberi sesi langsung.
-- **Mematikan login password untuk staff**, dengan satu akun darurat yang tetap memakai
-  password lokal. Form password di `/login` sampai sekarang masih menerima akun staff.
+Tujuan tahap 2: menjadikan SSO **satu-satunya pintu masuk staff**, dan membuat sesi
+ecommerce ikut mati saat SSO memutusnya. Urutan di bawah dari yang paling aman.
+
+| # | Pekerjaan | Risiko mengunci staff |
+|---|---|---|
+| 2a | **Back-channel logout.** `POST /api/auth/sso/backchannel-logout` memverifikasi `logout_token` (JWKS, `iss`, `aud`, `typ: logout+jwt`, umur ≤ 2 menit, ada `events`, tanpa `nonce`), lalu mematikan sesi bersangkutan. Back-channel Logout URI client produksi diisi URL itu | Tidak ada |
+| 2b | **Logout ikut mengakhiri sesi SSO.** Hapus sesi lokal, lalu arahkan ke `/oauth/logout` (`id_token_hint` atau `client_id`, plus `post_logout_redirect_uri`) | Tidak ada |
+| 2c | **Log login staff** di ecommerce (tab "Login" di `/admin/logs`) | Tidak ada |
+| 2d | **Penanda "sudah lewat SSO"** (`sso_sub` terisi) di kartu Manajemen User, sebagai daftar periksa sebelum 2e | Tidak ada |
+| 2e | **Menutup jalur lama** di balik env `SSO_STAFF_ONLY`: Google langsung untuk staff ditutup, password dan "lupa password" untuk staff ditutup, kecuali satu akun darurat | **Ada.** Nyalakan setelah 2d menunjukkan semua staff siap; matikan lagi lewat env tanpa ganti kode |
+
+Saran yang menunggu keputusan pemilik project:
+
+- **2a:** matikan hanya sesi bersangkutan. Butuh tabel `sso_sessions` (`sid`, `user_id`,
+  `revoked_at`) dan `sid` di payload sesi admin. Alternatifnya pencabutan lewat
+  `passwordChangedAt`, yang lebih sederhana tapi memutus semua perangkat staff itu.
+- **2b:** keluar dari ecommerce = keluar dari semua aplikasi HNS di perangkat itu.
+  Ini perilaku SSO yang wajar dan lebih aman untuk komputer kasir yang dipakai
+  bergantian.
+- **2e:** akun darurat = akun `MASTER_ADMIN_EMAIL`, yang sudah menjadi pagar terakhir
+  di sistem izin.
+- **Urutan:** 2a–2d tayang lebih dulu. 2e menyusul dengan sakelar mati.
+
+Yang perlu disiapkan di sisi SSO: Back-channel Logout URI (2a), dan semua staff ada
+di whitelist HNS Ecommerce sebelum 2e dinyalakan.
+
+Catatan lain:
+
 - Form identifier-first (ketik email dulu) **tidak dipakai**. Ia digantikan satu tombol
   Google (§2.1), atas pilihan pemilik project.
+- **Audit Log SSO tidak mencatat akses aplikasi yang memakai sesi SSO yang masih
+  hidup.** Hanya `login.success` saat orangnya benar-benar login ke SSO yang tercatat.
+  Dibahas 16 Nov 2026: kejadian `app.authorized` di aplikasi SSO (repo
+  `sso-hnsitcenter`), dan log login di ecommerce (2c).
 - **Password staff tidak bisa diimpor ke SSO.** Hash di sini scrypt, sedangkan SSO hanya
   menerima bcrypt. Staff masuk SSO lewat Google atau password yang direset admin SSO.
