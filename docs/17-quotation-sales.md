@@ -1035,6 +1035,17 @@ link** di catatan faktur Accurate: `https://hnsitcenter.id/dokumentasi-rakitan/<
   https. Ticketing mengonfirmasi foto produksinya sudah https (domain publik R2), dan
   ia menolak storage http saat berjalan di produksi. `http://127.0.0.1:9000` hanya MinIO
   lokal. Filter kita sengaja tetap menerima http supaya uji lokal jalan.
+- **Zoom di dialog foto besar** (`zoomable-photo.tsx`, 18 Nov 2026). Rancangannya
+  mengutamakan kasir yang memakai PC:
+  - scroll mouse untuk zoom ke titik kursor;
+  - seret untuk menggeser;
+  - klik dua kali untuk bolak-balik 1× ⇄ 2,5×;
+  - tombol − / + / reset, dan keyboard `+` `-` `0`. `Ctrl` + `+` tetap milik zoom
+    browser.
+  - Batasnya 1×–5×. Batas geser dihitung dari kotak foto sebenarnya (`object-contain`),
+    jadi area kosong di samping foto tidak bisa digeser masuk ke bingkai.
+  - Di HP, tombol dan geser satu jari jalan, tapi **cubit dua jari sengaja belum
+    dibuat**. Tanpa pustaka tambahan.
 
 ### Unduhan (18 November 2026)
 

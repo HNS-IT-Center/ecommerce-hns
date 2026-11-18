@@ -6,10 +6,11 @@ import { useTopLoader } from "nextjs-toploader"
 
 import type { NumberedBuildPhoto, NumberedPhotoGroup } from "@/lib/api/ticketing-build-downloads"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { ZoomablePhoto } from "./zoomable-photo"
 
 /**
- * Foto rakitan per kelompok; klik untuk memperbesar, plus unduh per foto dan
- * "Unduh semua" (ZIP).
+ * Foto rakitan per kelompok; klik untuk membuka dialog dengan zoom & geser
+ * (`zoomable-photo.tsx`), plus unduh per foto dan "Unduh semua" (ZIP).
  *
  * `<img>` biasa, bukan `next/image`: fotonya dilayani storage Ticketing yang
  * host-nya berbeda per lingkungan (MinIO lokal, storage produksi), sedangkan
@@ -94,33 +95,33 @@ export function BuildPhotoGallery({ code, groups }: { code: string; groups: Numb
               <DialogTitle className="pr-8 text-sm break-words">
                 {active.title ?? active.fileName ?? "Foto rakitan"}
               </DialogTitle>
-              {/* eslint-disable-next-line @next/next/no-img-element -- host storage Ticketing berbeda per lingkungan; lihat komentar komponen */}
-              <img
+              <ZoomablePhoto
+                key={active.url}
                 src={active.url}
                 alt={active.title ?? "Foto rakitan"}
-                referrerPolicy="no-referrer"
-                className="max-h-[75dvh] w-full rounded-lg bg-muted object-contain"
+                actions={
+                  <>
+                    <a
+                      href={photoHref(active)}
+                      download
+                      onClick={stopTopLoader}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold transition-colors hover:bg-muted"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Unduh
+                    </a>
+                    <a
+                      href={active.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Buka ukuran asli
+                    </a>
+                  </>
+                }
               />
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <a
-                  href={photoHref(active)}
-                  download
-                  onClick={stopTopLoader}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-card px-3 text-xs font-semibold transition-colors hover:bg-muted"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  Unduh
-                </a>
-                <a
-                  href={active.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Buka ukuran asli{active.fileName ? ` · ${active.fileName}` : ""}
-                </a>
-              </div>
             </>
           )}
         </DialogContent>
