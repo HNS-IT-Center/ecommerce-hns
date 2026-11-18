@@ -261,5 +261,88 @@ function bacaDaftarZip(zip: Uint8Array): { names: string[]; datas: Uint8Array[];
   cek("tanpa foto → 404, bukan ZIP kosong", kosong.kind === "error" && kosong.status === 404)
 }
 
+console.log("\n6. Penanda \"Sudah dirakit\" (banyak kode)")
+{
+  const { getBuildStatuses, parseBuildStatuses } = await import("../src/lib/api/ticketing-builds.ts")
+  const A = "HNSPC-20261115-0165"
+  const B = "HNSPC-20261116-0171"
+  const entri = {
+    ticketCode: "NGW-000657",
+    status: "completed",
+    stage: "handed_over",
+    stageLabel: "Sudah diserahkan",
+    store: "Nagoya Gateway",
+    createdAt: "2026-11-15T06:17:56.805Z",
+    finishedAt: "2026-11-16T06:15:21.101Z",
+  }
+
+  const peta = parseBuildStatuses(
+    {
+      builds: {
+        [A.toLowerCase()]: entri,
+        "HNSPC-20261116-9999": entri,
+        [B]: { ticketCode: "" },
+      },
+    },
+    new Set([A, B]),
+  )
+  cek("kunci huruf kecil dinormalkan", peta?.get(A)?.ticketCode === "NGW-000657")
+  cek("kode yang tidak diminta diabaikan", peta?.has("HNSPC-20261116-9999") === false)
+  cek("entri cacat dibuang, bukan menggagalkan semua", peta?.size === 1 && !peta.has(B))
+  cek("label dari stageLabel", peta?.get(A)?.label === "Sudah diserahkan")
+  const tanpaLabel = parseBuildStatuses({ builds: { [A]: { ...entri, stageLabel: null, stage: "building" } } }, new Set([A]))
+  cek("stageLabel kosong → terjemahan stage", tanpaLabel?.get(A)?.label === "Sedang dirakit")
+  cek("bentuk salah → null", parseBuildStatuses({ data: [] }, new Set([A])) === null)
+
+  // Pemecahan per 100 & penyaringan kode
+  const dipanggil: string[] = []
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(String(input))
+    dipanggil.push(url.searchParams.get("codes") ?? "")
+    terakhir = { url: String(input), init }
+    return json(200, { builds: { [A]: entri } })
+  }) as typeof fetch
+  const banyak = Array.from({ length: 150 }, (_, i) => `HNSPC-20261117-${String(i + 1).padStart(4, "0")}`)
+  const hasil = await getBuildStatuses([...banyak, A, A.toLowerCase(), "BUKAN-KODE", ""])
+  cek("151 kode unik → 2 permintaan (100 + 51)", dipanggil.length === 2 && dipanggil[0].split(",").length === 100 && dipanggil[1].split(",").length === 51, dipanggil.map((d) => d.split(",").length).join("+"))
+  cek("kode bukan quotation tidak ikut dikirim", !dipanggil.join(",").includes("BUKAN"))
+  cek("hasil digabung", hasil.get(A)?.ticketCode === "NGW-000657")
+  const p = terakhir as Panggilan | null
+  cek("endpoint & Bearer benar", p?.url.startsWith("http://ticketing.uji/api/integrations/ecommerce/pc-builds?codes=") === true && new Headers(p?.init?.headers).get("authorization") === `Bearer ${process.env.TICKETING_INTEGRATION_TOKEN}`)
+  cek("ada signal timeout", p?.init?.signal instanceof AbortSignal)
+
+  dipanggil.length = 0
+  cek("tanpa kode → tanpa permintaan", (await getBuildStatuses([])).size === 0 && dipanggil.length === 0)
+
+  // Kegagalan → peta kosong, tidak melempar
+  for (const [nama, jawab] of [
+    ["401", () => json(401, { error: "x" })],
+    ["503", () => json(503, { error: "x" })],
+    ["500", () => json(500, { error: "x" })],
+    ["bukan JSON", () => Promise.resolve(new Response("<html>", { status: 200 }))],
+    ["timeout", () => Promise.reject(new DOMException("timeout", "TimeoutError"))],
+    ["gagal terhubung", () => Promise.reject(new TypeError("fetch failed"))],
+  ] as const) {
+    tiru(jawab)
+    let aman = true
+    let ukuran = -1
+    try {
+      ukuran = (await getBuildStatuses([A])).size
+    } catch {
+      aman = false
+    }
+    cek(`${nama} → peta kosong, tidak melempar`, aman && ukuran === 0)
+  }
+
+  // Satu potongan gagal tidak menghapus hasil potongan lain
+  let ke = 0
+  globalThis.fetch = (async () => {
+    ke += 1
+    return ke === 1 ? json(500, {}) : json(200, { builds: { [banyak[120]]: entri } })
+  }) as typeof fetch
+  const sebagian = await getBuildStatuses(banyak)
+  cek("potongan gagal tidak menghapus potongan lain", sebagian.size === 1 && sebagian.has(banyak[120]))
+}
+
 console.log(`\nHasil: ${lolos}/${lolos + gagal.length} lolos`)
 if (gagal.length > 0) process.exit(1)

@@ -16,6 +16,8 @@ import { QUOTE_CODE_PATTERN, formatQuoteDateTime } from "../format"
 import { QuoteBadge } from "../quote-badge"
 import { CloseQuotationButton } from "../close-quotation-button"
 import { DocumentationLinkButtons } from "../documentation-link-buttons"
+import { BuildStatusBadge } from "../build-status-badge"
+import { getBuildStatuses } from "@/lib/api/ticketing-builds"
 
 export const dynamic = "force-dynamic"
 
@@ -120,6 +122,9 @@ export default async function VerifyQuotePage({
   ])
 
   if (!quote) return <QuoteNotFound code={requestedCode} malformed={false} />
+
+  // Tidak ditunggu — penanda menyusul lewat Suspense (docs/17 §22).
+  const buildStatuses = getBuildStatuses([quote.code])
 
   const terjual = info?.status === "closing"
 
@@ -395,6 +400,9 @@ export default async function VerifyQuotePage({
             {/* Foto rakitan dari Ticketing; link-nya ditempel di faktur Accurate
                 (docs/17 §21). Tampil sebelum maupun sesudah closing, supaya
                 kasir bisa mengecek fotonya dulu. */}
+            {/* Penanda dari Ticketing, hanya tampilan — tidak mengubah status
+                atau closing (docs/17 §22). */}
+            <BuildStatusBadge code={quote.code} statuses={buildStatuses} variant="detail" />
             {bolehDokumentasi && <DocumentationLinkButtons code={quote.code} />}
           </div>
 

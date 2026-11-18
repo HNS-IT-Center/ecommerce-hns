@@ -2,6 +2,7 @@ import "server-only"
 
 import { z } from "zod"
 import { env } from "@/config/env"
+import { QUOTE_CODE_PATTERN } from "@/app/verify/format"
 
 /**
  * Dokumentasi rakitan dari aplikasi Ticketing HNS — docs/17 §21.
@@ -177,4 +178,135 @@ export async function getBuildDocumentation(code: string): Promise<BuildDocument
     return { kind: "unavailable", reason: "bad-response" }
   }
   return { kind: "ok", doc }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Penanda "Sudah dirakit" — banyak kode sekaligus (docs/17 §22)              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Batas waktu pendek: dipanggil dari halaman DAFTAR. Halamannya sendiri tidak
+ * menunggu (penanda dialirkan lewat Suspense), tapi permintaan yang menggantung
+ * tetap menahan baris penandanya dan memakan koneksi server.
+ */
+const STATUS_TIMEOUT_MS = 4_000
+/** Batas Ticketing per permintaan; lebih dari ini dipecah. */
+const STATUS_CHUNK = 100
+
+/** Label tahap kalau `stageLabel` kosong — teks yang sama dengan Ticketing. */
+const STAGE_LABELS: Record<string, string> = {
+  building: "Sedang dirakit",
+  finished: "Selesai, belum diserahkan",
+  handed_over: "Sudah diserahkan",
+}
+
+const BuildStatusSchema = z.object({
+  ticketCode: z.string().trim().min(1),
+  status: nullableText,
+  stage: nullableText,
+  stageLabel: nullableText,
+  store: nullableText,
+  createdAt: nullableText,
+  finishedAt: nullableText,
+})
+
+export type BuildStatus = z.infer<typeof BuildStatusSchema> & {
+  /** Teks tahap siap tampil: `stageLabel` dari Ticketing, atau terjemahan `stage`. */
+  label: string | null
+}
+
+const StatusesResponseSchema = z.object({ builds: z.record(z.string(), z.unknown()) })
+
+/**
+ * Murni — diuji tanpa jaringan. Entri yang bentuknya tidak sah dibuang satu
+ * per satu (baris itu tampil tanpa penanda), dan kode yang tidak diminta
+ * diabaikan: penanda tidak boleh menempel di quotation yang bukan miliknya.
+ */
+export function parseBuildStatuses(body: unknown, requested: ReadonlySet<string>): Map<string, BuildStatus> | null {
+  const parsed = StatusesResponseSchema.safeParse(body)
+  if (!parsed.success) return null
+  const result = new Map<string, BuildStatus>()
+  for (const [rawCode, raw] of Object.entries(parsed.data.builds)) {
+    const code = rawCode.trim().toUpperCase()
+    if (!requested.has(code)) continue
+    const entry = BuildStatusSchema.safeParse(raw)
+    if (!entry.success) continue
+    const label = entry.data.stageLabel ?? (entry.data.stage ? (STAGE_LABELS[entry.data.stage] ?? entry.data.stage) : null)
+    result.set(code, { ...entry.data, label })
+  }
+  return result
+}
+
+/**
+ * Status tiket rakitan untuk banyak quotation sekaligus.
+ *
+ * TIDAK PERNAH melempar dan tidak pernah menahan lebih dari batas waktunya:
+ * kalau Ticketing mati, lambat, atau menolak token, hasilnya peta kosong —
+ * daftar quotation tampil normal tanpa penanda, dan penyebabnya dicatat di
+ * log. Kode yang tidak ada di peta berarti belum punya tiket rakitan aktif.
+ *
+ * Tidak disimpan di database ecommerce (keputusan owner 18 Nov 2026): tiket
+ * yang dibatalkan di Ticketing harus langsung menghilangkan penandanya.
+ */
+export async function getBuildStatuses(codes: readonly string[]): Promise<Map<string, BuildStatus>> {
+  const result = new Map<string, BuildStatus>()
+  const baseUrl = env.HNS_TICKETING_URL?.replace(/\/+$/, "")
+  const token = env.TICKETING_INTEGRATION_TOKEN
+  if (!baseUrl || !token) return result
+
+  // Satu kode yang bukan kode quotation membuat Ticketing menolak SELURUH
+  // permintaan (400), jadi disaring di sini dulu.
+  const unique = [...new Set(codes.map((c) => c.trim().toUpperCase()))].filter((c) => QUOTE_CODE_PATTERN.test(c))
+  if (unique.length === 0) return result
+
+  const chunks: string[][] = []
+  for (let i = 0; i < unique.length; i += STATUS_CHUNK) chunks.push(unique.slice(i, i + STATUS_CHUNK))
+
+  const maps = await Promise.all(chunks.map((chunk) => fetchStatusChunk(baseUrl, token, chunk)))
+  for (const map of maps) for (const [code, status] of map) result.set(code, status)
+  return result
+}
+
+async function fetchStatusChunk(baseUrl: string, token: string, codes: string[]): Promise<Map<string, BuildStatus>> {
+  const empty = new Map<string, BuildStatus>()
+  const label = `[status-rakitan] ${codes.length} kode`
+  let response: Response
+  try {
+    const query = new URLSearchParams({ codes: codes.join(",") })
+    response = await fetch(`${baseUrl}/api/integrations/ecommerce/pc-builds?${query.toString()}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(STATUS_TIMEOUT_MS),
+    })
+  } catch (error) {
+    const timeout = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")
+    console.error(`${label}: ${timeout ? "timeout" : "gagal terhubung"}`)
+    return empty
+  }
+
+  if (!response.ok) {
+    const why =
+      response.status === 401
+        ? "token ditolak Ticketing (401)"
+        : response.status === 503
+          ? "token belum diatur di Ticketing (503)"
+          : `Ticketing membalas ${response.status}`
+    console.error(`${label}: ${why}`)
+    return empty
+  }
+
+  let body: unknown
+  try {
+    body = await response.json()
+  } catch {
+    console.error(`${label}: jawaban Ticketing bukan JSON`)
+    return empty
+  }
+
+  const parsed = parseBuildStatuses(body, new Set(codes))
+  if (!parsed) {
+    console.error(`${label}: bentuk jawaban Ticketing tidak sah`)
+    return empty
+  }
+  return parsed
 }

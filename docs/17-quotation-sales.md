@@ -1093,7 +1093,7 @@ Aturannya:
 ### Uji
 
 - `npx tsx --tsconfig scripts/tsconfig.uji.json scripts/uji-dokumentasi-rakitan.mts`
-  lolos **44/44** (18 Nov 2026), tanpa jaringan. Sejak 18 Nov ikut menguji penomoran,
+  lolos **63/63** (18 Nov 2026), tanpa jaringan; bagian 6 menguji penanda §22. Sejak 18 Nov ikut menguji penomoran,
   unduh per foto (termasuk sidik salah → 409), dan ZIP: CRC, isi utuh, dan catatan
   foto gagal.
 - `--simpan-zip=<berkas>` menyimpan ZIP hasil uji. ZIP itu lolos `python -m zipfile -t`,
@@ -1108,3 +1108,64 @@ Aturannya:
   menjawab 200 dengan JPEG asli dan nama berkas yang benar, sidik salah dijawab 409.
   Tampilan dicek di lebar desktop dan 375px (lewat iframe, karena jendela Chrome tidak
   bisa diperkecil).
+
+## 22. Penanda "Sudah dirakit" dari Ticketing (18 November 2026)
+
+Keputusan owner, 18 Nov 2026: quotation yang sudah punya tiket rakitan di Ticketing
+berarti barangnya sudah terjual dan dirakit. Penanda ini **hanya tampilan**.
+
+- **Tidak mengubah** `status`, `closedAt`, `closedBy`, penanda DP, maupun rekap
+  penjualan sales. Closing tetap dikerjakan sales atau kasir seperti biasa.
+- **Tidak disimpan** di database ecommerce. Penanda dibaca dari Ticketing setiap kali
+  halaman dibuka, jadi tiket yang dibatalkan di Ticketing langsung menghilangkan
+  penandanya.
+
+### Sumber
+
+`GET {HNS_TICKETING_URL}/api/integrations/ecommerce/pc-builds?codes=K1,K2,…` dengan
+Bearer `TICKETING_INTEGRATION_TOKEN` (token yang sama dengan §20 dan §21).
+- Maksimal 100 kode per permintaan.
+- Jawabannya `{ builds: { [kode]: { ticketCode, status, stage, stageLabel, store,
+  createdAt, finishedAt } } }`. Kode yang tidak muncul di `builds` berarti belum punya
+  tiket rakitan aktif.
+- Isinya tanpa data pelanggan dan tanpa harga.
+
+Lapisannya `getBuildStatuses()` di `lib/api/ticketing-builds.ts`:
+- Kode dinormalkan ke huruf besar, dibuat unik, dan disaring dengan `QUOTE_CODE_PATTERN`.
+  Satu kode cacat membuat Ticketing menolak seluruh permintaan (400), jadi kode cacat
+  dibuang sebelum dikirim.
+- Daftar dipecah per 100 kode, dan semua potongan dikirim paralel. Batas waktunya
+  **4 detik** per potongan.
+- Fungsi ini **tidak pernah melempar**. Kegagalan apa pun (401, 503, 5xx, timeout,
+  bukan JSON, bentuk salah) menghasilkan peta kosong dan satu baris log
+  `[status-rakitan] N kode: …`. Kalau satu potongan gagal, hasil potongan lain tetap
+  dipakai.
+- Entri yang bentuknya tidak sah dibuang satu per satu. Kode yang tidak diminta
+  diabaikan.
+
+### Tampilan — halaman tidak pernah menunggu Ticketing
+
+Halaman memulai `getBuildStatuses(kode-di-halaman-ini)` **tanpa** `await`, lalu
+memberikan promise-nya ke `BuildStatusBadge` (`app/verify/build-status-badge.tsx`).
+Komponen itu menunggu promise tersebut di dalam `<Suspense fallback={null}>`. Akibatnya
+daftar langsung terkirim, dan penandanya menyusul lewat streaming.
+
+Sudah diukur dengan Ticketing yang sengaja tidak terjangkau: baris daftar
+`/admin/quotation` sudah terkirim dalam **0,24 detik**. Aliran ditutup di 4,2 detik
+tanpa penanda, dan log mencatat timeout.
+
+| Halaman | Letak penanda |
+|---|---|
+| `/admin/quotation` | Kolom Status, di bawah Terbit/Terjual/DP |
+| `/verify`, grid kasir | Baris lencana kartu |
+| `/profile/quotation`, riwayat sales | Di bawah kode quotation |
+| `/verify/[code]` | Kotak di atas tombol "Lihat dokumentasi rakitan" (tetap tampil untuk yang tidak punya izin dokumentasi) |
+
+Teksnya: **Sudah dirakit** · `ticketCode` · `stageLabel`. Kalau `stageLabel` kosong,
+dipakai terjemahan `stage` (`building` = Sedang dirakit, `finished` = Selesai, belum
+diserahkan, `handed_over` = Sudah diserahkan).
+
+### Di luar cakupan
+
+Filter atau hitungan "Sudah dirakit" lintas halaman. Untuk itu datanya harus disimpan
+di ecommerce, dan itu butuh keputusan owner dulu.

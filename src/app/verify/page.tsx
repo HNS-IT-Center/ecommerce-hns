@@ -15,6 +15,8 @@ import {
 import { cn, formatRupiah } from "@/lib/utils"
 import { formatQuoteDateTime } from "./format"
 import { QuoteBadge } from "./quote-badge"
+import { BuildStatusBadge } from "./build-status-badge"
+import { getBuildStatuses, type BuildStatus } from "@/lib/api/ticketing-builds"
 import { VerifySearchForm } from "./verify-search-form"
 
 export const dynamic = "force-dynamic"
@@ -55,7 +57,15 @@ function verifyHref(tab: VerifyTab, sort: QuoteSort): string {
   return query ? `/verify?${query}` : "/verify"
 }
 
-function QuoteCard({ quote, sort }: { quote: QuoteSummary; sort: QuoteSort }) {
+function QuoteCard({
+  quote,
+  sort,
+  buildStatuses,
+}: {
+  quote: QuoteSummary
+  sort: QuoteSort
+  buildStatuses: Promise<Map<string, BuildStatus>>
+}) {
   // Tanggal yang ditampilkan mengikuti urutan yang dipilih — kalau grid
   // diurutkan menurut waktu cetak tapi kartunya menulis tanggal dibuat,
   // urutannya tampak acak.
@@ -88,6 +98,7 @@ function QuoteCard({ quote, sort }: { quote: QuoteSummary; sort: QuoteSort }) {
           {quote.status === "closing" ? "Terjual" : "Belum terjual"}
         </QuoteBadge>
         {quote.dpAt && <QuoteBadge tone="dp">Sudah DP</QuoteBadge>}
+        <BuildStatusBadge code={quote.code} statuses={buildStatuses} />
       </div>
 
       {quote.customerName && (
@@ -123,6 +134,8 @@ export default async function VerifyBuildPage({
   // `?asal=semua` tidak berarti apa pun di sini — /verify hanya punya dua tab.
   const tab: VerifyTab = parseQuoteAsal(params.asal) === "pengunjung" ? "pengunjung" : "internal"
   const quotes = await listRecentQuotes(sort, tab, RECENT_LIMIT)
+  // Tidak ditunggu — penanda menyusul lewat Suspense (docs/17 §22).
+  const buildStatuses = getBuildStatuses(quotes.map((q) => q.code))
 
   return (
     <div className="flex min-h-dvh flex-col bg-page">
@@ -211,7 +224,7 @@ export default async function VerifyBuildPage({
               <ul className="grid grid-cols-1 gap-3 pb-2 sm:grid-cols-2 lg:grid-cols-3">
                 {quotes.map((quote) => (
                   <li key={quote.code}>
-                    <QuoteCard quote={quote} sort={sort} />
+                    <QuoteCard quote={quote} sort={sort} buildStatuses={buildStatuses} />
                   </li>
                 ))}
               </ul>

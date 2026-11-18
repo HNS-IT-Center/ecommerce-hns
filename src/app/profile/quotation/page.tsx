@@ -16,6 +16,8 @@ import {
 import { formatRupiah } from "@/lib/utils"
 import { formatJakartaPeriod, jakartaPeriod } from "@/lib/utils/timezone"
 import { formatQuoteDateTime } from "@/app/verify/format"
+import { BuildStatusBadge } from "@/app/verify/build-status-badge"
+import { getBuildStatuses, type BuildStatus } from "@/lib/api/ticketing-builds"
 import { ProfileTabs } from "@/features/account/components/profile-tabs"
 import { HandoverToast } from "@/features/quotation/components/handover-toast"
 import { getStaffProfile } from "@/lib/api/staff-profile"
@@ -61,6 +63,8 @@ export default async function QuotationSayaPage({
     getStaffProfile(user.id),
   ])
 
+  // Tidak ditunggu — penanda menyusul lewat Suspense (docs/17 §22).
+  const buildStatuses = getBuildStatuses(rows.map((r) => r.code))
   const namaTampilan = profil?.salesDisplayName ?? null
   const nomorSales = profil?.phoneNumber ?? null
 
@@ -190,7 +194,7 @@ export default async function QuotationSayaPage({
             <ul className="space-y-3">
               {rows.map((row) => (
                 <li key={row.code}>
-                  <KartuQuotation row={row} bisaDibuka={!lihatOperan} />
+                  <KartuQuotation row={row} bisaDibuka={!lihatOperan} buildStatuses={buildStatuses} />
                 </li>
               ))}
             </ul>
@@ -295,7 +299,15 @@ function samarkanHp(phone: string): string {
   return `${digits.slice(0, 4)}****${digits.slice(-4)}`
 }
 
-function KartuQuotation({ row, bisaDibuka }: { row: QuotationHistoryRow; bisaDibuka: boolean }) {
+function KartuQuotation({
+  row,
+  bisaDibuka,
+  buildStatuses,
+}: {
+  row: QuotationHistoryRow
+  bisaDibuka: boolean
+  buildStatuses: Promise<Map<string, BuildStatus>>
+}) {
   const terjual = row.status === "closing"
 
   const isi = (
@@ -326,6 +338,7 @@ function KartuQuotation({ row, bisaDibuka }: { row: QuotationHistoryRow; bisaDib
               </span>
             )}
           </p>
+          <BuildStatusBadge code={row.code} statuses={buildStatuses} className="mt-1.5" />
 
           <p className="mt-1 truncate text-sm font-semibold">
             {row.customerName ?? "Tanpa nama pelanggan"}

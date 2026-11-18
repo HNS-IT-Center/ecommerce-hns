@@ -3,6 +3,8 @@ import Link from "next/link"
 import { Search } from "lucide-react"
 
 import { requirePageView } from "@/lib/auth"
+import { getBuildStatuses } from "@/lib/api/ticketing-builds"
+import { BuildStatusBadge } from "@/app/verify/build-status-badge"
 import { bisaAkses } from "@/lib/auth/permissions"
 import {
   ADMIN_QUOTATION_PAGE_SIZE,
@@ -73,6 +75,9 @@ export default async function AdminQuotationPage({ searchParams }: Props) {
     listQuotationOwners(),
   ])
   const rows = daftar.rows
+  // Penanda "Sudah dirakit" dari Ticketing — dimulai di sini, TIDAK ditunggu;
+  // tiap baris menunggunya di dalam Suspense (docs/17 §22).
+  const buildStatuses = getBuildStatuses(rows.map((r) => r.code))
 
   const totalRekap = rekap.reduce((acc, r) => acc + r.total, 0)
   const unitRekap = rekap.reduce((acc, r) => acc + r.unit, 0)
@@ -298,6 +303,7 @@ export default async function AdminQuotationPage({ searchParams }: Props) {
                           Sudah DP · {formatQuoteDateTime(row.dpAt)}
                         </span>
                       )}
+                      <BuildStatusBadge code={row.code} statuses={buildStatuses} className="mt-1.5 flex" />
                     </td>
                     <td className="p-3 text-xs text-muted-foreground">
                       {formatQuoteDateTime(row.createdAt)}

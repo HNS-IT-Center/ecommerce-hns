@@ -2438,3 +2438,8 @@ untuk halaman `/dokumentasi-rakitan/[code]`.
   server lewat `fetchImageFromUrl()` di `lib/api/media-file.ts`, yang dipisahkan dari
   `fetchRemoteImage()`; pemeriksaan host tetap di pemanggil. Klien hanya mengirim nomor
   dan sidik foto, tidak pernah URL-nya.
+- Susulan 18 Nov 2026: `getBuildStatuses(codes)` di `lib/api/ticketing-builds.ts` mengambil
+  status tiket rakitan untuk banyak quotation sekaligus (`?codes=`, maksimal 100 kode per
+  permintaan, batas waktu 4 detik). Fungsi ini tidak pernah melempar; kalau gagal,
+  hasilnya peta kosong. Halaman TIDAK menunggunya: penanda dialirkan lewat Suspense. Lihat
+  docs/17 §22.

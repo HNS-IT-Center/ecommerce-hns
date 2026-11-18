@@ -13,13 +13,14 @@ export function QuoteBadge({
   tone,
   children,
 }: {
-  tone: "asli" | "terjual" | "dp" | "netral"
+  tone: "asli" | "terjual" | "dp" | "dirakit" | "netral"
   children: ReactNode
 }) {
   const nada = {
     asli: "border-brand-green/30 bg-brand-green/10 text-brand-green",
     terjual: "border-brand-green/40 bg-brand-green text-white",
     dp: "border-primary/30 bg-primary/10 text-primary",
+    dirakit: "border-foreground/15 bg-foreground/5 text-foreground",
     netral: "border-border bg-muted text-muted-foreground",
   }[tone]
 
