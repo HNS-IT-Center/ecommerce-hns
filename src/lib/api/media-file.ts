@@ -61,12 +61,33 @@ export async function fetchRemoteImage(
     throw new MediaFetchError("Host gambar tidak diizinkan", 403)
   }
 
+  const image = await fetchImageFromUrl(parsed)
+
+  return {
+    ...image,
+    fileName: buildFileName(rawName, parsed.pathname, image.contentType),
+  }
+}
+
+/**
+ * Ambil satu gambar dari alamat yang SUDAH diputuskan boleh diambil, lalu
+ * periksa jawabannya (harus `image/*`, ukuran dibatasi, tanpa redirect).
+ *
+ * Pemeriksaan host TIDAK ada di sini — itu tugas pemanggil, karena sumber
+ * kepercayaannya berbeda: `fetchRemoteImage` menerima alamat dari klien
+ * (wajib daftar izin), sedangkan unduhan dokumentasi rakitan memakai alamat
+ * dari jawaban Ticketing yang sudah diautentikasi token (docs/17 §21), dan
+ * klien hanya mengirim nomor foto.
+ */
+export async function fetchImageFromUrl(
+  parsed: URL,
+): Promise<Omit<RemoteImage, "fileName">> {
   let upstream: Response
   try {
     upstream = await fetch(parsed.toString(), {
       signal: AbortSignal.timeout(TIMEOUT_MS),
-      // Redirect ke host lain akan melewati daftar izin di atas, jadi ia tidak
-      // diikuti sama sekali.
+      // Redirect ke host lain akan melewati pemeriksaan host pemanggil, jadi
+      // ia tidak diikuti sama sekali.
       redirect: "manual",
       /*
        * Sengaja TIDAK memakai `next: { revalidate }`. Data cache Next menolak
@@ -96,12 +117,31 @@ export async function fetchRemoteImage(
     throw new MediaFetchError("Ukuran gambar melebihi batas", 413)
   }
 
-  return {
-    body: upstream.body,
-    contentType,
-    fileName: buildFileName(rawName, parsed.pathname, contentType),
-    contentLength,
+  return { body: upstream.body, contentType, contentLength }
+}
+
+/** Baca seluruh isi gambar ke memori, dengan batas yang sama (`MAX_BYTES`). */
+export async function readImageBytes(body: ReadableStream<Uint8Array>): Promise<Uint8Array> {
+  const reader = body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > MAX_BYTES) {
+      await reader.cancel()
+      throw new MediaFetchError("Ukuran gambar melebihi batas", 413)
+    }
+    chunks.push(value)
   }
+  const bytes = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return bytes
 }
 
 /**

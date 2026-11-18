@@ -1,6 +1,8 @@
 /**
  * Uji lapisan data Dokumentasi Rakitan — docs/17 §21:
  *   src/lib/api/ticketing-builds.ts
+ *   src/lib/api/ticketing-build-downloads.ts (penomoran, unduh per foto, ZIP)
+ *   src/lib/utils/zip-store.ts
  *
  *   npx tsx --tsconfig scripts/tsconfig.uji.json scripts/uji-dokumentasi-rakitan.mts
  *
@@ -25,6 +27,9 @@ if (!langsung) {
 const { getBuildDocumentation, parseBuildDocumentation, groupBuildPhotos } = await import(
   "../src/lib/api/ticketing-builds.ts"
 )
+const { numberBuildPhotos, normalizeQuoteCodeParam, getBuildPhotoDownload, getBuildDocumentationZip, photoKey } =
+  await import("../src/lib/api/ticketing-build-downloads.ts")
+const { crc32 } = await import("../src/lib/utils/zip-store.ts")
 
 if (langsung) {
   const hasil = await getBuildDocumentation(langsung)
@@ -140,6 +145,120 @@ for (const [status, harap] of [
   tiru(() => Promise.reject(new TypeError("fetch failed")))
   const hasil = await getBuildDocumentation(KODE)
   cek("gagal terhubung → unavailable/network", hasil.kind === "unavailable" && hasil.reason === "network")
+}
+
+console.log("\n3. Penomoran & nama berkas")
+{
+  const doc = parseBuildDocumentation(contoh)!
+  const groups = numberBuildPhotos(doc.photos)
+  const flat = groups.flatMap((g) => g.photos)
+  cek("nomor berurutan menurut urutan tampil", flat.map((p) => p.number).join(",") === "1,2,3,4")
+  cek("nama berkas 01-rakitan-jadi", flat[0]?.fileBase === "01-rakitan-jadi", flat[0]?.fileBase)
+  cek("kelompok baru → slug judulnya", flat[3]?.fileBase === "04-judul-baru", flat[3]?.fileBase)
+  cek("sidik 12 heksadesimal & sesuai URL", /^[0-9a-f]{12}$/.test(flat[0]!.key) && flat[0]!.key === photoKey(flat[0]!.url))
+  cek("kode dinormalkan", normalizeQuoteCodeParam("hnspc-20261116-0171") === KODE)
+  cek("kode bukan quotation → null", normalizeQuoteCodeParam("..%2Fetc") === null && normalizeQuoteCodeParam("%E0%A4%A") === null)
+}
+
+console.log("\n4. Unduh per foto")
+const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4, 5, 0xff, 0xd9])
+function tiruTicketingDanFoto(fotoGagal: string[] = []) {
+  const diambil: string[] = []
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const url = String(input)
+    if (url.startsWith("http://ticketing.uji/")) return json(200, contoh)
+    diambil.push(url)
+    if (fotoGagal.includes(url)) return new Response("x", { status: 500 })
+    return new Response(JPEG, { status: 200, headers: { "content-type": "image/jpeg" } })
+  }) as typeof fetch
+  return diambil
+}
+{
+  const flat = numberBuildPhotos(parseBuildDocumentation(contoh)!.photos).flatMap((g) => g.photos)
+  const diambil = tiruTicketingDanFoto()
+  const ok = await getBuildPhotoDownload(KODE, 3, flat[2]!.key)
+  cek("nomor 3 → foto ketiga", ok.kind === "ok" && diambil[0] === flat[2]!.url)
+  cek("nama berkas ber-kode", ok.kind === "ok" && ok.fileName === `${KODE}-03-bukti-selesai.jpg`, ok.kind === "ok" ? ok.fileName : "")
+  const salahSidik = await getBuildPhotoDownload(KODE, 3, flat[0]!.key)
+  cek("sidik tidak cocok → 409, foto tidak diambil", salahSidik.kind === "error" && salahSidik.status === 409 && diambil.length === 1)
+  const tidakAda = await getBuildPhotoDownload(KODE, 99, flat[0]!.key)
+  cek("nomor di luar daftar → 404", tidakAda.kind === "error" && tidakAda.status === 404)
+  tiru(() => json(404, {}))
+  const tanpaTiket = await getBuildPhotoDownload(KODE, 1, flat[0]!.key)
+  cek("tiket tidak ada → 404", tanpaTiket.kind === "error" && tanpaTiket.status === 404)
+  globalThis.fetch = (async (input: string | URL | Request) =>
+    String(input).startsWith("http://ticketing.uji/")
+      ? json(200, contoh)
+      : new Response("<html>", { status: 200, headers: { "content-type": "text/html" } })) as typeof fetch
+  const bukanGambar = await getBuildPhotoDownload(KODE, 1, flat[0]!.key)
+  cek("storage membalas bukan gambar → 502", bukanGambar.kind === "error" && bukanGambar.status === 502)
+}
+
+console.log("\n5. ZIP")
+async function bacaSemua(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
+  return new Uint8Array(await new Response(stream).arrayBuffer())
+}
+function bacaDaftarZip(zip: Uint8Array): { names: string[]; datas: Uint8Array[]; crcOk: boolean } {
+  const v = new DataView(zip.buffer, zip.byteOffset, zip.byteLength)
+  const eocd = zip.length - 22
+  if (v.getUint32(eocd, true) !== 0x06054b50) throw new Error("EOCD tidak ada")
+  const count = v.getUint16(eocd + 10, true)
+  let p = v.getUint32(eocd + 16, true)
+  const names: string[] = []
+  const datas: Uint8Array[] = []
+  let crcOk = true
+  for (let i = 0; i < count; i++) {
+    if (v.getUint32(p, true) !== 0x02014b50) throw new Error("central directory rusak")
+    const crc = v.getUint32(p + 16, true)
+    const size = v.getUint32(p + 20, true)
+    const nameLen = v.getUint16(p + 28, true)
+    const off = v.getUint32(p + 42, true)
+    names.push(new TextDecoder().decode(zip.subarray(p + 46, p + 46 + nameLen)))
+    if (v.getUint32(off, true) !== 0x04034b50) throw new Error("header lokal rusak")
+    const localNameLen = v.getUint16(off + 26, true)
+    const data = zip.subarray(off + 30 + localNameLen, off + 30 + localNameLen + size)
+    datas.push(data)
+    if (crc32(data) !== crc) crcOk = false
+    p += 46 + nameLen
+  }
+  return { names, datas, crcOk }
+}
+{
+  cek("crc32 vektor baku", crc32(new TextEncoder().encode("123456789")) === 0xcbf43926)
+  tiruTicketingDanFoto()
+  const hasil = await getBuildDocumentationZip(KODE)
+  cek("ZIP ok + nama berkas", hasil.kind === "ok" && hasil.fileName === `${KODE}-dokumentasi.zip`)
+  if (hasil.kind === "ok") {
+    const zip = await bacaSemua(hasil.stream)
+    const isi = bacaDaftarZip(zip)
+    cek("ZIP datar, 4 foto berurutan", isi.names.join(",") === "01-rakitan-jadi.jpg,02-rakitan-jadi.jpg,03-bukti-selesai.jpg,04-judul-baru.jpg", isi.names.join(","))
+    cek("CRC semua entri cocok", isi.crcOk)
+    cek("isi foto utuh", isi.datas.every((d) => d.length === JPEG.length && d.every((b, i) => b === JPEG[i])))
+    // Opsional: simpan supaya bisa diuji pembuka ZIP lain (python -m zipfile -t, unzip -t).
+    const out = process.argv.find((a) => a.startsWith("--simpan-zip="))?.slice("--simpan-zip=".length)
+    if (out) {
+      const { writeFileSync } = await import("node:fs")
+      writeFileSync(out, zip)
+    }
+  }
+}
+{
+  tiruTicketingDanFoto(["https://files.uji/b.jpg"])
+  const hasil = await getBuildDocumentationZip(KODE)
+  if (hasil.kind === "ok") {
+    const isi = bacaDaftarZip(await bacaSemua(hasil.stream))
+    const catatan = new TextDecoder().decode(isi.datas[isi.names.length - 1])
+    cek(
+      "foto gagal tidak dilewati diam-diam",
+      isi.names.length === 4 && isi.names.at(-1) === "FOTO-GAGAL-DIUNDUH.txt" && catatan.includes("02-rakitan-jadi") && catatan.includes("1 dari 4"),
+      isi.names.join(","),
+    )
+  } else cek("foto gagal tidak dilewati diam-diam", false, hasil.message)
+}
+{
+  globalThis.fetch = (async () => json(200, { ...contoh, photos: [] })) as typeof fetch
+  const kosong = await getBuildDocumentationZip(KODE)
+  cek("tanpa foto → 404, bukan ZIP kosong", kosong.kind === "error" && kosong.status === 404)
 }
 
 console.log(`\nHasil: ${lolos}/${lolos + gagal.length} lolos`)

@@ -2433,3 +2433,8 @@ untuk halaman `/dokumentasi-rakitan/[code]`.
 - Jawaban divalidasi zod. Foto yang URL-nya bukan http(s) dibuang, dan jawaban untuk
   `quoteCode` lain ditolak.
 - Rinciannya ada di docs/17 §21.
+- Susulan 18 Nov 2026: `lib/api/ticketing-build-downloads.ts` menambah unduhan foto
+  untuk route `/api/dokumentasi-rakitan/<kode>/foto/<nomor>` dan `/zip`. Foto diambil
+  server lewat `fetchImageFromUrl()` di `lib/api/media-file.ts`, yang dipisahkan dari
+  `fetchRemoteImage()`; pemeriksaan host tetap di pemanggil. Klien hanya mengirim nomor
+  dan sidik foto, tidak pernah URL-nya.

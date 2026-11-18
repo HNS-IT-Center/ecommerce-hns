@@ -3,7 +3,8 @@ import type { ReactNode } from "react"
 import { ArrowLeft, Camera, CloudOff, Hammer, SearchX } from "lucide-react"
 
 import { requirePageView } from "@/lib/auth"
-import { getBuildDocumentation, groupBuildPhotos } from "@/lib/api/ticketing-builds"
+import { getBuildDocumentation } from "@/lib/api/ticketing-builds"
+import { numberBuildPhotos } from "@/lib/api/ticketing-build-downloads"
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { QUOTE_CODE_PATTERN, formatQuoteDateTime } from "@/app/verify/format"
@@ -84,7 +85,7 @@ export default async function BuildDocumentationPage({ params }: { params: Promi
 
   const { doc } = result
   const { ticket } = doc
-  const groups = groupBuildPhotos(doc.photos)
+  const groups = numberBuildPhotos(doc.photos)
   const sedangDirakit = ticket.stage === "building"
 
   const facts: { label: string; value: ReactNode }[] = [
@@ -123,7 +124,7 @@ export default async function BuildDocumentationPage({ params }: { params: Promi
           Tiket ini belum punya foto di Ticketing.
         </div>
       ) : (
-        <BuildPhotoGallery groups={groups} />
+        <BuildPhotoGallery code={code} groups={groups} />
       )}
 
       {doc.skippedPhotos > 0 && (

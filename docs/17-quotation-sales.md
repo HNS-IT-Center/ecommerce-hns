@@ -1035,17 +1035,65 @@ link** di catatan faktur Accurate: `https://hnsitcenter.id/dokumentasi-rakitan/<
   https. Ticketing mengonfirmasi foto produksinya sudah https (domain publik R2), dan
   ia menolak storage http saat berjalan di produksi. `http://127.0.0.1:9000` hanya MinIO
   lokal. Filter kita sengaja tetap menerima http supaya uji lokal jalan.
-- Tombol unduh ZIP **ditunda**. Fitur itu menambah beban server dan butuh dependensi
-  baru, sementara Accurate belum mewajibkan lampiran file.
+
+### Unduhan (18 November 2026)
+
+Ada dua cara mengunduh: **Unduh semua** (satu ZIP) di atas galeri, dan **unduh per foto**
+(ikon di pojok tiap foto, plus tombol "Unduh" di dialog foto besar).
+
+Unduhan **lewat server kita**, bukan langsung ke URL foto. Browser mengabaikan
+`<a download>` untuk alamat domain lain, jadi tombol yang menunjuk langsung ke R2
+cuma membuka foto di tab baru. Alasannya sama dengan `/api/media/download` untuk
+foto produk.
+
+| Route | Isi |
+|---|---|
+| `GET /api/dokumentasi-rakitan/<kode>/foto/<nomor>?k=<sidik>` | Satu foto, nama berkas `HNSPC-…-03-bukti-selesai.jpg` |
+| `GET /api/dokumentasi-rakitan/<kode>/zip` | `HNSPC-…-dokumentasi.zip`, isinya datar: `01-rakitan-jadi.jpg`, `02-…` |
+
+Aturannya:
+
+- **Izin sama dengan halaman** (`dokumentasi-rakitan`, view), diperiksa di route itu
+  sendiri (`app/api/dokumentasi-rakitan/[code]/access.ts`). `src/proxy.ts` tidak
+  menjangkau `/api`. Tanpa login hasilnya 401, tanpa izin 403.
+- **Klien tidak pernah mengirim URL foto**, hanya nomor urut dan sidik. Server
+  mengambil ulang jawaban Ticketing (pakai token), lalu memilih fotonya sendiri.
+  Endpoint ini tidak bisa disuruh mengambil alamat sembarangan. Karena itu daftar izin
+  host di `media-file.ts` tidak dipakai di sini: sumber kepercayaannya jawaban
+  Ticketing, bukan masukan klien.
+- **Nomor mengikuti urutan tampil per kelompok** (`numberBuildPhotos` di
+  `lib/api/ticketing-build-downloads.ts`). Halaman dan route memakai fungsi yang sama.
+- **Sidik** adalah 12 karakter pertama SHA-256 dari URL foto. Kalau tiket mendapat
+  foto baru di antara halaman dibuka dan tombol diklik, nomor bisa bergeser. Sidik
+  membuat server menjawab **409 "muat ulang halaman"**, bukan diam-diam mengirim foto
+  lain.
+- **ZIP ditulis sendiri** (`lib/utils/zip-store.ts`, metode STORE tanpa kompresi),
+  tanpa dependensi baru. Foto JPEG memang hampir tidak mengecil kalau dikompresi.
+  - Foto diambil satu per satu dan langsung dialirkan, maksimal 25 MB per foto.
+  - Tanggal berkas di dalam ZIP memakai WIB.
+- **Foto yang gagal diambil tidak dilewati diam-diam.** Namanya dicatat di
+  `FOTO-GAGAL-DIUNDUH.txt` di dalam ZIP yang sama. Tanpa catatan itu, ZIP berisi 6 dari
+  7 foto terlihat lengkap.
+- **Biaya:** setiap unduhan menghabiskan bandwidth Hostinger dua kali (ambil dari R2,
+  kirim ke staff). Untuk segelintir staff dan ±7 foto per rakitan, ini masih kecil.
+- `Cache-Control: private, no-store`, karena isinya ber-izin. Log hanya mencatat
+  nomor foto dan status, **tidak pernah URL foto**.
 
 ### Uji
 
 - `npx tsx --tsconfig scripts/tsconfig.uji.json scripts/uji-dokumentasi-rakitan.mts`
-  lolos **25/25** (17 Nov 2026), tanpa jaringan.
+  lolos **44/44** (18 Nov 2026), tanpa jaringan. Sejak 18 Nov ikut menguji penomoran,
+  unduh per foto (termasuk sidik salah → 409), dan ZIP: CRC, isi utuh, dan catatan
+  foto gagal.
+- `--simpan-zip=<berkas>` menyimpan ZIP hasil uji. ZIP itu lolos `python -m zipfile -t`,
+  `unzip -t`, dan `Expand-Archive` Windows.
 - Tambahkan `--langsung=<kode>` untuk memanggil Ticketing lokal sungguhan. Dengan
   HNSPC-260921-UYYU hasilnya tiket DEMO-000009, tahap `building`, 1 foto.
 - Dicek di browser lokal pada lebar desktop:
   - halaman 200 dan pembesar foto;
   - pesan 404 dan pesan kode salah;
   - tombol salin di `/verify`.
-- Lebar HP belum dilihat langsung.
+- 18 Nov 2026, dengan Ticketing lokal sungguhan (MinIO): ZIP dan unduhan per foto
+  menjawab 200 dengan JPEG asli dan nama berkas yang benar, sidik salah dijawab 409.
+  Tampilan dicek di lebar desktop dan 375px (lewat iframe, karena jendela Chrome tidak
+  bisa diperkecil).
