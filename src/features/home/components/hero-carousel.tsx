@@ -117,7 +117,7 @@ export function HeroCarousel({ slides }: { slides: HeroSlide[] }) {
           {slides.map((slide, index) => (
             <CarouselItem key={slide.id}>
               <div
-                className={`relative flex aspect-[2/1] w-full flex-col justify-center rounded-3xl ${slide.bgClass} p-8 md:p-16 text-white shadow-xl overflow-hidden`}
+                className={`relative flex aspect-[2/1] w-full flex-col justify-center rounded-3xl ${slide.bgClass} p-8 md:p-16 text-white shadow-xl overflow-hidden ${slide.linksToPromo ? "group/promo" : ""}`}
               >
                 {slide.imageUrl ? (
                   <>
@@ -156,7 +156,11 @@ export function HeroCarousel({ slides }: { slides: HeroSlide[] }) {
                       }
                       quality={90}
                       sizes="(max-width: 767px) calc(100vw - 2rem), (max-width: 1279px) calc(100vw - 3rem), 1232px"
-                      className="object-cover"
+                      className={
+                        slide.linksToPromo
+                          ? "object-cover transition-transform duration-700 ease-out group-hover/promo:scale-[1.03] motion-reduce:transition-none motion-reduce:group-hover/promo:scale-100"
+                          : "object-cover"
+                      }
                     />
                     {/* Scrim gelap hanya untuk mode IMAGE_TEXT agar teks terbaca */}
                     {slide.displayMode === "IMAGE_TEXT" && (
@@ -174,6 +178,37 @@ export function HeroCarousel({ slides }: { slides: HeroSlide[] }) {
                   >
                     <span className="sr-only">Lihat promo: {slide.title}</span>
                   </Link>
+                )}
+
+                {/*
+                  Isyarat "banner ini bisa dibuka" — HANYA untuk slide yang menaut
+                  halaman promo, karena hanya slide itu yang bisa diklik di
+                  seluruh areanya. Muncul saat kursor di atas banner atau saat
+                  tautannya difokus keyboard. Mode Gambar + Teks sudah punya tombol
+                  CTA sendiri, jadi pil ini hanya untuk Gambar Saja; gelap tipis
+                  di bawah ikut untuk keduanya supaya pil terbaca di atas banner
+                  seterang apa pun.
+
+                  `pointer-events-none` di keduanya: klik harus tetap jatuh ke
+                  tautan di bawahnya. Posisi kanan bawah menghindari titik
+                  indikator di tengah bawah dan panah di kiri-kanan.
+                */}
+                {slide.linksToPromo && slide.href && (
+                  <>
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-0 z-[4] bg-gradient-to-t from-black/45 via-black/5 to-transparent opacity-0 transition-opacity duration-300 group-focus-within/promo:opacity-100 group-hover/promo:opacity-100"
+                    />
+                    {slide.displayMode === "IMAGE_ONLY" && (
+                      <span
+                        aria-hidden="true"
+                        className="pointer-events-none absolute bottom-5 right-5 z-[6] hidden translate-y-2 items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-900 opacity-0 shadow-lg transition-all duration-300 group-focus-within/promo:translate-y-0 group-focus-within/promo:opacity-100 group-hover/promo:translate-y-0 group-hover/promo:opacity-100 sm:inline-flex md:bottom-8 md:right-8"
+                      >
+                        Lihat promo
+                        <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover/promo:translate-x-0.5" />
+                      </span>
+                    )}
+                  </>
                 )}
 
                 {slide.displayMode === "IMAGE_TEXT" && (
