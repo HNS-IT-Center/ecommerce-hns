@@ -1,4 +1,5 @@
 import { requirePageView } from "@/lib/auth"
+import { AdminBackLink } from "@/components/admin/admin-back-link"
 import { notFound } from "next/navigation"
 
 import { getBanner } from "@/lib/api/banners"
@@ -25,6 +26,7 @@ export default async function AdminBannerEditPage({ params }: Props) {
 
   return (
     <div className="mx-auto max-w-6xl">
+      <AdminBackLink href="/admin/banner">Kembali ke daftar banner</AdminBackLink>
       <h1 className="text-2xl font-bold">Edit Banner — {banner.title}</h1>
       <div className="mt-6">
         <BannerForm banner={banner} action={updateBanner} batches={batches} promos={promos} />

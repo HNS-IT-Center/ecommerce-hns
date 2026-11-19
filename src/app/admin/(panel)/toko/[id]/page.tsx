@@ -1,4 +1,5 @@
 import { requirePageView } from "@/lib/auth"
+import { AdminBackLink } from "@/components/admin/admin-back-link"
 import { notFound } from "next/navigation";
 import { getStoreById } from "@/lib/api/stores";
 import { StoreForm } from "../store-form";
@@ -19,6 +20,7 @@ export default async function AdminTokoEditPage({ params }: Props) {
 
   return (
     <div className="mx-auto max-w-3xl">
+      <AdminBackLink href="/admin/toko">Kembali ke daftar toko</AdminBackLink>
       <h1 className="text-2xl font-bold">Edit Toko — {store.name}</h1>
       <div className="mt-6">
         <StoreForm store={store} />

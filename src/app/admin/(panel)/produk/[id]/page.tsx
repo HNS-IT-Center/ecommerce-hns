@@ -1,10 +1,9 @@
 import { requirePageView } from "@/lib/auth"
+import { AdminBackLink } from "@/components/admin/admin-back-link"
 import { bisaAkses } from "@/lib/auth/permissions"
 import { getAccurateInfoForProduct } from "@/lib/api/accurate/stock-sync"
 import { AccurateStockCard } from "./accurate-stock-card"
-import Link from "next/link"
 import { notFound } from "next/navigation"
-import { ArrowLeft } from "lucide-react"
 import {
   getProductByIdFresh,
   getProductAttributes,
@@ -91,13 +90,7 @@ export default async function AdminProdukEditPage({ params, searchParams }: Prop
 
   return (
     <div className="mx-auto max-w-6xl pb-12">
-      <Link
-        href={listHref(returnQuery)}
-        className="mb-3 inline-flex min-h-9 items-center gap-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Kembali ke daftar produk
-      </Link>
+      <AdminBackLink href={listHref(returnQuery)}>Kembali ke daftar produk</AdminBackLink>
       <h1 className="text-2xl font-bold">Edit Produk — {product.name}</h1>
       {dataAccurate.length > 0 && (
         <div className="mt-4">

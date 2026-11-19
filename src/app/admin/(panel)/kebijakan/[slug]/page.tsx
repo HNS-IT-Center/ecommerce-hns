@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation"
+import { AdminBackLink } from "@/components/admin/admin-back-link"
 import { requirePageView } from "@/lib/auth"
 import { getAdminPolicyPage } from "@/lib/api/policy"
 import { PolicyPageForm } from "../policy-page-form"
@@ -26,6 +27,7 @@ export default async function AdminKebijakanEditPage({ params }: Props) {
 
   return (
     <div className="mx-auto max-w-5xl">
+      <AdminBackLink href="/admin/kebijakan">Kembali ke daftar kebijakan</AdminBackLink>
       <h1 className="text-2xl font-bold">Edit — {page.title}</h1>
       <p className="mt-1 text-sm text-muted-foreground">/kebijakan/{page.slug}</p>
       <div className="mt-6">
