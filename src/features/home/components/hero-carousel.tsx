@@ -20,6 +20,14 @@ export type HeroSlide = {
   subtitle: string | null
   cta: string | null
   href: string | null
+  /**
+   * `href` menuju halaman promo (`/promo/<slug>`). Hanya slide seperti ini
+   * yang bisa diklik di SELURUH areanya — termasuk mode Gambar Saja, yang
+   * tidak punya tombol. `ctaHref` biasa sengaja tidak diperlakukan begitu:
+   * banner Gambar Saja lama bisa menyimpan link tombol yang tidak pernah
+   * tampil, dan link itu tidak boleh tiba-tiba hidup.
+   */
+  linksToPromo: boolean
   imageUrl: string | null
   bgClass: string
   displayMode: "IMAGE_ONLY" | "IMAGE_TEXT"
@@ -159,8 +167,17 @@ export function HeroCarousel({ slides }: { slides: HeroSlide[] }) {
                   <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-white via-transparent to-transparent" />
                 )}
 
+                {slide.linksToPromo && slide.href && (
+                  <Link
+                    href={slide.href}
+                    className="absolute inset-0 z-[5] rounded-3xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  >
+                    <span className="sr-only">Lihat promo: {slide.title}</span>
+                  </Link>
+                )}
+
                 {slide.displayMode === "IMAGE_TEXT" && (
-                  <div className="relative z-10 max-w-2xl space-y-4">
+                  <div className="pointer-events-none relative z-10 max-w-2xl space-y-4">
                     {slide.tag && (
                       <span className="inline-block rounded-full bg-white/20 px-3 py-1 text-xs font-semibold tracking-wider backdrop-blur-sm">
                         {slide.tag}
@@ -174,10 +191,10 @@ export function HeroCarousel({ slides }: { slides: HeroSlide[] }) {
                         {slide.subtitle}
                       </p>
                     )}
-                    {slide.cta && slide.href && (
-                      <div className="pt-4">
+                    {(slide.cta || slide.linksToPromo) && slide.href && (
+                      <div className="pointer-events-auto pt-4">
                         <Link href={slide.href} className="inline-flex h-10 items-center justify-center rounded-full bg-secondary px-8 text-sm font-bold text-brand-green shadow-sm transition-colors hover:bg-white/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50">
-                          {slide.cta}
+                          {slide.cta || "Lihat Promo"}
                           <ArrowRight className="ml-2 h-4 w-4" />
                         </Link>
                       </div>

@@ -2443,3 +2443,24 @@ untuk halaman `/dokumentasi-rakitan/[code]`.
   permintaan, batas waktu 4 detik). Fungsi ini tidak pernah melempar; kalau gagal,
   hasilnya peta kosong. Halaman TIDAK menunggunya: penanda dialirkan lewat Suspense. Lihat
   docs/17 §22.
+
+---
+
+## 42. Halaman promo: `lib/api/promos.ts` (19 November 2026)
+
+Rinciannya di [`docs/20-halaman-promo.md`](./20-halaman-promo.md). Yang menyentuh
+lapisan data:
+
+| Fungsi | Cache | Catatan |
+|---|---|---|
+| `getPromoBySlug(slug)` | `unstable_cache`, tag `promos`, 300 dtk | hanya promo aktif & belum dihapus; status jadwal dihitung di luar cache |
+| `getLivePromos()` | `unstable_cache`, tag `promos`, 300 dtk | disaring `promoPhase === "live"` di luar cache |
+| `getPublishedProductsByIds(ids)` (di `woocommerce/products.ts`) | `unstable_cache`, tag `products` | id baris Prisma, urutan dipertahankan, draft/private/varian dibuang |
+| `getAllPromos`, `getPromoForEdit`, `searchPromoPickerProducts`, `getPromoOptions` | tanpa cache | panel admin |
+
+- `getActiveBanners()` sekarang mengembalikan `ActiveBanner` (`href` +
+  `linksToPromo`), dan meng-`include` promo penautnya (slug, aktif, terhapus).
+- Aksi banner membersihkan tag `promos`; aksi promo membersihkan `promos` dan
+  `promo-banners`.
+- `parseDateInput` pindah dari `admin/(panel)/banner/actions.ts` ke
+  `lib/utils/banner.ts`, dipakai bersama banner, kampanye, dan promo.
