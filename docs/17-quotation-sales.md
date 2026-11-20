@@ -1159,6 +1159,7 @@ tanpa penanda, dan log mencatat timeout.
 | `/admin/quotation` | Kolom Status, di bawah Terbit/Terjual/DP |
 | `/verify`, grid kasir | Baris lencana kartu |
 | `/profile/quotation`, riwayat sales | Di bawah kode quotation |
+| `/profile/quotation/[code]`, detail sales (20 Nov 2026) | Kotak lebar penuh di kartu atas, di bawah baris tombol. Penanda saja, tanpa tombol dokumentasi (keputusan 20 Nov 2026; tombolnya bisa menyusul, digerbangi izin `dokumentasi-rakitan` seperti di `/verify/[code]`) |
 | `/verify/[code]` | Kotak di atas tombol "Lihat dokumentasi rakitan" (tetap tampil untuk yang tidak punya izin dokumentasi) |
 
 Teksnya: **Sudah dirakit** · `ticketCode` · `stageLabel`. Kalau `stageLabel` kosong,

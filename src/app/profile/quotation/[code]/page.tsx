@@ -20,6 +20,8 @@ import { formatRupiah } from "@/lib/utils"
 import { publicQuoteUrl } from "@/lib/utils/public-token"
 import { resolveSiteUrl } from "@/lib/utils/site-url"
 import { QUOTE_CODE_PATTERN, formatQuoteDateTime } from "@/app/verify/format"
+import { BuildStatusBadge } from "@/app/verify/build-status-badge"
+import { getBuildStatuses } from "@/lib/api/ticketing-builds"
 
 export const metadata = {
   title: "Detail Quotation",
@@ -61,6 +63,9 @@ export default async function DetailQuotationPage({
    */
   const quote = await getQuotationForUser(code, user.id)
   if (!quote) notFound()
+
+  // Tidak ditunggu — penanda menyusul lewat Suspense (docs/17 §22).
+  const buildStatuses = getBuildStatuses([quote.code])
 
   const terjual = quote.status === "closing"
 
@@ -218,6 +223,11 @@ export default async function DetailQuotationPage({
                 )}
               </div>
             </div>
+
+            {/* Penanda "Sudah dirakit" dari Ticketing — hanya tampilan, tidak
+                mengubah status atau rekap (docs/17 §22). Lebar penuh kartu,
+                bukan di kolom kiri, supaya tidak terjepit barisan tombol. */}
+            <BuildStatusBadge code={quote.code} statuses={buildStatuses} variant="detail" />
 
             {/* Alamat yang akan ikut terkirim di pesan follow-up, ditampilkan
                 apa adanya supaya sales bisa menyalinnya sendiri saat ia lebih
