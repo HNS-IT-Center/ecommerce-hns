@@ -7,6 +7,23 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: __dirname,
   },
+  experimental: {
+    /**
+     * Batas worker build ("Collecting page data" / static generation).
+     *
+     * Bawaannya `jumlah CPU - 1`. Server build Hostinger melaporkan 64 CPU,
+     * jadi Next 16.4 membuka 63 worker sekaligus — dan tiap worker memuat
+     * modul native yang membuat thread pool sendiri. Totalnya menabrak batas
+     * proses akun Hostinger: deploy `f86fdfb` (19 Nov 2026) mati dengan
+     * `OS can't spawn worker thread: Resource temporarily unavailable
+     * (os error 11)`, padahal compile dan TypeScript sudah lolos.
+     *
+     * Halaman di project ini hampir semuanya dinamis (`force-dynamic` di
+     * layout), jadi 4 worker tidak memperlambat build secara berarti. Lihat
+     * docs/10-deployment-procedure.md, "Batas worker build".
+     */
+    cpus: 4,
+  },
   images: {
     /**
      * Next 16 hanya melayani nilai `quality` yang terdaftar di sini — di luar

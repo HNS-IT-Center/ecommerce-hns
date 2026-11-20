@@ -178,6 +178,34 @@ cuma jalan keluar; ia memeriksa lebih banyak.
 
 ---
 
+### Batas worker build: `experimental.cpus: 4` (20 November 2026)
+
+Peringatan di bagian sebelumnya ("batas proses di server itu masih ada dan suatu
+hari bisa menggigit di tempat lain") terjadi pada deploy `f86fdfb`, sesudah
+naik ke Next 16.4.6. Compile dan TypeScript lolos, lalu build mati di sini:
+
+```
+Collecting page data using 63 workers ...
+OS can't spawn worker thread: Resource temporarily unavailable (os error 11)
+⨯ Next.js build worker exited with code: null and signal: SIGABRT
+```
+
+Server build Hostinger melaporkan **64 CPU**, dan bawaan Next adalah membuka
+`jumlah CPU - 1` worker. Setiap worker memuat modul native yang membuat thread
+pool sendiri, dan totalnya melewati batas proses akun. Ini batas jumlah
+proses/thread, **bukan** memori — log-nya tidak menyebut memori sama sekali.
+
+`next.config.ts` sekarang mematok `experimental: { cpus: 4 }`. Halaman di
+project ini hampir semuanya dinamis (`force-dynamic` di layout), jadi tahap
+itu memang hanya mengumpulkan data rute, dan 4 worker tidak membuat build
+terasa lebih lambat.
+
+**Jangan dinaikkan berdasarkan jumlah CPU di laptop.** Angka yang aman
+ditentukan batas proses server, bukan kecepatan build lokal. Kalau ingin
+mencoba angka lain, lakukan dengan satu deploy percobaan dan baca log-nya.
+
+---
+
 ### Migrasi ikut berjalan saat build (31 Agustus 2026)
 
 `npm run build` sekarang berbunyi **`prisma migrate deploy && next build`**.
