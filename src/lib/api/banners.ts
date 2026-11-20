@@ -9,6 +9,7 @@ import { unstable_cache } from "next/cache"
 import { getPrisma } from "@/lib/prisma/client"
 import type { PromoBanner, BannerBatch, BannerDisplayMode } from "@prisma/client"
 import { activeBatchGate, effectiveBannerState, sortBannersForDisplay } from "@/lib/utils/banner"
+import { promoHref } from "@/lib/utils/promo"
 
 export const BANNERS_CACHE_TAG = "promo-banners"
 
@@ -25,6 +26,7 @@ export type BannerInput = {
   bgClass: string
   displayMode: BannerDisplayMode
   batchId: string | null
+  promoId: string | null
   isActive: boolean
   startsAt: Date | null
   endsAt: Date | null
@@ -42,13 +44,28 @@ export type BannerInput = {
  * Kampanye penaung ikut disaring di sini dan dengan alasan yang sama: jadwal
  * batch pun dihitung saat dibaca, tidak ditegakkan cron.
  */
-export async function getActiveBanners(): Promise<PromoBanner[]> {
+/** Banner beranda beserta tujuan kliknya yang sudah diputuskan. */
+export type ActiveBanner = PromoBanner & {
+  /**
+   * `/promo/<slug>` kalau banner menaut promo yang aktif dan belum dihapus;
+   * selain itu `ctaHref`. Promo nonaktif/dihapus tidak punya halaman (404),
+   * jadi menautnya hanya akan mengirim pengunjung ke halaman kosong.
+   */
+  href: string | null
+  /** `true` kalau `href` menuju halaman promo. */
+  linksToPromo: boolean
+}
+
+export async function getActiveBanners(): Promise<ActiveBanner[]> {
   const fetcher = unstable_cache(
     async () =>
       getPrisma().promoBanner.findMany({
         where: { isActive: true },
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-        include: { batch: true },
+        include: {
+          batch: true,
+          promo: { select: { slug: true, isActive: true, deletedAt: true } },
+        },
       }),
     ["active-promo-banners"],
     { revalidate: 300, tags: [BANNERS_CACHE_TAG] }
@@ -63,7 +80,14 @@ export async function getActiveBanners(): Promise<PromoBanner[]> {
   // Urutan akhirnya bukan `sortOrder` mentah: banner milik kampanye yang
   // sedang tayang naik ke depan sebagai satu blok. Aturannya di
   // lib/utils/banner, dipakai bersama daftar admin.
-  return sortBannersForDisplay(live, now)
+  return sortBannersForDisplay(live, now).map(({ promo, ...banner }) => {
+    const promoIsOpen = promo !== null && promo.isActive && !promo.deletedAt
+    return {
+      ...banner,
+      href: promoIsOpen ? promoHref(promo.slug) : banner.ctaHref,
+      linksToPromo: promoIsOpen,
+    }
+  })
 }
 
 /** Semua banner termasuk yang nonaktif & di luar jadwal — untuk panel admin. */

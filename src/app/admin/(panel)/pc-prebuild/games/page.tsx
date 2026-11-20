@@ -1,6 +1,5 @@
 import { requirePageView } from "@/lib/auth"
-import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
+import { AdminBackLink } from "@/components/admin/admin-back-link"
 
 import { getPcPrebuildGames } from "@/lib/pc-prebuild/config"
 
@@ -30,13 +29,9 @@ export default async function PrebuildGamesPage() {
   return (
     <div className="flex-1 space-y-6">
       <div>
-        <Link
-          href="/admin/pc-prebuild"
-          className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Semua paket
-        </Link>
+        <AdminBackLink href="/admin/pc-prebuild" className="mb-4">
+          Kembali ke semua paket
+        </AdminBackLink>
 
         <h2 className="text-2xl font-bold tracking-tight md:text-3xl">Daftar Game</h2>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">

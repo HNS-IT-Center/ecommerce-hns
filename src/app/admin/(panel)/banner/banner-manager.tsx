@@ -3,28 +3,33 @@
 import * as React from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Images, Layers, Plus } from "lucide-react"
+import { Images, Layers, Plus, TicketPercent } from "lucide-react"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 // Hanya TIPE — lihat catatan di `banner-list.tsx`.
 import type { BannerWithBatch } from "@/lib/api/banners"
 import type { BatchRow } from "@/lib/api/banner-batches"
+import type { PromoRow } from "@/lib/api/promos"
 
 import { BannerList } from "./banner-list"
 import { BatchPanel } from "./batch-panel"
 import { BatchFormDialog } from "./batch-form-dialog"
+import { PromoPanel } from "./promo-panel"
 
 type BannerManagerProps = {
   banners: BannerWithBatch[]
   batches: BatchRow[]
+  promos: PromoRow[]
+  /** Tab dari `?tab=`, dibaca server — lihat catatan di bawah. */
+  initialTab?: string
 }
 
 /** Formulir kampanye yang sedang terbuka. */
 type DialogState = { mode: "closed" } | { mode: "create" } | { mode: "edit"; batch: BatchRow }
 
 /**
- * Dua tab: daftar banner dan daftar kampanye penaungnya.
+ * Tiga tab: daftar banner, kampanye penaungnya, dan halaman promo.
  *
  * Tab yang aktif disimpan di `?tab=` — bukan state biasa. Setiap aksi di dalam
  * panel kampanye memanggil `router.refresh()` setelah server action berhasil,
@@ -32,15 +37,20 @@ type DialogState = { mode: "closed" } | { mode: "create" } | { mode: "edit"; bat
  * tiap kali mereka menyunting kampanye. Pola yang sama dipakai
  * `atribut-brand/taxonomy-manager.tsx`.
  */
-export function BannerManager({ banners, batches }: BannerManagerProps) {
+const TABS = ["banner", "batch", "promo"] as const
+
+export function BannerManager({ banners, batches, promos, initialTab }: BannerManagerProps) {
   const router = useRouter()
 
-  const [tab, setTab] = React.useState<string>(() => {
-    if (typeof window === "undefined") return "banner"
-    return new URLSearchParams(window.location.search).get("tab") === "batch"
-      ? "batch"
-      : "banner"
-  })
+  /**
+   * Tab awal datang dari server (`searchParams` di page.tsx), BUKAN dibaca dari
+   * `window` di sini. Membacanya dari `window` membuat server merender tab
+   * "banner" sementara klien merender tab lain — hydration mismatch setiap kali
+   * halaman dibuka lewat `?tab=batch` atau `?tab=promo`.
+   */
+  const [tab, setTab] = React.useState<string>(
+    () => TABS.find((t) => t === initialTab) ?? "banner"
+  )
   const [dialog, setDialog] = React.useState<DialogState>({ mode: "closed" })
 
   function handleTabChange(next: string) {
@@ -79,12 +89,24 @@ export function BannerManager({ banners, batches }: BannerManagerProps) {
                 {batches.length}
               </span>
             </TabsTrigger>
+            <TabsTrigger value="promo" className="gap-2">
+              <TicketPercent className="h-4 w-4" />
+              Halaman Promo
+              <span className="ml-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold tabular-nums">
+                {promos.length}
+              </span>
+            </TabsTrigger>
           </TabsList>
 
           {tab === "banner" ? (
             <Button render={<Link href="/admin/banner/baru" />} nativeButton={false}>
               <Plus className="h-4 w-4" />
               Tambah Banner
+            </Button>
+          ) : tab === "promo" ? (
+            <Button render={<Link href="/admin/banner/promo/baru" />} nativeButton={false}>
+              <Plus className="h-4 w-4" />
+              Tambah Promo
             </Button>
           ) : (
             <Button onClick={() => setDialog({ mode: "create" })}>
@@ -100,6 +122,10 @@ export function BannerManager({ banners, batches }: BannerManagerProps) {
 
         <TabsContent value="batch" className="mt-6">
           <BatchPanel batches={batches} onEdit={(batch) => setDialog({ mode: "edit", batch })} />
+        </TabsContent>
+
+        <TabsContent value="promo" className="mt-6">
+          <PromoPanel promos={promos} />
         </TabsContent>
       </Tabs>
 

@@ -1,4 +1,5 @@
 import { requirePageView } from "@/lib/auth"
+import { AdminBackLink } from "@/components/admin/admin-back-link"
 import { notFound } from "next/navigation"
 import { getFaqItem } from "@/lib/api/policy"
 import { FaqForm } from "../faq-form"
@@ -19,6 +20,7 @@ export default async function AdminFaqEditPage({ params }: Props) {
 
   return (
     <div className="mx-auto max-w-3xl">
+      <AdminBackLink href="/admin/kebijakan">Kembali ke daftar FAQ</AdminBackLink>
       <h1 className="text-2xl font-bold">Edit FAQ</h1>
       <div className="mt-6">
         <FaqForm item={item} />

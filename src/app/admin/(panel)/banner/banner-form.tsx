@@ -1,13 +1,15 @@
 "use client"
 
 import * as React from "react"
-import { Loader2, Upload, X, ImageIcon, Megaphone, CalendarClock, Palette, MonitorPlay, Layers, Plus } from "lucide-react"
+import { Loader2, Upload, X, ImageIcon, Megaphone, CalendarClock, Palette, MonitorPlay, Layers, Plus, TicketPercent } from "lucide-react"
 import type { PromoBanner, BannerDisplayMode } from "@prisma/client"
 
 import { BANNER_BG_OPTIONS, toDateInputValue } from "@/lib/utils/banner"
 import { compressImage } from "@/lib/utils/image-compression"
 // Hanya TIPE — lihat catatan di `banner-list.tsx`.
 import type { BatchOption } from "@/lib/api/banner-batches"
+import type { PromoOption } from "@/lib/api/promos"
+import { promoHref } from "@/lib/utils/promo"
 import { BatchFormDialog } from "./batch-form-dialog"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -34,6 +36,8 @@ type BannerFormProps = {
   action: (formData: FormData) => void
   /** Kampanye yang bisa dipilih. Kosong berarti belum ada satu pun dibuat. */
   batches: BatchOption[]
+  /** Halaman promo yang bisa ditaut. Promo yang sudah dihapus tidak ikut. */
+  promos: PromoOption[]
 }
 
 /**
@@ -49,6 +53,15 @@ const NEW_BATCH_VALUE = "__new__"
 const NO_BATCH_LABEL = "Tanpa kampanye"
 const ARCHIVED_BATCH_LABEL = "Kampanye yang sudah dihapus"
 const NEW_BATCH_LABEL = "Buat kampanye baru…"
+
+/** Nilai semu "tanpa promo" — diterjemahkan jadi string kosong, sama dengan kampanye. */
+const NO_PROMO_VALUE = "__none__"
+const NO_PROMO_LABEL = "Tanpa halaman promo"
+const ARCHIVED_PROMO_LABEL = "Promo yang sudah dihapus"
+
+function promoLabel(promo: PromoOption): string {
+  return promo.isActive ? promo.title : `${promo.title} · nonaktif`
+}
 
 /** Label satu kampanye — dipakai di daftar dropdown DAN di tombolnya. */
 function batchLabel(batch: BatchOption): string {
@@ -74,7 +87,7 @@ function SectionHeading({
   )
 }
 
-export function BannerForm({ banner, action, batches }: BannerFormProps) {
+export function BannerForm({ banner, action, batches, promos }: BannerFormProps) {
   const isEdit = Boolean(banner)
 
   /**
@@ -112,6 +125,20 @@ export function BannerForm({ banner, action, batches }: BannerFormProps) {
       { value: NEW_BATCH_VALUE, label: NEW_BATCH_LABEL },
     ],
     [batchOptions, batchId, hasArchivedBatch]
+  )
+
+  const [promoId, setPromoId] = React.useState(banner?.promoId ?? "")
+  // Sama dengan kampanye: tautan ke promo yang sudah dihapus tetap ditampilkan
+  // supaya menyimpan formulir tidak diam-diam melepasnya.
+  const hasArchivedPromo = Boolean(promoId) && !promos.some((p) => p.id === promoId)
+  const selectedPromo = promos.find((p) => p.id === promoId) ?? null
+  const promoSelectItems = React.useMemo(
+    () => [
+      { value: NO_PROMO_VALUE, label: NO_PROMO_LABEL },
+      ...(hasArchivedPromo ? [{ value: promoId, label: ARCHIVED_PROMO_LABEL }] : []),
+      ...promos.map((promo) => ({ value: promo.id, label: promoLabel(promo) })),
+    ],
+    [promos, promoId, hasArchivedPromo]
   )
 
   const [imageUrl, setImageUrl] = React.useState(banner?.imageUrl ?? "")
@@ -171,6 +198,7 @@ export function BannerForm({ banner, action, batches }: BannerFormProps) {
       <input type="hidden" name="bgClass" value={bgClass} />
       <input type="hidden" name="displayMode" value={displayMode} />
       <input type="hidden" name="batchId" value={batchId} />
+      <input type="hidden" name="promoId" value={promoId} />
 
       <div className="sticky top-0 z-30 -mx-1 flex items-center justify-between gap-3 rounded-xl border border-border bg-background/85 px-3 py-2.5 backdrop-blur-md">
         <p className="text-xs text-muted-foreground">
@@ -423,6 +451,50 @@ export function BannerForm({ banner, action, batches }: BannerFormProps) {
                 Opsional. Banner yang punya kampanye baru tayang kalau kampanye induknya juga
                 sedang tayang — berguna untuk mematikan satu promo berisi beberapa banner
                 sekaligus, tanpa menyentuh banner lain.
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Halaman Promo */}
+          <Card>
+            <CardHeader>
+              <SectionHeading icon={TicketPercent} title="Halaman Promo" accent="bg-sale-red/10 text-sale-red" />
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Select
+                items={promoSelectItems}
+                value={promoId || NO_PROMO_VALUE}
+                onValueChange={(value: string | null) => {
+                  if (!value) return
+                  setPromoId(value === NO_PROMO_VALUE ? "" : value)
+                }}
+              >
+                <SelectTrigger className="w-full" aria-label="Halaman promo">
+                  <SelectValue placeholder={NO_PROMO_LABEL} />
+                </SelectTrigger>
+                <SelectContent side="bottom" align="start" sideOffset={4} alignItemWithTrigger={false}>
+                  <SelectItem value={NO_PROMO_VALUE}>{NO_PROMO_LABEL}</SelectItem>
+                  {hasArchivedPromo && <SelectItem value={promoId}>{ARCHIVED_PROMO_LABEL}</SelectItem>}
+                  {promos.map((promo) => (
+                    <SelectItem key={promo.id} value={promo.id}>
+                      {promoLabel(promo)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <p className="text-[11px] text-muted-foreground">
+                {selectedPromo ? (
+                  <>
+                    Banner dibuka ke <span className="font-mono">{promoHref(selectedPromo.slug)}</span> saat
+                    diklik — seluruh area banner bisa diklik, termasuk mode <strong>Gambar Saja</strong>. Link tombol (mode Gambar + Teks) diabaikan.
+                  </>
+                ) : (
+                  <>
+                    Opsional. Pilih promo supaya seluruh banner bisa diklik menuju daftar produknya.
+                    Halaman promo dibuat di tab <strong>Halaman Promo</strong>.
+                  </>
+                )}
               </p>
             </CardContent>
           </Card>

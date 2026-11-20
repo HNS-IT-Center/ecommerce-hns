@@ -103,6 +103,22 @@ export function toDateInputValue(value: Date | string | null | undefined): strin
 }
 
 /**
+ * Tanggal dari `<input type="date">` tidak berzona waktu.
+ *
+ * Mulai dihitung dari awal hari, berakhir pada penghujung hari — supaya promo
+ * yang dijadwalkan "sampai 31 Desember" benar-benar tayang sepanjang tanggal
+ * itu, bukan mati pada dini harinya.
+ *
+ * Dipakai bersama formulir banner, kampanye, dan halaman promo — pasangan dari
+ * `toDateInputValue` di atas.
+ */
+export function parseDateInput(value: string, edge: "start" | "end"): Date | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  return new Date(`${trimmed}T${edge === "start" ? "00:00:00" : "23:59:59"}`)
+}
+
+/**
  * Kampanye yang masih berlaku sebagai gerbang tayang.
  *
  * Kampanye yang sudah di-soft-delete tidak lagi menahan anggotanya — ia

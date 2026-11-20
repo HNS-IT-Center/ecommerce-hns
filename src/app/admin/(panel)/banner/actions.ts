@@ -18,23 +18,12 @@ import {
   updateBatch as updateBatchRow,
   type BatchOption,
 } from "@/lib/api/banner-batches"
+import { PROMOS_CACHE_TAG } from "@/lib/api/promos"
+import { parseDateInput } from "@/lib/utils/banner"
 
 function optionalText(formData: FormData, key: string): string | null {
   const value = String(formData.get(key) ?? "").trim()
   return value || null
-}
-
-/**
- * Tanggal dari `<input type="date">` tidak berzona waktu.
- *
- * Mulai dihitung dari awal hari, berakhir pada penghujung hari — supaya promo
- * yang dijadwalkan "sampai 31 Desember" benar-benar tayang sepanjang tanggal
- * itu, bukan mati pada dini harinya.
- */
-function parseDateInput(value: string, edge: "start" | "end"): Date | null {
-  const trimmed = value.trim()
-  if (!trimmed) return null
-  return new Date(`${trimmed}T${edge === "start" ? "00:00:00" : "23:59:59"}`)
 }
 
 function readDate(formData: FormData, key: string, edge: "start" | "end"): Date | null {
@@ -57,6 +46,8 @@ function readBannerInput(formData: FormData): BannerInput {
     // Kosong berarti "Tanpa kampanye" — kolomnya nullable dan banner tanpa
     // batch berdiri sendiri.
     batchId: optionalText(formData, "batchId"),
+    // Kosong berarti banner memakai `ctaHref` seperti biasa.
+    promoId: optionalText(formData, "promoId"),
     isActive: formData.get("isActive") === "on",
     startsAt: readDate(formData, "startsAt", "start"),
     endsAt: readDate(formData, "endsAt", "end"),
@@ -67,6 +58,9 @@ function revalidateBannerPages() {
   // Tag dipakai oleh cache di getActiveBanners; path beranda dibersihkan
   // terpisah karena halamannya sendiri ikut di-cache sebagai halaman.
   revalidateTag(BANNERS_CACHE_TAG, "max")
+  // Gambar header halaman promo diambil dari banner yang menautnya, jadi
+  // mengganti gambar atau tautan banner ikut mengubah halaman promo.
+  revalidateTag(PROMOS_CACHE_TAG, "max")
   revalidatePath("/admin/banner")
   revalidatePath("/")
 }

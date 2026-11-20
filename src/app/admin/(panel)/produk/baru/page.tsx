@@ -1,6 +1,5 @@
 import { requirePageView } from "@/lib/auth"
-import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
+import { AdminBackLink } from "@/components/admin/admin-back-link"
 import { getAllCategories } from "@/lib/api/woocommerce/categories"
 import { getProductAttributes } from "@/lib/api/woocommerce/products"
 import { getBrands } from "@/lib/api/woocommerce/brands"
@@ -25,13 +24,7 @@ export default async function AdminProdukBaruPage({ searchParams }: Props) {
 
   return (
     <div className="mx-auto max-w-6xl pb-12">
-      <Link
-        href={listHref(returnQuery)}
-        className="mb-3 inline-flex min-h-9 items-center gap-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Kembali ke daftar produk
-      </Link>
+      <AdminBackLink href={listHref(returnQuery)}>Kembali ke daftar produk</AdminBackLink>
       <h1 className="text-2xl font-bold">Tambah Produk Baru</h1>
       <div className="mt-6">
         <ProdukForm

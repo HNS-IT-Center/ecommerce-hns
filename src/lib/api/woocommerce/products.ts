@@ -352,6 +352,44 @@ export async function getProductBySlug(slug: string): Promise<Product | null> {
   return product ? decodeProduct(product) : null;
 }
 
+/**
+ * Produk TERBIT berdasarkan id baris Prisma (`products.id`, bukan `wooId`),
+ * dalam urutan `ids`. Dipakai halaman promo (`lib/api/promos.ts`), yang
+ * menyimpan keanggotaannya lewat FK ke `products.id`.
+ *
+ * Lewat jalur yang sama dengan daftar katalog — `prismaProductToWoo` di dalam
+ * cache, `decodeProduct` (termasuk masa berlaku obral) di luarnya — supaya harga
+ * di kartu promo identik dengan halaman produknya (CLAUDE.md §2.7). Draft,
+ * private, dan varian disaring di sini: produk yang ditarik dari katalog ikut
+ * hilang dari promo tanpa staff perlu menyunting promonya.
+ *
+ * Tag `products` membuat cache ini ikut segar setiap kali produk disunting
+ * (`invalidateProductCaches`).
+ */
+export async function getPublishedProductsByIds(ids: number[]): Promise<Product[]> {
+  if (ids.length === 0) return [];
+
+  const sortedKey = [...ids].sort((a, b) => a - b).join(",");
+  const fetcher = unstable_cache(
+    async () => {
+      const products = await getPrisma().product.findMany({
+        where: { id: { in: ids }, status: ProductStatus.PUBLISHED, parentId: null },
+        include: productInclude,
+      });
+      return products.map((p) => ({ prismaId: p.id, product: prismaProductToWoo(p) }));
+    },
+    ["products-by-ids", sortedKey],
+    { revalidate: 300, tags: ["products"] }
+  );
+
+  const rows = await fetcher();
+  const byId = new Map(rows.map((row) => [row.prismaId, row.product]));
+  return ids.flatMap((id) => {
+    const product = byId.get(id);
+    return product ? [decodeProduct(product)] : [];
+  });
+}
+
 /** Dipakai admin panel — cari produk by ID WooCommerce (dari link daftar produk). */
 export async function getProductById(id: number): Promise<Product | null> {
   try {

@@ -1,4 +1,5 @@
 import { requirePageView } from "@/lib/auth"
+import { AdminBackLink } from "@/components/admin/admin-back-link"
 import { PolicyPageForm } from "../policy-page-form"
 
 // Layout panel hanya memastikan ada yang login. Penjaga per-halaman ada di sini
@@ -9,6 +10,7 @@ export default async function AdminKebijakanBaruPage() {
 
   return (
     <div className="mx-auto max-w-5xl">
+      <AdminBackLink href="/admin/kebijakan">Kembali ke daftar kebijakan</AdminBackLink>
       <h1 className="text-2xl font-bold">Tambah Kebijakan</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Halaman baru langsung tayang di <code>/kebijakan</code> setelah disimpan.

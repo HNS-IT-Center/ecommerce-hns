@@ -562,6 +562,9 @@ model Product {
   images     ProductImage[]
   attributes ProductAttribute[]
 
+  /// Halaman promo yang mencantumkan produk ini — lihat model `Promo`.
+  promoEntries PromoProduct[]
+
   /// Hash isi yang terakhir berhasil terkirim ke Woo. Worker melewati job yang
   /// hash-nya tidak berubah — melindungi dari enqueue berulang, dan dari
   /// enqueue-all yang kelak mengantre ribuan produk sekaligus.
@@ -671,6 +674,16 @@ model PromoBanner {
   batch   BannerBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
 
   /**
+   * Halaman promo yang dibuka saat banner diklik, opsional.
+   * Kalau terisi, tautannya `/promo/<slug>` dan MENANG atas `ctaHref`; kosong
+   * berarti banner memakai `ctaHref` seperti sebelumnya. Promo memakai soft
+   * delete, jadi `SetNull` di sini praktis hanya berlaku kalau barisnya dibuang
+   * langsung dari database.
+   */
+  promoId String? @map("promo_id")
+  promo   Promo?  @relation(fields: [promoId], references: [id], onDelete: SetNull)
+
+  /**
    * Urutan tampil di beranda, 0 paling atas.
    * Ditulis ulang seluruhnya (0..n-1) oleh `reorderBanners` setiap kali daftar
    * di admin diseret. Angkanya TIDAK lagi bisa diketik lewat form banner:
@@ -688,7 +701,65 @@ model PromoBanner {
 
   @@index([isActive, sortOrder])
   @@index([batchId])
+  @@index([promoId])
   @@map("promo_banners")
+}
+
+/**
+ * Halaman promo `/promo/<slug>` — tujuan klik banner, berisi daftar produk
+ * pilihan staff. Lihat docs/20-halaman-promo.md.
+ *
+ * Promo TIDAK menyimpan harga atau potongan apa pun (CLAUDE.md §2.7). Kartu
+ * produknya membaca harga dari katalog saat itu juga; jadwal di sini hanya
+ * menentukan status halaman (belum mulai / berlangsung / berakhir) dan
+ * hitung mundurnya. Harga obral tetap diatur per produk lewat `salePrice`.
+ *
+ * Gambar header halaman diambil dari banner yang menautnya, bukan disimpan di
+ * sini — supaya yang dilihat pengunjung setelah mengeklik adalah banner yang
+ * sama persis, dan staff tidak mengunggah gambar yang sama dua kali.
+ */
+model Promo {
+  id String @id @default(uuid())
+
+  /// Alamat publik `/promo/<slug>`. Huruf kecil, angka, dan tanda hubung.
+  slug  String @unique @db.VarChar(160)
+  title String @db.VarChar(255)
+
+  description String? @db.Text
+  /// Syarat & ketentuan, satu butir per baris.
+  terms       String? @db.Text
+
+  isActive Boolean   @default(true) @map("is_active")
+  startsAt DateTime? @map("starts_at")
+  endsAt   DateTime? @map("ends_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// Soft delete (CLAUDE.md §2.8) — data operasional HNS. Promo yang dihapus
+  /// tidak lagi bisa dibuka publik dan tidak ditawarkan di formulir banner.
+  deletedAt DateTime? @map("deleted_at")
+
+  products PromoProduct[]
+  banners  PromoBanner[]
+
+  @@map("promos")
+}
+
+/// Produk yang tercantum di satu promo. Murni keanggotaan — tanpa harga.
+model PromoProduct {
+  promoId   String @map("promo_id")
+  productId Int    @map("product_id")
+
+  /// Urutan pilihan staff; dipakai saat pengunjung belum memilih urutan lain.
+  sortOrder Int @default(0) @map("sort_order")
+
+  promo   Promo   @relation(fields: [promoId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([promoId, productId])
+  @@index([productId])
+  @@map("promo_products")
 }
 
 // --------------------------------------------------------------------------- kategori

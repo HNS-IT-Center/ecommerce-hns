@@ -3,6 +3,7 @@ import { getProductsForSitemap } from "@/lib/api/woocommerce/products";
 import { getCategories } from "@/lib/api/woocommerce/categories";
 import { getPcPrebuildConfig } from "@/lib/pc-prebuild/config";
 import { getPolicyPages } from "@/lib/api/policy";
+import { getLivePromos } from "@/lib/api/promos";
 import { resolveSiteUrl } from "@/lib/utils/site-url";
 import { isIndexableRequest } from "@/lib/utils/indexable-host";
 
@@ -117,14 +118,35 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   let categoryEntries: MetadataRoute.Sitemap = [];
   let prebuildEntries: MetadataRoute.Sitemap = [];
   let policyEntries: MetadataRoute.Sitemap = [];
+  let promoEntries: MetadataRoute.Sitemap = [];
 
   try {
-    const [products, categories, prebuild, policies] = await Promise.all([
+    const [products, categories, prebuild, policies, promos] = await Promise.all([
       getProductsForSitemap(MAX_PRODUCTS),
       getCategories({ hideEmpty: true, perPage: 500 }),
       getPcPrebuildConfig(),
       getPolicyPages(),
+      getLivePromos(),
     ]);
+
+    /**
+     * Hanya promo yang SEDANG berlangsung. Promo yang sudah lewat tetap bisa
+     * dibuka tapi bertanda `noindex` (app/promo/[slug]/page.tsx) — mengumumkan
+     * alamat yang sekaligus menolak diindeks adalah sinyal yang bertentangan.
+     * `/promo` sendiri ikut hanya kalau ada isinya.
+     */
+    promoEntries =
+      promos.length === 0
+        ? []
+        : [
+            { url: `${baseUrl}/promo`, lastModified: now, changeFrequency: "daily" as const, priority: 0.7 },
+            ...promos.map((promo) => ({
+              url: `${baseUrl}/promo/${promo.slug}`,
+              lastModified: now,
+              changeFrequency: "daily" as const,
+              priority: 0.7,
+            })),
+          ];
 
     /**
      * Kebijakan yang sedang tayang, apa pun jumlahnya.
@@ -190,12 +212,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       ];
     }
   } catch (error) {
-    console.error("Sitemap: gagal memuat produk/kategori/prebuild", error);
+    console.error("Sitemap: gagal memuat produk/kategori/prebuild/promo", error);
   }
 
   return [
     ...staticEntries,
     ...policyEntries,
+    ...promoEntries,
     ...prebuildEntries,
     ...categoryEntries,
     ...productEntries,
