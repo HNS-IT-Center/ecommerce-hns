@@ -2443,6 +2443,11 @@ untuk halaman `/dokumentasi-rakitan/[code]`.
   permintaan, batas waktu 4 detik). Fungsi ini tidak pernah melempar; kalau gagal,
   hasilnya peta kosong. Halaman TIDAK menunggunya: penanda dialirkan lewat Suspense. Lihat
   docs/17 §22.
+- Susulan 21 Nov 2026: `GET /api/integrations/ticketing/products/prices?codes=` lewat
+  `getTicketingPrices()` di `lib/api/ticketing-prices.ts` — harga web per kode Accurate
+  (1–100 kode, satu `findMany`, tanpa cache). Harga dihitung `resolveCatalogPrice()`,
+  yang kini diekspor dari `lib/api/woocommerce/cart-pricing.ts` dan dipakai juga oleh
+  keranjang, supaya harga tiket dan keranjang tidak bisa berbeda. Lihat docs/17 §23.
 
 ---
 

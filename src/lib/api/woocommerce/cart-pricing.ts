@@ -104,12 +104,16 @@ const MAX_LINES = 50;
  * dibersihkan otomatis saat lewat tanggal, jadi lapisan bacalah yang wajib
  * mengabaikannya. Tanpa ini, harga di pesan WhatsApp bisa lebih murah daripada
  * harga di halaman produk — persis jenis selisih yang harus ditanggung CS.
+ *
+ * Diekspor untuk endpoint harga Ticketing (docs/17 §23): harga yang dicatat
+ * teknisi di tiket WAJIB sama dengan harga keranjang, jadi keduanya memakai
+ * fungsi ini — bukan salinan aturannya.
  */
-function harga(
+export function resolveCatalogPrice(
   regularPrice: unknown,
   salePrice: unknown,
   saleEndDate: Date | null,
-): number {
+): { price: number; saleActive: boolean } {
   const regular = Number(regularPrice ?? 0);
   const sale = salePrice == null ? null : Number(salePrice);
 
@@ -118,7 +122,15 @@ function harga(
     sale > 0 &&
     (saleEndDate === null || saleEndDate.getTime() > Date.now());
 
-  return obralBerlaku ? sale : regular;
+  return obralBerlaku ? { price: sale, saleActive: true } : { price: regular, saleActive: false };
+}
+
+function harga(
+  regularPrice: unknown,
+  salePrice: unknown,
+  saleEndDate: Date | null,
+): number {
+  return resolveCatalogPrice(regularPrice, salePrice, saleEndDate).price;
 }
 
 /**

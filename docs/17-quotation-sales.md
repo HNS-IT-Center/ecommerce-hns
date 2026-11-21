@@ -1170,3 +1170,94 @@ diserahkan, `handed_over` = Sudah diserahkan).
 
 Filter atau hitungan "Sudah dirakit" lintas halaman. Untuk itu datanya harus disimpan
 di ecommerce, dan itu butuh keputusan owner dulu.
+
+## 23. Harga web per kode Accurate untuk Ticketing (21 November 2026)
+
+```
+GET /api/integrations/ticketing/products/prices?codes=2601000119,2602000136,2508000060
+Authorization: Bearer <TICKETING_INTEGRATION_TOKEN>
+   (cadangan: X-Ticketing-Token: <token>)
+```
+
+Aturan owner: part yang dicatat teknisi di Rincian Biaya tiket memakai **harga website**
+kalau barangnya dijual di web; kalau tidak, teknisi mengisi sendiri.
+`products.accurate_code` adalah satu-satunya kunci yang sama di kedua sistem.
+
+Kode: `src/app/api/integrations/ticketing/products/prices/route.ts`,
+`src/lib/api/ticketing-prices.ts`. Penjaga token sama dengan §20–22
+(`rejectUnauthorizedTicketing`), tanpa env baru.
+
+### Aturan
+
+- **Hanya membaca**, satu `findMany` dengan `accurateCode in codes`.
+- **`codes`:** dipisah koma, setiap kode di-trim, yang kosong dibuang, yang dobel dihapus
+  (tak peka huruf, sama dengan collation kolom). Sah kalau 1–100 kode unik dan setiap
+  kode maksimal 50 karakter (lebar kolom). Selain itu `400 { "error": "invalid_codes" }`.
+- **Galat lain:** `401 unauthorized`, `503 not_configured`. Semua balasan `no-store`.
+- **`price` dihitung dengan fungsi yang sama dengan keranjang/checkout**,
+  `resolveCatalogPrice()` di `lib/api/woocommerce/cart-pricing.ts` (diekspor untuk ini).
+  Diskon berlaku kalau `salePrice > 0` dan `saleEndDate` kosong atau belum lewat.
+  **Jangan disalin** — harga di tiket tidak boleh pernah beda dengan keranjang. Uji
+  membandingkan keduanya langsung.
+- **Diskon yang tidak berlaku tidak dikirim:** `salePrice` dan `saleEndsAt` bernilai
+  `null`, `onSale: false`. Angka diskon basi tidak ikut terkirim supaya tidak terpakai.
+- **Uang integer Rupiah** (`Math.round`).
+- **`productId` adalah id internal**, bukan `wooId` (dua ruang id itu bertabrakan).
+- **`url`** dari `NEXT_PUBLIC_SITE_URL`: `/product/<slug>`; untuk varian
+  `/product/<slug-induk>?sku=<sku-varian>`, sama dengan kabar tautan (docs/18).
+
+### Kode yang TIDAK dijawab
+
+Tidak dianggap galat; Ticketing membacanya "tidak ada di website".
+
+- tidak tertaut ke produk mana pun;
+- produknya bukan PUBLISHED (DRAFT/PRIVATE tidak bisa dibeli di web, jadi harganya tidak
+  bisa diperoleh siapa pun — CLAUDE.md §2.7);
+- harga normal kosong atau 0;
+- induk produk bervarian (`VARIABLE`) — sisa tautan lama, karena sejak 20 Okt 2026 induk
+  tidak bisa ditautkan;
+- varian yang induknya bukan PUBLISHED.
+
+### Varian DIJAWAB (keputusan 21 Nov 2026)
+
+Brief Ticketing menulis "varian tidak punya kode Accurate". Di ecommerce kebalikannya:
+kode Accurate ditautkan ke **varian** (mis. 156 varian warna laptop, 29 Sep 2026), dan
+setiap varian punya harga sendiri. Melewatinya berarti semua produk bervarian jatuh ke
+harga isian teknisi. Varian dijawab dengan harganya sendiri dan nama lengkapnya
+(`"<induk> - <label>"`).
+
+### Bentuk respons
+
+```json
+{
+  "checkedAt": "2026-11-21T03:00:00.000Z",
+  "prices": {
+    "2508000060": {
+      "productId": 123,
+      "name": "ARGB FAN CONTROLLER OCYPUS DELTA EH10 PWM CONTROLLER",
+      "url": "https://hnsitcenter.id/product/...",
+      "regularPrice": 150000,
+      "salePrice": 120000,
+      "saleEndsAt": null,
+      "onSale": true,
+      "price": 120000
+    }
+  }
+}
+```
+
+Kunci di `prices` adalah kode seperti yang dikirim Ticketing (sesudah trim).
+
+### Yang TIDAK PERNAH ikut
+
+Stok, harga modal (CP / `accurate_products`), `wooId`, SKU sebagai kolom, dan data
+pelanggan apa pun. Kolom dipilih satu per satu; jangan diganti spread baris.
+
+### Uji
+
+`npx tsx --tsconfig scripts/tsconfig.uji.json scripts/uji-ticketing-harga.mts` lolos
+**49/49** (21 Nov 2026) di DB lokal Docker dengan produk buangan `zztest-harga-…`:
+token kosong/salah/env kosong, 101 kode → 400, tepat 100 kode, perapian kode, diskon
+berlaku & kedaluwarsa, salePrice 0, pembulatan, varian, kode tidak tertaut, DRAFT, tanpa
+harga, induk VARIABLE, varian berinduk DRAFT, kesamaan dengan `priceCartFromCatalog`, dan
+kolom terlarang.
