@@ -18,6 +18,7 @@ import { CloseQuotationButton } from "../close-quotation-button"
 import { DocumentationLinkButtons } from "../documentation-link-buttons"
 import { BuildStatusBadge } from "../build-status-badge"
 import { getBuildStatuses } from "@/lib/api/ticketing-builds"
+import { RETURN_PARAM, parseReturnTarget } from "../return-to"
 
 export const dynamic = "force-dynamic"
 
@@ -99,8 +100,10 @@ function QuoteNotFound({ code, malformed }: { code: string; malformed: boolean }
 
 export default async function VerifyQuotePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ code: string }>
+  searchParams: Promise<{ [RETURN_PARAM]?: string | string[] }>
 }) {
   // Khusus kasir & admin (izin `verify`). Tanpa akses → beranda; lihat src/proxy.ts.
   const { izin } = await requirePageView("verify", { deniedRedirect: "/" })
@@ -109,6 +112,8 @@ export default async function VerifyQuotePage({
   const bolehDokumentasi = bisaAkses(izin, "dokumentasi-rakitan", "view")
 
   const { code } = await params
+  // Datang dari Quotation & Penjualan → kembali ke sana; selain itu ke /verify.
+  const returnTarget = parseReturnTarget((await searchParams)[RETURN_PARAM])
   const requestedCode = decodeURIComponent(code).trim().toUpperCase()
 
   // Kode yang formatnya jelas salah tidak perlu menyentuh database sama sekali.
@@ -175,13 +180,14 @@ export default async function VerifyQuotePage({
         <div className="mx-auto max-w-3xl px-4 md:px-6">
           {/* Link biasa, bukan `router.back()`: kasir sering membuka halaman ini
               langsung dari hasil scan/URL, sehingga tidak ada riwayat untuk
-              kembali. */}
+              kembali. Admin yang datang dari Quotation & Penjualan membawa
+              `?kembali=` sehingga pulang ke daftarnya sendiri (return-to.ts). */}
           <Link
-            href="/verify"
+            href={returnTarget?.href ?? "/verify"}
             className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4" />
-            Kembali ke daftar
+            {returnTarget?.label ?? "Kembali ke daftar"}
           </Link>
 
           <div className="rounded-2xl border border-border bg-card p-6 shadow-sm md:p-8">
@@ -403,7 +409,7 @@ export default async function VerifyQuotePage({
             {/* Penanda dari Ticketing, hanya tampilan — tidak mengubah status
                 atau closing (docs/17 §22). */}
             <BuildStatusBadge code={quote.code} statuses={buildStatuses} variant="detail" />
-            {bolehDokumentasi && <DocumentationLinkButtons code={quote.code} />}
+            {bolehDokumentasi && <DocumentationLinkButtons code={quote.code} returnHref={returnTarget?.href ?? null} />}
           </div>
 
           <p className="mt-4 text-center text-xs text-muted-foreground">

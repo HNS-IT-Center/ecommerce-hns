@@ -8,6 +8,7 @@ import { numberBuildPhotos } from "@/lib/api/ticketing-build-downloads"
 import { Header } from "@/components/layout/header"
 import { Footer } from "@/components/layout/footer"
 import { QUOTE_CODE_PATTERN, formatQuoteDateTime } from "@/app/verify/format"
+import { RETURN_PARAM, parseReturnTarget, withReturnTarget } from "@/app/verify/return-to"
 import { BuildPhotoGallery } from "./build-photo-gallery"
 
 export const dynamic = "force-dynamic"
@@ -28,7 +29,13 @@ export const metadata = {
  * Tidak membaca database ecommerce: semua isi dari Ticketing, dan Ticketing
  * yang memutuskan apakah kodenya punya tiket.
  */
-export default async function BuildDocumentationPage({ params }: { params: Promise<{ code: string }> }) {
+export default async function BuildDocumentationPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ code: string }>
+  searchParams: Promise<{ [RETURN_PARAM]?: string | string[] }>
+}) {
   const { izin } = await requirePageView("dokumentasi-rakitan", { deniedRedirect: "/" })
   const { bisaAkses } = await import("@/lib/auth/permissions")
   const bolehVerify = bisaAkses(izin, "verify", "view")
@@ -48,7 +55,12 @@ export default async function BuildDocumentationPage({ params }: { params: Promi
     )
   }
 
-  const backHref = bolehVerify ? `/verify/${encodeURIComponent(code)}` : null
+  // `?kembali=` dari daftar admin diteruskan ke detail, supaya dari sana tombol
+  // kembalinya tetap pulang ke Quotation & Penjualan (return-to.ts).
+  const returnTarget = parseReturnTarget((await searchParams)[RETURN_PARAM])
+  const backHref = bolehVerify
+    ? withReturnTarget(`/verify/${encodeURIComponent(code)}`, returnTarget)
+    : null
   const result = await getBuildDocumentation(code)
 
   if (result.kind === "no-ticket") {

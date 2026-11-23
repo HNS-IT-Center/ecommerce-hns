@@ -5,6 +5,7 @@ import Link from "next/link"
 import { Check, Copy, Images } from "lucide-react"
 
 import { useToastManager } from "@/components/ui/toast"
+import { withReturnTarget } from "./return-to"
 
 /**
  * "Lihat dokumentasi rakitan" + "Salin link dokumentasi" di /verify/[code]
@@ -14,10 +15,20 @@ import { useToastManager } from "@/components/ui/toast"
  * disalin selalu domain yang sedang dibuka kasir, jadi tidak bisa tertukar
  * dengan domain cadangan seperti yang terjadi pada `resolveSiteUrl()`.
  */
-export function DocumentationLinkButtons({ code }: { code: string }) {
+export function DocumentationLinkButtons({
+  code,
+  returnHref = null,
+}: {
+  code: string
+  /** Diteruskan supaya rantai kembali (dokumentasi → detail → daftar admin) tidak putus. */
+  returnHref?: string | null
+}) {
   const toastManager = useToastManager()
   const [tersalin, setTersalin] = useState(false)
+  // `path` polos = yang DISALIN ke faktur Accurate, jadi tidak boleh membawa
+  // `?kembali=`. Hanya tautan "Lihat" yang meneruskannya.
   const path = `/dokumentasi-rakitan/${encodeURIComponent(code)}`
+  const viewHref = withReturnTarget(path, returnHref)
 
   const handleCopy = async () => {
     const url = `${window.location.origin}${path}`
@@ -39,7 +50,7 @@ export function DocumentationLinkButtons({ code }: { code: string }) {
   return (
     <div className="mt-4 flex flex-col gap-2 sm:flex-row">
       <Link
-        href={path}
+        href={viewHref}
         className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-semibold transition-colors hover:bg-muted"
       >
         <Images className="h-4 w-4" />

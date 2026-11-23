@@ -21,6 +21,7 @@ import { formatRupiah } from "@/lib/utils"
 import { formatJakartaPeriod, jakartaPeriod } from "@/lib/utils/timezone"
 import { formatQuoteDateTime } from "@/app/verify/format"
 import { QuoteBadge } from "@/app/verify/quote-badge"
+import { withReturnTarget } from "@/app/verify/return-to"
 
 import { ReopenButton } from "./reopen-button"
 
@@ -78,6 +79,17 @@ export default async function AdminQuotationPage({ searchParams }: Props) {
   // Penanda "Sudah dirakit" dari Ticketing — dimulai di sini, TIDAK ditunggu;
   // tiap baris menunggunya di dalam Suspense (docs/17 §22).
   const buildStatuses = getBuildStatuses(rows.map((r) => r.code))
+
+  // Alamat daftar ini persis seperti yang sedang dilihat (saringan + halaman),
+  // dititipkan ke halaman detail lewat `?kembali=` supaya tombol kembalinya
+  // pulang ke sini, bukan ke `/verify` milik kasir.
+  const listParams = new URLSearchParams()
+  for (const [key, value] of Object.entries({ q, periode: periodeRaw, sales, status, asal: asalRaw, jenis: jenisRaw })) {
+    if (value) listParams.set(key, value)
+  }
+  if (halaman > 1) listParams.set("page", String(halaman))
+  const listQuery = listParams.toString()
+  const listHref = listQuery ? `/admin/quotation?${listQuery}` : "/admin/quotation"
 
   const totalRekap = rekap.reduce((acc, r) => acc + r.total, 0)
   const unitRekap = rekap.reduce((acc, r) => acc + r.unit, 0)
@@ -235,7 +247,7 @@ export default async function AdminQuotationPage({ searchParams }: Props) {
                   <tr key={row.code} className="border-t border-border align-top">
                     <td className="p-3">
                       <Link
-                        href={`/verify/${row.code}`}
+                        href={withReturnTarget(`/verify/${row.code}`, listHref)}
                         className="font-mono font-semibold hover:text-primary hover:underline"
                       >
                         {row.code}
