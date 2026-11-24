@@ -1,377 +1,175 @@
 "use client"
 
 import * as React from "react"
-import { motion, Reorder, useDragControls } from "framer-motion"
-import { GripVertical, Trash2, AlertCircle, ChevronDown, ChevronUp, ArrowUp, ArrowDown, Search } from "lucide-react"
+import { useDraggable, useDroppable } from "@dnd-kit/core"
+import { AlertTriangle, ArrowDown, ArrowUp, GripVertical, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import type { PcBuilderStepConfig } from "@/lib/pc-builder/config"
-import { PC_BUILDER_STEP_KINDS, isPcBuilderStepKind, type PcBuilderStepKind } from "@/lib/pc-builder/step-kind"
-import { Checkbox } from "@/components/ui/checkbox"
+import { STEP_KIND_LABELS } from "./step-labels"
 
-const STEP_KIND_LABELS: Record<PcBuilderStepKind, string> = {
-  component: "Komponen — dirakit",
-  peripheral: "Perlengkapan — diserahkan, tidak dirakit",
-  service: "Jasa — tidak dicentang",
-}
-
-interface StepCardProps {
+/**
+ * Card RINGKAS satu step di admin PC Builder — hanya teks, tanpa daftar.
+ *
+ * Dulu setiap kartu memuat seluruh daftar kategori & atribut sebagai checkbox
+ * (ratusan baris per step, dikali jumlah step), dibungkus animasi framer-motion
+ * dan `backdrop-blur`. Itulah yang membuat halamannya berat. Sekarang daftar
+ * itu hanya dirender di panel edit (`step-edit-sheet.tsx`), untuk satu step
+ * yang sedang dibuka.
+ */
+export interface StepCardProps {
   step: PcBuilderStepConfig
   index: number
-  updateStep: (index: number, step: Partial<PcBuilderStepConfig>) => void
-  removeStep: (index: number) => void
-  moveStep: (index: number, direction: 'up' | 'down') => void
-  categories: { id: number, name: string, path: string }[]
-  attributes: { id: number, name: string }[]
-  allSteps: PcBuilderStepConfig[]
-  isFirst: boolean
-  isLast: boolean
+  total: number
+  /** Ringkasan yang sudah dihitung induknya — card tidak menelusuri data apa pun. */
+  categoriesText: string
+  compatText: string
+  rulesText: string
+  /** Aturan step LAIN yang bisa membuat step ini wajib. */
+  inbound: string[]
+  onEdit: () => void
+  onMove: (direction: -1 | 1) => void
+  /** Sasaran jatuhan sedang dilewati seretan. */
+  dropTarget: boolean
 }
 
-export function StepCard({ step, index, updateStep, removeStep, moveStep, categories, attributes, allSteps, isFirst, isLast }: StepCardProps) {
-  const controls = useDragControls()
-  const [isFolded, setIsFolded] = React.useState(false)
-  const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false)
-  
-  const [catSearch, setCatSearch] = React.useState("")
-  const [depStepSearch, setDepStepSearch] = React.useState("")
-  const [attrSearch, setAttrSearch] = React.useState("")
+export function StepCard({
+  step,
+  index,
+  total,
+  categoriesText,
+  compatText,
+  rulesText,
+  inbound,
+  onEdit,
+  onMove,
+  dropTarget,
+}: StepCardProps) {
+  // Dibongkar langsung — pola `banner/banner-list.tsx`: aturan lint React
+  // menganggap akses properti pada hasil kait ini sebagai membaca ref.
+  const {
+    attributes,
+    listeners,
+    transform,
+    isDragging,
+    setNodeRef: setDragRef,
+    setActivatorNodeRef,
+  } = useDraggable({ id: step.id })
+  const { setNodeRef: setDropRef } = useDroppable({ id: step.id })
 
-  const handleCategoryChange = (categoryId: number, checked: boolean) => {
-    const current = new Set(step.categoryIds || [])
-    if (checked) current.add(categoryId)
-    else current.delete(categoryId)
-    updateStep(index, { categoryIds: Array.from(current) })
-  }
+  const setRefs = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      setDragRef(node)
+      setDropRef(node)
+    },
+    [setDragRef, setDropRef]
+  )
 
-  const handleDependStepChange = (stepId: string, checked: boolean) => {
-    const current = new Set(step.dependSteps || [])
-    if (checked) current.add(stepId)
-    else current.delete(stepId)
-    updateStep(index, { dependSteps: Array.from(current) })
-  }
+  const style: React.CSSProperties | undefined = transform
+    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, position: "relative", zIndex: 20 }
+    : undefined
 
-  const handleDependAttributeChange = (attrId: number, checked: boolean) => {
-    const current = new Set(step.dependAttributes || [])
-    if (checked) current.add(attrId)
-    else current.delete(attrId)
-    updateStep(index, { dependAttributes: Array.from(current) })
-  }
-
-  const availableSteps = allSteps.filter(s => s.id !== step.id && s.name.trim() !== "")
-  
-  const filteredCategories = categories.filter(c => c.name.toLowerCase().includes(catSearch.toLowerCase()) || c.path.toLowerCase().includes(catSearch.toLowerCase()))
-  const filteredSteps = availableSteps.filter(s => s.name.toLowerCase().includes(depStepSearch.toLowerCase()))
-  const filteredAttributes = attributes.filter(a => a.name.toLowerCase().includes(attrSearch.toLowerCase()))
-
-  const selectedCategories = filteredCategories.filter(cat => (step.categoryIds || []).includes(cat.id))
-  const unselectedCategories = filteredCategories.filter(cat => !(step.categoryIds || []).includes(cat.id))
-
-  const selectedSteps = filteredSteps.filter(s => (step.dependSteps || []).includes(s.id))
-  const unselectedSteps = filteredSteps.filter(s => !(step.dependSteps || []).includes(s.id))
-
-  const selectedAttributes = filteredAttributes.filter(a => (step.dependAttributes || []).includes(a.id))
-  const unselectedAttributes = filteredAttributes.filter(a => !(step.dependAttributes || []).includes(a.id))
+  const name = step.name.trim()
+  const kindLabel = step.kind ? STEP_KIND_LABELS[step.kind] : "Jenis belum diatur"
+  const noCategories = (step.categoryIds ?? []).length === 0
 
   return (
-    <Reorder.Item
-      value={step}
-      id={step.id}
-      dragListener={false}
-      dragControls={controls}
-      className="list-none"
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      transition={{ duration: 0.2 }}
-      whileDrag={{ scale: 1.02, zIndex: 50 }}
+    <div
+      ref={setRefs}
+      style={style}
+      className={`flex flex-col overflow-hidden rounded-2xl border bg-card transition-shadow ${
+        isDragging ? "shadow-xl ring-2 ring-primary/40" : "shadow-sm"
+      } ${dropTarget && !isDragging ? "border-primary ring-2 ring-primary/30" : "border-border"}`}
     >
-      <Card className="border-none bg-background/60 backdrop-blur-xl shadow-lg hover:shadow-2xl hover:bg-background/80 transition-all duration-300 overflow-hidden">
-        <div className="flex flex-col sm:flex-row">
-          {/* Drag Handle & Order controls */}
-          <div className="w-full sm:w-12 bg-muted/20 flex sm:flex-col items-center justify-center sm:border-r border-b sm:border-b-0 border-border/10 gap-2 p-2 sm:p-0">
-            <div 
-              className="p-2 cursor-grab active:cursor-grabbing hover:bg-muted/50 rounded-md transition-colors"
-              onPointerDown={(e) => controls.start(e)}
-            >
-              <GripVertical className="h-5 w-5 text-muted-foreground/70" />
-            </div>
-            <div className="flex sm:flex-col gap-1">
-              <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground/70" disabled={isFirst} onClick={() => moveStep(index, 'up')}>
-                <ArrowUp className="h-3 w-3" />
-              </Button>
-              <div className="text-[10px] font-black text-center text-muted-foreground/70 w-6 flex items-center justify-center">{index + 1}</div>
-              <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground/70" disabled={isLast} onClick={() => moveStep(index, 'down')}>
-                <ArrowDown className="h-3 w-3" />
-              </Button>
-            </div>
-          </div>
-          
-          <div className="flex-1 p-5">
-            {/* Header / Main Controls */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div className="flex-1 w-full space-y-1">
-                <Input 
-                  value={step.name} 
-                  onChange={(e) => updateStep(index, { name: e.target.value })}
-                  placeholder="e.g. Processor, Motherboard, RAM..." 
-                  className="font-bold text-lg h-12 bg-background/40 shadow-inner rounded-xl border-border/20 focus-visible:ring-1"
-                />
-                {/* Dibaca aplikasi Ticketing (docs/17 §20): memisahkan yang dirakit,
-                    yang hanya diserahkan, dan jasa. Tidak memengaruhi storefront. */}
-                <div className="flex flex-col gap-1 pt-2 sm:flex-row sm:items-center sm:gap-3">
-                  <label htmlFor={`kind-${step.id}`} className="text-xs font-semibold text-muted-foreground">
-                    Jenis baris (untuk Ticketing)
-                  </label>
-                  <select
-                    id={`kind-${step.id}`}
-                    value={step.kind ?? ""}
-                    onChange={(e) => {
-                      const value = e.target.value
-                      updateStep(index, { kind: isPcBuilderStepKind(value) ? value : undefined })
-                    }}
-                    className="h-9 w-full rounded-lg border border-border/30 bg-background/40 px-2 text-sm sm:w-auto"
-                  >
-                    <option value="">Belum diatur</option>
-                    {PC_BUILDER_STEP_KINDS.map((kind) => (
-                      <option key={kind} value={kind}>
-                        {STEP_KIND_LABELS[kind]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-3 w-full md:w-auto shrink-0 bg-background/40 p-2 rounded-xl border border-border/20">
-                <div className="flex items-center space-x-2 px-2">
-                  <Checkbox 
-                    id={`req-${step.id}`} 
-                    checked={step.isRequired || false}
-                    onCheckedChange={(c) => updateStep(index, { isRequired: c === true })}
-                  />
-                  <label htmlFor={`req-${step.id}`} className="text-sm font-semibold cursor-pointer">Required</label>
-                </div>
-                <div className="flex items-center space-x-2 px-2 border-l border-border/30 pl-3">
-                  <Checkbox 
-                    id={`mul-${step.id}`} 
-                    checked={step.allowMultiple || false}
-                    onCheckedChange={(c) => updateStep(index, { allowMultiple: c === true })}
-                  />
-                  <label htmlFor={`mul-${step.id}`} className="text-sm font-semibold cursor-pointer">Allow Multiple</label>
-                </div>
-                <div className="h-6 w-px bg-border/30"></div>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  onClick={() => setIsFolded(!isFolded)}
-                  className="h-8 w-8 rounded-lg hover:bg-muted/50"
-                >
-                  {isFolded ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-                </Button>
-                {showDeleteConfirm ? (
-                  <div className="flex items-center gap-1">
-                    <Button variant="destructive" size="sm" className="h-8 text-xs font-bold px-2 rounded-lg shadow-md" onClick={() => removeStep(index)}>Confirm</Button>
-                    <Button variant="ghost" size="sm" className="h-8 text-xs px-2 rounded-lg hover:bg-muted/50" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button>
-                  </div>
-                ) : (
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-8 w-8 rounded-lg text-red-500 hover:text-white hover:bg-red-500 transition-colors"
-                    onClick={() => setShowDeleteConfirm(true)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            {/* Foldable Content */}
-            <motion.div 
-              initial={false}
-              animate={{ height: isFolded ? 0 : "auto", opacity: isFolded ? 0 : 1, marginTop: isFolded ? 0 : 24 }}
-              className="overflow-hidden"
-            >
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-background/40 p-4 rounded-xl shadow-inner border border-border/10">
-                
-                {/* Category Selection */}
-                <div className="space-y-3 flex flex-col h-64">
-                  <label className="text-sm font-bold flex items-center text-primary">1. Target Categories</label>
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground/70" />
-                    <Input 
-                      placeholder="Search categories..." 
-                      className="h-8 pl-8 text-xs bg-muted/20 border-border/30" 
-                      value={catSearch}
-                      onChange={e => setCatSearch(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex-1 overflow-y-auto pr-2 space-y-2 rounded-md p-2 bg-muted/10 border border-border/20">
-                    {/* Selected Categories */}
-                    {selectedCategories.map(cat => {
-                      const pathParts = cat.path.split(' > ')
-                      const parentPath = pathParts.slice(0, -1).join(' > ')
-                      const currentName = pathParts[pathParts.length - 1]
-                      return (
-                        <div key={cat.id} className="flex items-start space-x-2 py-1">
-                          <Checkbox 
-                            id={`cat-${step.id}-${cat.id}`} 
-                            checked={true}
-                            onCheckedChange={(c) => handleCategoryChange(cat.id, c === true)}
-                            className="mt-1 border-primary/30"
-                          />
-                          <label htmlFor={`cat-${step.id}-${cat.id}`} className="flex flex-col cursor-pointer hover:text-primary">
-                            <span className="text-sm font-semibold leading-none">{currentName}</span>
-                            {parentPath && <span className="text-[10px] text-muted-foreground mt-0.5">{parentPath}</span>}
-                          </label>
-                        </div>
-                      )
-                    })}
-                    
-                    {/* Divider */}
-                    {selectedCategories.length > 0 && unselectedCategories.length > 0 && (
-                      <hr className="my-2 border-border/30" />
-                    )}
-
-                    {/* Unselected Categories */}
-                    {unselectedCategories.map(cat => {
-                      const pathParts = cat.path.split(' > ')
-                      const parentPath = pathParts.slice(0, -1).join(' > ')
-                      const currentName = pathParts[pathParts.length - 1]
-                      return (
-                        <div key={cat.id} className="flex items-start space-x-2 py-1">
-                          <Checkbox 
-                            id={`cat-${step.id}-${cat.id}`} 
-                            checked={false}
-                            onCheckedChange={(c) => handleCategoryChange(cat.id, c === true)}
-                            className="mt-1 border-primary/30"
-                          />
-                          <label htmlFor={`cat-${step.id}-${cat.id}`} className="flex flex-col cursor-pointer hover:text-primary">
-                            <span className="text-sm font-semibold leading-none">{currentName}</span>
-                            {parentPath && <span className="text-[10px] text-muted-foreground mt-0.5">{parentPath}</span>}
-                          </label>
-                        </div>
-                      )
-                    })}
-                    {filteredCategories.length === 0 && <p className="text-xs text-muted-foreground/50 p-2">No categories found.</p>}
-                  </div>
-                </div>
-
-                {/* Step Dependency */}
-                <div className="space-y-3 flex flex-col h-64">
-                  <label className="text-sm font-bold flex items-center text-primary">2. Depends On (Steps)</label>
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground/70" />
-                    <Input 
-                      placeholder="Search steps..." 
-                      className="h-8 pl-8 text-xs bg-muted/20 border-border/30" 
-                      value={depStepSearch}
-                      onChange={e => setDepStepSearch(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex-1 overflow-y-auto pr-2 space-y-2 rounded-md p-2 bg-muted/10 border border-border/20">
-                    {/* Selected Steps */}
-                    {selectedSteps.map(s => (
-                      <div key={s.id} className="flex items-center space-x-2 py-1">
-                        <Checkbox 
-                          id={`dep-${step.id}-${s.id}`} 
-                          checked={true}
-                          onCheckedChange={(c) => handleDependStepChange(s.id, c === true)}
-                          className="border-primary/30"
-                        />
-                        <label htmlFor={`dep-${step.id}-${s.id}`} className="text-sm font-medium cursor-pointer hover:text-primary">
-                          {s.name}
-                        </label>
-                      </div>
-                    ))}
-
-                    {/* Divider */}
-                    {selectedSteps.length > 0 && unselectedSteps.length > 0 && (
-                      <hr className="my-2 border-border/30" />
-                    )}
-
-                    {/* Unselected Steps */}
-                    {unselectedSteps.map(s => (
-                      <div key={s.id} className="flex items-center space-x-2 py-1">
-                        <Checkbox 
-                          id={`dep-${step.id}-${s.id}`} 
-                          checked={false}
-                          onCheckedChange={(c) => handleDependStepChange(s.id, c === true)}
-                          className="border-primary/30"
-                        />
-                        <label htmlFor={`dep-${step.id}-${s.id}`} className="text-sm font-medium cursor-pointer hover:text-primary">
-                          {s.name}
-                        </label>
-                      </div>
-                    ))}
-                    
-                    {filteredSteps.length === 0 && availableSteps.length === 0 && (
-                      <div className="h-full flex flex-col items-center justify-center text-center text-muted-foreground/50 space-y-2">
-                        <AlertCircle className="h-6 w-6 opacity-50" />
-                        <p className="text-[10px]">No steps available.</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Attribute Dependency */}
-                <div className="space-y-3 flex flex-col h-64">
-                  <label className="text-sm font-bold flex items-center text-primary">3. Matching Attributes</label>
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground/70" />
-                    <Input 
-                      placeholder="Search attributes..." 
-                      className="h-8 pl-8 text-xs bg-muted/20 border-border/30" 
-                      value={attrSearch}
-                      onChange={e => setAttrSearch(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex-1 overflow-y-auto pr-2 space-y-2 rounded-md p-2 bg-muted/10 border border-border/20">
-                    {/* Selected Attributes */}
-                    {selectedAttributes.map(attr => (
-                      <div key={attr.id} className="flex items-center space-x-2 py-1">
-                        <Checkbox 
-                          id={`attr-${step.id}-${attr.id}`} 
-                          checked={true}
-                          onCheckedChange={(c) => handleDependAttributeChange(attr.id, c === true)}
-                          className="border-primary/30"
-                        />
-                        <label htmlFor={`attr-${step.id}-${attr.id}`} className="text-sm font-medium cursor-pointer hover:text-primary">
-                          {attr.name}
-                        </label>
-                      </div>
-                    ))}
-
-                    {/* Divider */}
-                    {selectedAttributes.length > 0 && unselectedAttributes.length > 0 && (
-                      <hr className="my-2 border-border/30" />
-                    )}
-
-                    {/* Unselected Attributes */}
-                    {unselectedAttributes.map(attr => (
-                      <div key={attr.id} className="flex items-center space-x-2 py-1">
-                        <Checkbox 
-                          id={`attr-${step.id}-${attr.id}`} 
-                          checked={false}
-                          onCheckedChange={(c) => handleDependAttributeChange(attr.id, c === true)}
-                          className="border-primary/30"
-                        />
-                        <label htmlFor={`attr-${step.id}-${attr.id}`} className="text-sm font-medium cursor-pointer hover:text-primary">
-                          {attr.name}
-                        </label>
-                      </div>
-                    ))}
-
-                    {filteredAttributes.length === 0 && <p className="text-xs text-muted-foreground/50 p-2">No attributes found.</p>}
-                  </div>
-                </div>
-
-              </div>
-            </motion.div>
-          </div>
+      <div className="flex items-center gap-2.5 px-3 pb-2.5 pt-3">
+        <button
+          type="button"
+          ref={setActivatorNodeRef}
+          {...listeners}
+          {...attributes}
+          aria-label={`Seret untuk mengurutkan step ${name || "tanpa nama"}`}
+          className="hidden h-9 w-7 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:cursor-grabbing md:flex"
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+        <span className="text-xs font-bold tabular-nums text-muted-foreground">
+          {String(index + 1).padStart(2, "0")}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className={`truncate text-base font-bold ${name ? "" : "italic text-muted-foreground"}`}>
+            {name || "Tanpa nama"}
+          </p>
+          <p className="truncate text-xs text-muted-foreground">
+            {kindLabel}
+            {step.allowMultiple ? " · boleh banyak" : ""}
+          </p>
         </div>
-      </Card>
-    </Reorder.Item>
+        <span
+          className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold ${
+            step.isRequired
+              ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-400"
+              : "border-border bg-muted text-muted-foreground"
+          }`}
+        >
+          {step.isRequired ? "Wajib" : "Opsional"}
+        </span>
+      </div>
+
+      <dl className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-2 gap-y-1.5 px-3.5 pb-3 text-[13px]">
+        <dt className="text-muted-foreground">Kategori</dt>
+        <dd className="truncate" title={categoriesText}>{categoriesText}</dd>
+        <dt className="text-muted-foreground">Cocokkan</dt>
+        <dd className="truncate" title={compatText}>{compatText}</dd>
+        <dt className="text-muted-foreground">Aturan</dt>
+        <dd className="truncate" title={rulesText}>{rulesText}</dd>
+      </dl>
+
+      {(noCategories || inbound.length > 0) && (
+        <div className="space-y-1.5 px-3.5 pb-3">
+          {noCategories && (
+            <Note>Belum ada kategori — di /build-pc step ini menampilkan SEMUA produk.</Note>
+          )}
+          {inbound.map((text) => (
+            <Note key={text}>{text}</Note>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-auto flex gap-2 border-t border-border bg-muted/30 px-3 py-2.5">
+        <Button type="button" variant="outline" onClick={onEdit} className="h-10 flex-1 gap-1.5 font-semibold">
+          <Pencil className="h-3.5 w-3.5" /> Edit
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="h-10 w-10"
+          disabled={index === 0}
+          onClick={() => onMove(-1)}
+          aria-label={`Pindahkan ${name || "step"} ke atas`}
+        >
+          <ArrowUp className="h-4 w-4" />
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="h-10 w-10"
+          disabled={index === total - 1}
+          onClick={() => onMove(1)}
+          aria-label={`Pindahkan ${name || "step"} ke bawah`}
+        >
+          <ArrowDown className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function Note({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
+      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      <span>{children}</span>
+    </p>
   )
 }

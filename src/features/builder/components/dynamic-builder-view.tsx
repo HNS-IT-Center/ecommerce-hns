@@ -11,6 +11,11 @@ import {
 } from "@/store/new-builder"
 import { PcBuilderStepConfig } from "@/lib/pc-builder/config"
 import { buildAttributeRequirementGroups } from "@/lib/pc-builder/compatibility"
+import {
+  describeRequirement,
+  requireRuleAttributeIds,
+  resolveStepRequirements,
+} from "@/lib/pc-builder/require-rules"
 import { summarizeBuildSavings } from "@/lib/pc-builder/savings"
 import { formatRupiah } from "@/lib/utils"
 import { fetchBuilderProducts } from "../actions"
@@ -653,13 +658,30 @@ export function DynamicBuilderView({
   // kelompok supaya dua susunan berbeda tidak menghasilkan kunci yang sama.
   const reqAttrIdsStr = requiredAttributeValueGroups.map(g => g.join(",")).join("|");
 
+  /**
+   * Atribut yang dimuat bersama setiap kartu grid. Atribut yang dibaca aturan
+   * wajib bersyarat (`requireRules`) WAJIB ikut: tanpa itu prosesor yang
+   * dipilih dari grid tidak membawa atribut IGPU-nya, dan aturan "tidak punya
+   * iGPU → wajib VGA" tidak pernah menyala — diam-diam.
+   */
   const configuredAttributeIds = useMemo(() => {
-    const ids = new Set<number>()
+    const ids = new Set<number>(requireRuleAttributeIds(steps))
     steps.forEach(s => {
       s.dependAttributes?.forEach(id => ids.add(id))
     })
     return Array.from(ids)
   }, [steps])
+
+  /**
+   * Step wajib untuk rakitan SAAT INI: yang dicentang "Required" ditambah yang
+   * wajib karena aturan bersyarat. Satu-satunya sumber untuk tanda `*`,
+   * pengingat pindah langkah, dan penjaga Print/WA — lihat
+   * `lib/pc-builder/require-rules.ts`. Jangan baca `step.isRequired` langsung.
+   */
+  const stepRequirements = useMemo(
+    () => resolveStepRequirements(steps, selections),
+    [steps, selections]
+  )
   const configuredAttrIdsStr = configuredAttributeIds.join(",")
 
   /**
@@ -747,10 +769,20 @@ export function DynamicBuilderView({
    * belum selesai untuk dilanjutkan nanti justru itulah gunanya fitur tersebut.
    */
   const validateRequiredSteps = () => {
-    const missingSteps = steps.filter(s => s.isRequired && (!Array.isArray(selections[s.id]) || selections[s.id].length === 0))
+    const missingSteps = steps.filter(s => stepRequirements.has(s.id) && (!Array.isArray(selections[s.id]) || selections[s.id].length === 0))
     if (missingSteps.length === 0) return true
 
     const [firstMissing, ...restMissing] = missingSteps
+
+    // Step yang wajib karena aturan bersyarat HARUS menerangkan sebabnya.
+    // Tanpa itu pelanggan melihat VGA tiba-tiba "wajib" padahal tadi tidak,
+    // dan menyangka builder-nya rusak.
+    const [reason] = stepRequirements.get(firstMissing.id) ?? []
+    const pembuka = reason
+      ? `Wajib diisi karena ${describeRequirement(reason)}.`
+      : restMissing.length > 0
+        ? "Komponen wajib ini harus diisi dulu."
+        : "Komponen ini wajib diisi sebelum rakitan bisa dicetak atau dikirim ke CS."
 
     // Menekan Print dua kali tidak boleh menumpuk dua toast merah yang sama.
     dismissMissingStepToast()
@@ -758,8 +790,8 @@ export function DynamicBuilderView({
       title: `${firstMissing.name} belum dipilih`,
       description:
         restMissing.length > 0
-          ? `Komponen wajib ini harus diisi dulu. Setelah itu masih ada: ${restMissing.map(s => s.name).join(", ")}.`
-          : "Komponen ini wajib diisi sebelum rakitan bisa dicetak atau dikirim ke CS.",
+          ? `${pembuka} Setelah itu masih ada: ${restMissing.map(s => s.name).join(", ")}.`
+          : pembuka,
       // Merah menandai satu hal saja di halaman ini: aksi yang baru ditekan
       // DIBATALKAN. Itu sebabnya "Build Kosong" dan "Gagal menyiapkan pesan"
       // ikut merah, sedangkan "Sebagian komponen tidak tersedia" tetap netral
@@ -1309,7 +1341,7 @@ export function DynamicBuilderView({
     const currentEmpty =
       !Array.isArray(selections[current.id]) || selections[current.id].length === 0
 
-    if (current.isRequired && currentEmpty) {
+    if (stepRequirements.has(current.id) && currentEmpty) {
       toastManager.add({
         title: `${current.name} belum dipilih`,
         description: "Anda bisa kembali ke langkah ini kapan saja.",
@@ -1437,6 +1469,9 @@ export function DynamicBuilderView({
           const stepSels = selections[step.id]
           const isSelected = Array.isArray(stepSels) && stepSels.length > 0
           const isActive = activeStepId === step.id
+          const requirement = stepRequirements.get(step.id)
+          // Alasan pertama saja: satu baris kecil di sidebar, bukan paragraf.
+          const conditionalReason = requirement?.[0]
 
           let btnClass = "w-full text-left px-3 py-2.5 rounded-lg border flex flex-col transition-all cursor-pointer "
           if (isActive) btnClass += "bg-blue-50 border-blue-200 shadow-sm dark:bg-blue-900/20 dark:border-blue-800 "
@@ -1462,10 +1497,14 @@ export function DynamicBuilderView({
                 </div>
                 <div>
                   <div className={`font-semibold text-sm flex items-center gap-1 ${isActive ? "text-blue-700 dark:text-blue-400" : isSelected ? "text-brand-green" : ""}`}>
-                    {step.name} {step.isRequired && <span className="text-red-500" title="Required">*</span>}
+                    {step.name} {requirement && <span className="text-red-500" title="Wajib">*</span>}
                   </div>
                   <div className="text-[10px] text-muted-foreground mt-0.5">
-                    {isSelected ? `${stepSels.length} Terpilih` : "Pilih komponen"}
+                    {isSelected
+                      ? `${stepSels.length} Terpilih`
+                      : conditionalReason
+                        ? `Wajib — mengikuti ${conditionalReason.triggerStepName} yang dipilih`
+                        : "Pilih komponen"}
                   </div>
                 </div>
               </div>

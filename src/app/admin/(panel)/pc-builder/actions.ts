@@ -87,8 +87,14 @@ export async function getPcBuilderOptions() {
       select: { id: true, name: true, path: true },
       orderBy: { path: "asc" },
     }),
+    // Nilai ikut dimuat untuk aturan wajib bersyarat (`requireRules`): staff
+    // memilih NILAI atribut pemicunya, bukan cuma atributnya.
     prisma.attribute.findMany({
-      select: { id: true, name: true },
+      select: {
+        id: true,
+        name: true,
+        values: { select: { id: true, value: true }, orderBy: { value: "asc" } },
+      },
       orderBy: { name: "asc" },
     })
   ])

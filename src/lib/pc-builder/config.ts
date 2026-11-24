@@ -21,6 +21,7 @@ import { unstable_cache } from "next/cache"
 
 import { getPrisma } from "@/lib/prisma/client"
 import { isPcBuilderStepKind, type PcBuilderStepKind } from "@/lib/pc-builder/step-kind"
+import { parseRequireRules, type PcBuilderRequireRule } from "@/lib/pc-builder/require-rules"
 
 export { PC_BUILDER_STEP_KINDS, isPcBuilderStepKind, type PcBuilderStepKind } from "@/lib/pc-builder/step-kind"
 
@@ -39,6 +40,11 @@ export type PcBuilderStepConfig = {
   isRequired?: boolean
   allowMultiple?: boolean
   kind?: PcBuilderStepKind
+  /**
+   * "Kalau pilihan di step ini punya/tidak punya atribut X, step lain wajib."
+   * Aturan & alasannya di `lib/pc-builder/require-rules.ts`.
+   */
+  requireRules?: PcBuilderRequireRule[]
 }
 
 export type PcBuilderDisplayConfig = {
@@ -69,14 +75,24 @@ function isStepConfig(value: unknown): value is PcBuilderStepConfig {
  *
  * `kind` yang bukan salah satu nilai sah DIBUANG dari step (bukan step-nya):
  * kolomnya JSON bebas, dan nilai asing tidak boleh sampai ke server lain.
+ *
+ * `requireRules` disaring dengan cara yang sama — aturan cacat, atau yang
+ * menunjuk step yang sudah dihapus, dibuang satu per satu.
  */
 export function parsePcBuilderSteps(value: unknown): PcBuilderStepConfig[] {
   if (!Array.isArray(value)) return []
-  return value.filter(isStepConfig).map((step) => {
-    if (step.kind === undefined || isPcBuilderStepKind(step.kind)) return step
-    const tanpaKind: PcBuilderStepConfig = { ...step }
-    delete tanpaKind.kind
-    return tanpaKind
+  const steps = value.filter(isStepConfig)
+  const stepIds = new Set(steps.map((s) => s.id))
+
+  return steps.map((step) => {
+    const bersih: PcBuilderStepConfig = { ...step }
+    if (bersih.kind !== undefined && !isPcBuilderStepKind(bersih.kind)) delete bersih.kind
+
+    const rules = parseRequireRules(bersih.requireRules, bersih.id, stepIds)
+    if (rules.length > 0) bersih.requireRules = rules
+    else delete bersih.requireRules
+
+    return bersih
   })
 }
 
