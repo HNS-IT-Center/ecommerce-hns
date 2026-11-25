@@ -408,6 +408,30 @@
 }
 
 /**
+ * Nyala kolom form yang gagal validasi — dipasang `revealInvalidFields()`
+ * (`lib/utils/reveal-invalid-fields.ts`) selama 3 detik.
+ *
+ * Dasarnya di `@layer base` supaya kelas `rounded-*` milik elemen tetap menang.
+ * Nyalanya sengaja DI LUAR layer: CSS tanpa layer mengalahkan utilitas
+ * Tailwind, jadi latar `bg-muted/30` milik pembungkus pun tertimpa selama
+ * menyala. Latar diperluas lewat `box-shadow` (bukan padding) supaya tidak ada
+ * yang bergeser — kolom di sekitarnya diam di tempat.
+ */
+@layer base {
+  [data-field] {
+    border-radius: var(--radius-lg);
+    transition:
+      background-color 700ms ease,
+      box-shadow 700ms ease;
+  }
+}
+[data-field][data-field-flash] {
+  background-color: color-mix(in oklab, var(--destructive) 14%, transparent);
+  box-shadow: 0 0 0 6px color-mix(in oklab, var(--destructive) 14%, transparent);
+  transition-duration: 150ms;
+}
+
+/**
  * Ayunan ornamen Natal.
  *
  * Titik tumpunya di ATAS (`transform-origin: top center`) supaya ornamen

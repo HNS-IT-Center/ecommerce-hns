@@ -27,6 +27,7 @@ import type {
 import { CategoryPicker } from "./category-picker"
 import { AttributeRow } from "./attribute-row"
 import { VariationEditor } from "./variation-editor"
+import { announceInvalidProductFields } from "./invalid-fields"
 import { type BulkProductRow } from "./product-data-table"
 import { AccurateCodeField } from "./accurate-code-field"
 import { umumkanTautanOtomatis } from "./umumkan-tautan-otomatis"
@@ -85,6 +86,7 @@ export function QuickEditModal({
 }: QuickEditModalProps) {
   const router = useRouter()
   const toastManager = useToastManager()
+  const formRef = React.useRef<HTMLFormElement>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
   /** Terisi saat simpan ditolak karena SKU-nya dipegang produk lain. */
   const [tawaranPindahSku, setTawaranPindahSku] = useState<{
@@ -142,6 +144,8 @@ export function QuickEditModal({
     formState: { errors, isSubmitting },
   } = useForm<ProductFormValues>({
     resolver: zodResolver(quickEditFormSchema),
+    // Kolom bermasalah ditunjukkan `announceInvalidProductFields`.
+    shouldFocusError: false,
     defaultValues: {
       name: product.name,
       // Dimuat dari baris tabel kalau `raw` belum memuatnya. Alasannya sama
@@ -438,7 +442,14 @@ export function QuickEditModal({
             baris paling bawah menempel persis pada tepi dialog, dan saran
             dropdown yang terbuka di sana tidak punya tempat untuk muncul. */}
         <div className="flex-1 overflow-auto p-4 pb-10 md:p-6 md:pb-10">
-          <form id="quick-edit-form" onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          <form
+            ref={formRef}
+            id="quick-edit-form"
+            onSubmit={handleSubmit(onSubmit, (formErrors) =>
+              announceInvalidProductFields(formErrors, formRef.current, toastManager),
+            )}
+            className="space-y-6"
+          >
             {submitError && (
               <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-xs text-destructive">
                 <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
@@ -464,7 +475,7 @@ export function QuickEditModal({
                     accent="bg-primary/10 text-primary"
                   />
                   <div className="space-y-3">
-                    <div>
+                    <div data-field="name">
                       <Label htmlFor="qe-name" className="mb-1.5">
                         Nama Produk
                       </Label>
@@ -494,7 +505,7 @@ export function QuickEditModal({
                         — lihat kolom SKU di tabel varian di bawah.
                       </div>
                     ) : (
-                      <div>
+                      <div data-field="sku">
                         <Label htmlFor="qe-sku" className="mb-1.5">
                           SKU <span className="font-normal text-muted-foreground">(opsional)</span>
                         </Label>
@@ -577,7 +588,7 @@ export function QuickEditModal({
                   />
                   <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-3">
-                      <div>
+                      <div data-field="regularPrice">
                         <Label htmlFor="qe-regularPrice" className="mb-1.5">
                           Harga Normal
                         </Label>
@@ -676,7 +687,7 @@ export function QuickEditModal({
                       </RadioGroup>
 
                       {stockStatus === "instock" && (
-                        <div className="mt-2.5">
+                        <div data-field="stockQuantity" className="mt-2.5">
                           <Label htmlFor="qe-stockQuantity" className="mb-1.5">
                             Jumlah Stok (opsional)
                           </Label>
@@ -744,8 +755,8 @@ export function QuickEditModal({
                       </p>
                     )}
                     {fields.map((field, index) => (
+                      <div key={field.id} data-field={`attributes.${index}`}>
                       <AttributeRow
-                        key={field.id}
                         name={watch(`attributes.${index}.name`) ?? ""}
                         values={watch(`attributes.${index}.values`) ?? []}
                         onNameChange={(v) =>
@@ -757,13 +768,14 @@ export function QuickEditModal({
                         onRemove={() => remove(index)}
                         attributeOptions={attributeOptions}
                       />
+                      </div>
                     ))}
                   </div>
                 </div>
               </div>
 
               <div className="space-y-5">
-                <div>
+                <div data-field="categoryIds">
                   <SectionHeading
                     icon={FolderTree}
                     title="Kategori"

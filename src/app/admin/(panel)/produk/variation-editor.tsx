@@ -187,7 +187,7 @@ export function VariationEditor({
   return (
     <div className="space-y-4">
       {/* Langkah 1 — atribut pembeda */}
-      <div className="rounded-xl border border-border bg-muted/30 p-3">
+      <div data-field="variationAttributes" className="rounded-xl border border-border bg-muted/30 p-3">
         <Label className="mb-1">1. Atribut pembeda varian</Label>
         <p className="mb-2.5 text-[11px] leading-relaxed text-muted-foreground">
           Contoh: WARNA, UKURAN, PANJANG. Atribut inilah yang jadi pilihan pembeli di halaman produk.
@@ -230,8 +230,9 @@ export function VariationEditor({
         {attributesError && <p className="mt-2 text-xs text-destructive">{attributesError}</p>}
       </div>
 
-      {/* Langkah 2 — daftar varian */}
-      <div>
+      {/* Langkah 2 — daftar varian. `data-field` dibaca `revealInvalidFields`
+          (lihat produk-form.tsx) untuk menunjukkan kolom yang gagal validasi. */}
+      <div data-field="variations">
         <div className="mb-2 flex items-center justify-between gap-2">
           <Label>
             2. Daftar varian
@@ -267,6 +268,7 @@ export function VariationEditor({
             {variations.map((variation, index) => (
               <div
                 key={variation.id ?? `new-${index}`}
+                data-field={`variations.${index}`}
                 className="rounded-xl border border-border p-3"
               >
                 <div className="mb-2.5 flex items-center justify-between gap-2">

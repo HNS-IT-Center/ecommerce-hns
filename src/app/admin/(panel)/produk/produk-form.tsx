@@ -38,6 +38,7 @@ import { AccurateCodeField } from "./accurate-code-field"
 import { tautkanKodeAccurateAction } from "./actions"
 import { umumkanTautanOtomatis } from "./umumkan-tautan-otomatis"
 import { PindahSkuButton, bacaBentrokSku } from "./pindah-sku"
+import { announceInvalidProductFields } from "./invalid-fields"
 import type { HasilTautDariSku } from "@/lib/api/accurate/price-table"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -190,6 +191,9 @@ export function ProdukForm({
     formState: { errors, isDirty },
   } = useForm<ProductFormValues>({
     resolver: zodResolver(productFormSchema),
+    // Kolom bermasalah ditunjukkan `announceInvalidProductFields` — fokus
+    // bawaan hanya kenal kolom ber-ref dan akan menggulir ke tempat lain.
+    shouldFocusError: false,
     defaultValues: {
       name: "",
       sku: "",
@@ -377,6 +381,8 @@ export function ProdukForm({
     setUploadProgress(null)
     return urls
   }
+
+  const formRef = React.useRef<HTMLFormElement>(null)
 
   function onValidated(values: ProductFormValues) {
     setSubmitError(null)
@@ -653,7 +659,13 @@ export function ProdukForm({
 
   return (
     <UnsavedChangesGuard isDirty={isDirty && !isSaving}>
-      <form onSubmit={handleSubmit(onValidated)} className="space-y-6">
+      <form
+        ref={formRef}
+        onSubmit={handleSubmit(onValidated, (formErrors) =>
+          announceInvalidProductFields(formErrors, formRef.current, toastManager),
+        )}
+        className="space-y-6"
+      >
         {/* Bilah aksi di atas & lengket: formulir ini panjang, dan tombol simpan
             di dasar halaman berarti harus menggulir jauh ke bawah setiap kali
             ingin menyimpan. */}
@@ -746,7 +758,7 @@ export function ProdukForm({
                 />
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
+                <div data-field="name">
                   <Label htmlFor="name" className="mb-1.5">
                     Nama Produk
                   </Label>
@@ -803,7 +815,7 @@ export function ProdukForm({
                     lihat kolom SKU di tabel varian di bawah.
                   </div>
                 ) : (
-                  <div className="space-y-2">
+                  <div data-field="sku" className="space-y-2">
                     {kodeSah !== null && (
                       <label className="flex cursor-pointer items-start gap-2.5 text-xs">
                         <Checkbox
@@ -1038,7 +1050,7 @@ export function ProdukForm({
                     isVariableProduct && "hidden",
                   )}
                 >
-                  <div>
+                  <div data-field="regularPrice">
                     <Label htmlFor="regularPrice" className="mb-1.5">
                       Harga Normal
                     </Label>
@@ -1139,7 +1151,7 @@ export function ProdukForm({
                   </RadioGroup>
 
                   {stockStatus === "instock" && (
-                    <div className="mt-3">
+                    <div data-field="stockQuantity" className="mt-3">
                       <Label htmlFor="stockQuantity" className="mb-1.5">
                         Jumlah Stok (opsional)
                       </Label>
@@ -1178,7 +1190,7 @@ export function ProdukForm({
               <CardHeader>
                 <SectionHeading icon={FolderTree} title="Kategori" accent="bg-warning/10 text-warning" />
               </CardHeader>
-              <CardContent>
+              <CardContent data-field="categoryIds">
                 {errors.categoryIds && (
                   <p className="mb-1 text-[11px] text-destructive">{errors.categoryIds.message}</p>
                 )}
@@ -1289,8 +1301,8 @@ export function ProdukForm({
               </p>
             )}
             {fields.map((field, index) => (
+              <div key={field.id} data-field={`attributes.${index}`}>
               <AttributeRow
-                key={field.id}
                 name={watch(`attributes.${index}.name`) ?? ""}
                 values={watch(`attributes.${index}.values`) ?? []}
                 onNameChange={(v) =>
@@ -1305,6 +1317,7 @@ export function ProdukForm({
                 // spesifikasi yang bertabrakan dengan nilai per varian.
                 attributeOptions={selectableAttributeOptions}
               />
+              </div>
             ))}
           </CardContent>
         </Card>
